@@ -340,8 +340,12 @@ ceilings and a production-browser gauntlet are not Gate E requirements.
 Land existing V19 annotation editing, bounded exact measurement/pins, authority
 copy, and one display-only section.
 
-**Gate F:** dimension, single/pair, pin/stale, section/measurement/export,
-keyboard/narrow/accessibility, and real-OCCT measurement proof.
+**Gate F: [Passed](./v22-f-gate.md).** Named closer
+`pnpm smoke:v22-inspection-workflow` plus focused real-OCCT measurement
+proof. Session V19 annotations, exact single/pair measurement, pins, and
+one display-only section are in that closer. Production-browser gauntlet,
+gzip ceilings, 512-annotation theater, p50/p95, STEP/export browser, and
+H-duplicated accessibility are not Gate F requirements.
 
 ### G — Dirty Guards and Recovery
 
@@ -378,7 +382,7 @@ private-field/non-goal audit. Gzip ceilings are not a Gate I Must.
 | --- | --- |
 | `pnpm smoke:v22-exact-selection-workflow` | B–D: 13×4 selection, identity, occlusion, filters/cycle/keyboard, collector handoff |
 | `pnpm smoke:v22-preview-grips-workflow` | E: preview/grip matrix, focused real-OCCT preview/Apply same-shape parity, bindings, cancel, cleanup |
-| `pnpm smoke:v22-inspection-workflow` | F: annotations, measurement/pins, authority, section, accessibility |
+| `pnpm smoke:v22-inspection-workflow` | F: annotations, exact measurement/pins, authority, section, focused real-OCCT proof |
 | `pnpm smoke:v22-recovery-workflow` | G: generations, interruption, Restore/Discard, save cleanup, guards, OPFS faults |
 | `pnpm smoke:v22-browser-workflow` | H: pointer/keyboard/focus/live regions, narrow/reduced-motion/high-zoom, stale/fallback |
 | `pnpm smoke:v22-performance` | C/E/F/G/H: p50/p95, input, memory, restart, no >50 ms task |
@@ -441,7 +445,7 @@ Deletion-first remains required when a slice replaces a superseded path:
 | C | [Passed](./v22-c-gate.md) | depth-aware selection, fallback, filter/cycle/keyboard, performance |
 | D | [Passed](./v22-d-gate.md) | collector/promotion path and exhaustive no-widening parity |
 | E | [Passed](./v22-e-gate.md) | named closer `pnpm smoke:v22-preview-grips-workflow` plus focused real-OCCT preview/Apply same-shape parity; gzip-ceiling Must removed |
-| F | Pending | V19 annotations and exact inspection/section/accessibility |
+| F | [Passed](./v22-f-gate.md) | named closer `pnpm smoke:v22-inspection-workflow` plus focused real-OCCT measurement proof; browser/gzip/512/p50/export/a11y closers removed |
 | G | Pending | atomic two-generation recovery and replacement/unload guards |
 | H | Pending | accessibility/stale/memory/deferral/compatibility audit |
 | I | Pending | named product workflows, inherited commands, full validation, Must/non-goal reconciliation |

@@ -239,6 +239,7 @@ export interface RenderSceneOptions {
   readonly visualStates?: readonly RenderVisualStateInput[];
   readonly exactPickBodies?: readonly RenderExactPickBody[];
   readonly exactVisualStates?: readonly RenderExactVisualStateInput[];
+  readonly clipPlane?: RenderExactPickClipPlane;
 }
 
 export const rendererPackage: PackageInfo = {
@@ -575,7 +576,8 @@ export function renderCanvasScene(
     context,
     committedMeshes.filter((mesh) => !hasMeshVisualState(mesh, visualStates)),
     camera,
-    size
+    size,
+    options.clipPlane
   );
 
   for (const { primitive } of sorted.filter((entry) =>
@@ -599,7 +601,8 @@ export function renderCanvasScene(
       camera,
       size,
       getMeshVisualStyle(mesh, visualStates),
-      mesh.presentation
+      mesh.presentation,
+      options.clipPlane
     );
   }
 
@@ -608,7 +611,8 @@ export function renderCanvasScene(
     options.exactPickBodies ?? [],
     options.exactVisualStates ?? [],
     camera,
-    size
+    size,
+    options.clipPlane
   );
 
   // Preview geometry is a display-only layer. Draw it after committed and
@@ -621,7 +625,8 @@ export function renderCanvasScene(
       camera,
       size,
       createEmptyVisualStyle(),
-      "preview"
+      "preview",
+      options.clipPlane
     );
   }
 }
@@ -631,7 +636,8 @@ function drawExactVisualStates(
   bodies: readonly RenderExactPickBody[],
   states: readonly RenderExactVisualStateInput[],
   camera: RenderCamera,
-  size: ViewportSize
+  size: ViewportSize,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   for (const state of states) {
     const body = bodies.find(
@@ -647,7 +653,7 @@ function drawExactVisualStates(
     addRenderVisualState(styles, "exact", state.state);
     const style = styles.get("exact") ?? createEmptyVisualStyle();
     if (state.entityKind === "body") {
-      drawTriangleMesh(context, body.mesh, camera, size, style);
+      drawTriangleMesh(context, body.mesh, camera, size, style, undefined, clipPlane);
       continue;
     }
 
@@ -675,7 +681,8 @@ function drawExactVisualStates(
         mesh.indices.slice(first * 3, (first + count) * 3),
         mesh.vertices.map((point) => transformPoint(point, mesh.transform)),
         camera,
-        size
+        size,
+        clipPlane
       );
     } else if (state.entityKind === "edge") {
       context.strokeStyle = getVisualStrokeColor(style, "#235f86");
@@ -683,21 +690,45 @@ function drawExactVisualStates(
       context.beginPath();
       const first = pickMap.edgePointRanges[entityIndex * 2] ?? 0;
       const count = pickMap.edgePointRanges[entityIndex * 2 + 1] ?? 0;
-      for (let index = 0; index < count; index += 1) {
-        const point = projectExactPickPoint(
+      let started = false;
+      for (let index = 1; index < count; index += 1) {
+        const startWorld = readExactPickPoint(
+          pickMap.edgePoints,
+          first + index - 1,
+          mesh.transform
+        );
+        const endWorld = readExactPickPoint(
           pickMap.edgePoints,
           first + index,
-          mesh.transform,
-          camera,
-          size
+          mesh.transform
         );
-        if (point) {
-          if (index === 0) context.moveTo(point.x, point.y);
-          else context.lineTo(point.x, point.y);
+        const segment =
+          startWorld && endWorld
+            ? clipSegment(startWorld, endWorld, clipPlane)
+            : undefined;
+        if (!segment) continue;
+        const start = projectPoint(segment[0], camera, size);
+        const end = projectPoint(segment[1], camera, size);
+        if (!start || !end) continue;
+        if (!started) {
+          context.moveTo(start.x, start.y);
+          started = true;
+        } else {
+          context.lineTo(start.x, start.y);
         }
+        context.lineTo(end.x, end.y);
       }
-      context.stroke();
+      if (started) context.stroke();
     } else {
+      const world = readExactPickPoint(
+        pickMap.vertexPoints,
+        entityIndex,
+        mesh.transform
+      );
+      if (!world || isClipped(world, clipPlane)) {
+        context.restore();
+        continue;
+      }
       const point = projectExactPickPoint(
         pickMap.vertexPoints,
         entityIndex,
@@ -718,7 +749,8 @@ function drawUnstyledMeshes(
   context: CanvasRenderingContext2D,
   meshes: readonly RenderTriangleMesh[],
   camera: RenderCamera,
-  size: ViewportSize
+  size: ViewportSize,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   let sketchBatch: RenderTriangleMesh[] = [];
   let sketchBatchLineStyle: RenderTriangleMesh["lineStyle"];
@@ -729,7 +761,8 @@ function drawUnstyledMeshes(
       sketchBatch,
       camera,
       size,
-      sketchBatchLineStyle
+      sketchBatchLineStyle,
+      clipPlane
     );
     sketchBatch = [];
     sketchBatchLineStyle = undefined;
@@ -738,7 +771,15 @@ function drawUnstyledMeshes(
   for (const mesh of meshes) {
     if (!isBatchableSketchEdgeMesh(mesh)) {
       flushSketchBatch();
-      drawTriangleMesh(context, mesh, camera, size, createEmptyVisualStyle());
+      drawTriangleMesh(
+        context,
+        mesh,
+        camera,
+        size,
+        createEmptyVisualStyle(),
+        undefined,
+        clipPlane
+      );
       continue;
     }
 
@@ -765,7 +806,8 @@ function drawSketchEdgeMeshBatch(
   meshes: readonly RenderTriangleMesh[],
   camera: RenderCamera,
   size: ViewportSize,
-  lineStyle: RenderTriangleMesh["lineStyle"]
+  lineStyle: RenderTriangleMesh["lineStyle"],
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   let hasProjectedSegment = false;
 
@@ -779,16 +821,14 @@ function drawSketchEdgeMeshBatch(
 
   for (const mesh of meshes) {
     for (const edge of mesh.edgeSegments ?? []) {
-      const projectedStart = projectPoint(
+      const segment = clipSegment(
         transformPoint(edge.start, mesh.transform),
-        camera,
-        size
-      );
-      const projectedEnd = projectPoint(
         transformPoint(edge.end, mesh.transform),
-        camera,
-        size
+        clipPlane
       );
+      if (!segment) continue;
+      const projectedStart = projectPoint(segment[0], camera, size);
+      const projectedEnd = projectPoint(segment[1], camera, size);
       if (!projectedStart || !projectedEnd) continue;
       context.moveTo(projectedStart.x, projectedStart.y);
       context.lineTo(projectedEnd.x, projectedEnd.y);
@@ -1105,7 +1145,8 @@ function drawTriangleMesh(
   camera: RenderCamera,
   size: ViewportSize,
   style: RenderVisualStyle,
-  presentation: RenderTriangleMesh["presentation"] = mesh.presentation
+  presentation: RenderTriangleMesh["presentation"] = mesh.presentation,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   const vertices = mesh.vertices.map((vertex) =>
     transformPoint(vertex, mesh.transform)
@@ -1129,7 +1170,7 @@ function drawTriangleMesh(
     "rgba(47, 111, 151, 0.08)",
     presentation
   );
-  drawMeshFaces(context, mesh.indices, vertices, camera, size);
+  drawMeshFaces(context, mesh.indices, vertices, camera, size, clipPlane);
 
   if (style.selected && displayEdges.length > 0) {
     context.strokeStyle = getVisualSoftStrokeColor(
@@ -1138,7 +1179,14 @@ function drawTriangleMesh(
       presentation
     );
     context.lineWidth = presentation === "subdued" ? 1.25 : 7;
-    strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
+    strokeMeshEdgeSegments(
+      context,
+      mesh,
+      displayEdges,
+      camera,
+      size,
+      clipPlane
+    );
   }
 
   if (displayEdges.length > 0) {
@@ -1148,7 +1196,14 @@ function drawTriangleMesh(
       presentation
     );
     context.lineWidth = getVisualLineWidth(style, 2, presentation);
-    strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
+    strokeMeshEdgeSegments(
+      context,
+      mesh,
+      displayEdges,
+      camera,
+      size,
+      clipPlane
+    );
   } else if (style.selected && outline.length > 1) {
     context.strokeStyle = getVisualSoftStrokeColor(
       style,
@@ -1344,7 +1399,8 @@ function drawMeshFaces(
   indices: readonly number[],
   vertices: readonly Vec3[],
   camera: RenderCamera,
-  size: ViewportSize
+  size: ViewportSize,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   for (let index = 0; index + 2 < indices.length; index += 3) {
     const firstIndex = indices[index];
@@ -1362,7 +1418,10 @@ function drawMeshFaces(
     const second = vertices[secondIndex];
     const third = vertices[thirdIndex];
     if (first && second && third) {
-      fillProjectedFace(context, camera, size, [first, second, third]);
+      const clipped = clipTriangle(first, second, third, clipPlane);
+      if (clipped) {
+        fillProjectedFace(context, camera, size, clipped);
+      }
     }
   }
 }
@@ -1372,22 +1431,21 @@ function strokeMeshEdgeSegments(
   mesh: RenderTriangleMesh,
   edgeSegments: readonly RenderEdgeSegment[],
   camera: RenderCamera,
-  size: ViewportSize
+  size: ViewportSize,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   let hasProjectedSegment = false;
   context.beginPath();
 
   for (const edge of edgeSegments) {
-    const projectedStart = projectPoint(
+    const segment = clipSegment(
       transformPoint(edge.start, mesh.transform),
-      camera,
-      size
-    );
-    const projectedEnd = projectPoint(
       transformPoint(edge.end, mesh.transform),
-      camera,
-      size
+      clipPlane
     );
+    if (!segment) continue;
+    const projectedStart = projectPoint(segment[0], camera, size);
+    const projectedEnd = projectPoint(segment[1], camera, size);
 
     if (!projectedStart || !projectedEnd) {
       continue;
@@ -1674,6 +1732,28 @@ function isClipped(
   return clipPlane
     ? dotVec3(subtractVec3(point, clipPlane.origin), clipPlane.normal) < 0
     : false;
+}
+
+function clipTriangle(
+  first: Vec3,
+  second: Vec3,
+  third: Vec3,
+  clipPlane: RenderExactPickClipPlane | undefined
+): readonly Vec3[] | undefined {
+  if (!clipPlane) return [first, second, third];
+  const kept: Vec3[] = [];
+  const ring: readonly Vec3[] = [first, second, third];
+  for (const [index, start] of ring.entries()) {
+    const end = ring[(index + 1) % ring.length]!;
+    const startKept = !isClipped(start, clipPlane);
+    const endKept = !isClipped(end, clipPlane);
+    if (startKept) kept.push(start);
+    if (startKept !== endKept) {
+      const segment = clipSegment(start, end, clipPlane);
+      if (segment) kept.push(startKept ? segment[1] : segment[0]);
+    }
+  }
+  return kept.length >= 3 ? kept : undefined;
 }
 
 function clipSegment(

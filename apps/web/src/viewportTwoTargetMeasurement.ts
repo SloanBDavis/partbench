@@ -1,7 +1,6 @@
 import type { BodyMeasurementsSnapshot } from "@web-cad/cad-core";
 import type {
   CadViewportInteractionStatus,
-  CadViewportMeasurementAuthority,
   CadViewportTwoTargetMeasurementDiagnostic,
   CadViewportTwoTargetMeasurementResult,
   CadViewportTwoTargetMeasurementTarget,
@@ -15,6 +14,15 @@ import {
   formatPoint,
   type MeasurementDisplayRow
 } from "./sceneObjectDisplay";
+import {
+  bindExactInspectionTarget,
+  measureExactInspectionPair,
+  type ExactInspectionArtifact,
+  type ExactInspectionBindResult,
+  type ExactInspectionEntity,
+  type ExactInspectionIdentity,
+  type ExactInspectionResult
+} from "./exactInspectionMeasurement";
 import {
   formatViewportMeasurementAuthority,
   type ViewportMeasurementOverlay
@@ -40,6 +48,8 @@ export interface ViewportTwoTargetMeasurementTarget extends CadViewportTwoTarget
   readonly pointLabel?: string;
   readonly vector?: Vec3;
   readonly vectorLabel?: string;
+  readonly exactIdentity?: ExactInspectionIdentity;
+  readonly exactEntity?: ExactInspectionEntity;
   readonly summaryRows: readonly MeasurementDisplayRow[];
 }
 
@@ -88,18 +98,25 @@ export interface CreateViewportTwoTargetMeasurementTargetInput {
   readonly measurementOverlay?: ViewportMeasurementOverlay;
   readonly bodyMeasurements?: BodyMeasurementsSnapshot;
   readonly generatedReferenceMeasurement?: GeneratedReferenceMeasurement;
+  readonly exactIdentity?: ExactInspectionIdentity;
+  readonly exactEntity?: ExactInspectionEntity;
+  readonly exactArtifacts?: readonly ExactInspectionArtifact[];
 }
 
 export interface CreateViewportTwoTargetMeasurementViewInput {
   readonly activeTarget?: ViewportTwoTargetMeasurementTarget;
   readonly session: ViewportTwoTargetMeasurementSession;
   readonly units: DocumentUnits;
+  readonly exactArtifacts?: readonly ExactInspectionArtifact[];
 }
 
 export function createViewportTwoTargetMeasurementTarget({
   bodyMeasurements,
   generatedReferenceMeasurement,
-  measurementOverlay
+  measurementOverlay,
+  exactArtifacts,
+  exactEntity,
+  exactIdentity
 }: CreateViewportTwoTargetMeasurementTargetInput):
   | ViewportTwoTargetMeasurementTarget
   | undefined {
@@ -109,10 +126,16 @@ export function createViewportTwoTargetMeasurementTarget({
 
   const { target } = measurementOverlay;
   const base = createTargetBase(measurementOverlay);
+  const boundExact = attachExactTarget(
+    base,
+    exactIdentity,
+    exactEntity,
+    exactArtifacts
+  );
 
   if (target.targetKind === "body") {
     return {
-      ...base,
+      ...boundExact,
       ...(bodyMeasurements
         ? {
             point: bodyMeasurements.centroid,
@@ -143,14 +166,14 @@ export function createViewportTwoTargetMeasurementTarget({
 
   if (!generatedReferenceMeasurement) {
     return {
-      ...base,
+      ...boundExact,
       summaryRows: []
     };
   }
 
   if (generatedReferenceMeasurement.kind === "face") {
     return {
-      ...base,
+      ...boundExact,
       point: generatedReferenceMeasurement.center,
       pointLabel: "Face center",
       pointRole: "generatedFaceCenter",
@@ -203,7 +226,7 @@ export function createViewportTwoTargetMeasurementTarget({
         : undefined;
 
     return {
-      ...base,
+      ...boundExact,
       ...(center
         ? {
             point: center,
@@ -240,7 +263,7 @@ export function createViewportTwoTargetMeasurementTarget({
   }
 
   return {
-    ...base,
+    ...boundExact,
     summaryRows: []
   };
 }
@@ -279,6 +302,7 @@ export function isViewportTwoTargetMeasurementSessionActive(
 
 export function createViewportTwoTargetMeasurementView({
   activeTarget,
+  exactArtifacts = [],
   session,
   units
 }: CreateViewportTwoTargetMeasurementViewInput): ViewportTwoTargetMeasurementView {
@@ -295,7 +319,7 @@ export function createViewportTwoTargetMeasurementView({
   const baseDiagnostics = createBaseDiagnostics(firstTarget, comparisonTarget);
   const results =
     firstTarget && comparisonTarget && baseDiagnostics.length === 0
-      ? createResults(firstTarget, comparisonTarget, units)
+      ? createResults(firstTarget, comparisonTarget, units, exactArtifacts)
       : [];
   const resultDiagnostics =
     firstTarget &&
@@ -306,10 +330,10 @@ export function createViewportTwoTargetMeasurementView({
           createDiagnostic(
             "VIEWPORT_TWO_TARGET_UNSUPPORTED_PAIR",
             "unsupported",
-            "This target pair has no source-backed center distance or angle vectors.",
+            "This target pair has no current exact supporting plane, line, or point.",
             {
               expected:
-                "body centroids, generated face centers/normals, or generated linear edge centers/directions",
+                "current exact face, edge, or vertex identities with supporting geometry",
               received: `${firstTarget.detail} and ${comparisonTarget.detail}`
             }
           )
@@ -400,6 +424,8 @@ function cleanTarget(
     ...(target.selection
       ? { selection: cleanSelection(target.selection) }
       : {}),
+    ...(target.exactIdentity ? { exactIdentity: target.exactIdentity } : {}),
+    ...(target.exactEntity ? { exactEntity: target.exactEntity } : {}),
     authorityLabel: clean(target.authorityLabel),
     diagnostics: target.diagnostics.map((diagnostic) => ({
       ...diagnostic,
@@ -560,118 +586,118 @@ function createTargetDiagnostics(
   }
 }
 
+function attachExactTarget(
+  base: Omit<ViewportTwoTargetMeasurementTarget, "summaryRows">,
+  exactIdentity: ExactInspectionIdentity | undefined,
+  exactEntity: ExactInspectionEntity | undefined,
+  exactArtifacts: readonly ExactInspectionArtifact[] | undefined
+): Omit<ViewportTwoTargetMeasurementTarget, "summaryRows"> {
+  if (!exactIdentity) {
+    return base;
+  }
+  const bound =
+    exactArtifacts && exactArtifacts.length > 0
+      ? bindExactInspectionTarget(exactIdentity, exactArtifacts, base.title)
+      : undefined;
+  return {
+    ...base,
+    exactIdentity,
+    ...(exactEntity
+      ? { exactEntity }
+      : bound?.current && bound.entity
+        ? { exactEntity: bound.entity }
+        : {}),
+    authority: bound && !bound.current ? "unsupported" : "geometryBoundaryExact",
+    authorityLabel: formatViewportMeasurementAuthority(
+      bound && !bound.current ? "unsupported" : "geometryBoundaryExact"
+    ),
+    status: bound && !bound.current ? bound.reason : base.status
+  };
+}
+
 function createResults(
+  firstTarget: ViewportTwoTargetMeasurementTarget,
+  secondTarget: ViewportTwoTargetMeasurementTarget,
+  units: DocumentUnits,
+  artifacts: readonly ExactInspectionArtifact[]
+): readonly ViewportTwoTargetMeasurementDisplayResult[] {
+  const first = bindPairTarget(firstTarget, artifacts);
+  const second = bindPairTarget(secondTarget, artifacts);
+  if (!first || !second) {
+    return [];
+  }
+  const measured = measureExactInspectionPair(first, second, units);
+  return exactResultToDisplayResults(measured, firstTarget, secondTarget, units);
+}
+
+function bindPairTarget(
+  target: ViewportTwoTargetMeasurementTarget,
+  artifacts: readonly ExactInspectionArtifact[]
+): ExactInspectionBindResult | undefined {
+  if (!target.exactIdentity) {
+    return undefined;
+  }
+  if (artifacts.length > 0) {
+    return bindExactInspectionTarget(
+      target.exactIdentity,
+      artifacts,
+      target.title
+    );
+  }
+  if (target.exactIdentity.entityKind === "body") {
+    return {
+      identity: target.exactIdentity,
+      title: target.title,
+      current: true
+    };
+  }
+  if (!target.exactEntity) {
+    return {
+      identity: target.exactIdentity,
+      title: target.title,
+      current: false,
+      reason: "missing"
+    };
+  }
+  return {
+    identity: target.exactIdentity,
+    title: target.title,
+    current: true,
+    entity: target.exactEntity
+  };
+}
+
+function exactResultToDisplayResults(
+  measured: ExactInspectionResult,
   firstTarget: ViewportTwoTargetMeasurementTarget,
   secondTarget: ViewportTwoTargetMeasurementTarget,
   units: DocumentUnits
 ): readonly ViewportTwoTargetMeasurementDisplayResult[] {
-  const results: ViewportTwoTargetMeasurementDisplayResult[] = [];
-
-  if (firstTarget.point && secondTarget.point) {
-    const value = distance(firstTarget.point, secondTarget.point);
-    const authority = combineAuthority(
-      getPointAuthority(firstTarget),
-      getPointAuthority(secondTarget)
-    );
-    const diagnostics = createResultAuthorityDiagnostics(authority);
-
-    results.push({
-      kind: "distance",
-      title: "Distance",
-      detail: `${firstTarget.pointLabel ?? "First point"} to ${
-        secondTarget.pointLabel ?? "second point"
-      }`,
-      authority,
-      authorityLabel: formatViewportMeasurementAuthority(authority),
-      value,
-      units,
-      diagnostics,
-      rows: [
-        { label: "Distance", value: formatDistance(value, units) },
-        {
-          label: "Basis",
-          value: `${firstTarget.pointLabel ?? "First point"} to ${
-            secondTarget.pointLabel ?? "second point"
-          }`
-        }
-      ]
-    });
+  if (measured.status !== "ready") {
+    return [];
   }
-
-  if (firstTarget.vector && secondTarget.vector) {
-    const value = angleDegrees(firstTarget.vector, secondTarget.vector);
-    const authority = combineAuthority(
-      getVectorAuthority(firstTarget),
-      getVectorAuthority(secondTarget)
-    );
-    const diagnostics = createResultAuthorityDiagnostics(authority);
-
-    if (Number.isFinite(value)) {
-      results.push({
-        kind: "angle",
-        title: "Angle",
-        detail: `${firstTarget.vectorLabel ?? "First vector"} to ${
-          secondTarget.vectorLabel ?? "second vector"
-        }`,
-        authority,
-        authorityLabel: formatViewportMeasurementAuthority(authority),
-        value,
-        units: "deg",
-        diagnostics,
-        rows: [
-          { label: "Angle", value: `${formatNumber(value)} deg` },
-          {
-            label: "Basis",
-            value: `${firstTarget.vectorLabel ?? "First vector"} to ${
-              secondTarget.vectorLabel ?? "second vector"
-            }`
-          }
-        ]
-      });
-    }
-  }
-
-  return results.map(cleanResult);
-}
-
-function createResultAuthorityDiagnostics(
-  authority: CadViewportMeasurementAuthority
-): readonly CadViewportTwoTargetMeasurementDiagnostic[] {
-  return authority === "displayApproximation"
-    ? [
-        createDiagnostic(
-          "VIEWPORT_TWO_TARGET_DISPLAY_APPROXIMATION_ONLY",
-          "unsupported",
-          "This result is display approximation only."
+  return measured.values
+    .filter((value) => value.kind === "distance" || value.kind === "angle")
+    .map((value) =>
+      cleanResult({
+        kind: value.kind,
+        title: value.kind === "distance" ? "Distance" : "Angle",
+        detail:
+          value.kind === "distance"
+            ? `${firstTarget.title} to ${secondTarget.title}`
+            : `${firstTarget.title} and ${secondTarget.title}`,
+        authority: measured.authority,
+        authorityLabel: measured.authorityLabel,
+        value: value.value,
+        units: value.kind === "angle" ? "deg" : units,
+        diagnostics: [],
+        rows: measured.rows.filter((row) =>
+          value.kind === "distance"
+            ? row.label === "Distance"
+            : row.label === "Angle"
         )
-      ]
-    : [];
-}
-
-function getPointAuthority(
-  target: ViewportTwoTargetMeasurementTarget
-): CadViewportMeasurementAuthority {
-  return getSourceBackedInputAuthority(target, Boolean(target.point));
-}
-
-function getVectorAuthority(
-  target: ViewportTwoTargetMeasurementTarget
-): CadViewportMeasurementAuthority {
-  return getSourceBackedInputAuthority(target, Boolean(target.vector));
-}
-
-function getSourceBackedInputAuthority(
-  target: ViewportTwoTargetMeasurementTarget,
-  hasInput: boolean
-): CadViewportMeasurementAuthority {
-  if (!hasInput || target.authority !== "unsupported") {
-    return target.authority;
-  }
-
-  return target.source === "body.measurements" ||
-    target.source === "body.generatedReferenceMeasurements"
-    ? "sourceAnalytic"
-    : target.authority;
+      })
+    );
 }
 
 function cleanResult(
@@ -751,29 +777,6 @@ function createPrompt(
   return "Select a second supported target, then open Measure.";
 }
 
-function combineAuthority(
-  first: CadViewportMeasurementAuthority,
-  second: CadViewportMeasurementAuthority
-): CadViewportMeasurementAuthority {
-  if (first === "unsupported" || second === "unsupported") {
-    return "unsupported";
-  }
-
-  if (first === "displayApproximation" || second === "displayApproximation") {
-    return "displayApproximation";
-  }
-
-  if (first === "sourceAnalytic" || second === "sourceAnalytic") {
-    return "sourceAnalytic";
-  }
-
-  if (first === "geometryBoundaryExact" && second === "geometryBoundaryExact") {
-    return "geometryBoundaryExact";
-  }
-
-  return "semanticDocument";
-}
-
 function createDiagnostic(
   code: CadViewportTwoTargetMeasurementDiagnostic["code"],
   status: CadViewportTwoTargetMeasurementDiagnostic["status"],
@@ -811,6 +814,10 @@ function formatStatus(status: CadViewportInteractionStatus): string {
       : status;
 }
 
+function formatVector(vector: Vec3): string {
+  return vector.map(formatNumber).join(", ");
+}
+
 function midpoint(first: Vec3, second: Vec3): Vec3 {
   return [
     (first[0] + second[0]) / 2,
@@ -823,50 +830,11 @@ function subtract(first: Vec3, second: Vec3): Vec3 {
   return [first[0] - second[0], first[1] - second[1], first[2] - second[2]];
 }
 
-function distance(first: Vec3, second: Vec3): number {
-  return Math.hypot(
-    first[0] - second[0],
-    first[1] - second[1],
-    first[2] - second[2]
-  );
-}
-
-function dot(first: Vec3, second: Vec3): number {
-  return first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
-}
-
 function normalize(vector: Vec3): Vec3 | undefined {
   const length = Math.hypot(vector[0], vector[1], vector[2]);
-
-  if (length === 0) {
-    return undefined;
-  }
-
-  return [vector[0] / length, vector[1] / length, vector[2] / length];
-}
-
-function angleDegrees(first: Vec3, second: Vec3): number {
-  const normalizedFirst = normalize(first);
-  const normalizedSecond = normalize(second);
-
-  if (!normalizedFirst || !normalizedSecond) {
-    return Number.NaN;
-  }
-
-  const cosine = Math.max(
-    -1,
-    Math.min(1, dot(normalizedFirst, normalizedSecond))
-  );
-
-  return (Math.acos(cosine) * 180) / Math.PI;
-}
-
-function formatDistance(value: number, units: DocumentUnits): string {
-  return `${formatNumber(value)} ${units}`;
-}
-
-function formatVector(vector: Vec3): string {
-  return vector.map(formatNumber).join(", ");
+  return length === 0
+    ? undefined
+    : [vector[0] / length, vector[1] / length, vector[2] / length];
 }
 
 function clean(text: string): string {

@@ -121,7 +121,41 @@ describe("viewport two-target measurement", () => {
     expect(escaped).toEqual({});
   });
 
-  it("creates supported distance and angle results with source authority", () => {
+  it("creates supported distance and angle results from current exact identity", () => {
+    const first = createExactFaceTarget("face", {
+      localId: "face_xy",
+      signature: "sig-xy",
+      midpoint: [0, 0, 0],
+      normal: [0, 0, 1]
+    });
+    const second = createExactEdgeTarget("edge", {
+      localId: "edge_x",
+      signature: "sig-x",
+      midpoint: [2, 0, 0],
+      axis: [1, 0, 0]
+    });
+    const view = createViewportTwoTargetMeasurementView({
+      session: { firstTarget: first, secondTarget: second },
+      units: "mm"
+    });
+
+    expect(view.status).toBe("complete");
+    expect(view.results).toHaveLength(2);
+    expect(view.results[0]).toMatchObject({
+      kind: "distance",
+      authority: "geometryBoundaryExact",
+      value: 2,
+      rows: [{ label: "Distance", value: "2 mm" }]
+    });
+    expect(view.results[1]).toMatchObject({
+      kind: "angle",
+      authority: "geometryBoundaryExact",
+      value: 90,
+      rows: [{ label: "Angle", value: "90 deg" }]
+    });
+  });
+
+  it("does not fabricate a number from generated centers when exact identity is missing", () => {
     const first = createTarget("face", {
       point: [0, 0, 0],
       pointLabel: "Face center",
@@ -139,58 +173,13 @@ describe("viewport two-target measurement", () => {
       units: "mm"
     });
 
-    expect(view.status).toBe("complete");
-    expect(view.results).toHaveLength(2);
-    expect(view.results[0]).toMatchObject({
-      kind: "distance",
-      authority: "sourceAnalytic",
-      value: 2,
-      rows: [
-        { label: "Distance", value: "2 mm" },
-        { label: "Basis", value: "Face center to Edge center" }
-      ]
-    });
-    expect(view.results[1]).toMatchObject({
-      kind: "angle",
-      authority: "sourceAnalytic",
-      value: 90,
-      rows: [
-        { label: "Angle", value: "90 deg" },
-        {
-          label: "Basis",
-          value: "Face normal to Linear edge direction"
-        }
-      ]
-    });
-  });
-
-  it("labels source-backed point results from the measured inputs instead of unsupported target affordances", () => {
-    const first = createTarget("body", {
-      authority: "unsupported",
-      point: [0, 0, 0],
-      pointLabel: "Body centroid",
-      source: "body.measurements"
-    });
-    const second = createTarget("edge", {
-      authority: "unsupported",
-      point: [1, 1, 0],
-      pointLabel: "Edge center",
-      source: "body.generatedReferenceMeasurements"
-    });
-    const view = createViewportTwoTargetMeasurementView({
-      session: { firstTarget: first, secondTarget: second },
-      units: "mm"
-    });
-
-    expect(view.results[0]).toMatchObject({
-      kind: "distance",
-      authority: "sourceAnalytic",
-      authorityLabel: "Authority: source-analytic exact",
-      rows: [
-        { label: "Distance", value: "1.41 mm" },
-        { label: "Basis", value: "Body centroid to Edge center" }
-      ]
-    });
+    expect(view.results).toEqual([]);
+    expect(view.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "VIEWPORT_TWO_TARGET_UNSUPPORTED_PAIR",
+        status: "unsupported"
+      })
+    );
   });
 
   it.each([
@@ -286,7 +275,7 @@ describe("viewport two-target measurement", () => {
     });
     const output = JSON.stringify(view);
 
-    expect(output).toContain("sourceAnalytic");
+    expect(output).toContain("unsupported");
     expect(output).toContain("internal render target");
     expect(output).not.toContain("renderer-hit");
     expect(output).not.toContain("selection-buffer");
@@ -463,6 +452,69 @@ function createLineEdgeMeasurement({
     startPoint,
     endPoint
   };
+}
+
+function createExactFaceTarget(
+  key: string,
+  entity: {
+    readonly localId: string;
+    readonly signature: string;
+    readonly midpoint: [number, number, number];
+    readonly normal: [number, number, number];
+  }
+): ViewportTwoTargetMeasurementTarget {
+  return createTarget(key, {
+    authority: "geometryBoundaryExact",
+    exactIdentity: {
+      bodyId: "body_rect",
+      bodySourceIdentitySignature: "src-1",
+      topologySignature: "topo-1",
+      entityKind: "face",
+      localId: entity.localId,
+      entitySignature: entity.signature
+    },
+    exactEntity: {
+      localId: entity.localId,
+      kind: "face",
+      signature: entity.signature,
+      surfaceClass: "plane",
+      area: 8,
+      midpoint: entity.midpoint,
+      normal: entity.normal
+    }
+  });
+}
+
+function createExactEdgeTarget(
+  key: string,
+  entity: {
+    readonly localId: string;
+    readonly signature: string;
+    readonly midpoint: [number, number, number];
+    readonly axis: [number, number, number];
+  }
+): ViewportTwoTargetMeasurementTarget {
+  return createTarget(key, {
+    targetKind: "generatedEdge",
+    authority: "geometryBoundaryExact",
+    exactIdentity: {
+      bodyId: "body_rect",
+      bodySourceIdentitySignature: "src-1",
+      topologySignature: "topo-1",
+      entityKind: "edge",
+      localId: entity.localId,
+      entitySignature: entity.signature
+    },
+    exactEntity: {
+      localId: entity.localId,
+      kind: "edge",
+      signature: entity.signature,
+      curveClass: "line",
+      length: 4,
+      midpoint: entity.midpoint,
+      axis: entity.axis
+    }
+  });
 }
 
 function createTarget(

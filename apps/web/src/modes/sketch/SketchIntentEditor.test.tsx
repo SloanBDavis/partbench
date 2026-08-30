@@ -201,6 +201,26 @@ describe("V19 sketch right editor", () => {
     cleanup?.();
     expect(changes).toEqual([control, undefined]);
   });
+
+  it("opens the existing dimension editor for a requested annotation id", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SketchIntentEditor, {
+        disabled: false,
+        sketch,
+        parameters: [],
+        dimensions: [conflictingDimension],
+        constraints: [],
+        units: "mm",
+        requestedDimensionId: "dimension_1",
+        onRequestedDimensionConsumed: vi.fn(),
+        onApplyOps: vi.fn()
+      })
+    );
+
+    expect(markup).toContain('aria-label="Edit dimension"');
+    expect(markup).toContain("Point distance");
+    expect(markup).toContain("Value");
+  });
 });
 
 const sketch: SketchSnapshot = {

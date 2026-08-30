@@ -186,7 +186,9 @@ import type {
   InspectHealthProjection,
   InspectMeasurementsProjection,
   InspectMetricProjection,
+  InspectPinnedResultProjection,
   InspectReferenceProjection,
+  InspectSectionPlaneProjection,
   InspectSelectionProjection
 } from "./modes/inspect/InspectPanel";
 import type { ViewportFeatureGripDescriptor } from "./components/ViewportFeatureGrips";
@@ -373,6 +375,37 @@ import type {
   ViewportTwoTargetMeasurementTarget,
   ViewportTwoTargetMeasurementView
 } from "./viewportTwoTargetMeasurement";
+import {
+  createExactInspectionArtifacts,
+  createExactInspectionIdentity
+} from "./inspectExactSelection";
+import {
+  bindExactInspectionTarget,
+  measureExactInspectionPair,
+  measureExactInspectionSingle,
+  type ExactInspectionIdentity
+} from "./exactInspectionMeasurement";
+import {
+  clearInspectMeasurementPins,
+  inspectMeasurementPinRows,
+  pinExactInspectionResult,
+  refreshInspectMeasurementPins,
+  type InspectMeasurementPin
+} from "./inspectMeasurementPins";
+import {
+  clearInspectSectionPlane,
+  createInspectFaceSectionPlane,
+  createInspectWorldSectionPlane,
+  EMPTY_INSPECT_SECTION_PLANE,
+  inspectSectionClipPlane,
+  updateInspectSectionPlane,
+  type InspectSectionPlaneSession
+} from "./inspectSectionPlane";
+import {
+  createSketchDimensionAnnotations,
+  moveSketchDimensionAnnotation,
+  type SketchDimensionAnnotationOffset
+} from "./sketchDimensionAnnotations";
 import type {
   ModelingActionDescriptor,
   ModelingSelectionContext
@@ -491,6 +524,11 @@ const SketchViewportDragOverlay = lazy(() =>
 const SketchArcToolOverlay = lazy(() =>
   import("./modes/sketch").then((module) => ({
     default: module.SketchArcToolOverlay
+  }))
+);
+const SketchDimensionAnnotationOverlay = lazy(() =>
+  import("./components/SketchDimensionAnnotationOverlay").then((module) => ({
+    default: module.SketchDimensionAnnotationOverlay
   }))
 );
 const SketchRegionOverlay = lazy(() =>
@@ -2065,6 +2103,19 @@ export function App() {
     viewportTwoTargetMeasurementSession,
     setViewportTwoTargetMeasurementSession
   ] = useState<ViewportTwoTargetMeasurementSession>({});
+  const [inspectMeasurementPins, setInspectMeasurementPins] = useState<
+    readonly InspectMeasurementPin[]
+  >([]);
+  const [inspectSectionPlane, setInspectSectionPlane] =
+    useState<InspectSectionPlaneSession>(EMPTY_INSPECT_SECTION_PLANE);
+  const [sketchDimensionAnnotationOffsets, setSketchDimensionAnnotationOffsets] =
+    useState<Readonly<Record<string, SketchDimensionAnnotationOffset>>>({});
+  const [requestedSketchDimensionId, setRequestedSketchDimensionId] = useState<
+    string | undefined
+  >();
+  const [selectedSketchDimensionId, setSelectedSketchDimensionId] = useState<
+    string | undefined
+  >();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
@@ -5171,6 +5222,36 @@ export function App() {
       selectionReferenceCandidates: selectedSelectionReferenceCandidates,
       units: document.units
     });
+  const exactInspectionArtifacts = useMemo(
+    () =>
+      createExactInspectionArtifacts(currentExactArtifactProjection.artifacts),
+    [currentExactArtifactProjection.artifacts]
+  );
+  const currentExactTopologySelection = viewportExactSelections.at(-1);
+  const currentExactInspectionIdentity = currentExactTopologySelection
+    ? createExactInspectionIdentity(currentExactTopologySelection)
+    : selectedBody
+      ? exactInspectionArtifacts
+          .filter((artifact) => artifact.bodyId === selectedBody.id)
+          .map(
+            (artifact): ExactInspectionIdentity => ({
+              bodyId: artifact.bodyId,
+              bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+              topologySignature: artifact.topologySignature,
+              entityKind: "body"
+            })
+          )[0]
+      : undefined;
+  const currentExactInspectionResult = currentExactInspectionIdentity
+    ? measureExactInspectionSingle(
+        bindExactInspectionTarget(
+          currentExactInspectionIdentity,
+          exactInspectionArtifacts,
+          currentExactTopologySelection?.entityKind ?? "body"
+        ),
+        document.units
+      )
+    : undefined;
   const viewportTwoTargetMeasurementTarget =
     viewportMeasurementRuntime?.createTarget({
       bodyMeasurements: selectedBodyMeasurements.measurements,
@@ -5178,13 +5259,16 @@ export function App() {
         selectedGeneratedReferenceState.status === "selected"
           ? selectedGeneratedReferenceState.measurement?.measurement
           : undefined,
-      measurementOverlay: viewportMeasurementOverlay
+      measurementOverlay: viewportMeasurementOverlay,
+      exactIdentity: currentExactInspectionIdentity,
+      exactArtifacts: exactInspectionArtifacts
     });
   const viewportTwoTargetMeasurement =
     viewportMeasurementRuntime?.createView({
       activeTarget: viewportTwoTargetMeasurementTarget,
       session: viewportTwoTargetMeasurementSession,
-      units: document.units
+      units: document.units,
+      exactArtifacts: exactInspectionArtifacts
     }) ?? EMPTY_TWO_TARGET_MEASUREMENT;
   const selectedPart = selectedBody
     ? projectStructure.parts.find((part) => part.id === selectedBody.partId)
@@ -5213,6 +5297,24 @@ export function App() {
               : "body",
         typeLabel: formatGeneratedReferenceKind(reference.kind),
         name: reference.label,
+        owner: {
+          part: selectedPart?.name,
+          body: selectedBody?.name ?? "Result body",
+          feature: selectedFeature
+            ? formatCadKindLabel(selectedFeature.kind)
+            : undefined
+        }
+      };
+    }
+
+    if (
+      currentExactTopologySelection &&
+      currentExactTopologySelection.entityKind !== "body"
+    ) {
+      return {
+        kind: currentExactTopologySelection.entityKind,
+        typeLabel: formatCadKindLabel(currentExactTopologySelection.entityKind),
+        name: `${formatCadKindLabel(currentExactTopologySelection.entityKind)} ${currentExactTopologySelection.localId}`,
         owner: {
           part: selectedPart?.name,
           body: selectedBody?.name ?? "Result body",
@@ -5302,7 +5404,8 @@ export function App() {
     selectedGeneratedReferenceState,
     selectedNamedReference,
     selectedObject,
-    selectedPart?.name
+    selectedPart?.name,
+    currentExactTopologySelection
   ]);
   const inspectMeasurements = useMemo<InspectMeasurementsProjection>(
     () => ({
@@ -5340,8 +5443,17 @@ export function App() {
         : {}),
       ...(selectedBody
         ? {
-            body: selectedBodyMeasurements.measurements
-              ? {
+            body:
+              currentExactInspectionIdentity?.entityKind === "body" &&
+              currentExactInspectionResult?.status === "ready"
+                ? {
+                    title: "Body measurements",
+                    status: "ready" as const,
+                    confidence: currentExactInspectionResult.authorityLabel,
+                    rows: currentExactInspectionResult.rows
+                  }
+                : selectedBodyMeasurements.measurements
+                ? {
                   title: "Body measurements",
                   status: "ready" as const,
                   confidence: "Source analytic",
@@ -5394,25 +5506,42 @@ export function App() {
                   }
           }
         : {}),
-      ...(selectedGeneratedReferenceState.status === "selected"
+      ...(currentExactInspectionResult &&
+      currentExactInspectionIdentity?.entityKind !== "body"
         ? {
             generatedReference: {
-              title: `${formatGeneratedReferenceKind(
-                selectedGeneratedReferenceState.reference.kind
-              )} measurements`,
-              status: selectedGeneratedReferenceState.measurement?.measurement
-                ? ("ready" as const)
-                : ("blocked" as const),
-              confidence: selectedGeneratedReferenceState.measurement
-                ?.measurement
-                ? "Source analytic"
-                : undefined,
-              rows: selectedGeneratedReferenceState.measurementRows,
+              title: `${formatCadKindLabel(currentExactInspectionIdentity.entityKind)} measurements`,
+              status:
+                currentExactInspectionResult.status === "ready"
+                  ? ("ready" as const)
+                  : ("blocked" as const),
+              confidence: currentExactInspectionResult.authorityLabel,
+              rows: currentExactInspectionResult.rows,
               message:
-                selectedGeneratedReferenceState.measurement?.error ?? undefined
+                currentExactInspectionResult.status === "ready"
+                  ? undefined
+                  : currentExactInspectionResult.diagnostics[0]?.message
             }
           }
-        : {}),
+        : selectedGeneratedReferenceState.status === "selected"
+          ? {
+              generatedReference: {
+                title: `${formatGeneratedReferenceKind(
+                  selectedGeneratedReferenceState.reference.kind
+                )} measurements`,
+                status: selectedGeneratedReferenceState.measurement?.measurement
+                  ? ("ready" as const)
+                  : ("blocked" as const),
+                confidence: selectedGeneratedReferenceState.measurement
+                  ?.measurement
+                  ? "Source analytic"
+                  : undefined,
+                rows: selectedGeneratedReferenceState.measurementRows,
+                message:
+                  selectedGeneratedReferenceState.measurement?.error ?? undefined
+              }
+            }
+          : {}),
       twoTarget: {
         status:
           viewportTwoTargetMeasurement.status === "waitingForSecond"
@@ -5435,9 +5564,20 @@ export function App() {
       selectedBodyExactMetadataEntry,
       selectedGeneratedReferenceState,
       selectedMeasurements,
-      viewportTwoTargetMeasurement
+      viewportTwoTargetMeasurement,
+      currentExactInspectionIdentity,
+      currentExactInspectionResult
     ]
   );
+  useEffect(() => {
+    setInspectMeasurementPins((current) =>
+      refreshInspectMeasurementPins(
+        current,
+        exactInspectionArtifacts,
+        document.units
+      )
+    );
+  }, [document.units, exactInspectionArtifacts]);
   const inspectMassProperties = useMemo<InspectMetricProjection | undefined>(
     () =>
       selectedBody
@@ -7168,6 +7308,75 @@ export function App() {
     setViewportTwoTargetMeasurementSession({});
   }
 
+  function pinCurrentInspectResult() {
+    const pairIdentities = [
+      viewportTwoTargetMeasurement.firstTarget?.exactIdentity,
+      viewportTwoTargetMeasurement.secondTarget?.exactIdentity
+    ].filter((identity): identity is ExactInspectionIdentity => Boolean(identity));
+    if (
+      pairIdentities.length === 2 &&
+      viewportTwoTargetMeasurement.status === "complete"
+    ) {
+      const result = measureExactInspectionPair(
+        bindExactInspectionTarget(
+          pairIdentities[0]!,
+          exactInspectionArtifacts,
+          viewportTwoTargetMeasurement.firstTarget?.title
+        ),
+        bindExactInspectionTarget(
+          pairIdentities[1]!,
+          exactInspectionArtifacts,
+          viewportTwoTargetMeasurement.secondTarget?.title
+        ),
+        document.units
+      );
+      setInspectMeasurementPins((current) =>
+        pinExactInspectionResult(
+          current,
+          `${viewportTwoTargetMeasurement.firstTarget?.title ?? "First"} to ${viewportTwoTargetMeasurement.secondTarget?.title ?? "second"}`,
+          pairIdentities,
+          result
+        )
+      );
+      return;
+    }
+    if (!currentExactInspectionIdentity || !currentExactInspectionResult) return;
+    setInspectMeasurementPins((current) =>
+      pinExactInspectionResult(
+        current,
+        inspectSelection?.name ?? currentExactInspectionIdentity.entityKind,
+        [currentExactInspectionIdentity],
+        currentExactInspectionResult
+      )
+    );
+  }
+
+  function setInspectWorldSection(kind: "xy" | "xz" | "yz") {
+    setInspectSectionPlane((current) =>
+      createInspectWorldSectionPlane(kind, current.offset, current.flip)
+    );
+  }
+
+  function setInspectFaceSection() {
+    const selection = currentExactTopologySelection;
+    if (!selection || selection.entityKind !== "face") return;
+    const bound = bindExactInspectionTarget(
+      createExactInspectionIdentity(selection),
+      exactInspectionArtifacts
+    );
+    if (!bound.current || bound.entity?.surfaceClass !== "plane" || !bound.entity.normal) {
+      return;
+    }
+    setInspectSectionPlane((current) =>
+      createInspectFaceSectionPlane(
+        bound.entity.midpoint ?? bound.entity.point ?? [0, 0, 0],
+        bound.entity.normal,
+        current.offset,
+        current.flip
+      )
+    );
+  }
+
   function getFeatureTargetBodyId(
     feature: CadFeatureSummary
   ): string | undefined {
@@ -8072,7 +8281,17 @@ export function App() {
     await syncDocument(undefined);
   }
 
+  function resetInspectSessionState() {
+    setInspectMeasurementPins(clearInspectMeasurementPins());
+    setInspectSectionPlane(clearInspectSectionPlane());
+    setSketchDimensionAnnotationOffsets({});
+    setRequestedSketchDimensionId(undefined);
+    setSelectedSketchDimensionId(undefined);
+    setViewportTwoTargetMeasurementSession({});
+  }
+
   function resetModelWorkForProjectReplacement() {
+    resetInspectSessionState();
     const runtime = derivedGeometryRuntimeRef.current;
     if (runtime) {
       runtime.cancelModelWork("Project source was replaced.");
@@ -9673,6 +9892,11 @@ export function App() {
               fallback={<p className="panel-loading">Loading viewport…</p>}
             >
               <ViewportCanvas
+                clipPlane={
+                  workbenchUi.mode === "inspect"
+                    ? inspectSectionClipPlane(inspectSectionPlane)
+                    : undefined
+                }
                 exactPickBodies={
                   workbenchUi.mode === "solid" || workbenchUi.mode === "inspect"
                     ? currentExactPickBodies
@@ -9807,6 +10031,63 @@ export function App() {
                             void updateSketchEntity(sketchId, entity)
                           }
                           onPreviewEntity={previewSketchEntityUpdate}
+                        />
+                      </Suspense>
+                    ) : null}
+                    {workbenchUi.mode === "sketch" &&
+                    focusedSketchId &&
+                    getSketchViewportDisplayFrame(focusedSketchId) ? (
+                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                        <SketchDimensionAnnotationOverlay
+                          annotations={createSketchDimensionAnnotations({
+                            sketchId: focusedSketchId,
+                            entities:
+                              sketches.find(
+                                (sketch) => sketch.id === focusedSketchId
+                              )?.entities ?? [],
+                            dimensions:
+                              sketchDimensionsBySketchId.get(focusedSketchId) ??
+                              [],
+                            displayFrame:
+                              getSketchViewportDisplayFrame(focusedSketchId)!,
+                            camera,
+                            size,
+                            units: document.units,
+                            offsets: sketchDimensionAnnotationOffsets
+                          })}
+                          selectedDimensionId={selectedSketchDimensionId}
+                          disabled={commandPending}
+                          onSelect={setSelectedSketchDimensionId}
+                          onEdit={(dimensionId) => {
+                            setSelectedSketchDimensionId(dimensionId);
+                            setRequestedSketchDimensionId(dimensionId);
+                          }}
+                          onMove={(dimensionId, x, y) => {
+                            const annotation = createSketchDimensionAnnotations({
+                              sketchId: focusedSketchId,
+                              entities:
+                                sketches.find(
+                                  (sketch) => sketch.id === focusedSketchId
+                                )?.entities ?? [],
+                              dimensions:
+                                sketchDimensionsBySketchId.get(
+                                  focusedSketchId
+                                ) ?? [],
+                              displayFrame:
+                                getSketchViewportDisplayFrame(focusedSketchId)!,
+                              camera,
+                              size,
+                              units: document.units,
+                              offsets: sketchDimensionAnnotationOffsets
+                            }).find((item) => item.dimensionId === dimensionId);
+                            if (!annotation) return;
+                            setSketchDimensionAnnotationOffsets((current) =>
+                              moveSketchDimensionAnnotation(current, dimensionId, {
+                                x: x - annotation.anchorX,
+                                y: y - annotation.anchorY
+                              })
+                            );
+                          }}
                         />
                       </Suspense>
                     ) : null}
@@ -10016,6 +10297,53 @@ export function App() {
                     massProperties={inspectMassProperties}
                     reference={inspectReference}
                     health={inspectHealth}
+                    pinnedResults={inspectMeasurementPins.map(
+                      (pin): InspectPinnedResultProjection => ({
+                        id: pin.id,
+                        title: pin.title,
+                        stale: pin.stale,
+                        rows: inspectMeasurementPinRows(pin)
+                      })
+                    )}
+                    sectionPlane={
+                      {
+                        enabled: inspectSectionPlane.enabled,
+                        kind: inspectSectionPlane.kind,
+                        offset: inspectSectionPlane.offset,
+                        flip: inspectSectionPlane.flip,
+                        canUseSelectedFace:
+                          currentExactTopologySelection?.entityKind === "face"
+                      } satisfies InspectSectionPlaneProjection
+                    }
+                    onPinCurrentResult={
+                      currentExactInspectionResult ||
+                      viewportTwoTargetMeasurement.status === "complete"
+                        ? pinCurrentInspectResult
+                        : undefined
+                    }
+                    onClearPinnedResults={
+                      inspectMeasurementPins.length > 0
+                        ? () =>
+                            setInspectMeasurementPins(
+                              clearInspectMeasurementPins()
+                            )
+                        : undefined
+                    }
+                    onSetSectionKind={setInspectWorldSection}
+                    onSetSectionFromFace={setInspectFaceSection}
+                    onSetSectionOffset={(offset) =>
+                      setInspectSectionPlane((current) =>
+                        updateInspectSectionPlane(current, { offset })
+                      )
+                    }
+                    onFlipSection={() =>
+                      setInspectSectionPlane((current) =>
+                        updateInspectSectionPlane(current, { flip: !current.flip })
+                      )
+                    }
+                    onResetSection={() =>
+                      setInspectSectionPlane(clearInspectSectionPlane())
+                    }
                     onMeasureSelection={
                       viewportTwoTargetMeasurementTarget
                         ? () =>
@@ -10130,6 +10458,10 @@ export function App() {
                     arcToolActiveSketchId={threePointArcTool?.sketchId}
                     initialActionId={
                       workbenchUi.activeTool as UiActionId | undefined
+                    }
+                    requestedDimensionId={requestedSketchDimensionId}
+                    onRequestedDimensionConsumed={() =>
+                      setRequestedSketchDimensionId(undefined)
                     }
                     curveEditViewportChoice={curveEditViewportChoice}
                     curveEditViewportHoverChoice={curveEditViewportHoverChoice}

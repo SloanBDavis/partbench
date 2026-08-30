@@ -142,7 +142,8 @@
 .sketch-arc-tool-layer,
 .sketch-arc-tool-overlay,
 .sketch-region-layer,
-.sketch-region-overlay {
+.sketch-region-overlay,
+.sketch-dimension-annotation-overlay {
   position: absolute;
   z-index: calc(var(--pb-z-viewport-overlay) + 1);
   inset: 0;
@@ -193,6 +194,31 @@
   fill: color-mix(in srgb, var(--pb-color-success) 26%, transparent);
   stroke: var(--pb-color-success);
   stroke-width: 2.5;
+}
+
+.sketch-dimension-annotation {
+  position: absolute;
+  z-index: calc(var(--pb-z-viewport-overlay) + 3);
+  transform: translate(-50%, -100%);
+  min-width: 72px;
+  padding: 4px 8px;
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-control);
+  background: var(--pb-color-surface-elevated);
+  color: var(--pb-color-text);
+  cursor: grab;
+  pointer-events: auto;
+  text-align: start;
+}
+
+.sketch-dimension-annotation small {
+  display: block;
+  color: var(--pb-color-text-muted);
+  font-size: var(--pb-font-size-caption);
+}
+
+.sketch-dimension-annotation.is-selected {
+  border-color: var(--pb-color-accent);
 }
 
 .sketch-arc-tool-prompt {

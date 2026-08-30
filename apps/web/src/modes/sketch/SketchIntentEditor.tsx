@@ -70,6 +70,8 @@ export interface SketchIntentEditorProps {
   readonly units: string;
   readonly initialDimensionFamily?: SketchDimensionFamilyV19;
   readonly initialConstraintKind?: SketchConstraintCreateKindV19;
+  readonly requestedDimensionId?: string;
+  readonly onRequestedDimensionConsumed?: () => void;
   readonly keyboardSuspended?: boolean;
   readonly onApplyOps: (ops: readonly CadOp[]) => boolean | Promise<boolean>;
   readonly onCancel?: (restoreFocus?: boolean) => void;
@@ -107,6 +109,8 @@ export function SketchIntentEditor({
   units,
   initialDimensionFamily,
   initialConstraintKind,
+  requestedDimensionId,
+  onRequestedDimensionConsumed,
   keyboardSuspended = false,
   onApplyOps,
   onCancel,
@@ -118,6 +122,16 @@ export function SketchIntentEditor({
   const [dimensionSession, setDimensionSession] = useState<
     DimensionSession | undefined
   >(() => {
+    if (requestedDimensionId) {
+      const dimension = dimensions.find((item) => item.id === requestedDimensionId);
+      return dimension
+        ? {
+            mode: "edit",
+            dimension,
+            draft: dimensionEntryToDraftV19(dimension)
+          }
+        : undefined;
+    }
     if (!initialDimensionFamily) return undefined;
     const draft = createDefaultDimensionDraftV19(
       sketch.entities,
@@ -209,6 +223,30 @@ export function SketchIntentEditor({
       ),
     [closeDraft, onCancel]
   );
+
+  useEffect(() => {
+    if (!requestedDimensionId) return;
+    if (!sessionActive) {
+      const dimension = dimensions.find(
+        (item) => item.id === requestedDimensionId
+      );
+      if (dimension) {
+        const session = {
+          mode: "edit" as const,
+          dimension,
+          draft: dimensionEntryToDraftV19(dimension)
+        };
+        setBaseline(JSON.stringify(session.draft));
+        setDimensionSession(session);
+      }
+    }
+    onRequestedDimensionConsumed?.();
+  }, [
+    dimensions,
+    onRequestedDimensionConsumed,
+    requestedDimensionId,
+    sessionActive
+  ]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);

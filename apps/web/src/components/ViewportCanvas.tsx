@@ -7,6 +7,7 @@ import {
   renderCanvasScene,
   type RenderCamera,
   type RenderExactPickBody,
+  type RenderExactPickClipPlane,
   type RenderExactPickFilter,
   type RenderExactPickResult,
   type RenderExactVisualStateInput,
@@ -64,6 +65,7 @@ export interface ViewportCanvasStatus {
 }
 
 export function ViewportCanvas({
+  clipPlane,
   contextualSurface,
   exactPickBodies = [],
   exactPickFilter = "auto",
@@ -80,6 +82,7 @@ export function ViewportCanvas({
   suspendHoverPicking = false,
   visualStates
 }: {
+  readonly clipPlane?: RenderExactPickClipPlane;
   readonly contextualSurface?: ReactNode;
   readonly exactPickBodies?: readonly RenderExactPickBody[];
   readonly exactPickFilter?: RenderExactPickFilter;
@@ -142,6 +145,7 @@ export function ViewportCanvas({
     | undefined
   >(undefined);
   const latestInputsRef = useRef({
+    clipPlane,
     exactPickBodies,
     exactPickFilter,
     meshes,
@@ -152,6 +156,7 @@ export function ViewportCanvas({
     suspendHoverPicking
   });
   latestInputsRef.current = {
+    clipPlane,
     exactPickBodies,
     exactPickFilter,
     meshes,
@@ -327,6 +332,7 @@ export function ViewportCanvas({
     const renderOptions = {
       primitives,
       camera,
+      clipPlane,
       exactPickBodies,
       exactVisualStates,
       hoveredId: stableVisualStates ? undefined : hoveredId,
@@ -361,6 +367,7 @@ export function ViewportCanvas({
     };
   }, [
     camera,
+    clipPlane,
     exactPickBodies,
     exactVisualStates,
     hoveredId,
@@ -684,6 +691,7 @@ export function ViewportCanvas({
 
 function createViewportCanvasPick(
   inputs: {
+    readonly clipPlane?: RenderExactPickClipPlane;
     readonly exactPickBodies: readonly RenderExactPickBody[];
     readonly exactPickFilter: RenderExactPickFilter;
     readonly meshes?: readonly RenderTriangleMesh[];
@@ -701,7 +709,8 @@ function createViewportCanvasPick(
           camera,
           size,
           point,
-          inputs.exactPickFilter
+          inputs.exactPickFilter,
+          inputs.clipPlane
         )
       : undefined;
   const exactCandidate = exactPickResult?.candidates[0];

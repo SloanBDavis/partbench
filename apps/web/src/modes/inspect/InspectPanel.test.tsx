@@ -18,6 +18,44 @@ describe("InspectPanel", () => {
     );
     expect(markup).not.toContain("Vertex");
     expect(markup).not.toContain("Pin measurement");
+    expect(markup).not.toContain("Pin current result");
+    expect(markup).not.toContain("Display section");
+  });
+
+  it("renders session pins and a display-only section without forbidden action ids", () => {
+    const markup = render({
+      pinnedResults: [
+        {
+          id: "pin:face",
+          title: "Top face",
+          stale: true,
+          rows: [{ label: "Status", value: "Stale" }]
+        }
+      ],
+      sectionPlane: {
+        enabled: true,
+        kind: "xy",
+        offset: 2,
+        flip: false,
+        canUseSelectedFace: true
+      },
+      onPinCurrentResult: () => undefined,
+      onClearPinnedResults: () => undefined,
+      onSetSectionKind: () => undefined,
+      onSetSectionFromFace: () => undefined,
+      onSetSectionOffset: () => undefined,
+      onFlipSection: () => undefined,
+      onResetSection: () => undefined
+    });
+
+    expect(markup).toContain("Pin current result");
+    expect(markup).toContain("Pinned results");
+    expect(markup).toContain("This pin is stale");
+    expect(markup).toContain("Display section");
+    expect(markup).toContain("From selected face");
+    expect(markup).toContain("does not create source");
+    expect(markup).not.toContain("inspect.section-view");
+    expect(markup).not.toContain("inspect.pin-measurement");
   });
 
   it("presents an authored object and its formatted measurements", () => {

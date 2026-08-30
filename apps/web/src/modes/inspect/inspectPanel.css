@@ -267,6 +267,25 @@
   font-weight: 550;
 }
 
+.pb-inspect-section-offset {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.85fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: var(--pb-space-8);
+  color: var(--pb-color-text-muted);
+  font-size: 12px;
+}
+
+.pb-inspect-section-offset input {
+  min-height: var(--pb-control-height-dense);
+  padding-inline: var(--pb-space-8);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-control);
+  background: var(--pb-color-surface-elevated);
+  color: var(--pb-color-text);
+  text-align: end;
+}
+
 .pb-inspect-panel > .pb-technical-details {
   margin: 0;
   padding: var(--pb-space-8) var(--pb-space-16) var(--pb-space-16);

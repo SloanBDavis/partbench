@@ -116,6 +116,8 @@ export interface SketchModeDockProps {
   readonly curveEditSourceAuthorityKey: string | number;
   readonly arcToolActiveSketchId?: string;
   readonly initialActionId?: UiActionId;
+  readonly requestedDimensionId?: string;
+  readonly onRequestedDimensionConsumed?: () => void;
   readonly curveEditViewportChoice?: SketchCurveEditViewportChoice;
   readonly curveEditViewportHoverChoice?: SketchCurveEditViewportChoice;
   readonly curveEditKeyboardSuspended?: boolean;
@@ -266,6 +268,8 @@ export function SketchModeDock(props: SketchModeDockProps) {
     curveEditSourceAuthorityKey,
     arcToolActiveSketchId,
     initialActionId,
+    requestedDimensionId,
+    onRequestedDimensionConsumed,
     curveEditViewportChoice,
     curveEditViewportHoverChoice,
     curveEditKeyboardSuspended,
@@ -358,8 +362,13 @@ export function SketchModeDock(props: SketchModeDockProps) {
     selectedEntityId
   ]);
   const [section, setSection] = useState<DockSection>(() =>
-    requestedDimension || requestedConstraintKind ? "constraints" : "geometry"
+    requestedDimension || requestedConstraintKind || requestedDimensionId
+      ? "constraints"
+      : "geometry"
   );
+  useEffect(() => {
+    if (requestedDimensionId) setSection("constraints");
+  }, [requestedDimensionId]);
   const [intentSessionActive, setIntentSessionActive] = useState(
     () =>
       requestedDimension !== undefined || requestedConstraintKind !== undefined
@@ -614,6 +623,8 @@ export function SketchModeDock(props: SketchModeDockProps) {
             units={units}
             initialDimensionFamily={requestedDimension}
             initialConstraintKind={requestedConstraintKind}
+            requestedDimensionId={requestedDimensionId}
+            onRequestedDimensionConsumed={onRequestedDimensionConsumed}
             keyboardSuspended={curveEditKeyboardSuspended}
             onApplyOps={onApplySketchIntentOps}
             onCancel={onCancelCurveEdit}

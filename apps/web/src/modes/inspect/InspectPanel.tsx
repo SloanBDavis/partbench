@@ -22,6 +22,7 @@ export interface InspectSelectionProjection {
     | "body"
     | "face"
     | "edge"
+    | "vertex"
     | "feature"
     | "sketch"
     | "named-reference";
@@ -85,17 +86,41 @@ export interface InspectHealthProjection {
   readonly recovery?: string;
 }
 
+export interface InspectPinnedResultProjection {
+  readonly id: string;
+  readonly title: string;
+  readonly stale: boolean;
+  readonly rows: readonly InspectValueRow[];
+}
+
+export interface InspectSectionPlaneProjection {
+  readonly enabled: boolean;
+  readonly kind: "xy" | "xz" | "yz" | "face";
+  readonly offset: number;
+  readonly flip: boolean;
+  readonly canUseSelectedFace: boolean;
+}
+
 export interface InspectPanelProps {
   readonly selection?: InspectSelectionProjection;
   readonly measurements?: InspectMeasurementsProjection;
   readonly massProperties?: InspectMetricProjection;
   readonly reference?: InspectReferenceProjection;
   readonly health?: readonly InspectHealthProjection[];
+  readonly pinnedResults?: readonly InspectPinnedResultProjection[];
+  readonly sectionPlane?: InspectSectionPlaneProjection;
   /** Measures the current single selection. Distinct from two-target measure. */
   readonly onMeasureSelection?: () => void;
   /** Starts the two-target distance/angle workflow. Distinct from selection measure. */
   readonly onBeginTwoTargetMeasurement?: () => void;
   readonly onClearTwoTargetMeasurement?: () => void;
+  readonly onPinCurrentResult?: () => void;
+  readonly onClearPinnedResults?: () => void;
+  readonly onSetSectionKind?: (kind: "xy" | "xz" | "yz") => void;
+  readonly onSetSectionFromFace?: () => void;
+  readonly onSetSectionOffset?: (offset: number) => void;
+  readonly onFlipSection?: () => void;
+  readonly onResetSection?: () => void;
   readonly onNameReference?: () => void;
   readonly onRepairReference?: () => void;
   readonly onSaveStableReference?: () => void;
@@ -109,9 +134,18 @@ export function InspectPanel({
   massProperties,
   reference,
   health = [],
+  pinnedResults = [],
+  sectionPlane,
   onMeasureSelection,
   onBeginTwoTargetMeasurement,
   onClearTwoTargetMeasurement,
+  onPinCurrentResult,
+  onClearPinnedResults,
+  onSetSectionKind,
+  onSetSectionFromFace,
+  onSetSectionOffset,
+  onFlipSection,
+  onResetSection,
   onNameReference,
   onRepairReference,
   onSaveStableReference,
@@ -186,6 +220,119 @@ export function InspectPanel({
             >
               Measure between two targets
             </Button>
+          ) : null}
+          {onPinCurrentResult ? (
+            <Button
+              className="pb-inspect-panel__wide-action"
+              density="dense"
+              onClick={onPinCurrentResult}
+            >
+              Pin current result
+            </Button>
+          ) : null}
+        </PanelSection>
+      )}
+
+      {(pinnedResults.length > 0 || onClearPinnedResults) && (
+        <PanelSection title="Pinned results" icon="measure">
+          {pinnedResults.length === 0 ? (
+            <p>No pinned results in this session.</p>
+          ) : (
+            pinnedResults.map((pin) => (
+              <div
+                key={pin.id}
+                className={`pb-inspect-metric ${pin.stale ? "is-blocked" : "is-ready"}`}
+              >
+                <div className="pb-inspect-metric__heading">
+                  <strong>{pin.title}</strong>
+                  {pin.stale ? (
+                    <span className="pb-inspect-confidence">Stale</span>
+                  ) : null}
+                </div>
+                {pin.stale ? (
+                  <p role="status">
+                    This pin is stale. The current exact identity no longer
+                    matches.
+                  </p>
+                ) : null}
+                {pin.rows.length > 0 ? (
+                  <ValueRows rows={pin.rows} numeric />
+                ) : null}
+              </div>
+            ))
+          )}
+          {onClearPinnedResults ? (
+            <Button density="dense" tone="danger" onClick={onClearPinnedResults}>
+              Clear pins
+            </Button>
+          ) : null}
+        </PanelSection>
+      )}
+
+      {(sectionPlane || onSetSectionKind) && (
+        <PanelSection title="Display section" icon="inspect">
+          <p className="pb-inspect-guidance">
+            Display-only clip. It does not create source or change exact
+            measurement or export authority.
+          </p>
+          <div className="pb-inspect-actions">
+            {onSetSectionKind ? (
+              <>
+                <Button
+                  density="dense"
+                  onClick={() => onSetSectionKind("xy")}
+                >
+                  XY
+                </Button>
+                <Button
+                  density="dense"
+                  onClick={() => onSetSectionKind("xz")}
+                >
+                  XZ
+                </Button>
+                <Button
+                  density="dense"
+                  onClick={() => onSetSectionKind("yz")}
+                >
+                  YZ
+                </Button>
+              </>
+            ) : null}
+            {onSetSectionFromFace ? (
+              <Button
+                density="dense"
+                unavailableReason={
+                  sectionPlane && !sectionPlane.canUseSelectedFace
+                    ? "Select a current planar face"
+                    : undefined
+                }
+                onClick={onSetSectionFromFace}
+              >
+                From selected face
+              </Button>
+            ) : null}
+            {onFlipSection ? (
+              <Button density="dense" onClick={onFlipSection}>
+                Flip
+              </Button>
+            ) : null}
+            {onResetSection ? (
+              <Button density="dense" onClick={onResetSection}>
+                Reset section
+              </Button>
+            ) : null}
+          </div>
+          {sectionPlane && onSetSectionOffset ? (
+            <label className="pb-inspect-section-offset">
+              Offset
+              <input
+                type="number"
+                value={sectionPlane.offset}
+                onChange={(event) =>
+                  onSetSectionOffset(Number(event.currentTarget.value) || 0)
+                }
+              />
+            </label>
           ) : null}
         </PanelSection>
       )}
