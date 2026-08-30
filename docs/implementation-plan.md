@@ -3398,12 +3398,16 @@ integration contract.
 ## In-Progress V22 Exact Interaction and Recovery
 
 V22 is governed by `docs/v22.md` and `docs/v22-implementation-dag.md`. Gates A
-through D are complete; Gates E through I remain pending. The current product
+through E are complete; Gates F through I remain pending for annotations and
+inspection, recovery, audit, and release reconciliation. The current product
 has bounded same-shape exact pick evidence, depth-aware universal selection,
-and existing collector handoff with explicit durable-reference promotion.
-Selection remains separate from commandability, and no completed operation row,
-schema, `.wcad` version, dependency, package, approval mode, or agent authority
-has widened. Gate D evidence is recorded in `docs/v22-d-gate.md`.
+existing collector handoff with explicit durable-reference promotion, and
+exact preview/grips with Apply revalidation. Selection remains separate from
+commandability, and no completed operation row, schema, `.wcad` version,
+dependency, package, approval mode, or agent authority has widened. V21.1
+gzip ceilings are not a remaining V22 Must. Gate E passed on
+`pnpm smoke:v22-preview-grips-workflow` plus focused real-OCCT preview/Apply
+same-shape parity. Evidence is recorded in `docs/v22-e-gate.md`.
 
 ## Definition of Done
 

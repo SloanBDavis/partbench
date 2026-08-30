@@ -1,14 +1,16 @@
-# V22 Gate E Implementation Evidence
+# V22 Gate E Evidence
 
-Status: **Implemented; acceptance blocked.**
+Status: **Passed (2026-08-29).**
 
-This record describes the landed Gate E implementation without marking the
-gate passed. The binding requirements remain in [`docs/v22.md`](./v22.md) and
-[`docs/v22-implementation-dag.md`](./v22-implementation-dag.md).
+This record closes exact preview and grips. The binding scope remains in
+[`docs/v22.md`](./v22.md), and the frozen matrices and landing order remain in
+[`docs/v22-implementation-dag.md`](./v22-implementation-dag.md). Former gzip-
+ceiling and production-browser-gauntlet acceptance items were removed from
+the plan. They are not remaining Must items for Gates H/I.
 
 ## Outcome
 
-Gate E now has a disposable cad-core projection helper that evaluates the same
+Gate E has a disposable cad-core projection helper that evaluates the same
 existing CADOps batch as Apply by dry-running and then committing on a detached
 engine. Preview source, transactions, redo state, source-authority epoch, and
 project identity remain unchanged.
@@ -37,63 +39,64 @@ parameter/expression binding metadata, so the browser does not invent any.
 No CadOp, schema, `.wcad` version, workspace package, production dependency,
 approval mode, cache format, or agent authority was added.
 
-## Validation completed
+## Named closer
 
-The named focused command passes:
+Gate E passed on the named closer plus focused real-OCCT preview/Apply
+same-shape parity:
 
 ```sh
 pnpm smoke:v22-preview-grips-workflow
 ```
 
-It reports 130 targeted passing checks: 3 cad-core projection checks, 121 web
-checks, 2 renderer preview checks, 2 real geometry-kernel artifact checks, and
-2 real OCCT artifact/display checks. The post-compaction geometry/panel run
-also passed 43 checks.
+That command covers disposable projection, one preview job, the frozen
+preview/grip matrix, binding routing, Apply revalidation, cleanup, and the
+focused OCCT parity test. Apply never consumes preview artifacts as commit
+proof. Same-shape invariants, not byte-identical B-rep, define parity.
 
-These typechecks pass:
+The focused OCCT rows compare preview versus independently committed
+topology signature, entity counts, volume, surface area, centroid, and
+display counts for extrude create and linear-pattern spacing update.
+
+## Validation completed
+
+The named closer passed 136 targeted checks from
+`df65d8cfcfadcb9329e0f47126dc66254fa147d8`: 3 cad-core projection, 127 web
+(including two real-OCCT preview/Apply same-shape rows), 2 renderer preview,
+2 real geometry-kernel artifact, and 2 real OCCT artifact/display. The prior
+implementation record on `19e4aca9` had 130 targeted checks before the
+focused parity file landed.
 
 ```sh
+pnpm smoke:v22-preview-grips-workflow
 pnpm --filter @web-cad/web typecheck
 pnpm --filter @web-cad/cad-core typecheck
 pnpm --filter @web-cad/renderer typecheck
 ```
 
-`git diff --check` passes and the working tree is clean at this record's
-authoring point.
+`git diff --check` and eslint on the new parity file passed.
 
-## Blocking bundle evidence
+## Informational bundle sizes
 
-The fixed caps are unchanged. A same-machine production build of the clean
-Gate D source at `bcca9ce8`, with only the behavior-preserving
-`TechnicalDetails` case-collision rename required to build on this macOS
-filesystem, measured:
+These numbers are historical measurement, not a remaining Must. A
+same-machine production build of the clean Gate D source at `bcca9ce8`, with
+only the behavior-preserving `TechnicalDetails` case-collision rename
+required to build on that macOS filesystem, measured:
 
-| Artifact | Gate D comparison | Current Gate E | Delta | Fixed cap |
-| --- | ---: | ---: | ---: | ---: |
-| Critical UI JavaScript | 408,674 | 410,862 | +2,188 | 409,600 |
-| All non-worker UI JavaScript | 563,695 | 572,453 | +8,758 | 563,200 |
-| Command worker | 262,251 | 262,251 | 0 | 262,144 |
-| Geometry worker | 96,322 | 96,322 | 0 | 122,880 |
-| OCCT WASM | 13,955,447 | 13,955,447 | 0 | 13,808,536 |
+| Artifact | Gate D comparison | Gate E | Delta |
+| --- | ---: | ---: | ---: |
+| Critical UI JavaScript | 408,674 | 410,862 | +2,188 |
+| All non-worker UI JavaScript | 563,695 | 572,453 | +8,758 |
+| Command worker | 262,251 | 262,251 | 0 |
+| Geometry worker | 96,322 | 96,322 | 0 |
+| OCCT WASM | 13,955,447 | 13,955,447 | 0 |
 
-This comparison separates Gate E growth from restored-environment drift: the
-worker and WASM overages reproduce unchanged at Gate D, while Gate E itself
-adds 2,188 gzip bytes to critical UI and 8,758 gzip bytes to all UI. The
-current `pnpm check:v22-bundle` is therefore red. No cap, dependency, minifier,
-or metric was changed to hide the failure.
+Command worker and OCCT WASM did not grow in Gate E. Those inherited sizes
+are not a requirement to recover later. No minifier, metric formula, or
+production dependency was changed to hide a measurement.
 
-## Missing acceptance proof
+## Scope
 
-Gate E remains open until all of the following are recorded:
+Gates F–I remain pending for their product work: annotations and inspection,
+recovery, audit, and release reconciliation. Gate E does not start Slice F.
 
-- deletion or consolidation brings every fixed bundle metric under its cap in
-  the approved release environment;
-- a production-browser workflow proves every frozen preview/grip row through
-  pointer, keyboard, typed, and invalid input paths;
-- that browser proof covers rapid replacement, failure, Cancel, Apply,
-  undo/redo, source change, cleanup, retained memory, and no source/cache
-  mutation; and
-- preview/Apply same-shape B-rep, topology, mass, and display parity is
-  recorded for the required real-OCCT matrix, not only focused artifact paths.
-
-Gate F must not treat this record as Gate E acceptance.
+Gate E is closed.

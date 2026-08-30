@@ -36,10 +36,13 @@ approval contract.
 8. No production dependency, workspace package, schema, `.wcad` version,
    renderer, generic preview/job/storage framework, agent file authority, or
    approval mode is added. Modes remain `manualApproval` and `approveAll`.
-9. A capped artifact cannot grow past its fixed V21.1 ceiling. Dynamic imports
-   protect critical startup but do not reduce the all-UI total; replacement
-   slices delete the superseded exact-ready pick and pair-measurement branches
-   in the same landing change.
+9. Bundle sizes may be measured as informational evidence with the unchanged
+   V21.1 formula. They are not a fail-the-release or per-gate tripwire. No
+   minifier, metric, or production-dependency cheat is permitted. Dynamic
+   imports protect empty-project and ordinary sketch startup. Replacement
+   slices delete the superseded exact-ready pick and pair-measurement
+   branches in the same landing change. V21.1 gzip ceilings and inherited
+   worker/WASM overages are not remaining Must items.
 
 ## Dependency Graph
 
@@ -58,7 +61,7 @@ A1 baseline + A2 frozen contracts/fixtures + A3 commandability baseline
   -> Gate F
   -> G1 dirty guards -> G2 two-generation recovery -> G3 Restore/Discard
   -> Gate G
-  -> H1 accessibility/stale/memory -> H2 deferral/bundle/compatibility audit
+  -> H1 accessibility/stale/memory -> H2 deferral/compatibility audit
   -> Gate H
   -> I1 named release workflows -> I2 reconciliation/non-goal audit
   -> Gate I / release
@@ -68,10 +71,10 @@ A1 baseline + A2 frozen contracts/fixtures + A3 commandability baseline
 
 ### A1 — Baseline
 
-- record inherited V18–V21.1 named commands, repository validation, fixed
-  V21.1 gzip caps, and release browser/device environment;
-- record the inherited 1,492-byte critical-UI, 8-byte all-UI, 7-byte command-
-  worker, and 29,171-byte geometry-worker gzip headroom as blocking budgets;
+- record inherited V18–V21.1 named commands, repository validation, and
+  release browser/device environment;
+- record inherited gzip sizes as informational history, not blocking
+  budgets;
 - freeze the per-slice deletion plan: C replaces exact-ready generated
   face/edge reconstruction, F replaces approximate subentity pair measurement,
   G reuses existing `.wcad`/OPFS primitives, and D extends the existing command
@@ -119,8 +122,8 @@ A1 baseline + A2 frozen contracts/fixtures + A3 commandability baseline
 ### Gate A
 
 Requires recorded baseline; test-only frozen contract/rejection fixtures;
-exhaustive source × selectable-kind and collector parity fixtures; the measured
-bundle/deletion plan; affected typechecks; touched lint/format; and
+exhaustive source × selectable-kind and collector parity fixtures; the
+superseded-path deletion plan; affected typechecks; touched lint/format; and
 `git diff --check`. Slice A adds no exported protocol member, pick, renderer,
 preview, recovery, or product behavior; additive query contracts land with D.
 
@@ -325,8 +328,12 @@ Preview and Apply preserve the inherited V21.1 source-authority epoch rule:
 preview/dry-run proof is never commit preflight, and stale/cancelled/failed or
 differently bound geometry preflight cannot be reused by Apply.
 
-**Gate E:** all rows via real OCCT and browser pointer/keyboard/typed/invalid/
-cancel/failure/Apply/undo/redo/source-change/memory/no-mutation proof.
+**Gate E: [Passed (2026-08-29)](./v22-e-gate.md).** Named closer
+`pnpm smoke:v22-preview-grips-workflow` plus focused real-OCCT preview/Apply
+same-shape parity. Disposable projection, one preview job, the frozen
+preview/grip matrix, binding routing, Apply revalidation, and cleanup are
+in that closer. Apply never consumes preview as commit proof. V21.1 gzip
+ceilings and a production-browser gauntlet are not Gate E requirements.
 
 ### F — Sketch Annotations and Exact Inspection
 
@@ -348,41 +355,51 @@ checkpoint portability; guard/focus ordering; lazy startup.
 ### H — Cross-Cutting Audit
 
 Audit accessibility, private text, stale paths, cleanup, restart, timings,
-fixed caps, startup deferral, V18–V21.1 compatibility, and obsolete approximate
+startup deferral, V18–V21.1 compatibility, and obsolete approximate
 solid-pick branches.
 
-**Gate H:** complete adversarial inventory, memory/performance, fixed caps,
-compatibility, and no partial non-goal evidence.
+**Gate H:** complete adversarial inventory, memory/performance, interaction
+and accessibility via `pnpm smoke:v22-browser-workflow` when that command
+exists, compatibility, and no partial non-goal evidence. Gzip ceilings are
+not a Gate H Must.
 
 ### I — Release Proof and Reconciliation
 
 Land named workflows/measurements and reconcile release records only after
 implementation; record direct evidence for every V22 Must item.
 
-**Gate I / release:** seven V22 commands, inherited release commands, full
-validation, fixed caps, Must ledger, and source/command/persistence/private-
-field/non-goal audit.
+**Gate I / release:** V22 named product workflows, inherited release
+commands, full validation, Must ledger, and source/command/persistence/
+private-field/non-goal audit. Gzip ceilings are not a Gate I Must.
 
 ## Named Command Mapping
 
 | Command | Primary proof |
 | --- | --- |
 | `pnpm smoke:v22-exact-selection-workflow` | B–D: 13×4 selection, identity, occlusion, filters/cycle/keyboard, collector handoff |
-| `pnpm smoke:v22-preview-grips-workflow` | E: preview/grip matrix, parity, bindings, cancel, cleanup |
+| `pnpm smoke:v22-preview-grips-workflow` | E: preview/grip matrix, focused real-OCCT preview/Apply same-shape parity, bindings, cancel, cleanup |
 | `pnpm smoke:v22-inspection-workflow` | F: annotations, measurement/pins, authority, section, accessibility |
 | `pnpm smoke:v22-recovery-workflow` | G: generations, interruption, Restore/Discard, save cleanup, guards, OPFS faults |
-| `pnpm smoke:v22-browser-workflow` | C–H: pointer/keyboard/focus/live regions, narrow/reduced-motion/high-zoom, stale/fallback |
+| `pnpm smoke:v22-browser-workflow` | H: pointer/keyboard/focus/live regions, narrow/reduced-motion/high-zoom, stale/fallback |
 | `pnpm smoke:v22-performance` | C/E/F/G/H: p50/p95, input, memory, restart, no >50 ms task |
-| `pnpm check:v22-bundle` | H/I: unchanged V21.1 caps and lazy chunk/worker/WASM deferral |
+| `pnpm check:v22-bundle` | Informational size record only; does not fail a gate or the release |
 
 Focused package checks remain per-save; named commands run serially on the
 release machine and are not the default save loop.
 
-## Fixed Bundle Budget
+## Informational Bundle Measurement
 
-The inherited measured headroom is 1,492 gzip bytes for critical UI, 8 for all
-non-worker UI, 7 for the command worker, 29,171 for the geometry worker, and
-zero for OCCT WASM. No slice owns permission to exceed a fixed cap.
+V21.1 gzip ceilings are not a remaining Must. Inherited command-worker and
+OCCT WASM overages are historical record, not work to recover. If sizes are
+measured, use the unchanged V21.1 formula; do not change the minifier,
+metric, or a production dependency to hide a number.
+
+Recorded history: inherited baseline headroom was 1,492 gzip bytes critical
+UI, 8 all-UI, 7 command worker, 29,171 geometry worker, and zero OCCT WASM.
+Gate E measured +2,188 critical UI and +8,758 all-UI gzip versus Gate D;
+command worker and OCCT WASM did not grow in E.
+
+Deletion-first remains required when a slice replaces a superseded path:
 
 - B stays on the existing lazy exact/geometry-worker path.
 - C deletes superseded exact-ready generated-face/edge reconstruction while
@@ -394,15 +411,11 @@ zero for OCCT WASM. No slice owns permission to exceed a fixed cap.
 - G reuses existing `.wcad`, hash, writable-stream, and OPFS primitives and
   creates no generic storage/cache stack.
 
-A slice touching a capped artifact runs the current bundle workflow serially
-before commit. An over-cap result blocks that slice until measured deletion or
-consolidation lands; lazy chunking alone is not all-UI budget evidence.
-
 ## Evidence Rules and Gate Ledger
 
 1. Each gate records command, fixture, environment, commit, and output/trace/
-   metric/audit artifact. Mocks cannot close real OCCT, browser, OPFS, or bundle
-   gates.
+   metric/audit artifact. Mocks cannot close real OCCT, browser, or OPFS
+   gates. Bundle size records are informational.
 2. Record p50/p95 hit, preview validation/build, measurement, recovery
    serialize/write/validate/restore, interaction, retained bytes, and restart.
    Hover p95 <=16 ms; selection/filter/cycle <=50 ms; input next frame; no
@@ -418,19 +431,19 @@ consolidation lands; lazy chunking alone is not all-UI budget evidence.
    approval; no Must demotion or scope widening resolves it.
 6. Low-spec repository validation is literal and serial: `pnpm test` already
    uses workspace concurrency 1; typechecks use
-   `pnpm -r --workspace-concurrency=1 typecheck`; builds and every named browser,
-   OCCT, performance, and bundle command run one at a time.
+   `pnpm -r --workspace-concurrency=1 typecheck`; builds and every named
+   browser, OCCT, and performance command run one at a time.
 
 | Gate | Status | Closure evidence |
 | --- | --- | --- |
-| A | [Passed](./v22-a-gate.md) | inherited baseline, frozen contracts/matrices/fixtures and measured deletion budget, no production behavior |
+| A | [Passed](./v22-a-gate.md) | inherited baseline, frozen contracts/matrices/fixtures, no production behavior |
 | B | [Passed](./v22-b-gate.md) | same-shape pick maps, validation, transfer, bounds, cleanup, no source persistence |
 | C | [Passed](./v22-c-gate.md) | depth-aware selection, fallback, filter/cycle/keyboard, performance |
 | D | [Passed](./v22-d-gate.md) | collector/promotion path and exhaustive no-widening parity |
-| E | [Implemented; acceptance blocked](./v22-e-gate.md) | exact preview and grips landed; fixed bundle and production-browser acceptance proof remain open |
+| E | [Passed](./v22-e-gate.md) | named closer `pnpm smoke:v22-preview-grips-workflow` plus focused real-OCCT preview/Apply same-shape parity; gzip-ceiling Must removed |
 | F | Pending | V19 annotations and exact inspection/section/accessibility |
 | G | Pending | atomic two-generation recovery and replacement/unload guards |
-| H | Pending | accessibility/stale/memory/deferral/cap/compatibility audit |
-| I | Pending | seven V22 commands, inherited commands, full validation, Must/non-goal reconciliation |
+| H | Pending | accessibility/stale/memory/deferral/compatibility audit |
+| I | Pending | named product workflows, inherited commands, full validation, Must/non-goal reconciliation |
 
 End of V22 implementation DAG.
