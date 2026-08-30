@@ -72,7 +72,8 @@ Cad-core remains source-authoritative.
 
 ## Validation completed
 
-The named closer passed 38 targeted checks from the closing commit: 37
+The named closer passed 38 targeted checks from
+`d377ab265c214b9eb6c41edffd9559c5cde1d613`: 37
 web (including one real-OCCT body/face/edge/vertex/pair measurement row
 that leaves source, history, and source-authority epoch unchanged) and 1
 renderer draw+pick clip-agreement row.
