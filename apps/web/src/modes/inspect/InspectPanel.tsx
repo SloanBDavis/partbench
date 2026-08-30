@@ -183,7 +183,8 @@ export function InspectPanel({
       {(hasSingleMeasurement ||
         measurements?.twoTarget ||
         onMeasureSelection ||
-        onBeginTwoTargetMeasurement) && (
+        onBeginTwoTargetMeasurement ||
+        onPinCurrentResult) && (
         <PanelSection title="Measurements" icon="measure">
           {measurements?.object ? (
             <MetricCard metric={measurements.object} />

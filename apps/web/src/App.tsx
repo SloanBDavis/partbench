@@ -5507,7 +5507,8 @@ export function App() {
           }
         : {}),
       ...(currentExactInspectionResult &&
-      currentExactInspectionIdentity?.entityKind !== "body"
+      currentExactInspectionIdentity &&
+      currentExactInspectionIdentity.entityKind !== "body"
         ? {
             generatedReference: {
               title: `${formatCadKindLabel(currentExactInspectionIdentity.entityKind)} measurements`,
@@ -7364,16 +7365,14 @@ export function App() {
       createExactInspectionIdentity(selection),
       exactInspectionArtifacts
     );
-    if (!bound.current || bound.entity?.surfaceClass !== "plane" || !bound.entity.normal) {
+    const entity = bound.current ? bound.entity : undefined;
+    if (!entity || entity.surfaceClass !== "plane" || !entity.normal) {
       return;
     }
+    const origin = entity.midpoint ?? entity.point ?? ([0, 0, 0] as const);
+    const normal = entity.normal;
     setInspectSectionPlane((current) =>
-      createInspectFaceSectionPlane(
-        bound.entity.midpoint ?? bound.entity.point ?? [0, 0, 0],
-        bound.entity.normal,
-        current.offset,
-        current.flip
-      )
+      createInspectFaceSectionPlane(origin, normal, current.offset, current.flip)
     );
   }
 

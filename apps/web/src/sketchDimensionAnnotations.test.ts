@@ -77,13 +77,15 @@ describe("sketch dimension annotations", () => {
     const moved = moveSketchDimensionAnnotation({}, "dim_width", { x: 12, y: -8 });
 
     expect(annotations).toHaveLength(2);
-    expect(annotations[0]).toMatchObject({
-      dimensionId: "dim_width",
+    expect(
+      annotations.find((annotation) => annotation.dimensionId === "dim_width")
+    ).toMatchObject({
       valueLabel: "40 mm",
       boundToParameter: false
     });
-    expect(annotations[1]).toMatchObject({
-      dimensionId: "dim_len",
+    expect(
+      annotations.find((annotation) => annotation.dimensionId === "dim_len")
+    ).toMatchObject({
       boundToParameter: true,
       parameterId: "p_len"
     });

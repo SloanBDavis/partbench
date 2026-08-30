@@ -676,9 +676,10 @@ function exactResultToDisplayResults(
   if (measured.status !== "ready") {
     return [];
   }
-  return measured.values
-    .filter((value) => value.kind === "distance" || value.kind === "angle")
-    .map((value) =>
+  const results: ViewportTwoTargetMeasurementDisplayResult[] = [];
+  for (const value of measured.values) {
+    if (value.kind !== "distance" && value.kind !== "angle") continue;
+    results.push(
       cleanResult({
         kind: value.kind,
         title: value.kind === "distance" ? "Distance" : "Angle",
@@ -698,6 +699,8 @@ function exactResultToDisplayResults(
         )
       })
     );
+  }
+  return results;
 }
 
 function cleanResult(

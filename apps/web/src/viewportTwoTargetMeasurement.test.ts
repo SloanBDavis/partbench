@@ -81,13 +81,17 @@ describe("viewport two-target measurement", () => {
   });
 
   it("transitions through first, pending, second, selection-change, and Escape clear states", () => {
-    const first = createTarget("first", {
-      point: [0, 0, 0],
-      vector: [0, 0, 1]
+    const first = createExactFaceTarget("first", {
+      localId: "face_first",
+      signature: "sig-first",
+      midpoint: [0, 0, 0],
+      normal: [0, 0, 1]
     });
-    const second = createTarget("second", {
-      point: [2, 0, 0],
-      vector: [1, 0, 0]
+    const second = createExactEdgeTarget("second", {
+      localId: "edge_second",
+      signature: "sig-second",
+      midpoint: [2, 0, 0],
+      axis: [1, 0, 0]
     });
     const started = updateViewportTwoTargetMeasurementSession(
       {},
@@ -131,7 +135,7 @@ describe("viewport two-target measurement", () => {
     const second = createExactEdgeTarget("edge", {
       localId: "edge_x",
       signature: "sig-x",
-      midpoint: [2, 0, 0],
+      midpoint: [0, 0, 2],
       axis: [1, 0, 0]
     });
     const view = createViewportTwoTargetMeasurementView({

@@ -468,34 +468,52 @@ describe("renderer", () => {
   it("clips drawing and exact picks with the same display section plane", () => {
     const camera = exactPickCamera();
     const size = { width: 800, height: 600 };
-    const body = createExactPickBody("body", 0);
+    const visibleBody = createExactPickBody("visible", 0, {
+      translation: [4, 0, 0]
+    });
+    const clippedBody = createExactPickBody("clipped", 0, {
+      translation: [-4, 0, 0]
+    });
     const plane = { origin: [0, 0, 0] as const, normal: [1, 0, 0] as const };
-    const visible = projectPoint([0.5, 0, 0], camera, size)!;
-    const clipped = projectPoint([-0.5, 0, 0], camera, size)!;
+    const visible = projectPoint([4, 0, 0], camera, size)!;
+    const hidden = projectPoint([-4, 0, 0], camera, size)!;
     const unclipped = createRecordingCanvasContext();
     const sectioned = createRecordingCanvasContext();
+    const meshes = [visibleBody.mesh, clippedBody.mesh];
 
     renderCanvasScene(unclipped.context, {
       camera,
       size,
       primitives: [],
-      meshes: [body.mesh]
+      meshes
     });
     renderCanvasScene(sectioned.context, {
       camera,
       size,
       primitives: [],
-      meshes: [body.mesh],
+      meshes,
       clipPlane: plane
     });
 
     expect(
-      pickExactRenderBodies([body], camera, size, visible, "auto", plane)
-        .candidates.length
-    ).toBeGreaterThan(0);
+      pickExactRenderBodies(
+        [visibleBody, clippedBody],
+        camera,
+        size,
+        visible,
+        "auto",
+        plane
+      ).candidates.map((candidate) => candidate.bodyId)
+    ).toContain("visible");
     expect(
-      pickExactRenderBodies([body], camera, size, clipped, "auto", plane)
-        .candidates
+      pickExactRenderBodies(
+        [visibleBody, clippedBody],
+        camera,
+        size,
+        hidden,
+        "auto",
+        plane
+      ).candidates
     ).toHaveLength(0);
     expect(sectioned.fills.length).toBeGreaterThan(0);
     expect(sectioned.fills.length).toBeLessThan(unclipped.fills.length);

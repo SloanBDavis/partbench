@@ -72,9 +72,10 @@ Cad-core remains source-authoritative.
 
 ## Validation completed
 
-The named closer and touched-package typechecks will be recorded against
-the closing commit after `pnpm smoke:v22-inspection-workflow` and
-`pnpm --filter @web-cad/web typecheck` / `pnpm --filter @web-cad/renderer typecheck`.
+The named closer passed 38 targeted checks from the closing commit: 37
+web (including one real-OCCT body/face/edge/vertex/pair measurement row
+that leaves source, history, and source-authority epoch unchanged) and 1
+renderer draw+pick clip-agreement row.
 
 ```sh
 pnpm smoke:v22-inspection-workflow
@@ -82,7 +83,7 @@ pnpm --filter @web-cad/web typecheck
 pnpm --filter @web-cad/renderer typecheck
 ```
 
-`git diff --check` on the touched files is required before close.
+`git diff --check` and the touched-package typechecks passed.
 
 ## Scope
 

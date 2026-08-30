@@ -62,13 +62,18 @@ export function inspectSectionClipPlane(
   session: InspectSectionPlaneSession
 ): RenderExactPickClipPlane | undefined {
   if (!session.enabled) return undefined;
-  const normal = session.flip
+  const raw = session.flip
     ? ([-session.normal[0], -session.normal[1], -session.normal[2]] as const)
     : session.normal;
+  const normal = [zero(raw[0]), zero(raw[1]), zero(raw[2])] as const;
   const origin = [
     session.origin[0] + normal[0] * session.offset,
     session.origin[1] + normal[1] * session.offset,
     session.origin[2] + normal[2] * session.offset
   ] as const;
   return { origin, normal };
+}
+
+function zero(value: number): number {
+  return Object.is(value, -0) ? 0 : value;
 }

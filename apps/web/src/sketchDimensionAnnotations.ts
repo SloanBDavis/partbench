@@ -128,6 +128,7 @@ function dimensionAnchor(
   if (target.kind === "pointLineDistance") {
     return pointOnEntity(target.point, entities) ?? [0, 0];
   }
+  if (target.kind !== "lineAngle") return [0, 0];
   const primary = entities.find((entity) => entity.id === target.primaryLineEntityId);
   const secondary = entities.find((entity) => entity.id === target.secondaryLineEntityId);
   if (primary?.kind === "line" && secondary?.kind === "line") {

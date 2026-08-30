@@ -157,22 +157,23 @@ export function exactInspectionIdentityKey(
 export function bindExactInspectionTarget(
   identity: ExactInspectionIdentity,
   artifacts: readonly ExactInspectionArtifact[],
-  title = identity.entityKind
+  title?: string
 ): ExactInspectionBindResult {
+  const resolvedTitle = title ?? identity.entityKind;
   const artifact = artifacts.find((candidate) => candidate.bodyId === identity.bodyId);
   if (!artifact) {
-    return { identity, title, current: false, reason: "missing" };
+    return { identity, title: resolvedTitle, current: false, reason: "missing" };
   }
   if (
     artifact.bodySourceIdentitySignature !== identity.bodySourceIdentitySignature ||
     artifact.topologySignature !== identity.topologySignature
   ) {
-    return { identity, title, current: false, reason: "stale" };
+    return { identity, title: resolvedTitle, current: false, reason: "stale" };
   }
   if (identity.entityKind === "body") {
     return {
       identity,
-      title,
+      title: resolvedTitle,
       current: true,
       metadata: artifact.metadata
     };
@@ -184,9 +185,9 @@ export function bindExactInspectionTarget(
       candidate.kind === identity.entityKind
   );
   if (!entity) {
-    return { identity, title, current: false, reason: "missing" };
+    return { identity, title: resolvedTitle, current: false, reason: "missing" };
   }
-  return { identity, title, current: true, entity };
+  return { identity, title: resolvedTitle, current: true, entity };
 }
 
 export function measureExactInspectionSingle(
@@ -218,11 +219,18 @@ export function measureExactInspectionPair(
   second: ExactInspectionBindResult,
   units: DocumentUnits
 ): ExactInspectionResult {
-  if (!first.current || !second.current) {
-    const reason = !first.current ? first.reason : second.reason;
+  if (!first.current) {
     return unavailable(
-      reason,
-      reason === "stale"
+      first.reason,
+      first.reason === "stale"
+        ? "A measurement target is stale. Pins and results do not silently rebind."
+        : "A measurement target is missing from the current exact artifact."
+    );
+  }
+  if (!second.current) {
+    return unavailable(
+      second.reason,
+      second.reason === "stale"
         ? "A measurement target is stale. Pins and results do not silently rebind."
         : "A measurement target is missing from the current exact artifact."
     );
@@ -500,6 +508,12 @@ function supportAngle(first: Support, second: Support): number | undefined {
   }
   if (first.kind === "line" && second.kind === "line") {
     return unsignedSupportAngle(first.direction, second.direction);
+  }
+  if (first.kind === "plane" && second.kind === "line") {
+    return unsignedSupportAngle(first.normal, second.direction);
+  }
+  if (first.kind === "line" && second.kind === "plane") {
+    return unsignedSupportAngle(first.direction, second.normal);
   }
   return undefined;
 }

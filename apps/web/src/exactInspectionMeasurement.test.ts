@@ -144,6 +144,11 @@ describe("exact inspection measurement", () => {
       bindExactInspectionTarget(identity("edge", "edge_y", "sig-edge-y"), [ARTIFACT]),
       "mm"
     );
+    const faceEdge = measureExactInspectionPair(
+      bindExactInspectionTarget(identity("face", "face_top", "sig-top"), [ARTIFACT]),
+      bindExactInspectionTarget(identity("edge", "edge_x", "sig-edge"), [ARTIFACT]),
+      "mm"
+    );
 
     expect(oppositeFaces.status).toBe("ready");
     expect(oppositeFaces.values.find((value) => value.kind === "distance")?.value).toBe(3);
@@ -151,6 +156,8 @@ describe("exact inspection measurement", () => {
     expect(adjacentFaces.values.find((value) => value.kind === "angle")?.value).toBe(90);
     expect(vertices.values[0]?.value).toBe(4);
     expect(edges.values.find((value) => value.kind === "angle")?.value).toBe(90);
+    expect(faceEdge.values.find((value) => value.kind === "distance")?.value).toBe(3);
+    expect(faceEdge.values.find((value) => value.kind === "angle")?.value).toBe(90);
   });
 
   it("returns typed unavailable for body pairs and no number for stale identity", () => {

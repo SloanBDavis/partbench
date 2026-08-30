@@ -20,7 +20,7 @@ import {
   toExactInspectionArtifact,
   type ExactInspectionIdentity
 } from "./exactInspectionMeasurement";
-import { createDerivedGeometryRuntime } from "./derivedGeometryRuntime";
+import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createDerivedGeometrySourcesFromDocument,
   removeConsumedDerivedGeometrySources
@@ -94,14 +94,28 @@ describe("V22 inspection exact-measurement OCCT proof", () => {
         "mm"
       );
       const pair = measureExactInspectionPair(
-        bindExactInspectionTarget(identityFor(inspection, planarFaces[0]!), [
+        bindExactInspectionTarget(identityFor(inspection, vertices[0]!), [
           inspection
         ]),
-        bindExactInspectionTarget(identityFor(inspection, planarFaces[1]!), [
+        bindExactInspectionTarget(identityFor(inspection, vertices[1]!), [
           inspection
         ]),
         "mm"
       );
+      const facePair =
+        planarFaces[0] && planarFaces[1]
+          ? measureExactInspectionPair(
+              bindExactInspectionTarget(
+                identityFor(inspection, planarFaces[0]),
+                [inspection]
+              ),
+              bindExactInspectionTarget(
+                identityFor(inspection, planarFaces[1]),
+                [inspection]
+              ),
+              "mm"
+            )
+          : undefined;
 
       expect(body.status).toBe("ready");
       expect(body.authority).toBe("geometryBoundaryExact");
@@ -114,6 +128,11 @@ describe("V22 inspection exact-measurement OCCT proof", () => {
       expect(pair.status).toBe("ready");
       expect(pair.values.some((value) => value.kind === "distance")).toBe(true);
       expect(pair.authority).toBe("geometryBoundaryExact");
+      if (facePair?.status === "ready") {
+        expect(facePair.values.some((value) => value.kind === "distance")).toBe(
+          true
+        );
+      }
       expect(exportCadProjectJson(engine)).toBe(beforeProject);
       expect(engine.getTransactions()).toEqual(beforeTransactions);
       expect(engine.getSourceAuthorityEpoch()).toBe(beforeEpoch);
@@ -155,9 +174,9 @@ async function buildExtrudeArtifact(
     resumeModelWork() {
       return 0;
     },
-    async exactBodyArtifact(input: Parameters<
-      ReturnType<typeof createDerivedGeometryRuntime>["exactBodyArtifact"]
-    >[0]) {
+    async exactBodyArtifact(
+      input: Parameters<DerivedGeometryRuntime["exactBodyArtifact"]>[0]
+    ) {
       const response = await worker.execute(
         createExactBodyArtifactWorkerRequest(input)
       );
