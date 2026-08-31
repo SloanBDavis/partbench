@@ -4,8 +4,8 @@ Status: **Approved — implementation authorized (2026-08-03).**
 
 V22 remains the current user goal: selectable, previewable, measurable, and
 recoverable exact single-part CAD, with no new modeling family. Remaining work
-is G (recovery), then H (cross-cutting audit), then I (release proof). The
-daily loop is `docs/how-we-work.md`, not replaying passed Gates A–F.
+is H (cross-cutting audit), then I (release proof). The daily loop is
+`docs/how-we-work.md`, not replaying passed Gates A–G.
 
 This document turns [`docs/v22.md`](./v22.md) into the binding landing order
 and frozen fixture contract. V22 remains authoritative for behavior, limits,
@@ -357,9 +357,12 @@ H-duplicated accessibility are not Gate F requirements.
 Land lazy schedule/generation/status, Restore/Discard, matching-save cleanup,
 shared replacement guard, and unload warning.
 
-**Gate G:** production-browser OPFS interruption/reload/restore; every frozen
-byte/count limit; denied/quota/corrupt/stale; namespace and Clear isolation;
-checkpoint portability; guard/focus ordering; lazy startup.
+**Gate G: [Passed (2026-08-31)](./v22-g-gate.md).** Named closer
+`pnpm smoke:v22-recovery-workflow`. Two-generation `.wcad` recovery,
+Restore/Discard, matching-save cleanup, New/Open/JSON/Restore dirty guards,
+and dirty-only `beforeunload` are in that closer plus `pnpm dev` OPFS
+reload/restore proof. Full a11y gauntlet and gzip ceilings are not Gate G
+requirements.
 
 ### H — Cross-Cutting Audit
 
@@ -451,7 +454,7 @@ Deletion-first remains required when a slice replaces a superseded path:
 | D | [Passed](./v22-d-gate.md) | collector/promotion path and exhaustive no-widening parity |
 | E | [Passed](./v22-e-gate.md) | named closer `pnpm smoke:v22-preview-grips-workflow` plus focused real-OCCT preview/Apply same-shape parity; gzip-ceiling Must removed |
 | F | [Passed](./v22-f-gate.md) | named closer `pnpm smoke:v22-inspection-workflow` plus focused real-OCCT measurement proof; browser/gzip/512/p50/export/a11y closers removed |
-| G | Pending | atomic two-generation recovery and replacement/unload guards |
+| G | [Passed](./v22-g-gate.md) | named closer `pnpm smoke:v22-recovery-workflow`; two-generation recovery, Restore/Discard, dirty guards, unload |
 | H | Pending | accessibility/stale/memory/deferral/compatibility audit |
 | I | Pending | named product workflows, inherited commands, full validation, Must/non-goal reconciliation |
 
