@@ -50,6 +50,21 @@ describe("V18 global header and mode status", () => {
     expect(markup).not.toContain("Pointer");
   });
 
+  it("reports crash recovery on the Project status bar without private IDs", () => {
+    const markup = renderToStaticMarkup(
+      createElement(StatusBar, {
+        mode: "project",
+        fileState: "Gearbox Mount.wcad",
+        saveState: "Unsaved",
+        readiness: "Ready to export",
+        recoveryState: "Crash recovery Current"
+      })
+    );
+    expect(markup).toContain("Crash recovery Current");
+    expect(markup).toContain('data-recovery-state="Crash recovery Current"');
+    expect(markup.toLowerCase()).not.toMatch(/opfs|filehandle|g-[0-9a-f]/);
+  });
+
   it("keeps passive coordinates unfocusable and Solid controls mode-specific", () => {
     const markup = renderToStaticMarkup(
       createElement(StatusBar, {

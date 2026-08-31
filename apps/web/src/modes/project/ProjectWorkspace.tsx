@@ -54,6 +54,10 @@ import {
 } from "../../transactionHistoryDisplay";
 import { Button } from "../../ui/Button";
 import { NumericInput } from "../../ui/NumericInput";
+import {
+  getProjectCrashRecoveryStatusLabel,
+  type ProjectCrashRecoveryStatus
+} from "../../projectCrashRecoveryStatus";
 import type { ProjectPageId } from "../../workbench/types";
 import { formatProjectHealthSummary } from "./projectHealthSummary";
 import {
@@ -131,6 +135,11 @@ export interface ProjectWorkspaceProps {
   readonly onRefreshOpfsCache: () => void;
   readonly onClearOpfsCache: () => void;
   readonly onClearExactArtifactCache: () => void;
+  readonly crashRecoveryStatus?: ProjectCrashRecoveryStatus;
+  readonly wcadUploadNonce?: number;
+  readonly onRestoreCrashRecovery?: () => void;
+  readonly onDiscardCrashRecovery?: () => void;
+  readonly onClearCrashRecovery?: () => void;
   readonly onDownloadStep: (bodyIds?: readonly string[]) => void;
   readonly onCancelStep: () => void;
   readonly onDownloadVisualization: () => void;
@@ -204,6 +213,11 @@ export function ProjectWorkspace({
   onRefreshOpfsCache,
   onClearOpfsCache,
   onClearExactArtifactCache,
+  crashRecoveryStatus,
+  wcadUploadNonce,
+  onRestoreCrashRecovery,
+  onDiscardCrashRecovery,
+  onClearCrashRecovery,
   onDownloadStep,
   onCancelStep,
   onDownloadVisualization,
@@ -272,6 +286,11 @@ export function ProjectWorkspace({
           onRefreshOpfsCache={onRefreshOpfsCache}
           onClearOpfsCache={onClearOpfsCache}
           onClearExactArtifactCache={onClearExactArtifactCache}
+          crashRecoveryStatus={crashRecoveryStatus}
+          wcadUploadNonce={wcadUploadNonce}
+          onRestoreCrashRecovery={onRestoreCrashRecovery}
+          onDiscardCrashRecovery={onDiscardCrashRecovery}
+          onClearCrashRecovery={onClearCrashRecovery}
         />
       ) : page === "parameters" ? (
         <ProjectParameters
@@ -777,7 +796,12 @@ function ProjectFiles({
   onImportJson,
   onRefreshOpfsCache,
   onClearOpfsCache,
-  onClearExactArtifactCache
+  onClearExactArtifactCache,
+  crashRecoveryStatus,
+  wcadUploadNonce,
+  onRestoreCrashRecovery,
+  onDiscardCrashRecovery,
+  onClearCrashRecovery
 }: Pick<
   ProjectWorkspacePropsWithFile,
   | "disabled"
@@ -806,6 +830,11 @@ function ProjectFiles({
   | "onRefreshOpfsCache"
   | "onClearOpfsCache"
   | "onClearExactArtifactCache"
+  | "crashRecoveryStatus"
+  | "wcadUploadNonce"
+  | "onRestoreCrashRecovery"
+  | "onDiscardCrashRecovery"
+  | "onClearCrashRecovery"
 >) {
   const wcadInput = useRef<HTMLInputElement | null>(null);
   const stepInput = useRef<HTMLInputElement | null>(null);
@@ -837,11 +866,16 @@ function ProjectFiles({
     : PROJECT_ACTION_UNAVAILABLE.loadJson;
 
   async function openWcad(): Promise<void> {
-    if (storageCapabilities.fileSystemAccessAvailable && (await onOpenWcad())) {
+    if (await onOpenWcad()) {
       return;
     }
     wcadInput.current?.click();
   }
+
+  useEffect(() => {
+    if (!wcadUploadNonce) return;
+    wcadInput.current?.click();
+  }, [wcadUploadNonce]);
 
   async function openStep(): Promise<void> {
     if (storageCapabilities.fileSystemAccessAvailable && (await onOpenStep())) {
@@ -1048,6 +1082,63 @@ function ProjectFiles({
                   onClick={onClearExactArtifactCache}
                 >
                   Clear derived exact data
+                </Button>
+              </div>
+            </div>
+          </details>
+          <details className="pb-project-advanced pb-project-advanced--compact">
+            <summary>Crash recovery</summary>
+            <div className="pb-project-advanced__content">
+              <dl className="pb-project-definition-list">
+                <DefinitionRow
+                  label="State"
+                  value={getProjectCrashRecoveryStatusLabel(
+                    crashRecoveryStatus ?? {
+                      state: "idle",
+                      available: true
+                    }
+                  )}
+                />
+                <DefinitionRow
+                  label="Last captured"
+                  value={
+                    crashRecoveryStatus?.offer?.capturedRevisionSummary ??
+                    crashRecoveryStatus?.lastResult ??
+                    "No snapshot"
+                  }
+                />
+              </dl>
+              <p className="pb-project-card-detail">
+                Browser-owned .wcad snapshot of the last successfully captured
+                dirty revision. Clearing recovery does not change derived
+                caches.
+              </p>
+              <div className="pb-project-action-row">
+                <Button
+                  disabled={
+                    disabled || crashRecoveryStatus?.state !== "current"
+                  }
+                  onClick={onRestoreCrashRecovery}
+                >
+                  Restore
+                </Button>
+                <Button
+                  tone="danger"
+                  disabled={
+                    disabled ||
+                    (crashRecoveryStatus?.state !== "current" &&
+                      crashRecoveryStatus?.state !== "failed")
+                  }
+                  onClick={onDiscardCrashRecovery}
+                >
+                  Discard
+                </Button>
+                <Button
+                  tone="danger"
+                  disabled={disabled || crashRecoveryStatus?.state === "idle"}
+                  onClick={onClearCrashRecovery}
+                >
+                  Clear recovery data
                 </Button>
               </div>
             </div>

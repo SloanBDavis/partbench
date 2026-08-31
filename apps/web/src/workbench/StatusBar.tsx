@@ -47,6 +47,7 @@ export interface ProjectStatus extends CommonStatus {
   readonly fileState: string;
   readonly saveState: string;
   readonly readiness: string;
+  readonly recoveryState?: string;
 }
 
 export type StatusBarProps =
@@ -63,6 +64,9 @@ export function StatusBar(props: StatusBarProps) {
       aria-label={`${formatMode(props.mode)} status`}
       aria-live="polite"
       data-model-source-ids={props.modelSourceIds?.join(" ") || undefined}
+      data-recovery-state={
+        props.mode === "project" ? props.recoveryState : undefined
+      }
     >
       {renderModeStatus(props)}
       {props.pendingLabel ? (
@@ -135,6 +139,9 @@ function renderModeStatus(props: StatusBarProps) {
           <PassiveValue label="File" value={props.fileState} primary />
           <PassiveValue label="Save state" value={props.saveState} />
           <PassiveValue label="Readiness" value={props.readiness} />
+          {props.recoveryState ? (
+            <PassiveValue label="Crash recovery" value={props.recoveryState} />
+          ) : null}
         </>
       );
   }
