@@ -1,13 +1,12 @@
 # Implementation Plan
 
-This document is the current implementation source of truth. It translates the
-long-term architecture in `docs/architecture.md` into the repo state and the
-active implementation roadmap.
+This document is a historical implementation record. It is not the daily
+development loop. Architecture is `docs/architecture.md`. How we work is
+`docs/how-we-work.md`. The current user goal is `docs/v22.md`.
 
 Last updated: 2026-08-03.
 
-Use this document for day-to-day implementation decisions. Use
-`docs/architecture.md` for long-term design, `docs/v12.md` for the completed
+Use `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
 stable boolean topology and result references release record, `docs/v13.md` for
 the completed general topology identity and B-rep checkpoint foundation release
 record, `docs/v14.md` for the completed topology-backed downstream modeling
