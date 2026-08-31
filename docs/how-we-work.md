@@ -62,8 +62,8 @@ Inherited V18–V21.1 named commands are compatibility history, not the daily
 loop. They remain binding for those completed matrices. They are not a
 per-save checklist.
 
-V22 remaining work is G (recovery), then H (cross-cutting audit), then I
-(release proof). Passed gates A–F stay passed. Do not replay A–F paperwork.
+V22 remaining work is H (cross-cutting audit), then I (release proof).
+Passed gates A–G stay passed. Do not replay A–G paperwork.
 
 ## Question, delete, then build
 

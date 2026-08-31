@@ -209,9 +209,13 @@ export function describeNavigationIntent(
         ? "creating a new document"
         : intent.action === "open"
           ? "opening another document"
-          : intent.action === "undo"
-            ? "undoing the last change"
-            : "redoing the next change";
+          : intent.action === "import-json"
+            ? "importing JSON"
+            : intent.action === "restore"
+              ? "restoring the recovered project"
+              : intent.action === "undo"
+                ? "undoing the last change"
+                : "redoing the next change";
     case "command-search-action":
       return "running the selected command";
     case "sketch-selection":

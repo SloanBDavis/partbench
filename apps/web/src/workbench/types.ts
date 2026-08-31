@@ -53,7 +53,7 @@ export type WorkbenchNavigationIntent =
   | { readonly kind: "close-editor" }
   | {
       readonly kind: "document-action";
-      readonly action: "new" | "open" | "undo" | "redo";
+      readonly action: "new" | "open" | "import-json" | "restore" | "undo" | "redo";
     }
   | {
       readonly kind: "command-search-action";

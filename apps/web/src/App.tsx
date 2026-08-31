@@ -4,6 +4,7 @@ import {
   createCadProjectSourceIdentity,
   exportCadProject,
   exportCadProjectJson,
+  exportCadProjectWcad,
   readCadProjectWcad,
   WcadPackageImportError,
   type CadBodySnapshot,
@@ -413,6 +414,27 @@ import type {
 import type { ProjectJsonDraftSource } from "./projectJson";
 import { createProjectStorageCapabilityStatus } from "./projectStorageCapabilities";
 import {
+  inspectLazyCrashRecovery,
+  peekCrashRecoveryMarker
+} from "./projectCrashRecoveryLazy";
+import {
+  createCrashRecoveryScheduler,
+  type CrashRecoveryScheduler
+} from "./projectCrashRecoverySchedule";
+import type { CrashRecoveryStorageTarget } from "./projectCrashRecoveryStore";
+import {
+  createIdleCrashRecoveryStatus,
+  getProjectCrashRecoveryStatusLabel,
+  type ProjectCrashRecoveryStatus
+} from "./projectCrashRecoveryStatus";
+import {
+  bindDirtyProjectUnloadGuard,
+  documentActionForReplacement,
+  replacementFromDocumentAction,
+  shouldPromptProjectDirtyGuard,
+  type ProjectReplacementKind
+} from "./projectDirtyReplacementGuard";
+import {
   createInitialProjectFileWorkflowState,
   createJsonFallbackProjectFileState,
   createProjectFileCancelledState,
@@ -514,6 +536,16 @@ const CommandSearchDialog = lazy(() =>
 const CurveEditNavigationGuard = lazy(() =>
   import("./modes/sketch").then((module) => ({
     default: module.CurveEditNavigationGuard
+  }))
+);
+const ProjectReplacementGuard = lazy(() =>
+  import("./components/ProjectReplacementGuard").then((module) => ({
+    default: module.ProjectReplacementGuard
+  }))
+);
+const ProjectCrashRecoveryDialog = lazy(() =>
+  import("./components/ProjectCrashRecoveryDialog").then((module) => ({
+    default: module.ProjectCrashRecoveryDialog
   }))
 );
 const SketchViewportDragOverlay = lazy(() =>
@@ -2222,10 +2254,33 @@ export function App() {
   const [projectFile, setProjectFile] = useState<ProjectFileWorkflowState>(() =>
     createInitialProjectFileWorkflowState()
   );
+  const [crashRecoveryStatus, setCrashRecoveryStatus] =
+    useState<ProjectCrashRecoveryStatus>(() => createIdleCrashRecoveryStatus());
+  const [crashRecoveryOfferOpen, setCrashRecoveryOfferOpen] = useState(false);
+  const [crashRecoveryDiscardConfirm, setCrashRecoveryDiscardConfirm] =
+    useState(false);
+  const [crashRecoveryPending, setCrashRecoveryPending] = useState(false);
+  const [projectReplacement, setProjectReplacement] = useState<
+    ProjectReplacementKind | undefined
+  >();
+  const [projectReplacementSaving, setProjectReplacementSaving] =
+    useState(false);
+  const [wcadUploadNonce, setWcadUploadNonce] = useState(0);
+  const crashRecoverySchedulerRef = useRef<CrashRecoveryScheduler | undefined>(
+    undefined
+  );
+  const crashRecoveryLiveIdentityRef = useRef<string | undefined>(undefined);
+  const pendingProjectReplacementRef = useRef<
+    ProjectReplacementKind | undefined
+  >(undefined);
   const [
     wcadTopologyCheckpointPayloadCache,
     setWcadTopologyCheckpointPayloadCache
   ] = useState<readonly WcadTopologyCheckpointPayloadInput[]>([]);
+  const crashRecoveryCheckpointsRef = useRef(
+    wcadTopologyCheckpointPayloadCache
+  );
+  crashRecoveryCheckpointsRef.current = wcadTopologyCheckpointPayloadCache;
   const projectPortability = useMemo(
     () =>
       createProjectPortabilityStatus(
@@ -2333,6 +2388,91 @@ export function App() {
     );
     setProjectMessageTone(result.status === "failed" ? "error" : "info");
   }, []);
+  const crashRecoveryTarget = (): CrashRecoveryStorageTarget =>
+    typeof window !== "undefined"
+      ? (window as unknown as CrashRecoveryStorageTarget)
+      : {};
+  const crashRecoveryStorage = () =>
+    typeof window !== "undefined" ? window.localStorage : undefined;
+  useEffect(() => {
+    let cancelled = false;
+    const marker = peekCrashRecoveryMarker(crashRecoveryStorage());
+    if (!marker.indicated) {
+      return;
+    }
+    void inspectLazyCrashRecovery(
+      crashRecoveryTarget(),
+      crashRecoveryStorage()
+    ).then((result) => {
+      if (cancelled) return;
+      setCrashRecoveryStatus(result.status);
+      if (result.status.state === "current" && result.status.offer) {
+        setCrashRecoveryOfferOpen(true);
+      }
+      if (
+        result.status.state === "unavailable" ||
+        result.status.state === "failed"
+      ) {
+        setProjectMessage(
+          result.status.lastResult ?? "Crash recovery is unavailable."
+        );
+        setProjectMessageTone(
+          result.status.state === "failed" ? "error" : "info"
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!projectFile.dirty) {
+      crashRecoverySchedulerRef.current?.cancel();
+      crashRecoveryLiveIdentityRef.current = undefined;
+      return;
+    }
+    const identity = createCadProjectSourceIdentity(currentProject);
+    const identityKey = `${identity.algorithm}:${identity.sha256}`;
+    crashRecoveryLiveIdentityRef.current = identityKey;
+    if (!crashRecoverySchedulerRef.current) {
+      crashRecoverySchedulerRef.current = createCrashRecoveryScheduler({
+        target: crashRecoveryTarget(),
+        storage: crashRecoveryStorage(),
+        onStatus: (status) => {
+          setCrashRecoveryStatus(status);
+          if (status.state === "unavailable" || status.state === "failed") {
+            setProjectMessage(
+              status.lastResult ?? "Crash recovery is unavailable."
+            );
+            setProjectMessageTone(
+              status.state === "failed" ? "error" : "info"
+            );
+          }
+        },
+        isCurrent: (sourceIdentity) =>
+          crashRecoveryLiveIdentityRef.current ===
+          `${sourceIdentity.algorithm}:${sourceIdentity.sha256}`,
+        exportSnapshot: async () =>
+          exportCadProjectWcad(engine, {
+            createdAt: new Date().toISOString(),
+            modifiedAt: new Date().toISOString(),
+            topologyCheckpoints: crashRecoveryCheckpointsRef.current
+          })
+      });
+    }
+    crashRecoverySchedulerRef.current.schedule({
+      dirty: true,
+      project: currentProject,
+      projectName: getProjectFileNameLabel(projectFile),
+      sourceIdentity: identity
+    });
+  }, [currentProject, projectFile]);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    return bindDirtyProjectUnloadGuard(window, projectFile.dirty);
+  }, [projectFile.dirty]);
   const [baseDerivedGeometry, setDerivedGeometry] =
     useState<DerivedGeometrySnapshot>(() =>
       createEmptyDerivedGeometrySnapshot()
@@ -8019,13 +8159,12 @@ export function App() {
     }
   }
 
-  async function saveProjectWcad() {
+  async function saveProjectWcad(): Promise<boolean> {
     if (projectFileHandle && projectFile.mode === "wcadHandle") {
-      await saveProjectWcadToHandle(projectFileHandle, "save");
-      return;
+      return saveProjectWcadToHandle(projectFileHandle, "save");
     }
 
-    await saveProjectWcadAs();
+    return saveProjectWcadAs();
   }
 
   async function exportProjectWcadForSave(): Promise<WcadPackageExportResult> {
@@ -8059,7 +8198,7 @@ export function App() {
     return undefined;
   }
 
-  async function saveProjectWcadAs() {
+  async function saveProjectWcadAs(): Promise<boolean> {
     try {
       const exported = await exportProjectWcadForSave();
 
@@ -8080,7 +8219,8 @@ export function App() {
           );
           setProjectMessage(`Saved ${handle.name ?? "project.wcad"}.`);
           setProjectMessageTone("info");
-          return;
+          await clearCrashRecoveryAfterMatchingSave(exported.sourceIdentity);
+          return true;
         } catch (error) {
           if (isFilePickerAbort(error)) {
             setProjectFile((current) =>
@@ -8088,7 +8228,7 @@ export function App() {
             );
             setProjectMessage("Save As .wcad was cancelled.");
             setProjectMessageTone("info");
-            return;
+            return false;
           }
 
           if (!projectStorageCapabilities.wcadDownloadAvailable) {
@@ -8108,7 +8248,8 @@ export function App() {
             "Direct Save As failed; downloaded .wcad fallback."
           );
           setProjectMessageTone("error");
-          return;
+          await clearCrashRecoveryAfterMatchingSave(exported.sourceIdentity);
+          return true;
         }
       }
 
@@ -8123,7 +8264,7 @@ export function App() {
         );
         setProjectMessage("WCAD download is unavailable in this browser.");
         setProjectMessageTone("error");
-        return;
+        return false;
       }
 
       downloadWcadPackage(exported.bytes, DEFAULT_WCAD_PROJECT_FILE_NAME);
@@ -8137,6 +8278,8 @@ export function App() {
       );
       setProjectMessage("Downloaded .wcad package.");
       setProjectMessageTone("info");
+      await clearCrashRecoveryAfterMatchingSave(exported.sourceIdentity);
+      return true;
     } catch (error) {
       setProjectFile((current) =>
         createProjectFileFailureState(current, {
@@ -8150,13 +8293,14 @@ export function App() {
         error instanceof Error ? error.message : "Could not save .wcad package."
       );
       setProjectMessageTone("error");
+      return false;
     }
   }
 
   async function saveProjectWcadToHandle(
     handle: WcadFileHandleLike,
     operation: "save" | "saveAs"
-  ) {
+  ): Promise<boolean> {
     let exported: WcadPackageExportResult | undefined;
 
     try {
@@ -8171,6 +8315,8 @@ export function App() {
       );
       setProjectMessage(`Saved ${handle.name ?? "project.wcad"}.`);
       setProjectMessageTone("info");
+      await clearCrashRecoveryAfterMatchingSave(exported.sourceIdentity);
+      return true;
     } catch (error) {
       if (projectStorageCapabilities.wcadDownloadAvailable && exported) {
         try {
@@ -8185,7 +8331,8 @@ export function App() {
           );
           setProjectMessage("Direct save failed; downloaded .wcad fallback.");
           setProjectMessageTone("error");
-          return;
+          await clearCrashRecoveryAfterMatchingSave(exported.sourceIdentity);
+          return true;
         } catch {
           // Fall through to the original direct-save error.
         }
@@ -8203,6 +8350,7 @@ export function App() {
         error instanceof Error ? error.message : "Could not save .wcad package."
       );
       setProjectMessageTone("error");
+      return false;
     }
   }
 
@@ -8217,6 +8365,162 @@ export function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function clearCrashRecoveryAfterMatchingSave(
+    savedIdentity: ReturnType<typeof createCadProjectSourceIdentity>
+  ): Promise<void> {
+    crashRecoverySchedulerRef.current?.cancel();
+    await crashRecoverySchedulerRef.current?.flush();
+    const live = createCadProjectSourceIdentity(exportCadProject(engine));
+    if (
+      savedIdentity.algorithm !== live.algorithm ||
+      savedIdentity.sha256 !== live.sha256
+    ) {
+      return;
+    }
+    const store = await import("./projectCrashRecoveryStore");
+    const status = await store.clearCrashRecoveryIfSourceMatches(
+      crashRecoveryTarget(),
+      live,
+      crashRecoveryStorage()
+    );
+    setCrashRecoveryStatus(status);
+    setCrashRecoveryOfferOpen(false);
+    setCrashRecoveryDiscardConfirm(false);
+  }
+
+  function requestProjectReplacement(kind: ProjectReplacementKind): void {
+    const editorDirty = workbenchUi.activeEditorDirty;
+    const step = shouldPromptProjectDirtyGuard(projectFile.dirty, editorDirty);
+    if (step === "editor-draft") {
+      pendingProjectReplacementRef.current = kind;
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: {
+          kind: "document-action",
+          action: documentActionForReplacement(kind)
+        }
+      });
+      return;
+    }
+    if (step === "project-dirty") {
+      setProjectReplacement(kind);
+      return;
+    }
+    void executeProjectReplacement(kind);
+  }
+
+  async function executeProjectReplacement(
+    kind: ProjectReplacementKind
+  ): Promise<void> {
+    setProjectReplacement(undefined);
+    switch (kind) {
+      case "new":
+        createNewProject();
+        return;
+      case "open-wcad": {
+        const opened = await openProjectWcad();
+        if (!opened) {
+          setWcadUploadNonce((current) => current + 1);
+        }
+        return;
+      }
+      case "import-json":
+        await importProjectJsonUnchecked();
+        return;
+      case "restore":
+        await restoreCrashRecoverySnapshot();
+        return;
+    }
+  }
+
+  async function saveThenReplaceProject(
+    kind: ProjectReplacementKind
+  ): Promise<void> {
+    setProjectReplacementSaving(true);
+    try {
+      const saved = await saveProjectWcad();
+      if (!saved) {
+        setProjectReplacement(undefined);
+        return;
+      }
+      await executeProjectReplacement(kind);
+    } finally {
+      setProjectReplacementSaving(false);
+    }
+  }
+
+  async function restoreCrashRecoverySnapshot(): Promise<void> {
+    setCrashRecoveryPending(true);
+    try {
+      const store = await import("./projectCrashRecoveryStore");
+      const result = await store.readCrashRecoveryCurrentBytes(
+        crashRecoveryTarget(),
+        crashRecoveryStorage()
+      );
+      if (!result.ok) {
+        setCrashRecoveryStatus(result.status);
+        setProjectMessage(
+          result.status.lastResult ?? "Crash recovery snapshot is unavailable."
+        );
+        setProjectMessageTone("error");
+        return;
+      }
+      await importProjectWcadBytes(
+        result.bytes,
+        result.offer.projectName,
+        "uploadedFallback"
+      );
+      setProjectFileHandle(undefined);
+      setProjectFile((current) => ({
+        ...current,
+        mode: "unsaved",
+        dirty: true,
+        fileName: undefined,
+        lastResult: {
+          operation: "open",
+          status: "opened",
+          message:
+            "Restored the crash-recovery snapshot as an unsaved project."
+        }
+      }));
+      setCrashRecoveryOfferOpen(false);
+      setCrashRecoveryDiscardConfirm(false);
+      setProjectMessage(
+        "Restored the crash-recovery snapshot as an unsaved project."
+      );
+      setProjectMessageTone("info");
+    } catch (error) {
+      setProjectMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not restore the crash-recovery snapshot."
+      );
+      setProjectMessageTone("error");
+    } finally {
+      setCrashRecoveryPending(false);
+    }
+  }
+
+  async function discardCrashRecoverySnapshot(): Promise<void> {
+    setCrashRecoveryPending(true);
+    try {
+      crashRecoverySchedulerRef.current?.cancel();
+      await crashRecoverySchedulerRef.current?.flush();
+      const store = await import("./projectCrashRecoveryStore");
+      const status = await store.clearCrashRecovery(
+        crashRecoveryTarget(),
+        crashRecoveryStorage()
+      );
+      setCrashRecoveryStatus(status);
+      setCrashRecoveryOfferOpen(false);
+      setCrashRecoveryDiscardConfirm(false);
+      setProjectMessage(status.lastResult ?? "Crash recovery data cleared.");
+      setProjectMessageTone(status.state === "failed" ? "error" : "info");
+    } finally {
+      setCrashRecoveryPending(false);
+    }
   }
 
   function createNewProject() {
@@ -8246,6 +8550,10 @@ export function App() {
   }
 
   async function importProjectJson() {
+    requestProjectReplacement("import-json");
+  }
+
+  async function importProjectJsonUnchecked() {
     await ensureCadV19RegionSourceValidationPolicy();
     const { createProjectJsonPreview, formatProjectJsonSummary } =
       await import("./projectJson");
@@ -8813,11 +9121,11 @@ export function App() {
     switch (actionId) {
       case "project.new":
         openProjectPage("files");
-        createNewProject();
+        requestProjectReplacement("new");
         return;
       case "project.open":
         openProjectPage("files");
-        void openProjectWcad();
+        requestProjectReplacement("open-wcad");
         return;
       case "project.save":
         void saveProjectWcad();
@@ -8831,6 +9139,7 @@ export function App() {
         return;
       case "project.import-json":
         openProjectPage("files");
+        requestProjectReplacement("import-json");
         return;
       case "project.export-json":
         openProjectPage("files");
@@ -9178,10 +9487,18 @@ export function App() {
         if (intent.action === "undo") performUndo();
         else if (intent.action === "redo") performRedo();
         else {
+          const replacement =
+            pendingProjectReplacementRef.current ??
+            replacementFromDocumentAction(intent.action);
+          pendingProjectReplacementRef.current = undefined;
           curveEditNavigationBypassRef.current = true;
-          runWorkbenchAction(
-            intent.action === "new" ? "project.new" : "project.open"
-          );
+          if (replacement) {
+            requestProjectReplacement(replacement);
+          } else {
+            runWorkbenchAction(
+              intent.action === "new" ? "project.new" : "project.open"
+            );
+          }
         }
         return;
       case "command-search-action":
@@ -9756,6 +10073,41 @@ export function App() {
             />
           </Suspense>
         ) : null}
+        {projectReplacement ? (
+          <Suspense fallback={null}>
+            <ProjectReplacementGuard
+              replacement={projectReplacement}
+              pending={projectReplacementSaving}
+              onSave={() => void saveThenReplaceProject(projectReplacement)}
+              onDiscard={() => void executeProjectReplacement(projectReplacement)}
+              onCancel={() => setProjectReplacement(undefined)}
+            />
+          </Suspense>
+        ) : null}
+        {(crashRecoveryOfferOpen && crashRecoveryStatus.offer) ||
+        crashRecoveryDiscardConfirm ? (
+          <Suspense fallback={null}>
+            <ProjectCrashRecoveryDialog
+              offer={
+                crashRecoveryStatus.offer ?? {
+                  projectName: "Recovered project",
+                  committedAt: "",
+                  sourceIdentitySummary: "Source unknown",
+                  units: document.units,
+                  bodyCount: 0,
+                  portabilityLabel: "Unknown",
+                  capturedRevisionSummary: "No snapshot"
+                }
+              }
+              confirmDiscard={crashRecoveryDiscardConfirm}
+              pending={crashRecoveryPending}
+              onRestore={() => requestProjectReplacement("restore")}
+              onRequestDiscard={() => setCrashRecoveryDiscardConfirm(true)}
+              onConfirmDiscard={() => void discardCrashRecoverySnapshot()}
+              onCancelDiscard={() => setCrashRecoveryDiscardConfirm(false)}
+            />
+          </Suspense>
+        ) : null}
         <WorkbenchShell
           mode={workbenchUi.mode}
           activeEditor={Boolean(workbenchUi.activeEditor || solidEditorRequest)}
@@ -10143,8 +10495,18 @@ export function App() {
                 canRedo={engine.getRedoStack().length > 0}
                 message={projectMessage}
                 messageTone={projectMessageTone}
-                onNew={createNewProject}
-                onOpenWcad={openProjectWcad}
+                onNew={() => requestProjectReplacement("new")}
+                onOpenWcad={async () => {
+                  const step = shouldPromptProjectDirtyGuard(
+                    projectFile.dirty,
+                    workbenchUi.activeEditorDirty
+                  );
+                  if (step !== "proceed") {
+                    requestProjectReplacement("open-wcad");
+                    return true;
+                  }
+                  return openProjectWcad();
+                }}
                 onOpenStep={openProjectStepImport}
                 onOpenWcadFileLoaded={(bytes, fileName) =>
                   void importProjectWcadBytes(
@@ -10181,6 +10543,17 @@ export function App() {
                 onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
                 onClearOpfsCache={() => void clearProjectOpfsCache()}
                 onClearExactArtifactCache={() => void clearExactArtifactCache()}
+                crashRecoveryStatus={crashRecoveryStatus}
+                wcadUploadNonce={wcadUploadNonce}
+                onRestoreCrashRecovery={() =>
+                  requestProjectReplacement("restore")
+                }
+                onDiscardCrashRecovery={() =>
+                  setCrashRecoveryDiscardConfirm(true)
+                }
+                onClearCrashRecovery={() =>
+                  setCrashRecoveryDiscardConfirm(true)
+                }
                 onDownloadStep={(bodyIds) =>
                   void downloadExactStepExport(bodyIds)
                 }
@@ -10557,6 +10930,7 @@ export function App() {
                 mode="project"
                 fileState={getProjectFileNameLabel(projectFile)}
                 saveState={getProjectFileDirtyLabel(projectFile)}
+                recoveryState={`Crash recovery ${getProjectCrashRecoveryStatusLabel(crashRecoveryStatus)}`}
                 readiness={
                   commandError ?? commandNotice ?? "Review export readiness"
                 }

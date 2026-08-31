@@ -123,6 +123,33 @@ describe("ProjectWorkspace", () => {
     expect(markup).toContain("Project JSON draft");
     expect(markup).toContain("Clear derived exact data");
     expect(markup).toContain("<textarea");
+    expect(markup).toContain("Crash recovery");
+    expect(markup).toContain("Clear recovery data");
+  });
+
+  it("offers Restore/Discard for a current snapshot without private storage names", () => {
+    const markup = renderPage("files", {
+      crashRecoveryStatus: {
+        state: "current",
+        available: true,
+        lastResult: "Last captured revision: bracket.wcad · Source ab12cd34.",
+        offer: {
+          projectName: "bracket.wcad",
+          committedAt: "2026-08-31T06:00:00.000Z",
+          sourceIdentitySummary: "Source ab12cd34",
+          units: "mm",
+          bodyCount: 1,
+          portabilityLabel: "Portable",
+          capturedRevisionSummary: "bracket.wcad · Source ab12cd34"
+        }
+      }
+    });
+    expect(markup).toContain("Restore");
+    expect(markup).toContain("Discard");
+    expect(markup).toContain("Source ab12cd34");
+    expect(markup).toContain("Portable");
+    expect(markup).not.toContain("partbench-crash-recovery-v1");
+    expect(markup.toLowerCase()).not.toMatch(/opfs|filehandle|g-[0-9a-f-]{8}/);
   });
 
   it("lists every missing checkpoint and labels JSON as source-only", () => {
