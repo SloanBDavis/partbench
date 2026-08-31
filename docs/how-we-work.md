@@ -62,8 +62,9 @@ Inherited V18–V21.1 named commands are compatibility history, not the daily
 loop. They remain binding for those completed matrices. They are not a
 per-save checklist.
 
-V22 remaining work is H (cross-cutting audit), then I (release proof).
-Passed gates A–G stay passed. Do not replay A–G paperwork.
+V22 is completed. Gates A–G stay passed, H was deleted as a closer, and I
+closed the user goal plus release records. Do not replay historical gate
+paperwork or V7–V21.1 gauntlets.
 
 ## Question, delete, then build
 
