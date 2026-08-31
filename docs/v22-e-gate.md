@@ -96,7 +96,7 @@ production dependency was changed to hide a measurement.
 
 ## Scope
 
-Gates F–I remain pending for their product work: annotations and inspection,
-recovery, audit, and release reconciliation. Gate E does not start Slice F.
+Gates F–G subsequently passed, Gate H was deleted as a closer, and Gate I closed
+the user goal and records. Gate E does not reopen.
 
 Gate E is closed.
