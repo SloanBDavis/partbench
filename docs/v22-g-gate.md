@@ -6,7 +6,7 @@ This record closes crash recovery and dirty-project guards. The binding
 scope remains in [`docs/v22.md`](./v22.md), and the frozen matrices and
 landing order remain in
 [`docs/v22-implementation-dag.md`](./v22-implementation-dag.md). Gates A–F
-stay passed and unreplayed. Gate H/I are not claimed.
+stay passed and unreplayed. This product gate predates the later I close.
 
 ## Outcome
 
@@ -85,12 +85,13 @@ covered by the named store test that plants an orphan `g-*.wcad` and
 proves the prior published generation remains. Quota and permission
 faults were proven with an in-process OPFS mock, not a full-disk browser.
 
-Keyboard focus on Restore/Discard/replacement is enough to use the
-increment without a pointer. The full a11y/narrow/reduced-motion gauntlet
-remains Gate H (`pnpm smoke:v22-browser-workflow`).
+Keyboard focus on Restore/Discard/replacement is enough to use the increment
+without a pointer. A duplicated full a11y/narrow/reduced-motion browser
+gauntlet was later deleted as a Gate H closer.
 
 ## Scope
 
-Gates H–I remain pending. Gate G does not start Slice H.
+Gate H was later deleted as a closer. Gate I closed the user goal and records;
+no Gates G–I remain pending.
 
 Gate G is closed.
