@@ -1,20 +1,21 @@
 # V22 Implementation DAG: Precision Interaction and Recovery
 
-Status: **Approved — implementation authorized (2026-08-03).**
+Status: **Completed (2026-08-31).**
 
 V22 remains the current user goal: selectable, previewable, measurable, and
-recoverable exact single-part CAD, with no new modeling family. Remaining work
-is H (cross-cutting audit), then I (release proof). The daily loop is
-`docs/how-we-work.md`, not replaying passed Gates A–G.
+recoverable exact single-part CAD, with no new modeling family. Product slices
+A–G passed, H was deleted as a closer, and I closed the user goal and records.
+Passed slices stay passed and are not replayed.
 
 This document turns [`docs/v22.md`](./v22.md) into the binding landing order
 and frozen fixture contract. V22 remains authoritative for behavior, limits,
 non-goals, and Definition of Done; this DAG is authoritative for dependencies,
 gates, command mapping, and evidence. Slice A changes no production behavior.
 
-V22 has no Stretch work. Slices A–I land in order. No slice may widen a
-completed command, source, persistence, renderer, package, dependency, or
-approval contract.
+V22 has no Stretch work. Product slices A–G landed in order; H was deleted as
+a closer and I reconciled the completed user goal and records. No slice may
+widen a completed command, source, persistence, renderer, package, dependency,
+or approval contract.
 
 ## Low-Spec Working Rules
 
@@ -66,10 +67,8 @@ A1 baseline + A2 frozen contracts/fixtures + A3 commandability baseline
   -> Gate F
   -> G1 dirty guards -> G2 two-generation recovery -> G3 Restore/Discard
   -> Gate G
-  -> H1 accessibility/stale/memory -> H2 deferral/compatibility audit
-  -> Gate H
-  -> I1 named release workflows -> I2 reconciliation/non-goal audit
-  -> Gate I / release
+  -> H deleted as a closer (no browser/gzip/a11y gauntlet)
+  -> I1 user-goal/docs close -> Gate I / release
 ```
 
 ## Slice A — Baseline, Contracts, and Frozen Matrices
@@ -226,7 +225,7 @@ one deterministic pair exists; `A` is exact supporting-plane/line angle.
 | --- | --- | --- | --- | --- |
 | Body | Unavailable | Unavailable | Unavailable | Unavailable |
 | Face | Unavailable | D; A only if both planar | D | D |
-| Edge | Unavailable | D | D; A only if both linear | D |
+| Edge | Unavailable | D | D; A only if both linear | D | D |
 | Vertex | Unavailable | D | D | D |
 
 Supported pair targets are distinct current topology entities on the same or
@@ -349,7 +348,7 @@ copy, and one display-only section.
 `pnpm smoke:v22-inspection-workflow` plus focused real-OCCT measurement
 proof. Session V19 annotations, exact single/pair measurement, pins, and
 one display-only section are in that closer. Production-browser gauntlet,
-gzip ceilings, 512-annotation theater, p50/p95, STEP/export browser, and
+gzip ceilings, 512-annotation truncation theater, p50/p95, STEP/export browser, and
 H-duplicated accessibility are not Gate F requirements.
 
 ### G — Dirty Guards and Recovery
@@ -364,25 +363,22 @@ and dirty-only `beforeunload` are in that closer plus `pnpm dev` OPFS
 reload/restore proof. Full a11y gauntlet and gzip ceilings are not Gate G
 requirements.
 
-### H — Cross-Cutting Audit
+### H — Deleted Cross-Cutting Closer
 
-Audit accessibility, private text, stale paths, cleanup, restart, timings,
-startup deferral, V18–V21.1 compatibility, and obsolete approximate
-solid-pick branches.
-
-**Gate H:** complete adversarial inventory, memory/performance, interaction
-and accessibility via `pnpm smoke:v22-browser-workflow` when that command
-exists, compatibility, and no partial non-goal evidence. Gzip ceilings are
-not a Gate H Must.
+**Gate H: Deleted (2026-08-31).** The separate browser gauntlet, duplicated
+accessibility closer, performance closer, gzip tripwires, and historical
+V7–V21.1 replay were deleted rather than parked. Kept product requirements
+include keyboard-complete C–G paths, startup deferral, truthful exact/fallback
+behavior, and no private identifiers in UI.
 
 ### I — Release Proof and Reconciliation
 
 Land named workflows/measurements and reconcile release records only after
 implementation; record direct evidence for every V22 Must item.
 
-**Gate I / release:** V22 named product workflows, inherited release
-commands, full validation, Must ledger, and source/command/persistence/
-private-field/non-goal audit. Gzip ceilings are not a Gate I Must.
+**Gate I / release: [Passed (2026-08-31)](./v22-i-gate.md).** The user goal and
+documentation close V22 at product SHA `64ed45c`. The four product smokes are
+passed slice history, not rerun release closers. No new named command was added.
 
 ## Named Command Mapping
 
@@ -392,8 +388,6 @@ private-field/non-goal audit. Gzip ceilings are not a Gate I Must.
 | `pnpm smoke:v22-preview-grips-workflow` | E: preview/grip matrix, focused real-OCCT preview/Apply same-shape parity, bindings, cancel, cleanup |
 | `pnpm smoke:v22-inspection-workflow` | F: annotations, exact measurement/pins, authority, section, focused real-OCCT proof |
 | `pnpm smoke:v22-recovery-workflow` | G: generations, interruption, Restore/Discard, save cleanup, guards, OPFS faults |
-| `pnpm smoke:v22-browser-workflow` | H: pointer/keyboard/focus/live regions, narrow/reduced-motion/high-zoom, stale/fallback |
-| `pnpm smoke:v22-performance` | C/E/F/G/H: p50/p95, input, memory, restart, no >50 ms task |
 | `pnpm check:v22-bundle` | Informational size record only; does not fail a gate or the release |
 
 Focused package checks remain per-save; named commands run serially on the
@@ -428,10 +422,8 @@ Deletion-first remains required when a slice replaces a superseded path:
 1. Each gate records command, fixture, environment, commit, and output/trace/
    metric/audit artifact. Mocks cannot close real OCCT, browser, or OPFS
    gates. Bundle size records are informational.
-2. Record p50/p95 hit, preview validation/build, measurement, recovery
-   serialize/write/validate/restore, interaction, retained bytes, and restart.
-   Hover p95 <=16 ms; selection/filter/cycle <=50 ms; input next frame; no
-   representative preview/measurement/recovery/section main-thread task >50 ms.
+2. Performance records from product slices remain historical supporting
+   evidence, not a Gate H/I closer or a new named performance smoke.
 3. Each async proof includes success, cancel, stale, failure, disposal, and
    source invariants. Preview parity is same-shape B-rep/topology/mass/display,
    not byte-identical B-rep serialization.
@@ -455,7 +447,7 @@ Deletion-first remains required when a slice replaces a superseded path:
 | E | [Passed](./v22-e-gate.md) | named closer `pnpm smoke:v22-preview-grips-workflow` plus focused real-OCCT preview/Apply same-shape parity; gzip-ceiling Must removed |
 | F | [Passed](./v22-f-gate.md) | named closer `pnpm smoke:v22-inspection-workflow` plus focused real-OCCT measurement proof; browser/gzip/512/p50/export/a11y closers removed |
 | G | [Passed](./v22-g-gate.md) | named closer `pnpm smoke:v22-recovery-workflow`; two-generation recovery, Restore/Discard, dirty guards, unload |
-| H | Pending | accessibility/stale/memory/deferral/compatibility audit |
-| I | Pending | named product workflows, inherited commands, full validation, Must/non-goal reconciliation |
+| H | Deleted | cross-cutting/browser/performance/a11y/gzip closer removed; kept product requirements reconciled at I |
+| I | [Passed](./v22-i-gate.md) | user goal plus docs close at product SHA `64ed45c`; no historical gauntlet replay |
 
 End of V22 implementation DAG.
