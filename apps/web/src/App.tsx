@@ -10542,6 +10542,7 @@ export function App() {
                 onImportJson={importProjectJson}
                 onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
                 onClearOpfsCache={() => void clearProjectOpfsCache()}
+                onClearExactArtifactCache={() => void clearExactArtifactCache()}
                 crashRecoveryStatus={crashRecoveryStatus}
                 wcadUploadNonce={wcadUploadNonce}
                 onRestoreCrashRecovery={() =>

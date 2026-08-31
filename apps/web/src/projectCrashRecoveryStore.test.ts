@@ -46,7 +46,7 @@ class MemoryStorage implements Storage {
   }
 }
 
-class MockDirectory implements CrashRecoveryDirectoryHandle {
+class MockDirectory {
   readonly directories = new Map<string, MockDirectory>();
   readonly files = new Map<string, Uint8Array | string>();
   quotaError?: Error;
@@ -64,7 +64,7 @@ class MockDirectory implements CrashRecoveryDirectoryHandle {
   async getDirectoryHandle(
     name: string,
     options?: { readonly create?: boolean }
-  ): Promise<CrashRecoveryDirectoryHandle> {
+  ): Promise<MockDirectory> {
     const existing = this.directories.get(name);
     if (existing) return existing;
     if (!options?.create) {
@@ -104,10 +104,11 @@ class MockDirectory implements CrashRecoveryDirectoryHandle {
           size: bytes.byteLength,
           text: async () =>
             typeof data === "string" ? data : new TextDecoder().decode(data),
-          arrayBuffer: async () => bytes.buffer.slice(
-            bytes.byteOffset,
-            bytes.byteOffset + bytes.byteLength
-          )
+          arrayBuffer: async (): Promise<ArrayBuffer> => {
+            const copy = new ArrayBuffer(bytes.byteLength);
+            new Uint8Array(copy).set(bytes);
+            return copy;
+          }
         };
       },
       async createWritable() {
@@ -152,7 +153,7 @@ function createTarget(root = new MockDirectory()): {
     target: {
       navigator: {
         storage: {
-          getDirectory: async () => root
+          getDirectory: async () => root as unknown as CrashRecoveryDirectoryHandle
         }
       }
     }

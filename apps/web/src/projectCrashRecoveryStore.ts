@@ -6,6 +6,7 @@ import {
 } from "@web-cad/cad-core";
 import {
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+  WCAD_PACKAGE_VERSION,
   type WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 import {
@@ -38,7 +39,6 @@ import {
   createProjectOpfsCacheSha256Hex,
   writeAndCloseProjectOpfsWritable,
   type ProjectOpfsCacheDirectoryHandleLike,
-  type ProjectOpfsCacheFileHandleLike,
   type ProjectOpfsCacheTargetLike,
   type ProjectOpfsCacheWritableLike
 } from "./projectOpfsCache";
@@ -313,14 +313,14 @@ export async function publishCrashRecoveryGeneration(
         }
       };
     }
-    if (read.manifest.packageVersion !== CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION) {
+    if (!isSupportedRecoveryPackageVersion(read.manifest.packageVersion)) {
       await removeEntryQuietly(rootResult.root, fileName);
       return {
         published: false,
         status: {
           state: "failed",
           available: true,
-          lastResult: "Recovery snapshot is not a .wcad v2 package."
+          lastResult: "Recovery snapshot is not a supported .wcad package."
         }
       };
     }
@@ -640,7 +640,7 @@ async function readAndValidateGeneration(
       };
     }
     if (
-      read.manifest.packageVersion !== CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION ||
+      !isSupportedRecoveryPackageVersion(read.manifest.packageVersion) ||
       !sameSourceIdentity(read.sourceIdentity, meta.sourceIdentity)
     ) {
       return {
@@ -789,6 +789,13 @@ function parseGenerationMeta(value: unknown): CrashRecoveryGenerationMeta | unde
     bodyCount: value.bodyCount,
     portability: value.portability
   };
+}
+
+function isSupportedRecoveryPackageVersion(value: unknown): boolean {
+  return (
+    value === CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION ||
+    value === WCAD_PACKAGE_VERSION
+  );
 }
 
 function isSourceIdentity(value: unknown): value is WcadSourceIdentity {
