@@ -3394,20 +3394,22 @@ format surface, workspace package, production dependency, or agent file/path
 authority. The seven V21.1 commands in `docs/v21.1.md` are the release
 integration contract.
 
-## In-Progress V22 Exact Interaction and Recovery
+## Completed V22 Exact Interaction and Recovery
 
 V22 is governed by `docs/v22.md` and `docs/v22-implementation-dag.md`. Gates A
-through F are complete; Gates G through I remain pending for recovery, audit,
-and release reconciliation. The current product has bounded same-shape exact
+through G passed, Gate H was deleted as a closer, and Gate I passed on
+2026-08-31 at product SHA `64ed45c`. The product has bounded same-shape exact
 pick evidence, depth-aware universal selection, existing collector handoff
 with explicit durable-reference promotion, exact preview/grips with Apply
 revalidation, session sketch-dimension annotations, exact inspection
 measurement/pins, and one display-only section plane. Selection remains
 separate from commandability, and no completed operation row, schema,
 `.wcad` version, dependency, package, approval mode, or agent authority has
-widened. V21.1 gzip ceilings are not a remaining V22 Must. Gate F passed on
-`pnpm smoke:v22-inspection-workflow` plus focused real-OCCT measurement
-proof. Evidence is recorded in `docs/v22-f-gate.md`.
+widened. V21.1 gzip ceilings are not a V22 Must; bundle checking is
+informational. The four V22 product smokes are passed slice history, not Gate I
+reruns. No browser/performance smoke, Playwright suite, or new named closer was
+added. Gate records are in `docs/v22-f-gate.md`, `docs/v22-g-gate.md`, and
+`docs/v22-i-gate.md`.
 
 ## Definition of Done
 
