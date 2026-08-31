@@ -2,6 +2,11 @@
 
 Status: **Approved — implementation authorized (2026-08-03).**
 
+V22 remains the current user goal: selectable, previewable, measurable, and
+recoverable exact single-part CAD, with no new modeling family. Remaining work
+is G (recovery), then H (cross-cutting audit), then I (release proof). The
+daily loop is `docs/how-we-work.md`, not replaying passed Gates A–F.
+
 This document turns [`docs/v22.md`](./v22.md) into the binding landing order
 and frozen fixture contract. V22 remains authoritative for behavior, limits,
 non-goals, and Definition of Done; this DAG is authoritative for dependencies,

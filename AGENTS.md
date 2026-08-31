@@ -1,136 +1,64 @@
-# Agent Instructions
+# Agent instructions
 
-## Project
+Partbench is an open-source, browser-native, AI-native CAD application.
 
-This repository is building Partbench, an open-source, browser-native,
-AI-native CAD application.
+CADOps in `cad-core` is the document authority. OCCT/WASM exact B-rep is the
+geometry authority. Meshes, picks, and previews are derived display.
 
-The long-term architecture is in:
+Do not invent a parallel architecture. Do not implement the whole architecture
+at once.
 
-- `docs/architecture.md`
+- Architecture: [`docs/architecture.md`](docs/architecture.md)
+- How we work: [`docs/how-we-work.md`](docs/how-we-work.md)
+- Current user goal: [`docs/v22.md`](docs/v22.md)
 
-The current implementation source of truth is:
+## Run the app
 
-- `docs/implementation-plan.md`
-- `docs/v12.md` — completed V12 stable boolean topology and result references release record
-- `docs/v13.md` — completed V13 general topology identity and B-rep checkpoint foundation release record
-- `docs/v14.md` — completed V14 topology-backed downstream modeling release record
-- `docs/v15.md` — completed V15 STEP import, expanded feature families, and parameter expressions release record
-- `docs/v16.md` — completed V16 sweep, loft, pattern depth, expression extensions, and mass properties release record
-- `docs/v17.md` — completed V17 composite sketch profiles, arcs, and curved sweep paths release record
-- `docs/v18.md` — completed V18 frontend-only Precision CAD UI overhaul release record
-- `docs/v19.md` — completed V19 production sketching and multi-region profiles release record
-- `docs/v20.md` — completed V20 connected local agent workflow release record
-- `docs/v21.md` — completed V21 production single-part reliability and exact interchange release record
-- `docs/v21.1.md` — completed V21.1 universal downstream bodies and export completion release record
+Node.js 22 and pnpm 10.
 
-Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V19 is complete; follow `docs/v16.md` through `docs/v19.md` as compatibility and support-matrix records. Do not weaken a completed Must row or expand beyond its documented matrix without an explicitly approved later milestone.
-The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
+```sh
+pnpm install
+pnpm dev
+```
 
-V18 is complete. Follow `docs/v18.md` as its UI compatibility and performance
-record. Its reference images define visual direction, not new CAD capability:
-production changes stay in `apps/web`, and maintenance must not add commands,
-queries, source records, geometry/renderer contracts, schemas, file formats, or
-adapter behavior without an explicitly approved later milestone.
+A task is done when the current user goal is true in that running app. Tests
+and named smokes are supporting evidence, not a substitute. If you cannot
+demonstrate the user goal in `pnpm dev`, you are not done.
 
-V19 is complete. Follow `docs/v19.md` and
-`docs/v19-implementation-dag.md` as the binding capability, compatibility,
-performance, and non-goal records. V19 adds deterministic sketch editing,
-command-backed dimension/constraint breadth, explicit whole-loop material
-regions, and the documented exact region extrude/revolve matrix. Project
-schema `web-cad.project.v22` is minimum-triggered; `.wcad` remains
-`partbench.wcad.v2`. The eight named `pnpm` V19 release commands in
-`docs/v19.md` are the release-level integration proof.
+## Packages
 
-V20 is complete. Follow `docs/v20.md` as its binding scope, compatibility, and
-gate record. V20 connects the existing MCP stdio surface to the project open in
-the production browser app through an authenticated loopback launcher/relay.
-It has exactly two human-owned, session-only approval modes:
-`manualApproval` (default) and `approveAll`. Do not add a third approval mode,
-per-tool policy system, built-in chat or natural-language parser, agent file
-access, hosted transport, new CAD capability, project schema, `.wcad` version,
-workspace package, or production dependency without an explicit plan
-amendment.
+- `apps/web` - browser UI
+- `packages/cad-protocol` - command schemas and shared types
+- `packages/cad-core` - document model, transactions, undo/redo
+- `packages/renderer` - rendering abstraction and simple viewport
+- `packages/renderer-mesh-bridge` - derived mesh adapter for the renderer
+- `packages/geometry-kernel` - typed geometry facade
+- `packages/geometry-worker` - async geometry worker boundary
+- `packages/occt-wasm` - isolated OCCT/WASM integration
+- `packages/sketch-solver` - pure TypeScript 2D sketch solver
+- `packages/agent-adapter` - structured CADOps adapter for external callers
+- `packages/mcp-adapter` - MCP tool wrapper over the agent adapter
+- `packages/mcp-stdio-server` - local stdio JSON-RPC MCP transport
+- `docs` - architecture and implementation docs
 
-V21 is complete. Follow `docs/v21.md`, `docs/v21-implementation-dag.md`, and
-`docs/v21-i-gate.md` as its binding exact-result, interchange, compatibility,
-performance, and non-goal records. V21 resolves every completed active body row
-through one current exact-body pipeline and adds browser-owned selected,
-ordered multi-body, and all-body named AP242 STEP export. Exact artifacts are
-derived. Do not persist them outside V21.1's bounded validated derived-only
-OPFS cache, return file bytes through agents or MCP, widen a completed modeling
-matrix, or add a schema, `.wcad` version, workspace package, production
-dependency, export framework, or approval mode without an explicitly approved
-later milestone.
-
-V21.1 is complete. Follow `docs/v21.1.md`,
-`docs/v21.1-implementation-dag.md`, and `docs/v21.1-g-gate.md` as its binding
-universal downstream-body, derived-cache, portability recovery, ready-subset,
-agent export, compatibility, performance, and non-goal records. V21.1 adds no
-new hole family: totality applies only to the existing circular blind or
-through-all hole across all exact-ready target families. The exact cache is
-derived and cannot replace checkpoint payloads; matching `.wcad` recovery is
-atomic; strict Export-all remains; agent downloads remain browser-owned and
-return no bytes or paths; approval modes remain exactly `manualApproval` and
-`approveAll`. Do not add assemblies, drawings, direct modeling, parametric STEP
-reconstruction, format breadth, raw agent file authority, a schema, `.wcad`
-version, workspace package, or production dependency without an explicitly
-approved later milestone.
-
-## Core Architectural Rules
+## Architecture rules
 
 1. The command protocol is the center of the system.
-2. Human UI, scripts, tests, and AI/MCP connectors must all use the same command layer.
-3. The document model is authoritative. Rendered meshes are derived views/caches.
+2. Human UI, scripts, tests, and AI/MCP connectors must all use the same
+   command layer.
+3. The document model is authoritative. Rendered meshes are derived
+   views/caches.
 4. Do not couple the React UI directly to geometry internals.
-5. Keep renderer, command engine, protocol, storage, and WASM geometry boundaries separate.
-6. Do not expand OCCT/WASM, MCP, OPFS, STEP import/export, WebGPU, assemblies, hosted collaboration, or native storage beyond the requested release tranche.
+5. Keep renderer, command engine, protocol, storage, and WASM geometry
+   boundaries separate.
+6. Do not expand OCCT/WASM, MCP, OPFS, STEP import/export, WebGPU, assemblies,
+   hosted collaboration, or native storage beyond the requested release
+   tranche.
 7. Prefer small, testable packages over one large app.
 8. Every implemented command must have tests.
 9. Every command should produce a structured semantic diff.
 10. Do not add production dependencies without explaining why.
 
-## Expected Repo Shape
-
-The repo has grown beyond the initial four-package foundation. Keep this shape
-unless the user instructs otherwise:
-
-- `apps/web` — browser UI
-- `packages/cad-protocol` — command schemas and shared types
-- `packages/cad-core` — document model, transactions, undo/redo
-- `packages/renderer` — rendering abstraction and simple viewport implementation
-- `packages/renderer-mesh-bridge` — derived mesh adapter for the renderer
-- `packages/geometry-kernel` — typed geometry facade
-- `packages/geometry-worker` — async geometry worker boundary
-- `packages/occt-wasm` — isolated OCCT/WASM integration
-- `packages/sketch-solver` — pure TypeScript 2D sketch solver
-- `packages/agent-adapter` — structured CADOps adapter for external callers
-- `packages/mcp-adapter` — MCP tool wrapper over the agent adapter
-- `packages/mcp-stdio-server` — local stdio JSON-RPC MCP transport
-- `docs` — architecture and implementation docs
-
-## Engineering Preferences
-
-- Use TypeScript.
-- Prefer pnpm workspaces.
-- Prefer Vite for the web app.
-- Prefer Vitest for unit tests.
-- Keep public APIs typed and documented.
-- Keep package boundaries clean.
-- Avoid premature optimization.
-- Avoid implementing future milestones early.
-
-## Definition of Done
-
-A task is done only when:
-
-1. The requested milestone or feature is implemented.
-2. Relevant tests are added.
-3. Tests pass.
-4. The code is typed.
-5. The implementation follows the architecture docs.
-6. The final response explains what changed, how to run it, and any known limitations.
-
-## Planning Rule
-
-For large or ambiguous tasks, first produce a plan and wait for approval unless the user explicitly asks for implementation immediately.
+Release history, compatibility matrices, and named smoke commands live in
+[`docs/implementation-plan.md`](docs/implementation-plan.md) and the
+per-release records it lists. They are not the daily loop.

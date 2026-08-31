@@ -138,9 +138,12 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 ## Documentation
 
+- `AGENTS.md` - agent entry: architecture, current user goal, how we work.
+- `docs/how-we-work.md` - development loop: user goal, slices, verification.
+- `docs/v22.md` - current user goal (V22 precision interaction and recovery).
 - `docs/architecture.md` - long-term architecture.
-- `docs/implementation-plan.md` - current implementation source of truth and
-  roadmap, including condensed historical release records.
+- `docs/implementation-plan.md` - historical implementation record and
+  condensed release records.
 - `docs/v12.md` - completed V12 stable boolean topology and result references
   release record.
 - `docs/v13.md` - completed V13 general topology identity and B-rep checkpoint
