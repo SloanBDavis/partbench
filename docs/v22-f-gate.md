@@ -7,8 +7,8 @@ binding scope remains in [`docs/v22.md`](./v22.md), and the frozen matrices
 and landing order remain in
 [`docs/v22-implementation-dag.md`](./v22-implementation-dag.md). Former
 production-browser gauntlet, gzip-ceiling, 512-annotation theater, p50/p95,
-STEP/export-browser, and H-duplicated accessibility acceptance items were
-removed from the plan. They are not remaining Must items for Gates G/H/I.
+STEP/export-browser, and duplicated accessibility acceptance items were
+removed from the plan. They are not remaining Must items.
 
 ## Outcome
 
@@ -46,7 +46,7 @@ Deleted as dumb Gate F requirements:
   p50/p95 as F closers;
 - STEP/export browser workflows to prove measurements do not leak into
   source;
-- leftover accessibility proof that duplicates Gate H.
+- leftover duplicated accessibility proof.
 
 Kept:
 
@@ -88,7 +88,7 @@ pnpm --filter @web-cad/renderer typecheck
 
 ## Scope
 
-Gates G–I remain pending for their product work: recovery, audit, and
-release reconciliation. Gate F does not start Slice G.
+Gate G subsequently passed, Gate H was deleted as a closer, and Gate I closed
+the user goal and records. Gate F does not reopen.
 
 Gate F is closed.
