@@ -29,6 +29,7 @@ import type {
   CadBatch,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
+  CadCurrentTopologySelectionEvidence,
   CadFeatureEditProposal,
   CadGeneratedEntityKind,
   CadReferenceHealthTarget,
@@ -1688,7 +1689,7 @@ export class CadMcpServer {
     if (!isSelectionReferenceCandidatesToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.selection_reference_candidates expects arguments shaped as { selection: { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' | 'axis' } | { type: 'namedReference', name: string } | { type: 'topologyAnchor', anchorId: string }, requiredOperation?: string, topologyMatchResults?: object[] }."
+        "cad.selection_reference_candidates expects exactly one of selection or currentTopologyEvidence, plus optional requiredOperation and topologyMatchResults."
       );
     }
 
@@ -1700,7 +1701,12 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "selection.referenceCandidates",
-            selection: request.arguments.selection,
+            ...(request.arguments.selection
+              ? { selection: request.arguments.selection }
+              : {
+                  currentTopologyEvidence:
+                    request.arguments.currentTopologyEvidence
+                }),
             ...(request.arguments.requiredOperation
               ? { requiredOperation: request.arguments.requiredOperation }
               : {}),
@@ -3887,7 +3893,10 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["selection"],
+      oneOf: [
+        { required: ["selection"] },
+        { required: ["currentTopologyEvidence"] }
+      ],
       properties: {
         selection: {
           oneOf: [
@@ -3951,6 +3960,29 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
             }
           ]
         },
+        currentTopologyEvidence: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "bodyId",
+            "bodySourceIdentitySignature",
+            "topologySignature",
+            "entityKind",
+            "localId",
+            "entitySignature"
+          ],
+          properties: {
+            bodyId: { type: "string" },
+            bodySourceIdentitySignature: { type: "string" },
+            topologySignature: { type: "string" },
+            entityKind: {
+              type: "string",
+              enum: ["face", "edge", "vertex"]
+            },
+            localId: { type: "string" },
+            entitySignature: { type: "string" }
+          }
+        },
         requiredOperation: {
           type: "string",
           enum: [
@@ -3958,6 +3990,10 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
             "feature.attachSketchPlane",
             "feature.chamfer",
             "feature.fillet",
+            "feature.shell",
+            "feature.mirrorPlane",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -4408,13 +4444,19 @@ function isResolveNamedReferenceToolArguments(
 }
 
 function isSelectionReferenceCandidatesToolArguments(value: unknown): value is {
-  readonly selection: CadSelectionReferenceInput;
+  readonly selection?: CadSelectionReferenceInput;
+  readonly currentTopologyEvidence?: CadCurrentTopologySelectionEvidence;
   readonly requiredOperation?: CadSelectionReferenceOperation;
   readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 } {
   return (
     isRecord(value) &&
-    isCadSelectionReferenceInput(value.selection) &&
+    ((isCadSelectionReferenceInput(value.selection) &&
+      value.currentTopologyEvidence === undefined) ||
+      (value.selection === undefined &&
+        isCadCurrentTopologySelectionEvidence(
+          value.currentTopologyEvidence
+        ))) &&
     isOptionalTopologyMatchResults(value.topologyMatchResults) &&
     (value.requiredOperation === undefined ||
       isCadSelectionReferenceOperation(value.requiredOperation))
@@ -4599,6 +4641,37 @@ function isSketchConstraintCreateEditProposal(
   return false;
 }
 
+function isCadCurrentTopologySelectionEvidence(
+  value: unknown
+): value is CadCurrentTopologySelectionEvidence {
+  const fields = [
+    "bodyId",
+    "bodySourceIdentitySignature",
+    "topologySignature",
+    "entityKind",
+    "localId",
+    "entitySignature"
+  ] as const;
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 6 &&
+    fields.every((field) => field in value) &&
+    typeof value.bodyId === "string" &&
+    value.bodyId !== "" &&
+    typeof value.bodySourceIdentitySignature === "string" &&
+    value.bodySourceIdentitySignature !== "" &&
+    typeof value.topologySignature === "string" &&
+    value.topologySignature !== "" &&
+    (value.entityKind === "face" ||
+      value.entityKind === "edge" ||
+      value.entityKind === "vertex") &&
+    typeof value.localId === "string" &&
+    value.localId !== "" &&
+    typeof value.entitySignature === "string" &&
+    value.entitySignature !== ""
+  );
+}
+
 function isCadSelectionReferenceInput(
   value: unknown
 ): value is CadSelectionReferenceInput {
@@ -4668,6 +4741,10 @@ function isCadSelectionReferenceOperation(
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
+    value === "feature.shell" ||
+    value === "feature.mirrorPlane" ||
+    value === "feature.linearPatternDirection" ||
+    value === "feature.circularPatternAxis" ||
     value === "feature.measureReference" ||
     value === "feature.selectReference"
   );
