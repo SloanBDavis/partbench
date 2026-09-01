@@ -122,6 +122,7 @@ function createOperationSummaries(
       op.op === "feature.linearPattern" ||
       op.op === "feature.circularPattern" ||
       op.op === "feature.mirror" ||
+      op.op === "feature.combine" ||
       op.op === "feature.shell"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
@@ -800,6 +801,19 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.combine": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create combine feature ${featureId ?? "with generated ID"} ${op.mode} of ${op.targetBodyId} and ${op.toolBodyId}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId
+        });
+      }
+
       case "feature.shell": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -1122,6 +1136,7 @@ function getFeatureRefSketchEntityId(
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
+    feature.kind === "combine" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
@@ -1140,6 +1155,7 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
+    feature.kind === "combine" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

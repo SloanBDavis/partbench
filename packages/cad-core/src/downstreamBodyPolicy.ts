@@ -204,6 +204,8 @@ function getDirectBodyDependency(
     case "circularPatternFeature":
     case "mirrorFeature":
       return source.seedBodyId;
+    case "combineFeature":
+      return source.targetBodyId;
     default: {
       const exhaustive: never = source;
       return exhaustive;

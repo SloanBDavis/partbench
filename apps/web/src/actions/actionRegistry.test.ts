@@ -224,6 +224,7 @@ describe("V18 command search", () => {
       "solid.fillet",
       "solid.chamfer",
       "solid.shell",
+      "solid.combine",
       "sketch.trim",
       "sketch.extend",
       "sketch.split",

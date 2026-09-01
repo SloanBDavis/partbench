@@ -1514,6 +1514,7 @@ function createDeferredFields(
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
+    feature.kind === "combine" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

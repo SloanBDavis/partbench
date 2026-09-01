@@ -884,6 +884,7 @@ const FEATURE_KIND_BY_BODY_SOURCE_TYPE = {
   linearPatternFeature: "linearPattern",
   circularPatternFeature: "circularPattern",
   mirrorFeature: "mirror",
+  combineFeature: "combine",
   shellFeature: "shell",
   sweepFeature: "sweep",
   loftFeature: "loft",
@@ -1587,6 +1588,7 @@ function getBodyExportSourceKind(
     case "linearPatternFeature":
     case "circularPatternFeature":
     case "mirrorFeature":
+    case "combineFeature":
     case "loftFeature":
       return "unresolvedSource";
     case "sweepFeature":

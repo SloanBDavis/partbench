@@ -862,6 +862,7 @@ describe("V21 exact body source matrix", () => {
     "linearPatternFeature",
     "circularPatternFeature",
     "mirrorFeature",
+    "combineFeature",
     "shellFeature",
     "sweepFeature",
     "loftFeature",
@@ -878,6 +879,7 @@ describe("V21 exact body source matrix", () => {
     "linearPattern",
     "circularPattern",
     "mirror",
+    "combine",
     "shell",
     "sweep",
     "loft"
@@ -892,9 +894,9 @@ describe("V21 exact body source matrix", () => {
     for (const policy of Object.values(V21_EXACT_BODY_SOURCE_POLICY)) {
       expect(policy.cases.length).toBeGreaterThan(0);
     }
-    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(21);
+    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(22);
     expect(new Set(V21_EXACT_BODY_MATRIX_ROWS.map(({ id }) => id)).size).toBe(
-      21
+      22
     );
     const activeRows = V21_EXACT_BODY_MATRIX_ROWS.filter(
       ({ expectedArtifact }) => expectedArtifact === "required"
@@ -964,6 +966,51 @@ describe("V21 exact body source matrix", () => {
     for (const fixture of listV15ReleaseSampleFixtures()) {
       record(buildV15SampleEngine(fixture));
     }
+
+    const combineEngine = new CadEngine();
+    combineEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_a", name: "A", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_a",
+        id: "circle_a",
+        center: [0, 0],
+        radius: 10
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_a",
+        bodyId: "body_a",
+        sketchId: "sketch_a",
+        entityId: "circle_a",
+        depth: 10
+      },
+      { op: "sketch.create", id: "sketch_b", name: "B", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_b",
+        id: "circle_b",
+        center: [0, 0],
+        radius: 6
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_b",
+        bodyId: "body_b",
+        sketchId: "sketch_b",
+        entityId: "circle_b",
+        depth: 10
+      },
+      {
+        op: "feature.combine",
+        id: "feat_union",
+        bodyId: "body_union",
+        mode: "union",
+        targetBodyId: "body_a",
+        toolBodyId: "body_b"
+      }
+    ]);
+    record(combineEngine);
 
     expect(covered).toEqual(new Set(sourceTypes));
   });

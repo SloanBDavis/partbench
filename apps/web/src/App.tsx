@@ -3865,6 +3865,29 @@ export function App() {
     exactDownstreamModelingState?.patternSeedBodyChoices ?? EMPTY_SOLID_CHOICES;
   const solidShellTargetBodyChoices =
     exactDownstreamModelingState?.shellTargetBodyChoices ?? EMPTY_SOLID_CHOICES;
+  const solidCombineBodyChoices = useMemo<readonly SolidChoice<string>[]>(() => {
+    const featuresByBodyId = new Map(
+      projectStructure.features.map((feature) => [feature.bodyId, feature])
+    );
+    return projectStructure.bodies.flatMap((body) => {
+      if (body.consumedByFeatureId) return [];
+      const feature = featuresByBodyId.get(body.id);
+      if (
+        !feature ||
+        (feature.kind !== "extrude" && feature.kind !== "combine")
+      ) {
+        return [];
+      }
+      return [
+        {
+          key: body.id,
+          value: body.id,
+          label: body.name ?? feature.name ?? body.id,
+          kind: "combine solid"
+        }
+      ];
+    });
+  }, [projectStructure.bodies, projectStructure.features]);
   const solidAddTargetChoices = useMemo<readonly SolidChoice<string>[]>(
     () =>
       createAddTargetBodyOptions(
@@ -4353,6 +4376,17 @@ export function App() {
     solidShellTargetBodyChoices.find(
       (choice) => choice.value === selectedBody?.id && !choice.disabled
     )?.value ?? "";
+  const selectedCombineTargetBodyId =
+    solidCombineBodyChoices.find(
+      (choice) => choice.value === selectedBody?.id && !choice.disabled
+    )?.value ??
+    solidCombineBodyChoices[0]?.value ??
+    "";
+  const selectedCombineToolBodyId =
+    solidCombineBodyChoices.find(
+      (choice) =>
+        choice.value !== selectedCombineTargetBodyId && !choice.disabled
+    )?.value ?? "";
   const selectedHoleTargetChoice = solidHoleTargetChoices.find(
     (choice) => choice.value === selectedBody?.id
   );
@@ -4375,7 +4409,8 @@ export function App() {
         ...(selectedBody
           ? {
               targetBody: selectedBody.id,
-              seedBody: selectedBody.id
+              seedBody: selectedBody.id,
+              toolBody: selectedBody.id
             }
           : {}),
         ...(selectedProfileChoice
@@ -5239,6 +5274,30 @@ export function App() {
           : "Select a supported seed body."
       } as SolidEditorRequest;
     }
+    if (actionId === "solid.combine") {
+      return {
+        key,
+        kind: "combine",
+        title: "Combine Solids",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          mode: "union" as const,
+          targetBodyId: selectedCombineTargetBodyId,
+          toolBodyId: selectedCombineToolBodyId
+        },
+        choices: {
+          targetBodies: solidCombineBodyChoices,
+          toolBodies: solidCombineBodyChoices
+        },
+        blockedReason:
+          solidCombineBodyChoices.length >= 2
+            ? undefined
+            : "Select two completed exact solids."
+      } as SolidEditorRequest;
+    }
     return undefined;
   }, [
     allSolidBodyChoices,
@@ -5258,6 +5317,8 @@ export function App() {
     selectedRotationAxisChoice,
     selectedSeedBodyId,
     selectedShellTargetBodyId,
+    selectedCombineTargetBodyId,
+    selectedCombineToolBodyId,
     selectedShellFaceChoice,
     selectedSolidBodyId,
     sketches.length,
@@ -5270,6 +5331,7 @@ export function App() {
     solidLinearDirectionChoices,
     solidRotationAxisChoices,
     solidSeedBodyChoices,
+    solidCombineBodyChoices,
     solidShellTargetBodyChoices,
     solidShellFaceChoices,
     regionCandidates,
@@ -7872,7 +7934,8 @@ export function App() {
       feature.kind === "revolve" ||
       feature.kind === "hole" ||
       feature.kind === "chamfer" ||
-      feature.kind === "fillet"
+      feature.kind === "fillet" ||
+      feature.kind === "combine"
     ) {
       return feature.targetBodyId;
     }
@@ -7930,6 +7993,8 @@ export function App() {
         return "circular pattern";
       case "mirror":
         return "mirror";
+      case "combine":
+        return "combine";
       case "shell":
         return "shell";
       case "sweep":
@@ -9604,6 +9669,11 @@ export function App() {
         dispatchWorkbench({ type: "set-selection-filter", filter: "body" });
         setCommandNotice("Choose a seed body.");
         return;
+      case "solid.combine":
+        navigateToMode("solid");
+        dispatchWorkbench({ type: "set-selection-filter", filter: "body" });
+        setCommandNotice("Choose two completed exact solids, then apply.");
+        return;
       case "solid.measure":
       case "inspect.measure":
         navigateToMode("inspect");
@@ -10107,6 +10177,10 @@ export function App() {
       "solid.mirror": selectedSeedBodyId
         ? ready
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidMirror),
+      "solid.combine":
+        solidCombineBodyChoices.length >= 2
+          ? ready
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine),
       "solid.edit":
         selectedObject ||
         (selectedFeature && selectedFeature.kind !== "importedBody")
@@ -10222,6 +10296,7 @@ export function App() {
     sketchIntentActionAvailability,
     sketches,
     solidAxisChoices.length,
+    solidCombineBodyChoices.length,
     solidHoleTargetChoices.length,
     solidPathChoices.length,
     solidProfileChoices,

@@ -17,6 +17,7 @@ import type {
   FeatureLinearPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureCombineForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm
@@ -254,6 +255,18 @@ describe("V22 exact feature preview planner", () => {
       exact: true
     },
     {
+      kind: "combine" as const,
+      draft: {
+        id: "feature-created",
+        bodyId: "body-created",
+        name: "",
+        mode: "union" as const,
+        targetBodyId: "body_hub",
+        toolBodyId: "body_step"
+      } satisfies FeatureCombineForm,
+      op: "feature.combine"
+    },
+    {
       kind: "shell" as const,
       draft: {
         id: "feature-created",
@@ -311,6 +324,34 @@ describe("V22 exact feature preview planner", () => {
       expectSupported(result, op, "body-created", exact === true);
     }
   );
+
+  it("submits the same feature.combine batch as the stepped-pulley CADOps case", () => {
+    const draft = {
+      id: "feat_union",
+      bodyId: "body_pulley",
+      name: "",
+      mode: "union" as const,
+      targetBodyId: "body_hub",
+      toolBodyId: "body_step"
+    } satisfies FeatureCombineForm;
+    const result = planExactFeaturePreview(
+      makeInput("combine", draft, "create")
+    );
+    expect(result).toMatchObject({
+      status: "supported",
+      requiresExactDownstreamCommitPreflight: false,
+      ops: [
+        {
+          op: "feature.combine",
+          id: "feat_union",
+          bodyId: "body_pulley",
+          mode: "union",
+          targetBodyId: "body_hub",
+          toolBodyId: "body_step"
+        }
+      ]
+    });
+  });
 
   it.each([
     {

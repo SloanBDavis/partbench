@@ -2974,6 +2974,19 @@ function createOperationReview(
         targetBodyId: op.seedBodyId
       };
 
+    case "feature.combine":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create combine feature ${op.id ?? "with generated ID"} ${op.mode} of ${op.targetBodyId} and ${op.toolBodyId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId
+      };
+
     case "feature.shell":
       return {
         ...operationReviewBase(
@@ -6049,6 +6062,17 @@ function isCadOp(value: unknown): value is CadOp {
       (value.plane === undefined || isMirrorPlaneRefShape(value.plane)) &&
       (value.mirrorPlane !== undefined || value.plane !== undefined) &&
       typeof value.includeOriginal === "boolean"
+    );
+  }
+
+  if (value.op === "feature.combine") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      (value.mode === "union" || value.mode === "subtract") &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.toolBodyId === "string"
     );
   }
 

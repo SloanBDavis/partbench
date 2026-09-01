@@ -123,6 +123,7 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesLinearPatternFeature
   | GeneratedReferencesCircularPatternFeature
   | GeneratedReferencesMirrorFeature
+  | GeneratedReferencesCombineFeature
   | GeneratedReferencesShellFeature
   | GeneratedReferencesSweepFeature
   | GeneratedReferencesLoftFeature;
@@ -189,6 +190,14 @@ export interface GeneratedReferencesMirrorFeature {
   readonly id: FeatureId;
   readonly kind: "mirror";
   readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesCombineFeature {
+  readonly id: FeatureId;
+  readonly kind: "combine";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly toolBodyId: BodyId;
 }
 
 export interface GeneratedReferencesShellFeature {

@@ -77,6 +77,7 @@ import type {
   LinearPatternFeature,
   CircularPatternFeature,
   MirrorFeature,
+  CombineFeature,
   ShellFeature,
   SweepFeature,
   LoftFeature
@@ -144,6 +145,7 @@ export type ProjectHealthFeature =
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
+  | CombineFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature;
@@ -2111,6 +2113,7 @@ function getProjectHealthFeaturePrimaryEntityRef(
     | LinearPatternFeature
     | CircularPatternFeature
     | MirrorFeature
+    | CombineFeature
     | ShellFeature
     | SweepFeature
     | LoftFeature
@@ -2138,6 +2141,7 @@ function hasSketchEntitySource(
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
+  | CombineFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -2148,6 +2152,7 @@ function hasSketchEntitySource(
     feature.kind !== "importedBody" &&
     feature.kind !== "linearPattern" &&
     feature.kind !== "mirror" &&
+    feature.kind !== "combine" &&
     feature.kind !== "shell" &&
     feature.kind !== "sweep" &&
     feature.kind !== "loft" &&
@@ -2165,7 +2170,8 @@ function isTargetConsumingProjectHealthFeature(
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
-    feature.kind === "shell"
+    feature.kind === "shell" ||
+    feature.kind === "combine"
   );
 }
 
@@ -2627,6 +2633,10 @@ function describeFeatureForHealth(
 
   if (feature.kind === "mirror") {
     return "mirror result";
+  }
+
+  if (feature.kind === "combine") {
+    return `combine ${feature.mode} result`;
   }
 
   if (feature.kind === "shell") {

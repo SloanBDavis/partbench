@@ -121,6 +121,46 @@ function promotionOps(engine, scenario, testCase) {
   return [checkpoint, anchor, apply.consuming];
 }
 
+function runCadopsScenario(name, scenario) {
+  const engine = new CadEngine();
+  if (Array.isArray(scenario.seed) && scenario.seed.length > 0) {
+    engine.applyBatch(scenario.seed);
+  }
+
+  for (const step of scenario.steps) {
+    const result = engine.applyBatch(step.ops);
+    const appliedOps = result.transaction.ops.map((op) => op.op);
+    if (step.expect?.ops) {
+      assertMatch(
+        appliedOps,
+        step.expect.ops,
+        `${name} ${step.id} ops`
+      );
+    }
+    if (step.expect?.diff) {
+      assertMatch(
+        result.transaction.diff,
+        step.expect.diff,
+        `${name} ${step.id} diff`
+      );
+    }
+    for (const queryCase of step.queries ?? []) {
+      const response = engine.executeQuery({
+        version: "cadops.v1",
+        query: queryCase.query
+      });
+      assertPublicJson(response, `${name} ${step.id} query`);
+      if (queryCase.expect) {
+        assertMatch(
+          response,
+          queryCase.expect,
+          `${name} ${step.id} query`
+        );
+      }
+    }
+  }
+}
+
 function runCase(scenario, testCase) {
   const engine = new CadEngine();
   engine.applyBatch(scenario.seed);
@@ -181,6 +221,19 @@ let passed = 0;
 let total = 0;
 
 for (const { name, scenario } of loaded) {
+  if (Array.isArray(scenario.steps)) {
+    total += 1;
+    try {
+      runCadopsScenario(name, scenario);
+      console.log(`pass ${name} ${scenario.id ?? name}`);
+      passed += 1;
+    } catch (error) {
+      console.error(`fail ${name} ${scenario.id ?? name}`);
+      console.error(error instanceof Error ? error.message : error);
+    }
+    continue;
+  }
+
   for (const testCase of scenario.cases) {
     total += 1;
     try {

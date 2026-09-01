@@ -1384,6 +1384,83 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews feature.combine batches from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_combine",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            { op: "sketch.create", id: "sketch_hub", name: "Hub", plane: "XY" },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_hub",
+              id: "circle_hub",
+              center: [0, 0],
+              radius: 20
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_hub",
+              bodyId: "body_hub",
+              sketchId: "sketch_hub",
+              entityId: "circle_hub",
+              depth: 10
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_step",
+              name: "Step",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_step",
+              id: "circle_step",
+              center: [0, 0],
+              radius: 12
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_step",
+              bodyId: "body_step",
+              sketchId: "sketch_step",
+              entityId: "circle_step",
+              depth: 8
+            },
+            {
+              op: "feature.combine",
+              id: "feat_union",
+              bodyId: "body_pulley",
+              mode: "union",
+              targetBodyId: "body_hub",
+              toolBodyId: "body_step"
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.combine",
+          intent: "create",
+          featureId: "feat_union",
+          bodyId: "body_pulley",
+          targetBodyId: "body_hub",
+          label: expect.stringContaining("union")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews shell feature batches from external JSON callers (Slice G pass-through)", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

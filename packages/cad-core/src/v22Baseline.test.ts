@@ -87,6 +87,7 @@ const SELECTION = {
     V.circularPatternFeature
   ),
   mirrorFeature: selection(S.mirrorFeature.cases, V.mirrorFeature),
+  combineFeature: selection(S.combineFeature.cases),
   shellFeature: selection(S.shellFeature.cases),
   sweepFeature: selection(S.sweepFeature.cases),
   loftFeature: selection(S.loftFeature.cases),
@@ -238,6 +239,7 @@ const PREVIEW_GRIPS = {
   linearPattern: preview(MUST, MUST, ["spacing"], ["count"]),
   circularPattern: preview(MUST, MUST, ["totalAngle"], ["count"]),
   mirror: preview(MUST, MUST, ["planeOffset"]),
+  combine: preview(MUST, NO),
   shell: preview(MUST, MUST, ["wallThickness"]),
   sweep: preview(MUST, MUST),
   loft: preview(MUST, MUST)
@@ -343,7 +345,7 @@ const INTERACTION = [
 ] as const;
 
 describe("V22 Gate A baseline fixtures", () => {
-  it("uses the current 13-source matrix and V21.1 fixture cases", () => {
+  it("uses the current source matrix and V21.1 fixture cases", () => {
     const sources = Object.keys(CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE);
     expect(Object.keys(SELECTION)).toEqual(sources);
     expect(Object.keys(V21_EXACT_BODY_SOURCE_POLICY)).toEqual(sources);
