@@ -19,11 +19,11 @@ The current user goal is the Product Goal in the doc linked from `AGENTS.md`.
 Today that is V23 in [`docs/v23.md`](./v23.md): a current-exact face or edge
 is a real command target for every completed collector that already accepts
 that kind, via the existing V13 checkpoint/anchor path. Vertices stay
-inspect-only. No new modeling family.
+inspect-only. No new modeling family. V23 is complete (slices A–E).
 
-Do not change V23 product scope, matrices, non-goals, or architecture
-constraints. When a later release becomes current, update the link in
-`AGENTS.md`. Do not paste a changelog into `AGENTS.md`.
+Do not replay V23 gates or V7–V22 gauntlets. Do not invent V24. When a later
+release becomes current, `AGENTS.md` will change; do not invent a
+next-release link. Do not paste a changelog into `AGENTS.md`.
 
 ## A slice is a step toward the user goal
 
