@@ -15,8 +15,8 @@ architecture. Do not implement the whole architecture at once.
 A release is one paragraph of what a person can do in the running app when
 the release is done. That paragraph is the user goal.
 
-The current user goal is the Product Goal in [`docs/v23.md`](./v23.md).
-V22 and V23 are complete. There is no next release. Do not invent V24.
+The current user goal is the Product Goal in [`docs/v24.md`](./v24.md).
+V22 and V23 are complete. Do not reopen them. Do not invent V25.
 
 Do not replay V23 gates or V7–V22 gauntlets. Do not paste a changelog into
 `AGENTS.md`.
@@ -32,7 +32,7 @@ Proof is a `scenarios/` CADOps scenario and its semantic diffs, not
 Playwright. `pnpm verify` runs typecheck plus the scenarios runner.
 
 Historical named smokes live under the `legacy:` prefix. They are
-compatibility history. They are not the daily loop. Never rerun V7–V22
+compatibility history. They are not the daily loop. Never rerun V7–V23
 gauntlets.
 
 Per-save: focused tests and typecheck of the packages you touched.

@@ -9,8 +9,8 @@ picks, and previews are derived display.
 - How we work: [docs/how-we-work.md](docs/how-we-work.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Current user goal: [docs/v23.md](docs/v23.md). V23 is complete. There is
-  no next release. Do not invent V24.
+- Current user goal: [docs/v24.md](docs/v24.md). V22 and V23 are complete.
+  Do not reopen them. Do not invent V25.
 
 Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md,
 or per-gate markdown unless the current user-goal doc names them.
@@ -32,12 +32,15 @@ pnpm dev
 - pnpm test
 - pnpm typecheck
 - pnpm lint
-- pnpm smoke:v23-promotion-workflow — current named closer
+- pnpm smoke:v23-promotion-workflow — completed V23 closer
 - pnpm verify — typecheck plus CADOps scenarios
 
 Per-save: focused tests and typecheck of the packages you touched. pnpm verify
 is typecheck plus the scenarios/ CADOps runner. It does not rerun V7-V22 smokes.
-Never rerun V7-V22 gauntlets.
+Never rerun V7-V23 gauntlets.
+
+The V24 named closer is in [docs/v24.md](docs/v24.md). Add that script when
+the three proof-part scenarios exist.
 
 ## Slice close
 
@@ -58,4 +61,3 @@ visible via a scenarios/ CADOps scenario (and pnpm dev if the slice is UI).
 - packages/agent-adapter - structured CADOps adapter for external callers
 - packages/mcp-adapter - MCP tool wrapper over the agent adapter
 - packages/mcp-stdio-server - local stdio JSON-RPC MCP transport
-
