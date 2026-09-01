@@ -383,7 +383,7 @@ describe("V22 Gate A baseline fixtures", () => {
       )
     ).toBe(true);
     expect(new Set(COLLECTORS.flatMap(([, reference]) => reference)).size).toBe(
-      11
+      12
     );
     expect(HANDOFF.outcomes).toHaveLength(11);
     expect(HANDOFF.promotable.kinds).toEqual(["body", "face", "edge"]);
