@@ -4025,7 +4025,7 @@ export type V21ExactBodyConsumer =
 
 export interface V21ExactBodySourcePolicy {
   readonly featureKind: CadFeatureSummary["kind"];
-  readonly completedRelease: "V12-V14" | "V15" | "V16" | "V17" | "V19" | "V24";
+  readonly completedRelease: "V12-V14" | "V15" | "V16" | "V17" | "V19" | "V24" | "V25";
   readonly completedConsumers: readonly V21ExactBodyConsumer[];
   readonly shapePolicy: "singleSolid" | "singleShapeOneOrMoreSolids";
   readonly cases: readonly string[];
@@ -4142,6 +4142,13 @@ export const V21_EXACT_BODY_SOURCE_POLICY = {
     shapePolicy: "singleSolid",
     cases: ["union-two-extrudes", "subtract-two-extrudes"]
   },
+  offsetFeature: {
+    featureKind: "offset",
+    completedRelease: "V25",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["sketch-profile", "generated-face"]
+  },
   shellFeature: {
     featureKind: "shell",
     completedRelease: "V16",
@@ -4202,6 +4209,7 @@ export const V21_EXACT_FEATURE_FAMILY_SOURCE = {
   circularPattern: "circularPatternFeature",
   mirror: "mirrorFeature",
   combine: "combineFeature",
+  offset: "offsetFeature",
   shell: "shellFeature",
   sweep: "sweepFeature",
   loft: "loftFeature"
@@ -4266,6 +4274,7 @@ export type V21ExactBodyMatrixRowId =
   | "circular-pattern"
   | "mirror"
   | "combine"
+  | "offset"
   | "shell"
   | "imported-standalone-compound"
   | "imported-downstream"
@@ -4400,6 +4409,13 @@ export const V21_EXACT_BODY_MATRIX_ROWS = [
     id: "combine",
     sourceTypes: ["combineFeature"],
     cases: V21_EXACT_BODY_SOURCE_POLICY.combineFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "offset",
+    sourceTypes: ["offsetFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.offsetFeature.cases,
     expectedSolidCount: "one"
   },
   {

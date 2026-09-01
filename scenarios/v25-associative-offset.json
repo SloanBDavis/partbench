@@ -1,0 +1,225 @@
+{
+  "id": "v25-associative-offset",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_plate",
+      "name": "Plate",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_plate",
+      "id": "rect_plate",
+      "center": [0, 0],
+      "width": 20,
+      "height": 12
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_block",
+      "name": "Block",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block",
+      "id": "rect_block",
+      "center": [40, 0],
+      "width": 10,
+      "height": 10
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block",
+      "bodyId": "body_block",
+      "sketchId": "sketch_block",
+      "entityId": "rect_block",
+      "depth": 8
+    }
+  ],
+  "steps": [
+    {
+      "id": "offset-sketch-profile",
+      "ops": [
+        {
+          "op": "feature.offset",
+          "id": "feat_profile_offset",
+          "bodyId": "body_profile_offset",
+          "source": {
+            "kind": "sketchProfile",
+            "profile": {
+              "kind": "entity",
+              "sketchId": "sketch_plate",
+              "entityId": "rect_plate"
+            }
+          },
+          "distance": 4,
+          "side": "outward"
+        }
+      ],
+      "expect": {
+        "ops": ["feature.offset"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_profile_offset",
+                "kind": "offset",
+                "source": {
+                  "kind": "sketchProfile",
+                  "profile": {
+                    "kind": "entity",
+                    "sketchId": "sketch_plate",
+                    "entityId": "rect_plate"
+                  }
+                },
+                "distance": 4,
+                "side": "outward",
+                "bodyId": "body_profile_offset"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_profile_offset", "kind": "solid" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "rebuild-profile-distance",
+      "ops": [
+        {
+          "op": "feature.updateOffset",
+          "id": "feat_profile_offset",
+          "distance": 6
+        }
+      ],
+      "expect": {
+        "ops": ["feature.updateOffset"],
+        "diff": {
+          "features": {
+            "modified": [
+              {
+                "id": "feat_profile_offset",
+                "kind": "offset",
+                "distance": 6,
+                "side": "outward",
+                "bodyId": "body_profile_offset"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "offset-face",
+      "ops": [
+        {
+          "op": "feature.offset",
+          "id": "feat_face_offset",
+          "bodyId": "body_face_offset",
+          "source": {
+            "kind": "face",
+            "face": {
+              "kind": "generatedFace",
+              "bodyId": "body_block",
+              "stableId": "generated:face:body_block:endCap"
+            }
+          },
+          "distance": 2,
+          "side": "outward"
+        }
+      ],
+      "expect": {
+        "ops": ["feature.offset"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_face_offset",
+                "kind": "offset",
+                "source": {
+                  "kind": "face",
+                  "face": {
+                    "kind": "generatedFace",
+                    "bodyId": "body_block",
+                    "stableId": "generated:face:body_block:endCap"
+                  }
+                },
+                "distance": 2,
+                "side": "outward",
+                "targetBodyId": "body_block",
+                "bodyId": "body_face_offset"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_face_offset", "kind": "solid" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "rebuild-face-side",
+      "ops": [
+        {
+          "op": "feature.updateOffset",
+          "id": "feat_face_offset",
+          "side": "inward"
+        }
+      ],
+      "expect": {
+        "ops": ["feature.updateOffset"],
+        "diff": {
+          "features": {
+            "modified": [
+              {
+                "id": "feat_face_offset",
+                "kind": "offset",
+                "distance": 2,
+                "side": "inward"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "features": [
+              { "id": "feat_block", "kind": "extrude" },
+              {
+                "id": "feat_profile_offset",
+                "kind": "offset",
+                "distance": 6,
+                "sourceKind": "sketchProfile"
+              },
+              {
+                "id": "feat_face_offset",
+                "kind": "offset",
+                "targetBodyId": "body_block",
+                "sourceKind": "face"
+              }
+            ],
+            "bodies": [
+              {
+                "id": "body_block",
+                "consumedByFeatureId": "feat_face_offset"
+              },
+              {
+                "id": "body_profile_offset",
+                "featureId": "feat_profile_offset",
+                "source": { "type": "offsetFeature", "distance": 6 }
+              },
+              {
+                "id": "body_face_offset",
+                "featureId": "feat_face_offset"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

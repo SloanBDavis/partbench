@@ -276,6 +276,7 @@ function createGenericTopologyAnchorCommandOperations(
       return [
         "feature.attachSketchPlane",
         "feature.shell",
+        "feature.offset",
         "feature.mirrorPlane"
       ];
     }

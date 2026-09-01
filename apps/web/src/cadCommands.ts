@@ -25,6 +25,11 @@ import type {
   FeatureMirrorOp,
   FeatureCombineOp,
   FeatureCombineMode,
+  FeatureOffsetFaceRef,
+  FeatureOffsetOp,
+  FeatureOffsetSide,
+  FeatureOffsetSource,
+  FeatureUpdateOffsetOp,
   DatumAxisCreateOp,
   DatumAxisSourceRef,
   DatumPlaneCreateOp,
@@ -355,6 +360,23 @@ export interface FeatureCombineForm {
   readonly mode: FeatureCombineMode;
   readonly targetBodyId: string;
   readonly toolBodyId: string;
+}
+
+export interface FeatureOffsetForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly sourceKind: FeatureOffsetSource["kind"];
+  readonly profileSketchId: string;
+  readonly profileEntityId: string;
+  readonly face?: FeatureOffsetFaceRef;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+}
+
+export interface FeatureOffsetEdit {
+  readonly distance?: number;
+  readonly side?: FeatureOffsetSide;
 }
 
 export interface FeatureShellForm {
@@ -1598,6 +1620,47 @@ export function buildFeatureCombineOp(
     mode: form.mode,
     targetBodyId: form.targetBodyId,
     toolBodyId: form.toolBodyId
+  };
+}
+
+export function buildFeatureOffsetOp(form: FeatureOffsetForm): FeatureOffsetOp {
+  return {
+    op: "feature.offset",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    source: buildFeatureOffsetSource(form),
+    distance: form.distance,
+    side: form.side
+  };
+}
+
+export function buildFeatureUpdateOffsetOp(
+  id: string,
+  edit: FeatureOffsetEdit
+): FeatureUpdateOffsetOp {
+  return {
+    op: "feature.updateOffset",
+    id,
+    ...(edit.distance !== undefined ? { distance: edit.distance } : {}),
+    ...(edit.side !== undefined ? { side: edit.side } : {})
+  };
+}
+
+function buildFeatureOffsetSource(form: FeatureOffsetForm): FeatureOffsetSource {
+  if (form.sourceKind === "face") {
+    if (!form.face) {
+      throw new Error("feature.offset face source requires a face reference.");
+    }
+    return { kind: "face", face: form.face };
+  }
+  return {
+    kind: "sketchProfile",
+    profile: {
+      kind: "entity",
+      sketchId: form.profileSketchId,
+      entityId: form.profileEntityId
+    }
   };
 }
 

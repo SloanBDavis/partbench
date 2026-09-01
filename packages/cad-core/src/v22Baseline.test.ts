@@ -88,6 +88,7 @@ const SELECTION = {
   ),
   mirrorFeature: selection(S.mirrorFeature.cases, V.mirrorFeature),
   combineFeature: selection(S.combineFeature.cases),
+  offsetFeature: selection(S.offsetFeature.cases),
   shellFeature: selection(S.shellFeature.cases),
   sweepFeature: selection(S.sweepFeature.cases),
   loftFeature: selection(S.loftFeature.cases),
@@ -148,6 +149,10 @@ const COLLECTORS = [
   collector(F, ["feature.shell"], [], [ACTIVE_ANCHOR], "shell readiness", [
     "feature.shell",
     "feature.updateShell"
+  ]),
+  collector(F, ["feature.offset"], [], [ACTIVE_ANCHOR], "offset readiness", [
+    "feature.offset",
+    "feature.updateOffset"
   ]),
   collector(
     F,
@@ -240,6 +245,7 @@ const PREVIEW_GRIPS = {
   circularPattern: preview(MUST, MUST, ["totalAngle"], ["count"]),
   mirror: preview(MUST, MUST, ["planeOffset"]),
   combine: preview(MUST, NO),
+  offset: preview(MUST, MUST, ["distance"]),
   shell: preview(MUST, MUST, ["wallThickness"]),
   sweep: preview(MUST, MUST),
   loft: preview(MUST, MUST)

@@ -19,6 +19,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureCombineForm,
+  FeatureOffsetForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm
@@ -174,6 +175,15 @@ export function applySolidCollectorSelection(
       return { ...(draft as FeatureCompositeRevolveForm), profile: value };
     if (kind === "compositeSweep" && value.kind === "entity")
       return { ...(draft as FeatureCompositeSweepForm), profile: value };
+    if (kind === "offset" && value.kind === "entity") {
+      return {
+        ...(draft as FeatureOffsetForm),
+        sourceKind: "sketchProfile",
+        profileSketchId: value.sketchId,
+        profileEntityId: value.entityId,
+        face: undefined
+      };
+    }
     return draft;
   }
 
@@ -214,6 +224,18 @@ export function applySolidCollectorSelection(
           topologyAnchorProof: value.topologyAnchorProof
         }
       : draft;
+  }
+
+  if (collector === "openFaces" && kind === "offset") {
+    const choice = findChoice(choices?.openFaces, choiceKey);
+    if (!choice) return draft;
+    return {
+      ...(draft as FeatureOffsetForm),
+      sourceKind: "face",
+      face: choice.value,
+      profileSketchId: "",
+      profileEntityId: ""
+    };
   }
 
   if (collector === "openFaces" && kind === "shell") {

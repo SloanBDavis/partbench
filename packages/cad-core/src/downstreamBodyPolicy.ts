@@ -212,6 +212,8 @@ function getDirectBodyDependency(
       return source.seedBodyId;
     case "combineFeature":
       return source.targetBodyId;
+    case "offsetFeature":
+      return source.targetBodyId;
     default: {
       const exhaustive: never = source;
       return exhaustive;

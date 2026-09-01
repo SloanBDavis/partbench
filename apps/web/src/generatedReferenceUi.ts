@@ -510,6 +510,8 @@ function formatOperationLabel(operation: string): string {
       return "Fillet";
     case "feature.shell":
       return "Shell";
+    case "feature.offset":
+      return "Offset";
     case "feature.measureReference":
       return "Measure";
     case "feature.selectReference":

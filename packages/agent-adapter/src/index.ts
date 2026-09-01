@@ -3064,6 +3064,18 @@ function createOperationReview(
         targetBodyId: op.targetBodyId
       };
 
+    case "feature.offset":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create offset feature ${op.id ?? "with generated ID"} of ${op.source.kind === "sketchProfile" ? `sketch profile ${op.source.profile.entityId}` : "face"} distance ${op.distance} ${op.side}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {})
+      };
+
     case "feature.shell":
       return {
         ...operationReviewBase(
@@ -3117,6 +3129,17 @@ function createOperationReview(
           op,
           "modify",
           `Update shell feature ${op.id}`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateOffset":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update offset feature ${op.id}`
         ),
         featureId: op.id
       };
@@ -5472,6 +5495,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
     value === "feature.shell" ||
+    value === "feature.offset" ||
     value === "feature.mirrorPlane" ||
     value === "feature.linearPatternDirection" ||
     value === "feature.circularPatternAxis" ||
@@ -6173,6 +6197,17 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.offset") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      isFeatureOffsetSourceShape(value.source) &&
+      typeof value.distance === "number" &&
+      (value.side === "inward" || value.side === "outward")
+    );
+  }
+
   if (value.op === "feature.shell") {
     return (
       isOptionalString(value.id) &&
@@ -6229,6 +6264,17 @@ function isCadOp(value: unknown): value is CadOp {
       (value.mirrorPlane !== undefined ||
         value.plane !== undefined ||
         value.includeOriginal !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateOffset") {
+    return (
+      typeof value.id === "string" &&
+      (value.distance === undefined || typeof value.distance === "number") &&
+      (value.side === undefined ||
+        value.side === "inward" ||
+        value.side === "outward") &&
+      (value.distance !== undefined || value.side !== undefined)
     );
   }
 
@@ -7076,6 +7122,24 @@ function isFeatureShellOpenFaceRefShape(value: unknown): boolean {
     );
   }
 
+  return false;
+}
+
+function isFeatureOffsetSourceShape(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  if (value.kind === "sketchProfile") {
+    return (
+      isRecord(value.profile) &&
+      value.profile.kind === "entity" &&
+      typeof value.profile.sketchId === "string" &&
+      typeof value.profile.entityId === "string"
+    );
+  }
+  if (value.kind === "face") {
+    return isFeatureShellOpenFaceRefShape(value.face);
+  }
   return false;
 }
 

@@ -863,6 +863,7 @@ describe("V21 exact body source matrix", () => {
     "circularPatternFeature",
     "mirrorFeature",
     "combineFeature",
+    "offsetFeature",
     "shellFeature",
     "sweepFeature",
     "loftFeature",
@@ -880,6 +881,7 @@ describe("V21 exact body source matrix", () => {
     "circularPattern",
     "mirror",
     "combine",
+    "offset",
     "shell",
     "sweep",
     "loft"
@@ -894,9 +896,9 @@ describe("V21 exact body source matrix", () => {
     for (const policy of Object.values(V21_EXACT_BODY_SOURCE_POLICY)) {
       expect(policy.cases.length).toBeGreaterThan(0);
     }
-    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(22);
+    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(23);
     expect(new Set(V21_EXACT_BODY_MATRIX_ROWS.map(({ id }) => id)).size).toBe(
-      22
+      23
     );
     const activeRows = V21_EXACT_BODY_MATRIX_ROWS.filter(
       ({ expectedArtifact }) => expectedArtifact === "required"
@@ -1011,6 +1013,35 @@ describe("V21 exact body source matrix", () => {
       }
     ]);
     record(combineEngine);
+
+    const offsetEngine = new CadEngine();
+    offsetEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_plate",
+        id: "rect_plate",
+        center: [0, 0],
+        width: 20,
+        height: 12
+      },
+      {
+        op: "feature.offset",
+        id: "feat_profile_offset",
+        bodyId: "body_profile_offset",
+        source: {
+          kind: "sketchProfile",
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_plate",
+            entityId: "rect_plate"
+          }
+        },
+        distance: 4,
+        side: "outward"
+      }
+    ]);
+    record(offsetEngine);
 
     expect(covered).toEqual(new Set(sourceTypes));
   });

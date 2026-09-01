@@ -591,6 +591,7 @@ export type CadOp =
   | FeatureCircularPatternOp
   | FeatureMirrorOp
   | FeatureCombineOp
+  | FeatureOffsetOp
   | FeatureShellOp
   | FeatureSweepCommandInput
   | FeatureLoftCommandInput
@@ -602,6 +603,7 @@ export type CadOp =
   | FeatureUpdateLinearPatternOp
   | FeatureUpdateCircularPatternOp
   | FeatureUpdateMirrorOp
+  | FeatureUpdateOffsetOp
   | FeatureUpdateShellOp
   | FeatureUpdateSweepCommandInput
   | FeatureUpdateLoftCommandInput
@@ -1940,6 +1942,37 @@ export interface FeatureCombineOp {
   readonly toolBodyId: BodyId;
 }
 
+export type FeatureOffsetSide = "inward" | "outward";
+
+export type FeatureOffsetFaceRef = FeatureShellOpenFaceRef;
+
+export type FeatureOffsetSource =
+  | {
+      readonly kind: "sketchProfile";
+      readonly profile: SketchEntityProfileRef;
+    }
+  | {
+      readonly kind: "face";
+      readonly face: FeatureOffsetFaceRef;
+    };
+
+export interface FeatureOffsetOp {
+  readonly op: "feature.offset";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly source: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+}
+
+export interface FeatureUpdateOffsetOp {
+  readonly op: "feature.updateOffset";
+  readonly id: FeatureId;
+  readonly distance?: number;
+  readonly side?: FeatureOffsetSide;
+}
+
 export interface FeatureUpdateMirrorOp {
   readonly op: "feature.updateMirror";
   readonly id: FeatureId;
@@ -2163,6 +2196,7 @@ export type CadFeatureRef =
   | CadCircularPatternFeatureRef
   | CadMirrorFeatureRef
   | CadCombineFeatureRef
+  | CadOffsetFeatureRef
   | CadShellFeatureRef
   | CadImportedBodyFeatureRef
   | CadSweepFeatureRef
@@ -2294,6 +2328,16 @@ export interface CadCombineFeatureRef {
   readonly mode: FeatureCombineMode;
   readonly targetBodyId: BodyId;
   readonly toolBodyId: BodyId;
+}
+
+export interface CadOffsetFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "offset";
+  readonly bodyId: BodyId;
+  readonly source: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+  readonly targetBodyId?: BodyId;
 }
 
 export type CadSweepFeatureRef =
@@ -4054,6 +4098,17 @@ export interface CombineFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface OffsetFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "offset";
+  readonly name?: string;
+  readonly source: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+  readonly targetBodyId?: BodyId;
+  readonly bodyId: BodyId;
+}
+
 export interface SweepFeatureSnapshot {
   readonly id: FeatureId;
   readonly kind: "sweep";
@@ -4161,6 +4216,7 @@ export type FeatureSnapshotV21 =
   | CircularPatternFeatureSnapshot
   | MirrorFeatureSnapshot
   | CombineFeatureSnapshot
+  | OffsetFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureV21
   | LoftFeatureV21;
@@ -4176,6 +4232,7 @@ export type FeatureSnapshotV22 =
   | CircularPatternFeatureSnapshot
   | MirrorFeatureSnapshot
   | CombineFeatureSnapshot
+  | OffsetFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureV22
   | LoftFeatureV22;
@@ -4201,6 +4258,7 @@ export type FeatureSnapshot =
   | CircularPatternFeatureSnapshot
   | MirrorFeatureSnapshot
   | CombineFeatureSnapshot
+  | OffsetFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureSnapshot
   | LoftFeatureSnapshot;
@@ -4704,6 +4762,28 @@ export interface CadCombineFeatureSummary {
   readonly source: CadCombineFeatureSource;
 }
 
+export interface CadOffsetFeatureSource {
+  readonly type: "offsetFeature";
+  readonly source: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+  readonly targetBodyId?: BodyId;
+}
+
+export interface CadOffsetFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "offset";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly sourceKind: FeatureOffsetSource["kind"];
+  readonly offsetSource: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+  readonly targetBodyId?: BodyId;
+  readonly name?: string;
+  readonly source: CadOffsetFeatureSource;
+}
+
 export interface CadShellFeatureSource {
   readonly type: "shellFeature";
   readonly targetBodyId: BodyId;
@@ -4762,6 +4842,7 @@ export type CadFeatureSummary =
   | CadCircularPatternFeatureSummary
   | CadMirrorFeatureSummary
   | CadCombineFeatureSummary
+  | CadOffsetFeatureSummary
   | CadShellFeatureSummary
   | CadSweepFeatureSummary
   | CadLoftFeatureSummary;
@@ -4858,6 +4939,12 @@ export interface CadFeatureShellEditProposal {
   readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
 }
 
+export interface CadFeatureOffsetEditProposal {
+  readonly kind: "offset";
+  readonly distance?: number;
+  readonly side?: FeatureOffsetSide;
+}
+
 export interface CadFeatureSweepEditProposal {
   readonly kind: "sweep";
   readonly profile?: SketchEntityProfileRef;
@@ -4879,6 +4966,7 @@ export type CadFeatureEditProposal =
   | CadFeatureHoleEditProposal
   | CadFeatureChamferEditProposal
   | CadFeatureFilletEditProposal
+  | CadFeatureOffsetEditProposal
   | CadFeatureShellEditProposal
   | CadFeatureSweepEditProposal
   | CadFeatureLoftEditProposal;
@@ -5852,6 +5940,15 @@ export interface CadCombineBodySource {
   readonly toolBodyId: BodyId;
 }
 
+export interface CadOffsetBodySource {
+  readonly type: "offsetFeature";
+  readonly featureId: FeatureId;
+  readonly source: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+  readonly targetBodyId?: BodyId;
+}
+
 export interface CadShellBodySource {
   readonly type: "shellFeature";
   readonly featureId: FeatureId;
@@ -5888,6 +5985,7 @@ export type CadBodySource =
   | CadCircularPatternBodySource
   | CadMirrorBodySource
   | CadCombineBodySource
+  | CadOffsetBodySource
   | CadShellBodySource
   | CadSweepBodySource
   | CadLoftBodySource
@@ -6334,6 +6432,7 @@ export type CadGeneratedReferenceEligibleOperation =
   | "feature.chamfer"
   | "feature.fillet"
   | "feature.shell"
+  | "feature.offset"
   | "feature.linearPatternDirection"
   | "feature.circularPatternAxis"
   | "feature.mirrorPlane"
@@ -7620,6 +7719,7 @@ export type CadBodyTopologySourceKind =
   | "authoredCircularPattern"
   | "authoredMirror"
   | "authoredCombine"
+  | "authoredOffset"
   | "authoredSweep"
   | "authoredLoft"
   | "importedBody"
@@ -7976,6 +8076,7 @@ export type CadExportBodySourceKind =
   | "authoredCircularPattern"
   | "authoredMirror"
   | "authoredCombine"
+  | "authoredOffset"
   | "authoredShell"
   | "importedBody"
   | "primitiveCompatibility"
@@ -7992,6 +8093,7 @@ export const CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE = {
   circularPatternFeature: "authoredCircularPattern",
   mirrorFeature: "authoredMirror",
   combineFeature: "authoredCombine",
+  offsetFeature: "authoredOffset",
   shellFeature: "authoredShell",
   sweepFeature: "authoredSweep",
   loftFeature: "authoredLoft",

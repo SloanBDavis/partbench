@@ -1368,6 +1368,10 @@ function createConsumedBodyIds(
           return [feature.targetBodyId, feature.toolBodyId];
         }
 
+        if (feature.kind === "offset") {
+          return feature.targetBodyId ? [feature.targetBodyId] : [];
+        }
+
         return [];
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))

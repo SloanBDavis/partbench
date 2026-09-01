@@ -18,6 +18,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureCombineForm,
+  FeatureOffsetForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm
@@ -269,6 +270,20 @@ describe("V22 exact feature preview planner", () => {
       op: "feature.combine"
     },
     {
+      kind: "offset" as const,
+      draft: {
+        id: "feature-created",
+        bodyId: "body-created",
+        name: "",
+        sourceKind: "sketchProfile" as const,
+        profileSketchId: "sketch-profile",
+        profileEntityId: "profile-entity",
+        distance: 4,
+        side: "outward" as const
+      } satisfies FeatureOffsetForm,
+      op: "feature.offset"
+    },
+    {
       kind: "shell" as const,
       draft: {
         id: "feature-created",
@@ -326,6 +341,74 @@ describe("V22 exact feature preview planner", () => {
       expectSupported(result, op, "body-created", exact === true);
     }
   );
+
+  it("submits the same feature.offset batch as the associative-offset CADOps case", () => {
+    const profileDraft = {
+      id: "feat_profile_offset",
+      bodyId: "body_profile_offset",
+      name: "",
+      sourceKind: "sketchProfile" as const,
+      profileSketchId: "sketch_plate",
+      profileEntityId: "rect_plate",
+      distance: 4,
+      side: "outward" as const
+    } satisfies FeatureOffsetForm;
+    const faceDraft = {
+      id: "feat_face_offset",
+      bodyId: "body_face_offset",
+      name: "",
+      sourceKind: "face" as const,
+      profileSketchId: "",
+      profileEntityId: "",
+      face: {
+        kind: "generatedFace" as const,
+        bodyId: "body_block",
+        stableId: "generated:face:body_block:endCap"
+      },
+      distance: 2,
+      side: "outward" as const
+    } satisfies FeatureOffsetForm;
+    expect(planExactFeaturePreview(makeInput("offset", profileDraft, "create"))).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.offset",
+          id: "feat_profile_offset",
+          bodyId: "body_profile_offset",
+          source: {
+            kind: "sketchProfile",
+            profile: {
+              kind: "entity",
+              sketchId: "sketch_plate",
+              entityId: "rect_plate"
+            }
+          },
+          distance: 4,
+          side: "outward"
+        }
+      ]
+    });
+    expect(planExactFeaturePreview(makeInput("offset", faceDraft, "create"))).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.offset",
+          id: "feat_face_offset",
+          bodyId: "body_face_offset",
+          source: {
+            kind: "face",
+            face: {
+              kind: "generatedFace",
+              bodyId: "body_block",
+              stableId: "generated:face:body_block:endCap"
+            }
+          },
+          distance: 2,
+          side: "outward"
+        }
+      ]
+    });
+  });
 
   it("submits the same feature.combine batch as the stepped-pulley CADOps case", () => {
     const draft = {
@@ -534,6 +617,32 @@ describe("V22 exact feature preview planner", () => {
       feature: feature("shell", { targetBodyId: "body-target" }),
       op: "feature.updateShell",
       exact: true
+    },
+    {
+      kind: "offset" as const,
+      draft: {
+        id: "feature-existing",
+        bodyId: "body-existing",
+        name: "",
+        sourceKind: "sketchProfile" as const,
+        profileSketchId: "sketch-profile",
+        profileEntityId: "profile-entity",
+        distance: 6,
+        side: "inward" as const
+      } satisfies FeatureOffsetForm,
+      feature: feature("offset", {
+        offsetSource: {
+          kind: "sketchProfile",
+          profile: {
+            kind: "entity",
+            sketchId: "sketch-profile",
+            entityId: "profile-entity"
+          }
+        },
+        distance: 4,
+        side: "outward"
+      }),
+      op: "feature.updateOffset"
     },
     {
       kind: "compositeSweep" as const,

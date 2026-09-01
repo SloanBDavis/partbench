@@ -158,6 +158,9 @@ import type {
   FeatureSnapshotV22,
   FeatureExtrudeOperationMode,
   FeatureCombineMode,
+  FeatureOffsetFaceRef,
+  FeatureOffsetSide,
+  FeatureOffsetSource,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureId,
@@ -974,6 +977,7 @@ export type Feature =
   | CircularPatternFeature
   | MirrorFeature
   | CombineFeature
+  | OffsetFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -1075,6 +1079,17 @@ export interface CombineFeature {
   readonly mode: FeatureCombineMode;
   readonly targetBodyId: BodyId;
   readonly toolBodyId: BodyId;
+  readonly bodyId: BodyId;
+}
+
+export interface OffsetFeature {
+  readonly id: FeatureId;
+  readonly kind: "offset";
+  readonly name?: string;
+  readonly source: FeatureOffsetSource;
+  readonly distance: number;
+  readonly side: FeatureOffsetSide;
+  readonly targetBodyId?: BodyId;
   readonly bodyId: BodyId;
 }
 
@@ -1638,6 +1653,7 @@ function documentHasV20SourceRecords(
       feature.kind === "circularPattern" ||
       feature.kind === "mirror" ||
       feature.kind === "combine" ||
+      feature.kind === "offset" ||
       feature.kind === "sweep" ||
       feature.kind === "loft"
   );
@@ -7531,6 +7547,23 @@ function applyOperation(
       return;
     }
 
+    case "feature.offset": {
+      const source = validateOffsetSource(state, op.source, opIndex);
+      const feature: OffsetFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "offset",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        source: source.source,
+        distance: validateOffsetDistance(op.distance, opIndex),
+        side: validateOffsetSide(op.side, opIndex),
+        ...(source.targetBodyId ? { targetBodyId: source.targetBodyId } : {}),
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.sweep": {
       const inputs = resolveSweepCommandInputs(state, op, undefined, opIndex);
       const feature: SweepFeature = {
@@ -7638,6 +7671,11 @@ function applyOperation(
 
     case "feature.updateShell": {
       updateShellFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateOffset": {
+      updateOffsetFeature(state, op, diff, opIndex);
       return;
     }
 
@@ -8235,6 +8273,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.circularPattern":
     case "feature.mirror":
     case "feature.combine":
+    case "feature.offset":
     case "feature.shell":
     case "feature.sweep":
     case "feature.loft":
@@ -8247,6 +8286,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.updateLinearPattern":
     case "feature.updateCircularPattern":
     case "feature.updateMirror":
+    case "feature.updateOffset":
     case "feature.updateShell":
     case "feature.updateSweep":
     case "feature.updateLoft":
@@ -9358,6 +9398,16 @@ function isCadFeatureEditProposal(value: unknown): boolean {
     );
   }
 
+  if (value.kind === "offset") {
+    return (
+      hasOnlyKeys(value, ["kind", "distance", "side"]) &&
+      (value.distance === undefined || typeof value.distance === "number") &&
+      (value.side === undefined ||
+        value.side === "inward" ||
+        value.side === "outward")
+    );
+  }
+
   if (value.kind === "shell") {
     return (
       hasOnlyKeys(value, ["kind", "wallThickness", "openFaceRefs"]) &&
@@ -9642,6 +9692,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
     value === "feature.shell" ||
+    value === "feature.offset" ||
     value === "feature.linearPatternDirection" ||
     value === "feature.circularPatternAxis" ||
     value === "feature.mirrorPlane" ||
@@ -14529,6 +14580,7 @@ type TargetConsumingFeature =
   | CircularPatternFeature
   | MirrorFeature
   | CombineFeature
+  | OffsetFeature
   | ShellFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
@@ -14668,6 +14720,18 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
   }
 
   if (feature.kind === "combine") {
+    return;
+  }
+
+  if (feature.kind === "offset") {
+    if (feature.targetBodyId) {
+      validateOffsetFaceTargetBodyId(
+        state,
+        feature.targetBodyId,
+        opIndex,
+        feature.id
+      );
+    }
     return;
   }
 
@@ -15258,6 +15322,76 @@ function updateMirrorFeature(
       : createAmbiguousResultFeatureEditLifecycleEffects(
           updated,
           "Mirror result body requires derived rebuild and topology repair after supported source parameter edit."
+        )
+  );
+}
+
+function updateOffsetFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateOffset" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "offset",
+    "feature.updateOffset",
+    opIndex
+  );
+  if (op.distance === undefined && op.side === undefined) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.updateOffset requires distance or side.",
+      opIndex,
+      featureId: feature.id,
+      path: operationPath(opIndex),
+      expected: "distance and/or side",
+      received: describeReceived(op)
+    });
+  }
+  const updated: OffsetFeature = {
+    ...feature,
+    distance:
+      op.distance === undefined
+        ? feature.distance
+        : validateOffsetDistance(op.distance, opIndex),
+    side:
+      op.side === undefined ? feature.side : validateOffsetSide(op.side, opIndex)
+  };
+
+  if (updated.targetBodyId) {
+    validateOffsetFaceTargetBodyId(
+      state,
+      updated.targetBodyId,
+      opIndex,
+      feature.id
+    );
+  } else if (updated.source.kind === "sketchProfile") {
+    validateOffsetSketchProfile(state, updated.source.profile, opIndex);
+  }
+  assertFeatureResultBodyActiveForEdit(state, updated, opIndex);
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(state, updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Offset result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    updated.targetBodyId
+      ? createConsumingFeatureEditLifecycleEffects(
+          updated,
+          "Offset result body requires derived rebuild and topology repair after supported source parameter edit.",
+          state.features
+        )
+      : createAmbiguousResultFeatureEditLifecycleEffects(
+          updated,
+          "Offset result body requires derived rebuild and topology repair after supported source parameter edit."
         )
   );
 }
@@ -17485,6 +17619,359 @@ function isCombineInputFeature(
   return feature.kind === "extrude" || feature.kind === "combine";
 }
 
+function validateOffsetDistance(value: unknown, opIndex?: number): number {
+  if (typeof value === "number" && isPositiveFiniteNumber(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_OPERATION",
+    message: "feature.offset distance must be a positive finite number.",
+    opIndex,
+    path: operationPath(opIndex, "distance"),
+    expected: "positive finite distance",
+    received: describeReceived(value)
+  });
+}
+
+function validateOffsetSide(value: unknown, opIndex?: number): FeatureOffsetSide {
+  if (value === "inward" || value === "outward") {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_OPERATION",
+    message: "feature.offset side must be inward or outward.",
+    opIndex,
+    path: operationPath(opIndex, "side"),
+    expected: "inward | outward",
+    received: describeReceived(value)
+  });
+}
+
+function validateOffsetSource(
+  state: MutableDocumentState,
+  value: unknown,
+  opIndex?: number
+): {
+  readonly source: FeatureOffsetSource;
+  readonly targetBodyId?: BodyId;
+} {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.offset source must be a sketch profile or a face.",
+      opIndex,
+      path: operationPath(opIndex, "source"),
+      expected: "sketchProfile or face source",
+      received: describeReceived(value)
+    });
+  }
+
+  if (value.kind === "sketchProfile") {
+    const profile = validateOffsetSketchProfile(state, value.profile, opIndex);
+    return {
+      source: { kind: "sketchProfile", profile }
+    };
+  }
+
+  if (value.kind === "face") {
+    const face = validateOffsetFaceRef(state, value.face, opIndex);
+    const targetBodyId = resolveOffsetFaceBodyId(state, face, opIndex);
+    validateOffsetFaceTargetBodyId(state, targetBodyId, opIndex);
+    return {
+      source: { kind: "face", face },
+      targetBodyId
+    };
+  }
+
+  throwValidationError({
+    code: "INVALID_OPERATION",
+    message: "feature.offset source kind must be sketchProfile or face.",
+    opIndex,
+    path: operationPath(opIndex, "source.kind"),
+    expected: "sketchProfile | face",
+    received: describeReceived(value.kind)
+  });
+}
+
+function validateOffsetSketchProfile(
+  state: MutableDocumentState,
+  value: unknown,
+  opIndex?: number
+): Extract<FeatureOffsetSource, { readonly kind: "sketchProfile" }>["profile"] {
+  if (
+    !isRecord(value) ||
+    value.kind !== "entity" ||
+    typeof value.sketchId !== "string" ||
+    typeof value.entityId !== "string"
+  ) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.offset sketch profile requires an entity profile.",
+      opIndex,
+      path: operationPath(opIndex, "source.profile"),
+      expected: "entity sketch profile",
+      received: describeReceived(value)
+    });
+  }
+
+  const sketch = state.sketches.get(value.sketchId);
+  if (!sketch) {
+    throwValidationError({
+      code: "SKETCH_NOT_FOUND",
+      message: `feature.offset sketch does not exist: ${value.sketchId}`,
+      opIndex,
+      sketchId: value.sketchId,
+      path: operationPath(opIndex, "source.profile.sketchId"),
+      expected: "existing sketch id",
+      received: value.sketchId
+    });
+  }
+
+  const entity = sketch.entities.get(value.entityId);
+  if (!entity) {
+    throwValidationError({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `feature.offset profile entity does not exist: ${value.entityId}`,
+      opIndex,
+      sketchId: value.sketchId,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "source.profile.entityId"),
+      expected: "existing closed sketch profile",
+      received: value.entityId
+    });
+  }
+
+  if (
+    entity.kind !== "rectangle" &&
+    entity.kind !== "circle" &&
+    entity.kind !== "spline"
+  ) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `feature.offset sketch profile must be a closed rectangle, circle, or spline, not ${entity.kind}.`,
+      opIndex,
+      sketchId: value.sketchId,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "source.profile.entityId"),
+      expected: "closed rectangle, circle, or spline",
+      received: entity.kind
+    });
+  }
+
+  if (entity.kind === "spline" && !entity.closed) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.offset spline profile must be closed.",
+      opIndex,
+      sketchId: value.sketchId,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "source.profile.entityId"),
+      expected: "closed spline",
+      received: "open spline"
+    });
+  }
+
+  return {
+    kind: "entity",
+    sketchId: value.sketchId,
+    entityId: value.entityId
+  };
+}
+
+function validateOffsetFaceRef(
+  state: MutableDocumentState,
+  value: unknown,
+  opIndex?: number
+): FeatureOffsetFaceRef {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.offset face source requires a face reference.",
+      opIndex,
+      path: operationPath(opIndex, "source.face"),
+      expected: "generatedFace, namedReference, or topologyAnchor",
+      received: describeReceived(value)
+    });
+  }
+
+  if (value.kind === "generatedFace") {
+    if (
+      typeof value.bodyId !== "string" ||
+      typeof value.stableId !== "string" ||
+      value.stableId.trim().length === 0
+    ) {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message:
+          "feature.offset generatedFace requires bodyId and stableId.",
+        opIndex,
+        path: operationPath(opIndex, "source.face"),
+        expected: "generatedFace ref with bodyId and stableId",
+        received: describeReceived(value)
+      });
+    }
+    return {
+      kind: "generatedFace",
+      bodyId: value.bodyId,
+      stableId: value.stableId
+    };
+  }
+
+  if (value.kind === "namedReference") {
+    if (typeof value.name !== "string") {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: "feature.offset namedReference face requires name.",
+        opIndex,
+        path: operationPath(opIndex, "source.face.name"),
+        expected: "namedReference ref with name",
+        received: describeReceived(value)
+      });
+    }
+    const name = normalizeNamedReferenceName(value.name, opIndex, "namedReference");
+    const reference = state.namedReferences.get(name);
+    if (!reference) {
+      throwValidationError({
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        message: `Named reference does not exist: ${name}`,
+        opIndex,
+        referenceName: name,
+        path: operationPath(opIndex, "source.face.name"),
+        expected: "existing named generated face reference",
+        received: name
+      });
+    }
+    if (reference.kind !== "face") {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: `Named reference ${name} is a ${reference.kind}, not a face.`,
+        opIndex,
+        stableId: reference.stableId,
+        referenceName: name,
+        path: operationPath(opIndex, "source.face.name"),
+        expected: "named face reference",
+        received: reference.kind
+      });
+    }
+    return { kind: "namedReference", name };
+  }
+
+  if (value.kind === "topologyAnchor") {
+    if (
+      typeof value.bodyId !== "string" ||
+      typeof value.anchorId !== "string"
+    ) {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message:
+          "feature.offset topologyAnchor face requires bodyId and anchorId.",
+        opIndex,
+        path: operationPath(opIndex, "source.face"),
+        expected: "topologyAnchor ref with bodyId and anchorId",
+        received: describeReceived(value)
+      });
+    }
+    const target = resolveActiveTopologyAnchorTarget(
+      state,
+      value.anchorId,
+      "face",
+      opIndex,
+      "source.face.anchorId"
+    );
+    if (target.bodyId !== value.bodyId) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: "Topology anchor targets another body.",
+        opIndex,
+        topologyAnchorId: target.topologyAnchorId,
+        checkpointId: target.checkpointId,
+        path: operationPath(opIndex, "source.face.anchorId"),
+        expected: value.bodyId,
+        received: target.bodyId
+      });
+    }
+    return {
+      kind: "topologyAnchor",
+      bodyId: target.bodyId,
+      anchorId: target.topologyAnchorId
+    };
+  }
+
+  throwValidationError({
+    code: "INVALID_OPERATION",
+    message:
+      "feature.offset face kind must be generatedFace, namedReference, or topologyAnchor.",
+    opIndex,
+    path: operationPath(opIndex, "source.face.kind"),
+    expected: "generatedFace, namedReference, or topologyAnchor",
+    received: describeReceived(value.kind)
+  });
+}
+
+function resolveOffsetFaceBodyId(
+  state: MutableDocumentState,
+  face: Extract<FeatureOffsetSource, { readonly kind: "face" }>["face"],
+  opIndex?: number
+): BodyId {
+  if (face.kind === "generatedFace" || face.kind === "topologyAnchor") {
+    return face.bodyId;
+  }
+  const reference = state.namedReferences.get(face.name);
+  if (!reference) {
+    throwValidationError({
+      code: "NAMED_REFERENCE_NOT_FOUND",
+      message: `Named reference does not exist: ${face.name}`,
+      opIndex,
+      referenceName: face.name,
+      path: operationPath(opIndex, "source.face.name"),
+      expected: "existing named generated face reference",
+      received: face.name
+    });
+  }
+  return reference.bodyId;
+}
+
+function validateOffsetFaceTargetBodyId(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
+): BodyId {
+  const feature = findFeatureByBodyId(state.features, targetBodyId);
+  if (!feature) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `feature.offset face body does not exist: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "source.face"),
+      expected: "completed authored solid",
+      received: targetBodyId
+    });
+  }
+
+  const consumer = findConsumingFeatureByTargetBodyId(
+    state.features,
+    targetBodyId
+  );
+  if (consumer && consumer.id !== ignoreConsumingFeatureId) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `feature.offset face body is already consumed by feature ${consumer.id}: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      featureId: consumer.id,
+      path: operationPath(opIndex, "source.face"),
+      expected: "unconsumed completed solid",
+      received: `consumed by ${consumer.id}`
+    });
+  }
+
+  return targetBodyId;
+}
+
 function createUpdatedHoleFeature(
   feature: HoleFeature,
   depthMode: FeatureHoleDepthMode,
@@ -17784,6 +18271,7 @@ function createConsumingFeatureEditLifecycleEffects(
     | LinearPatternFeature
     | CircularPatternFeature
     | MirrorFeature
+    | OffsetFeature
     | ShellFeature,
   resultMessage: string,
   features: ReadonlyMap<FeatureId, Feature>
@@ -18141,6 +18629,7 @@ function isTargetConsumingFeature(
     feature.kind === "circularPattern" ||
     feature.kind === "shell" ||
     feature.kind === "combine" ||
+    (feature.kind === "offset" && feature.targetBodyId !== undefined) ||
     (feature.kind === "mirror" && feature.includeOriginal)
   );
 }
@@ -18175,6 +18664,12 @@ function getTargetConsumingFeatureBodyId(
   }
   if (feature.kind === "mirror") {
     return feature.seedBodyId;
+  }
+  if (feature.kind === "offset") {
+    if (!feature.targetBodyId) {
+      throw new Error(`Offset feature ${feature.id} is missing a face target body.`);
+    }
+    return feature.targetBodyId;
   }
 
   return feature.targetBodyId;
@@ -18279,6 +18774,12 @@ function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
     feature.kind === "shell"
   ) {
     return false;
+  }
+  if (feature.kind === "offset") {
+    return (
+      feature.source.kind === "sketchProfile" &&
+      feature.source.profile.sketchId === sketchId
+    );
   }
 
   return feature.kind === "hole"
@@ -19450,7 +19951,7 @@ function createTopologyAnchorProofCommandOperations(
   }
 
   if (proof.kind === "axisAlignedPlanarFace") {
-    return ["feature.shell"];
+    return ["feature.shell", "feature.offset"];
   }
 
   if (proof.kind !== "axisAlignedLinearEdge") {
@@ -21544,6 +22045,7 @@ function createCurrentTopologySelectionCandidates(
 const CURRENT_EXACT_FACE_PROMOTABLE_OPERATIONS = [
   "feature.attachSketchPlane",
   "feature.shell",
+  "feature.offset",
   "feature.mirrorPlane"
 ] as const satisfies readonly CadSelectionReferenceOperation[];
 
@@ -23131,6 +23633,18 @@ function featureRef(
     };
   }
 
+  if (feature.kind === "offset") {
+    return {
+      id: feature.id,
+      kind: "offset",
+      bodyId: feature.bodyId,
+      source: feature.source,
+      distance: feature.distance,
+      side: feature.side,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.id,
@@ -24677,6 +25191,19 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
     };
   }
 
+  if (snapshot.kind === "offset") {
+    return {
+      id: snapshot.id,
+      kind: "offset",
+      name: snapshot.name,
+      source: snapshot.source,
+      distance: snapshot.distance,
+      side: snapshot.side,
+      ...(snapshot.targetBodyId ? { targetBodyId: snapshot.targetBodyId } : {}),
+      bodyId: snapshot.bodyId
+    };
+  }
+
   if (snapshot.kind === "shell") {
     return {
       id: snapshot.id,
@@ -24825,6 +25352,7 @@ const SUMMARY_REFERENCE_OPERATIONS = [
   "feature.chamfer",
   "feature.fillet",
   "feature.shell",
+  "feature.offset",
   "feature.linearPatternDirection",
   "feature.circularPatternAxis",
   "feature.mirrorPlane",
@@ -25556,6 +26084,28 @@ function createFeatureSummary(
     };
   }
 
+  if (feature.kind === "offset") {
+    return {
+      id: feature.id,
+      kind: "offset",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      sourceKind: feature.source.kind,
+      offsetSource: feature.source,
+      distance: feature.distance,
+      side: feature.side,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+      name: feature.name,
+      source: {
+        type: "offsetFeature",
+        source: feature.source,
+        distance: feature.distance,
+        side: feature.side,
+        ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
+      }
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.id,
@@ -25913,6 +26463,25 @@ function createFeatureBodySnapshot(
         mode: feature.mode,
         targetBodyId: feature.targetBodyId,
         toolBodyId: feature.toolBodyId
+      }
+    };
+  }
+
+  if (feature.kind === "offset") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "offsetFeature",
+        featureId: feature.id,
+        source: feature.source,
+        distance: feature.distance,
+        side: feature.side,
+        ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
       }
     };
   }
@@ -30150,6 +30719,18 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "offset" && right.kind === "offset") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      stableJsonEqual(left.source, right.source) &&
+      left.distance === right.distance &&
+      left.side === right.side &&
+      left.targetBodyId === right.targetBodyId &&
+      left.bodyId === right.bodyId
+    );
+  }
+
   if (left.kind === "shell" && right.kind === "shell") {
     return (
       left.id === right.id &&
@@ -30229,7 +30810,8 @@ function normalizeCadProject(value: CadProject): CadProject {
           feature.kind === "linearPattern" ||
           feature.kind === "circularPattern" ||
           feature.kind === "mirror" ||
-          feature.kind === "combine"
+          feature.kind === "combine" ||
+          feature.kind === "offset"
       )
         ? CAD_PROJECT_FORMAT_VERSION_V20
         : value.schemaVersion;
@@ -30674,7 +31256,8 @@ function normalizeFeatureSnapshot(
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
     feature.kind === "shell" ||
-    feature.kind === "combine"
+    feature.kind === "combine" ||
+    feature.kind === "offset"
   ) {
     return { ...feature };
   }
@@ -30973,6 +31556,7 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     ref.kind === "circularPattern" ||
     ref.kind === "mirror" ||
     ref.kind === "combine" ||
+    ref.kind === "offset" ||
     ref.kind === "shell" ||
     ref.kind === "sweep" ||
     ref.kind === "loft"
@@ -34936,6 +35520,33 @@ function collectValidAuthoredFeatureByBodyId(
 
   if (
     isRecord(value) &&
+    value.kind === "offset" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    isFeatureOffsetSourceShape(value.source) &&
+    typeof value.distance === "number" &&
+    isPositiveFiniteNumber(value.distance) &&
+    (value.side === "inward" || value.side === "outward") &&
+    (value.targetBodyId === undefined || typeof value.targetBodyId === "string") &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "offset",
+      name: typeof value.name === "string" ? value.name : undefined,
+      source: value.source,
+      distance: value.distance,
+      side: value.side,
+      ...(typeof value.targetBodyId === "string"
+        ? { targetBodyId: value.targetBodyId }
+        : {}),
+      bodyId: value.bodyId,
+      path
+    });
+  }
+
+  if (
+    isRecord(value) &&
     value.kind === "shell" &&
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
@@ -35140,7 +35751,8 @@ function isImportTargetConsumingFeature(
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
     feature.kind === "shell" ||
-    feature.kind === "combine"
+    feature.kind === "combine" ||
+    (feature.kind === "offset" && typeof feature.targetBodyId === "string")
   );
 }
 
@@ -35153,6 +35765,7 @@ function getImportFeatureTargetBodyId(
     feature.kind === "shell" ||
     feature.kind === "hole" ||
     feature.kind === "combine" ||
+    (feature.kind === "offset" && typeof feature.targetBodyId === "string") ||
     (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody"))
   ) {
@@ -35308,6 +35921,10 @@ function formatTargetConsumingFeatureForIssue(
 
   if (feature.kind === "combine") {
     return "Combine feature";
+  }
+
+  if (feature.kind === "offset") {
+    return "Offset feature";
   }
 
   if (
@@ -35925,7 +36542,8 @@ function validateFeatureSnapshot(
     ((value.kind !== "linearPattern" &&
       value.kind !== "circularPattern" &&
       value.kind !== "mirror" &&
-      value.kind !== "combine") ||
+      value.kind !== "combine" &&
+      value.kind !== "offset") ||
       !allowsPatternFeatures) &&
     (value.kind !== "shell" || !allowsPatternFeatures) &&
     (value.kind !== "sweep" || !isV20OrLaterSchema) &&
@@ -35937,9 +36555,9 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.kind`,
       allowsImportedBodyFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, or shell."
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, offset, or shell."
         : allowsPatternFeatures
-          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, or shell."
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, offset, or shell."
           : allowsEdgeFinishFeatures
             ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
             : allowsHoleFeatures
@@ -36103,6 +36721,25 @@ function validateFeatureSnapshot(
     }
 
     validateCombineFeatureSnapshotFields(value, path, issues, seenBodyIds);
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "offset") {
+    if (!allowsPatternFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Offset features require web-cad.project.v19."
+      );
+    }
+
+    validateOffsetFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -38229,6 +38866,70 @@ function validateCombineFeatureSnapshotFields(
   }
 }
 
+function validateOffsetFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  if (!isFeatureOffsetSourceShape(value.source)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.source`,
+      "Offset feature source must be a sketch profile or a face."
+    );
+  }
+
+  if (typeof value.distance !== "number" || !isPositiveFiniteNumber(value.distance)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.distance`,
+      "Offset feature distance must be a positive finite number."
+    );
+  }
+
+  if (value.side !== "inward" && value.side !== "outward") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.side`,
+      "Offset feature side must be inward or outward."
+    );
+  }
+
+  if (
+    value.targetBodyId !== undefined &&
+    (typeof value.targetBodyId !== "string" || value.targetBodyId.length === 0)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      "Offset feature targetBodyId must be a non-empty string when present."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Offset feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
 function validateShellFeatureSnapshotFields(
   value: Record<string, unknown>,
   path: string,
@@ -38882,6 +39583,7 @@ function materializeGeneratedObjectIds(
       op.op === "feature.chamfer" ||
       op.op === "feature.fillet" ||
       op.op === "feature.shell" ||
+      op.op === "feature.offset" ||
       op.op === "feature.sweep" ||
       op.op === "feature.loft"
     ) {
@@ -39480,6 +40182,18 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.offset") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      isFeatureOffsetSourceShape(value.source) &&
+      typeof value.distance === "number" &&
+      isPositiveFiniteNumber(value.distance) &&
+      (value.side === "inward" || value.side === "outward")
+    );
+  }
+
   if (value.op === "feature.shell") {
     return (
       isOptionalString(value.id) &&
@@ -39647,6 +40361,19 @@ function isCadOp(value: unknown): value is CadOp {
       (value.mirrorPlane !== undefined ||
         value.plane !== undefined ||
         value.includeOriginal !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateOffset") {
+    return (
+      typeof value.id === "string" &&
+      (value.distance === undefined ||
+        (typeof value.distance === "number" &&
+          isPositiveFiniteNumber(value.distance))) &&
+      (value.side === undefined ||
+        value.side === "inward" ||
+        value.side === "outward") &&
+      (value.distance !== undefined || value.side !== undefined)
     );
   }
 
@@ -40443,6 +41170,16 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       (value.mode === "union" || value.mode === "subtract") &&
       typeof value.targetBodyId === "string" &&
       typeof value.toolBodyId === "string"
+    );
+  }
+
+  if (value.kind === "offset") {
+    return (
+      isFeatureOffsetSourceShape(value.source) &&
+      typeof value.distance === "number" &&
+      isPositiveFiniteNumber(value.distance) &&
+      (value.side === "inward" || value.side === "outward") &&
+      (value.targetBodyId === undefined || typeof value.targetBodyId === "string")
     );
   }
 
@@ -41360,6 +42097,26 @@ function hasExactlyOneEdgeReferenceInput(
     [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
       .length === 1
   );
+}
+
+function isFeatureOffsetSourceShape(
+  value: unknown
+): value is FeatureOffsetSource {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  if (value.kind === "sketchProfile") {
+    return (
+      isRecord(value.profile) &&
+      value.profile.kind === "entity" &&
+      typeof value.profile.sketchId === "string" &&
+      typeof value.profile.entityId === "string"
+    );
+  }
+  if (value.kind === "face") {
+    return isFeatureShellOpenFaceRefShape(value.face);
+  }
+  return false;
 }
 
 function isFeatureShellOpenFaceRefShape(value: unknown): boolean {

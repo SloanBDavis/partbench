@@ -486,6 +486,21 @@ function addFeatureSourceEdges(
     return;
   }
 
+  if (feature.kind === "offset") {
+    if (feature.offsetSource.kind === "sketchProfile") {
+      addEdge(edges, {
+        kind: "sources",
+        from: sketchNodeId(feature.offsetSource.profile.sketchId),
+        to: featureNodeId(feature.id),
+        label: "offset profile",
+        sourceFeatureId: feature.id,
+        sketchId: feature.offsetSource.profile.sketchId,
+        sketchEntityId: feature.offsetSource.profile.entityId
+      });
+    }
+    return;
+  }
+
   if (feature.kind === "sweep") {
     for (const [sketchId, entityIds, label] of [
       [

@@ -96,6 +96,7 @@ export type ModelingActionId =
   | "feature.chamfer"
   | "feature.fillet"
   | "feature.shell"
+  | "feature.offset"
   | UiActionId;
 
 export type ModelingActionKind = "command" | "editor" | "query" | "selection";

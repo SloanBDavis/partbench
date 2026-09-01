@@ -11,6 +11,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureCombineForm,
+  FeatureOffsetForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm,
@@ -208,6 +209,20 @@ export function validateSolidDraft(
     return form.mode === "union" || form.mode === "subtract"
       ? ready()
       : blocked("Choose union or subtract.");
+  }
+  if (kind === "offset") {
+    const form = draft as FeatureOffsetForm;
+    if (form.sourceKind === "sketchProfile") {
+      if (!form.profileSketchId || !form.profileEntityId) {
+        return collecting("Select a sketch profile.");
+      }
+    } else if (!form.face) {
+      return collecting("Select a face.");
+    }
+    return positive(form.distance) &&
+      (form.side === "inward" || form.side === "outward")
+      ? ready()
+      : blocked("Distance must be greater than zero and side must be inward or outward.");
   }
   const mirror = draft as FeatureMirrorForm;
   if (!mirror.seedBodyId) return collecting("Select an exact-ready seed body.");

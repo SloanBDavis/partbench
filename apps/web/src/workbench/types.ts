@@ -28,6 +28,7 @@ export type FeatureEditorKind =
   | "circular-pattern"
   | "mirror"
   | "combine"
+  | "offset"
   | "datum-plane"
   | "datum-axis"
   | "named-reference"
