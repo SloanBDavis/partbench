@@ -456,6 +456,14 @@ export const UI_ACTION_METADATA = [
     true
   ),
   action(
+    "solid.datum-axis",
+    "Datum axis",
+    "Sketch",
+    ["solid", "sketch"],
+    ["construction axis", "pattern axis"],
+    true
+  ),
+  action(
     "solid.edit",
     "Edit",
     "Selection",

@@ -111,6 +111,7 @@ import {
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
   buildDatumAndSketchOnPlaneOps,
+  buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateSketchOnFaceOp,
   buildCreateConeOp,
@@ -150,6 +151,7 @@ import {
   type PrimitiveCommandForm,
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
+  type DatumAxisCreateForm,
   type DatumPlaneCreateForm,
   type SketchEntityForm,
   type CreatableSketchEntityKind,
@@ -4207,14 +4209,23 @@ export function App() {
   const solidRotationAxisChoices = useMemo<
     readonly SolidChoice<PatternRotationAxisRef>[]
   >(() => {
-    const choices =
-      modelingUiRuntime?.createSolidDirectionChoices(
+    const choices = [
+      ...(modelingUiRuntime?.createSolidDirectionChoices(
         selectedBodyGeneratedReferences.references,
         namedReferences,
         referenceCandidatesByStableId,
         namedReferenceCandidatesByName,
         "feature.circularPatternAxis"
-      ) ?? [];
+      ) ?? []),
+      ...[...engine.getDocument().datums.values()]
+        .filter((datum) => datum.kind === "axis")
+        .map((datum) => ({
+          key: `feature.circularPatternAxis:datum:${datum.id}`,
+          value: { kind: "datumAxis" as const, datumId: datum.id },
+          label: datum.name,
+          kind: "datum axis"
+        }))
+    ];
     return pendingCurrentExactPromotion?.requiredOperation ===
       "feature.circularPatternAxis"
       ? includeCurrentSolidChoice(
@@ -4228,7 +4239,8 @@ export function App() {
     pendingCurrentExactPromotion,
     referenceCandidatesByStableId,
     selectedBodyGeneratedReferences.references,
-    modelingUiRuntime
+    modelingUiRuntime,
+    document
   ]);
   const solidMirrorFaceChoices = useMemo(() => {
     const choices =
@@ -4262,10 +4274,12 @@ export function App() {
     () =>
       modelingUiRuntime?.createSolidMirrorPlaneChoices(
         solidMirrorFaceChoices,
-        [...engine.getDocument().datums.values()].map((datum) => ({
-          id: datum.id,
-          name: datum.name
-        }))
+        [...engine.getDocument().datums.values()]
+          .filter((datum) => datum.kind === "plane")
+          .map((datum) => ({
+            id: datum.id,
+            name: datum.name
+          }))
       ) ?? [],
     [solidMirrorFaceChoices, modelingUiRuntime, document]
   );
@@ -4576,12 +4590,14 @@ export function App() {
         mode: "create",
         initialDraft: createSketchDraft(sketches.length + 1),
         choices: {
-          datums: [...engine.getDocument().datums.values()].map((datum) => ({
-            key: datum.id,
-            value: datum.id,
-            label: datum.name,
-            kind: "datum"
-          }))
+          datums: [...engine.getDocument().datums.values()]
+            .filter((datum) => datum.kind === "plane")
+            .map((datum) => ({
+              key: datum.id,
+              value: datum.id,
+              label: datum.name,
+              kind: "datum"
+            }))
         }
       } as SolidEditorRequest;
     }
@@ -4596,6 +4612,19 @@ export function App() {
           name: `Datum ${engine.getDocument().datums.size + 1}`,
           plane: { kind: "standardPlane", plane: "XZ", offset: 0 }
         } satisfies DatumPlaneCreateForm
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.datum-axis") {
+      return {
+        key,
+        kind: "datumAxis",
+        title: "Create Datum Axis",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          name: `Axis ${engine.getDocument().datums.size + 1}`,
+          axis: { kind: "globalAxis", axis: "z" }
+        } satisfies DatumAxisCreateForm
       } as SolidEditorRequest;
     }
     if (actionId === "solid.edit" && selectedFeature) {
@@ -7078,6 +7107,10 @@ export function App() {
     await commitOps([buildDatumPlaneCreateOp(form)], () => null);
   }
 
+  async function createDatumAxis(form: DatumAxisCreateForm) {
+    await commitOps([buildDatumAxisCreateOp(form)], () => null);
+  }
+
   async function createSideHoleSketch(
     form: SketchCreateForm,
     targetBodyId: string
@@ -9329,6 +9362,7 @@ export function App() {
       submission.kind === "torus" ||
       submission.kind === "sketch" ||
       submission.kind === "datumPlane" ||
+      submission.kind === "datumAxis" ||
       submission.kind === "transform"
     );
 
@@ -9449,6 +9483,9 @@ export function App() {
         return;
       case "datumPlane":
         await createDatumPlane(submission.draft);
+        return;
+      case "datumAxis":
+        await createDatumAxis(submission.draft);
         return;
       case "transform":
         await updateSelectedTransform(submission.draft);
@@ -9702,6 +9739,7 @@ export function App() {
       case "solid.torus":
       case "solid.sketch":
       case "solid.datum-plane":
+      case "solid.datum-axis":
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
@@ -10279,6 +10317,7 @@ export function App() {
           ? ready
           : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine),
       "solid.datum-plane": ready,
+      "solid.datum-axis": ready,
       "solid.edit":
         selectedObject ||
         (selectedFeature && selectedFeature.kind !== "importedBody")

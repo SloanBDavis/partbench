@@ -110,7 +110,7 @@ function createOperationSummaries(
         ? transaction.diff.sketches?.created?.[createdSketchIndex++]
         : undefined;
     const createdDatumRef =
-      op.op === "datum.plane.create"
+      op.op === "datum.plane.create" || op.op === "datum.axis.create"
         ? transaction.diff.datums?.created?.[createdDatumIndex++]
         : undefined;
     const createdSketchEntityRef = isSketchAddEntityOp(op)
@@ -398,6 +398,15 @@ function createOperationSummaries(
         return {
           op: op.op,
           label: `Create datum plane ${datumId ?? "with generated ID"}`,
+          datumId
+        };
+      }
+
+      case "datum.axis.create": {
+        const datumId = op.id ?? createdDatumRef?.id;
+        return {
+          op: op.op,
+          label: `Create datum axis ${datumId ?? "with generated ID"}`,
           datumId
         };
       }

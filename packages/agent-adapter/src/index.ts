@@ -71,7 +71,7 @@ import type {
   CadOpsVersion,
   CadParameterSnapshot,
   CadPartSnapshot,
-  DatumPlaneSnapshot,
+  DatumSnapshot,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectDependencyGraphQueryResponse,
@@ -665,7 +665,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
-  readonly datums?: readonly DatumPlaneSnapshot[];
+  readonly datums?: readonly DatumSnapshot[];
 }
 
 export interface CadOpsAgentProjectHealthQueryResponse {
@@ -2381,6 +2381,17 @@ function createOperationReview(
           op,
           "create",
           `Create datum plane ${op.id ?? op.name}`
+        ),
+        ...(op.id ? { datumId: op.id } : {})
+      };
+
+    case "datum.axis.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create datum axis ${op.id ?? op.name}`
         ),
         ...(op.id ? { datumId: op.id } : {})
       };
@@ -5830,6 +5841,14 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "datum.axis.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      isPatternDirectionRefShape(value.axis)
+    );
+  }
+
   if (value.op === "sketch.createOnFace") {
     const hasGeneratedReference =
       typeof value.bodyId === "string" &&
@@ -6123,7 +6142,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.name) &&
       readExclusivePatternSeed(value).ok &&
       (isFeaturePatternAxis(value.rotationAxis) ||
-        isPatternDirectionRefShape(value.rotationAxis)) &&
+        isPatternRotationAxisRefShape(value.rotationAxis)) &&
       typeof value.totalAngleDegrees === "number" &&
       typeof value.instanceCount === "number"
     );
@@ -6188,7 +6207,7 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.id === "string" &&
       (value.rotationAxis === undefined ||
         isFeaturePatternAxis(value.rotationAxis) ||
-        isPatternDirectionRefShape(value.rotationAxis)) &&
+        isPatternRotationAxisRefShape(value.rotationAxis)) &&
       (value.totalAngleDegrees === undefined ||
         typeof value.totalAngleDegrees === "number") &&
       (value.instanceCount === undefined ||
@@ -6929,6 +6948,7 @@ function formatPatternDirection(value: unknown): string {
   if (value.kind === "globalAxis") return String(value.axis);
   if (value.kind === "namedReference") return `named reference ${value.name}`;
   if (value.kind === "generatedEdge") return `edge ${value.stableId}`;
+  if (value.kind === "datumAxis") return `datum axis ${String(value.datumId)}`;
   return `topology anchor ${String(value.anchorId)}`;
 }
 
@@ -6955,6 +6975,13 @@ function isPatternDirectionRefShape(value: unknown): boolean {
     typeof value.bodyId === "string" &&
     typeof value.anchorId === "string"
   );
+}
+
+function isPatternRotationAxisRefShape(value: unknown): boolean {
+  if (isPatternDirectionRefShape(value)) {
+    return true;
+  }
+  return isRecord(value) && value.kind === "datumAxis" && typeof value.datumId === "string";
 }
 
 function isMirrorPlaneRefShape(value: unknown): boolean {

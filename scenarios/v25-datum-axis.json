@@ -1,0 +1,106 @@
+{
+  "id": "v25-datum-axis",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_block",
+      "name": "Block",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block",
+      "id": "rect_block",
+      "center": [20, 0],
+      "width": 10,
+      "height": 10
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block",
+      "bodyId": "body_block",
+      "sketchId": "sketch_block",
+      "entityId": "rect_block",
+      "depth": 8
+    }
+  ],
+  "steps": [
+    {
+      "id": "create-datum-axis",
+      "ops": [
+        {
+          "op": "datum.axis.create",
+          "id": "datum_axis_z",
+          "name": "Z axis",
+          "axis": { "kind": "globalAxis", "axis": "z" }
+        }
+      ],
+      "expect": {
+        "ops": ["datum.axis.create"],
+        "diff": {
+          "datums": {
+            "created": [
+              {
+                "id": "datum_axis_z",
+                "kind": "axis",
+                "name": "Z axis",
+                "axis": { "kind": "globalAxis", "axis": "z" }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "circular-pattern-around-datum-axis",
+      "ops": [
+        {
+          "op": "feature.circularPattern",
+          "id": "feat_pattern",
+          "bodyId": "body_patterned",
+          "seedBodyId": "body_block",
+          "rotationAxis": { "kind": "datumAxis", "datumId": "datum_axis_z" },
+          "totalAngleDegrees": 360,
+          "instanceCount": 4
+        }
+      ],
+      "expect": {
+        "ops": ["feature.circularPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_pattern",
+                "kind": "circularPattern",
+                "seedBodyId": "body_block",
+                "rotationAxis": { "kind": "datumAxis", "datumId": "datum_axis_z" },
+                "bodyId": "body_patterned"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "datums": [
+              {
+                "id": "datum_axis_z",
+                "kind": "axis",
+                "axis": { "kind": "globalAxis", "axis": "z" }
+              }
+            ],
+            "bodies": [
+              { "id": "body_block", "consumedByFeatureId": "feat_pattern" },
+              { "id": "body_patterned", "featureId": "feat_pattern" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

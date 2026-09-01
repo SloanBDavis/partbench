@@ -33,7 +33,8 @@ export function createSourceMeasurementFrame(
     readonly datums?: ReadonlyMap<
       string,
       {
-        readonly plane: {
+        readonly kind?: "plane" | "axis";
+        readonly plane?: {
           readonly kind: string;
           readonly plane?: SketchPlane;
           readonly offset?: number;
@@ -46,7 +47,11 @@ export function createSourceMeasurementFrame(
 ): SourceMeasurementFrame | undefined {
   if (sketch.datumId) {
     const datum = document.datums?.get(sketch.datumId);
-    if (datum?.plane.kind === "standardPlane" && datum.plane.plane) {
+    if (
+      datum?.kind !== "axis" &&
+      datum?.plane?.kind === "standardPlane" &&
+      datum.plane.plane
+    ) {
       return offsetSourceMeasurementFrame(
         createDefaultSourceMeasurementFrame(datum.plane.plane),
         datum.plane.offset ?? 0

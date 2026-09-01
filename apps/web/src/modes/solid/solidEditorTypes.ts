@@ -25,6 +25,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
@@ -40,6 +41,7 @@ export type SolidEditorKind =
   | PrimitiveEditorKind
   | "sketch"
   | "datumPlane"
+  | "datumAxis"
   | "transform"
   | "extrude"
   | "compositeExtrude"
@@ -65,6 +67,7 @@ export interface SolidDraftByKind {
   readonly torus: PrimitiveCommandForm;
   readonly sketch: SketchCreateForm;
   readonly datumPlane: DatumPlaneCreateForm;
+  readonly datumAxis: DatumAxisCreateForm;
   readonly transform: TransformCommandForm;
   readonly extrude: FeatureExtrudeForm;
   readonly compositeExtrude: FeatureCompositeExtrudeForm;
