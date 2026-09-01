@@ -16441,22 +16441,33 @@ function validatePatternSeed(
           : "missing"
     });
   }
-  if ("seedFeatureId" in seed.seed) {
+  const exclusive = seed.seed;
+  if (exclusive.seedFeatureId) {
     return {
       seedFeatureId: validatePatternSeedFeatureId(
         state,
         operation,
-        seed.seed.seedFeatureId,
+        exclusive.seedFeatureId,
         opIndex,
         ignoreConsumingFeatureId
       )
     };
   }
+  if (!exclusive.seedBodyId) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} requires exactly one of seedBodyId or seedFeatureId.`,
+      opIndex,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "seedBodyId XOR seedFeatureId",
+      received: "missing"
+    });
+  }
   return {
     seedBodyId: validatePatternSeedBodyId(
       state,
       operation,
-      seed.seed.seedBodyId,
+      exclusive.seedBodyId,
       opIndex,
       ignoreConsumingFeatureId
     )
@@ -40058,7 +40069,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
 
   if (value.kind === "linearPattern") {
     return (
-      typeof value.seedBodyId === "string" &&
+      readExclusivePatternSeed(value).ok &&
       (isPatternAxis(value.axis) ||
         (isPatternDirectionRef(value.direction) &&
           isPatternInstancesShape(
@@ -40075,7 +40086,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
 
   if (value.kind === "circularPattern") {
     return (
-      typeof value.seedBodyId === "string" &&
+      readExclusivePatternSeed(value).ok &&
       (isPatternAxis(value.rotationAxis) ||
         (isPatternDirectionRef(value.rotationAxis) &&
           isPatternInstancesShape(
