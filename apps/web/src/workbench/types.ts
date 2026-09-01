@@ -29,6 +29,7 @@ export type FeatureEditorKind =
   | "mirror"
   | "combine"
   | "datum-plane"
+  | "datum-axis"
   | "named-reference"
   | "named-reference-repair";
 

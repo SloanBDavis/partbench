@@ -1461,6 +1461,72 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews datum.axis.create and circular pattern around that axis", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_datum_axis",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_block",
+              id: "rect_block",
+              center: [20, 0],
+              width: 10,
+              height: 10
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_block",
+              bodyId: "body_block",
+              sketchId: "sketch_block",
+              entityId: "rect_block",
+              depth: 8
+            },
+            {
+              op: "datum.axis.create",
+              id: "datum_axis_z",
+              name: "Z axis",
+              axis: { kind: "globalAxis", axis: "z" }
+            },
+            {
+              op: "feature.circularPattern",
+              id: "feat_pattern",
+              bodyId: "body_patterned",
+              seedBodyId: "body_block",
+              rotationAxis: { kind: "datumAxis", datumId: "datum_axis_z" },
+              totalAngleDegrees: 360,
+              instanceCount: 4
+            }
+          ]
+        }
+      })
+    );
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "datum.axis.create",
+          intent: "create",
+          datumId: "datum_axis_z",
+          label: expect.stringContaining("datum axis")
+        }),
+        expect.objectContaining({
+          op: "feature.circularPattern",
+          intent: "create",
+          label: expect.stringContaining("datum_axis_z")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews datum.plane.create and sketch.create on a datum", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

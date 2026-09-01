@@ -11,6 +11,7 @@ import {
   buildCreateSketchDimensionOp,
   buildCreateSketchOp,
   buildDatumAndSketchOnPlaneOps,
+  buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateTorusOp,
   buildAddSketchCircleOp,
@@ -641,6 +642,18 @@ describe("cad command builders", () => {
       id: "datum_ear_a",
       name: "Ear A",
       plane: { kind: "standardPlane", plane: "XZ", offset: 15 }
+    });
+    expect(
+      buildDatumAxisCreateOp({
+        id: "datum_axis_z",
+        name: "Z axis",
+        axis: { kind: "globalAxis", axis: "z" }
+      })
+    ).toEqual({
+      op: "datum.axis.create",
+      id: "datum_axis_z",
+      name: "Z axis",
+      axis: { kind: "globalAxis", axis: "z" }
     });
     expect(
       buildDatumAndSketchOnPlaneOps({

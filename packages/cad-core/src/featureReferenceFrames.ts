@@ -85,6 +85,17 @@ export function resolvePatternRotationAxisFrame(
     };
   }
 
+  if (reference.kind === "datumAxis") {
+    const datum = document.datums.get(reference.datumId);
+    if (!datum || datum.kind !== "axis") {
+      return unresolved(
+        "PATTERN_AXIS_UNRESOLVED",
+        "Pattern rotation-axis datum no longer resolves to a datum axis."
+      );
+    }
+    return resolvePatternRotationAxisFrame(document, datum.axis);
+  }
+
   const edge = resolveEdgeReference(document, reference);
   if (!edge) {
     return unresolved(
@@ -137,7 +148,7 @@ export function resolveMirrorPlaneFrame(
 
   if (reference.kind === "datumPlane") {
     const datum = document.datums.get(reference.datumId);
-    if (!datum) {
+    if (!datum || datum.kind !== "plane") {
       return unresolved(
         "MIRROR_PLANE_UNRESOLVED",
         "Mirror plane datum no longer resolves."

@@ -1,6 +1,6 @@
 import type {
   CadGeneratedFaceReference,
-  DatumPlaneSnapshot,
+  DatumSnapshot,
   SketchPlane,
   SketchSnapshot,
   Vec2
@@ -44,11 +44,17 @@ export function createGeneratedFaceReferenceKey(
 export function createSketchDisplayState(
   sketches: readonly SketchSnapshot[],
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  datums: readonly DatumPlaneSnapshot[] = []
+  datums: readonly DatumSnapshot[] = []
 ): SketchDisplayState {
   const frames = new Map<string, SketchDisplayFrame>();
   const statuses = new Map<string, SketchDisplayStatus>();
-  const datumsById = new Map(datums.map((datum) => [datum.id, datum]));
+  const datumsById = new Map(
+    datums
+      .filter((datum): datum is Extract<DatumSnapshot, { kind: "plane" }> =>
+        datum.kind === "plane"
+      )
+      .map((datum) => [datum.id, datum])
+  );
 
   for (const sketch of sketches) {
     const attachment = sketch.attachment;
@@ -170,9 +176,9 @@ export function createDefaultSketchDisplayFrame(
 }
 
 export function createDatumSketchDisplayFrame(
-  datum: DatumPlaneSnapshot
+  datum: DatumSnapshot
 ): SketchDisplayFrame | undefined {
-  if (datum.plane.kind !== "standardPlane") {
+  if (datum.kind !== "plane" || datum.plane.kind !== "standardPlane") {
     return undefined;
   }
   const frame = createDefaultSketchDisplayFrame(datum.plane.plane);

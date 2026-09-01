@@ -16,6 +16,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
@@ -66,6 +67,12 @@ export function validateSolidDraft(
   }
   if (kind === "datumPlane") {
     const form = draft as DatumPlaneCreateForm;
+    return form.name.trim()
+      ? ready()
+      : blocked("Enter a datum name.");
+  }
+  if (kind === "datumAxis") {
+    const form = draft as DatumAxisCreateForm;
     return form.name.trim()
       ? ready()
       : blocked("Enter a datum name.");

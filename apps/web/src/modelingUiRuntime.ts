@@ -13,6 +13,7 @@ import type {
   MirrorPlaneRef,
   NamedGeneratedReferenceEntry,
   PatternDirectionRef,
+  PatternRotationAxisRef,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 
@@ -402,10 +403,10 @@ export function findSelectedEdgeChoice(
 }
 
 export function findSelectedDirectionChoice(
-  choices: readonly SolidChoice<PatternDirectionRef>[],
+  choices: readonly SolidChoice<PatternRotationAxisRef>[],
   state: GeneratedReferenceSelectionState,
   selectedName: string | undefined
-): SolidChoice<PatternDirectionRef> | undefined {
+): SolidChoice<PatternRotationAxisRef> | undefined {
   if (selectedName)
     return choices.find(
       (choice) =>

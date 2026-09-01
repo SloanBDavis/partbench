@@ -559,6 +559,7 @@ export type CadOp =
   | SketchCreateOp
   | SketchCreateOnFaceOp
   | DatumPlaneCreateOp
+  | DatumAxisCreateOp
   | SketchRenameOp
   | SketchDeleteOp
   | SketchAddPointOp
@@ -1619,7 +1620,11 @@ export type PatternDirectionRef =
       readonly anchorId: string;
     };
 
-export type PatternRotationAxisRef = PatternDirectionRef;
+export type PatternRotationAxisRef =
+  | PatternDirectionRef
+  | { readonly kind: "datumAxis"; readonly datumId: DatumId };
+
+export type DatumAxisSourceRef = PatternDirectionRef;
 
 export type DatumPlaneSourceRef =
   | {
@@ -1658,6 +1663,14 @@ export interface DatumPlaneCreateOp {
   readonly id?: DatumId;
   readonly name: string;
   readonly plane: DatumPlaneSourceRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
+}
+
+export interface DatumAxisCreateOp {
+  readonly op: "datum.axis.create";
+  readonly id?: DatumId;
+  readonly name: string;
+  readonly axis: DatumAxisSourceRef;
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
@@ -2118,11 +2131,20 @@ export interface CadSketchRef {
   readonly datumId?: DatumId;
 }
 
-export interface CadDatumRef {
+export type CadDatumRef = CadDatumPlaneRef | CadDatumAxisRef;
+
+export interface CadDatumPlaneRef {
   readonly id: DatumId;
   readonly kind: "plane";
   readonly name: string;
   readonly plane: DatumPlaneSourceRef;
+}
+
+export interface CadDatumAxisRef {
+  readonly id: DatumId;
+  readonly kind: "axis";
+  readonly name: string;
+  readonly axis: DatumAxisSourceRef;
 }
 
 export interface CadSketchEntityRef {
@@ -3896,6 +3918,15 @@ export interface DatumPlaneSnapshot {
   readonly kind: "plane";
   readonly plane: DatumPlaneSourceRef;
 }
+
+export interface DatumAxisSnapshot {
+  readonly id: DatumId;
+  readonly name: string;
+  readonly kind: "axis";
+  readonly axis: DatumAxisSourceRef;
+}
+
+export type DatumSnapshot = DatumPlaneSnapshot | DatumAxisSnapshot;
 
 export interface ExtrudeFeatureSnapshot {
   readonly id: FeatureId;
@@ -9154,7 +9185,7 @@ export interface ProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
-  readonly datums?: readonly DatumPlaneSnapshot[];
+  readonly datums?: readonly DatumSnapshot[];
 }
 
 export interface ProjectHealthQueryResponse {

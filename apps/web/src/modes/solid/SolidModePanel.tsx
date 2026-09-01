@@ -23,6 +23,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
@@ -580,6 +581,13 @@ function SolidDraftFields({
           onChange={onChange}
         />
       );
+    case "datumAxis":
+      return (
+        <DatumAxisFields
+          draft={draft as DatumAxisCreateForm}
+          onChange={onChange}
+        />
+      );
     case "transform":
       return (
         <TransformFields
@@ -928,6 +936,45 @@ function SketchFields({
           onChange={(offset) => onChange({ ...draft, offset })}
         />
       )}
+    </>
+  );
+}
+
+function DatumAxisFields({
+  draft,
+  onChange
+}: {
+  readonly draft: DatumAxisCreateForm;
+  readonly onChange: (draft: DatumAxisCreateForm) => void;
+}) {
+  const axis = draft.axis.kind === "globalAxis" ? draft.axis.axis : "z";
+  return (
+    <>
+      <TextField
+        label="Name"
+        name="datum-axis-name"
+        value={draft.name}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Source axis"
+        name="datum-source-axis"
+        value={axis}
+        options={[
+          { value: "x", label: "X axis" },
+          { value: "y", label: "Y axis" },
+          { value: "z", label: "Z axis" }
+        ]}
+        onChange={(nextAxis) =>
+          onChange({
+            ...draft,
+            axis: {
+              kind: "globalAxis",
+              axis: nextAxis as "x" | "y" | "z"
+            }
+          })
+        }
+      />
     </>
   );
 }
@@ -1925,13 +1972,18 @@ function CircularPatternFields({
       />
       <ChoiceCollector
         label="Rotation axis"
-        acceptedKinds={["axis", "edge", "named reference"]}
+        acceptedKinds={["axis", "edge", "named reference", "datum axis"]}
         choices={axisChoices}
         selectedKey={findChoiceKey(axisChoices, draft.rotationAxis)}
         collecting={collecting === "rotationAxis"}
         required
         onCollect={() =>
-          onCollect("rotationAxis", ["axis", "edge", "named reference"])
+          onCollect("rotationAxis", [
+            "axis",
+            "edge",
+            "named reference",
+            "datum axis"
+          ])
         }
         onChange={(rotationAxis) => onChange({ ...draft, rotationAxis })}
         onClear={() => undefined}

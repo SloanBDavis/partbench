@@ -372,6 +372,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildDatumPlaneCreateOp",
     "cadCommands.test.ts"
   ),
+  "solid.datum-axis": featureAudit(
+    "Datum axis",
+    "createDatumAxis",
+    "none",
+    "buildDatumAxisCreateOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

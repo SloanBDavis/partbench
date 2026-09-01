@@ -25,6 +25,8 @@ import type {
   FeatureMirrorOp,
   FeatureCombineOp,
   FeatureCombineMode,
+  DatumAxisCreateOp,
+  DatumAxisSourceRef,
   DatumPlaneCreateOp,
   DatumPlaneSourceRef,
   MirrorPlaneRef,
@@ -160,6 +162,12 @@ export interface DatumPlaneCreateForm {
   readonly id: string;
   readonly name: string;
   readonly plane: DatumPlaneSourceRef;
+}
+
+export interface DatumAxisCreateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly axis: DatumAxisSourceRef;
 }
 
 export interface SketchCreateOnFaceForm {
@@ -609,6 +617,17 @@ export function buildDatumPlaneCreateOp(
     id: normalizeOptionalId(form.id),
     name: form.name.trim(),
     plane: form.plane
+  };
+}
+
+export function buildDatumAxisCreateOp(
+  form: DatumAxisCreateForm
+): DatumAxisCreateOp {
+  return {
+    op: "datum.axis.create",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    axis: form.axis
   };
 }
 

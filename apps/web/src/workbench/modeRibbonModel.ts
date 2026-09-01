@@ -180,6 +180,7 @@ export function getActionIcon(id: UiActionId, group?: string): IconName {
     mirror: "mirror",
     combine: "extrude",
     "datum-plane": "extrude",
+    "datum-axis": "extrude",
     edit: "edit",
     rename: "edit",
     delete: "delete",

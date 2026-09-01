@@ -201,8 +201,11 @@ import type {
   PatternRotationAxisRef,
   PatternSeedFields,
   MirrorPlaneRef,
+  DatumAxisSourceRef,
+  DatumAxisSnapshot,
   DatumPlaneSourceRef,
   DatumPlaneSnapshot,
+  DatumSnapshot,
   PatternInstanceRecord,
   Vec2,
   Vec3
@@ -952,6 +955,8 @@ export interface Sketch {
 }
 
 export type DatumPlane = DatumPlaneSnapshot;
+export type DatumAxis = DatumAxisSnapshot;
+export type Datum = DatumSnapshot;
 
 export type CadParameter = CadParameterSnapshot;
 
@@ -1090,7 +1095,7 @@ export type LoftFeature = LoftFeatureV21;
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
-  readonly datums: ReadonlyMap<DatumId, DatumPlane>;
+  readonly datums: ReadonlyMap<DatumId, Datum>;
   readonly parameters: ReadonlyMap<ParameterId, CadParameter>;
   readonly sketchDimensions: ReadonlyMap<SketchDimensionId, SketchDimension>;
   readonly sketchConstraints: ReadonlyMap<SketchConstraintId, SketchConstraint>;
@@ -1138,7 +1143,7 @@ export interface CadDocumentSnapshot {
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
-  readonly datums?: readonly DatumPlaneSnapshot[];
+  readonly datums?: readonly DatumSnapshot[];
   readonly parameters: readonly CadParameterSnapshot[];
   readonly sketchDimensions: readonly SketchDimensionSnapshotCurrent[];
   readonly sketchConstraints: readonly SketchConstraintSnapshot[];
@@ -1891,7 +1896,7 @@ export function createCadDocument(
     readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
   > = [],
   topologyIdentity?: CadTopologyIdentitySourceSnapshot,
-  datums: Iterable<readonly [DatumId, DatumPlane]> = []
+  datums: Iterable<readonly [DatumId, Datum]> = []
 ): CadDocument {
   return {
     objects: new Map(objects),
@@ -6024,7 +6029,7 @@ type SketchEntityImportRef = {
 interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
-  datums: Map<DatumId, DatumPlane>;
+  datums: Map<DatumId, Datum>;
   parameters: Map<ParameterId, CadParameter>;
   sketchDimensions: Map<SketchDimensionId, SketchDimension>;
   sketchConstraints: Map<SketchConstraintId, SketchConstraint>;
@@ -6457,6 +6462,23 @@ function applyOperation(
         name: normalizeSketchName(op.name, opIndex, op.id),
         kind: "plane",
         plane
+      };
+      addDatum(state.datums, datum, diff, opIndex);
+      return;
+    }
+
+    case "datum.axis.create": {
+      const axis = validateDatumAxisSource(
+        state,
+        op.axis,
+        opIndex,
+        op.topologyAnchorProof
+      );
+      const datum: DatumAxis = {
+        id: op.id ?? createDatumId(),
+        name: normalizeSketchName(op.name, opIndex, op.id),
+        kind: "axis",
+        axis
       };
       addDatum(state.datums, datum, diff, opIndex);
       return;
@@ -8177,6 +8199,7 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.create":
     case "sketch.createOnFace":
     case "datum.plane.create":
+    case "datum.axis.create":
     case "sketch.rename":
     case "sketch.delete":
     case "sketch.addPoint":
@@ -13776,8 +13799,8 @@ function addSketch(
 }
 
 function addDatum(
-  datums: Map<DatumId, DatumPlane>,
-  datum: DatumPlane,
+  datums: Map<DatumId, Datum>,
+  datum: Datum,
   diff: MutableSemanticDiff,
   opIndex?: number
 ): void {
@@ -13817,6 +13840,17 @@ function resolveSketchCreateTarget(
 
   if (op.datumId !== undefined) {
     const datum = getDatumOrThrow(state.datums, op.datumId, opIndex);
+    if (datum.kind !== "plane") {
+      throwValidationError({
+        code: "INVALID_DATUM",
+        message: `sketch.create requires a datum plane, not ${datum.kind} ${datum.id}.`,
+        opIndex,
+        datumId: datum.id,
+        path: operationPath(opIndex, "datumId"),
+        expected: "existing datum plane id",
+        received: datum.kind
+      });
+    }
     return {
       plane: sketchPlaneFromDatum(state, datum, opIndex),
       datumId: datum.id
@@ -13827,10 +13861,10 @@ function resolveSketchCreateTarget(
 }
 
 function getDatumOrThrow(
-  datums: ReadonlyMap<DatumId, DatumPlane>,
+  datums: ReadonlyMap<DatumId, Datum>,
   id: DatumId,
   opIndex?: number
-): DatumPlane {
+): Datum {
   const datum = datums.get(id);
   if (!datum) {
     throwValidationError({
@@ -13880,6 +13914,50 @@ function dominantAxis(normal: Vec3): "x" | "y" | "z" {
     return "y";
   }
   return "z";
+}
+
+function validateDatumAxisSource(
+  state: MutableDocumentState,
+  axis: unknown,
+  opIndex?: number,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
+): DatumAxisSourceRef {
+  const reference = parsePatternDirectionRef(axis);
+  if (!reference) {
+    throwValidationError({
+      code: "INVALID_DATUM",
+      message: "datum.axis.create axis reference is invalid.",
+      opIndex,
+      path: operationPath(opIndex, "axis"),
+      expected: "globalAxis, generatedEdge, namedReference, or topologyAnchor",
+      received: describeReceived(axis)
+    });
+  }
+  const resolution = resolvePatternRotationAxisFrame(state, reference);
+  if (!resolution.ok) {
+    if (reference.kind === "topologyAnchor" && topologyAnchorProof) {
+      validateExactTopologyAnchorProof(
+        state,
+        reference.bodyId,
+        reference.anchorId,
+        "edge",
+        topologyAnchorProof,
+        opIndex
+      );
+      return reference;
+    }
+    throwValidationError({
+      code: resolution.code === "PATTERN_AXIS_UNRESOLVED"
+        ? "INVALID_DATUM"
+        : "INVALID_DATUM",
+      message: `datum.axis.create axis does not resolve: ${resolution.message}`,
+      opIndex,
+      path: operationPath(opIndex, "axis"),
+      expected: "resolvable proven linear edge or global axis",
+      received: describeReceived(axis)
+    });
+  }
+  return reference;
 }
 
 function validateDatumPlaneSource(
@@ -16722,7 +16800,7 @@ function validatePatternRotationAxisField(
 ): PatternRotationAxisRef {
   const reference = isPatternAxis(value)
     ? globalAxisRef(value)
-    : parsePatternDirectionRef(value);
+    : parsePatternRotationAxisRef(value);
   if (!reference) {
     throwValidationError({
       code: "PATTERN_AXIS_UNSUPPORTED",
@@ -16730,7 +16808,7 @@ function validatePatternRotationAxisField(
       opIndex,
       path: operationPath(opIndex, "rotationAxis"),
       expected:
-        "x, y, z, globalAxis, generatedEdge, namedReference, or topologyAnchor",
+        "x, y, z, globalAxis, generatedEdge, namedReference, topologyAnchor, or datumAxis",
       received: describeReceived(value)
     });
   }
@@ -16752,7 +16830,7 @@ function validatePatternRotationAxisField(
       message: resolution.message,
       opIndex,
       path: operationPath(opIndex, "rotationAxis"),
-      expected: "resolvable proven linear edge or global axis",
+      expected: "resolvable proven linear edge, global axis, or datum axis",
       received: describeReceived(value)
     });
   }
@@ -16796,6 +16874,23 @@ function getResolvedPatternAxis(
     };
   }
   throw new Error(resolution.message);
+}
+
+function parsePatternRotationAxisRef(
+  value: unknown
+): PatternRotationAxisRef | undefined {
+  const direction = parsePatternDirectionRef(value);
+  if (direction) {
+    return direction;
+  }
+  if (
+    isRecord(value) &&
+    value.kind === "datumAxis" &&
+    isNonEmptyString(value.datumId)
+  ) {
+    return { kind: "datumAxis", datumId: value.datumId };
+  }
+  return undefined;
 }
 
 function parsePatternDirectionRef(
@@ -22922,13 +23017,20 @@ function sketchRef(sketch: Sketch): CadSketchRef {
   };
 }
 
-function datumRef(datum: DatumPlane): CadDatumRef {
-  return {
-    id: datum.id,
-    kind: "plane",
-    name: datum.name,
-    plane: datum.plane
-  };
+function datumRef(datum: Datum): CadDatumRef {
+  return datum.kind === "axis"
+    ? {
+        id: datum.id,
+        kind: "axis",
+        name: datum.name,
+        axis: datum.axis
+      }
+    : {
+        id: datum.id,
+        kind: "plane",
+        name: datum.name,
+        plane: datum.plane
+      };
 }
 
 function sketchEntityRef(
@@ -24078,7 +24180,7 @@ export function createCadDocumentSnapshot(
     sketches: [...document.sketches.values()].map(createSketchSnapshot),
     ...(document.datums.size > 0
       ? {
-          datums: [...document.datums.values()].map(cloneDatumPlane)
+          datums: [...document.datums.values()].map(cloneDatum)
         }
       : {}),
     parameters: [...document.parameters.values()].map(cloneParameterSnapshot),
@@ -24146,7 +24248,7 @@ export function createCadDocumentFromSnapshot(
       ? cloneTopologyIdentitySourceSnapshot(snapshot.topologyIdentity)
       : undefined,
     (snapshot.datums ?? []).map(
-      (datum) => [datum.id, cloneDatumPlane(datum)] as const
+      (datum) => [datum.id, cloneDatum(datum)] as const
     )
   );
 }
@@ -24437,13 +24539,20 @@ function cloneSketchAttachment(
   };
 }
 
-function cloneDatumPlane(datum: DatumPlane): DatumPlane {
-  return {
-    id: datum.id,
-    name: datum.name,
-    kind: "plane",
-    plane: { ...datum.plane }
-  };
+function cloneDatum(datum: Datum): Datum {
+  return datum.kind === "axis"
+    ? {
+        id: datum.id,
+        name: datum.name,
+        kind: "axis",
+        axis: { ...datum.axis }
+      }
+    : {
+        id: datum.id,
+        name: datum.name,
+        kind: "plane",
+        plane: { ...datum.plane }
+      };
 }
 
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
@@ -24704,7 +24813,7 @@ interface CadProjectStructureSnapshot {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
-  readonly datums?: readonly DatumPlaneSnapshot[];
+  readonly datums?: readonly DatumSnapshot[];
 }
 
 const SUMMARY_REFERENCE_OPERATIONS = [
@@ -25226,7 +25335,7 @@ function createProjectStructure(
     bodies,
     objectSources,
     ...(document.datums.size > 0
-      ? { datums: [...document.datums.values()].map(cloneDatumPlane) }
+      ? { datums: [...document.datums.values()].map(cloneDatum) }
       : {})
   };
 }
@@ -28520,7 +28629,7 @@ function createSketchId(
 }
 
 function createDatumId(
-  datums: ReadonlyMap<DatumId, DatumPlane>,
+  datums: ReadonlyMap<DatumId, Datum>,
   initialDatumNumber: number
 ): { id: DatumId; nextDatumNumber: number } {
   let nextDatumNumber = initialDatumNumber;
@@ -29133,7 +29242,7 @@ function inferNextSketchNumber(document: CadDocument): number {
 }
 
 function inferNextDatumNumber(
-  document: CadDocument | { readonly datums?: ReadonlyMap<DatumId, DatumPlane> }
+  document: CadDocument | { readonly datums?: ReadonlyMap<DatumId, Datum> }
 ): number {
   let maxDatumNumber = 0;
   for (const id of document.datums?.keys() ?? []) {
@@ -31939,20 +32048,30 @@ function validateDatumPlaneSnapshots(
         "Datum name must be a non-empty string."
       );
     }
-    if (datum.kind !== "plane") {
+    if (datum.kind === "axis") {
+      if (!isPatternDirectionRef(datum.axis)) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${datumPath}.axis`,
+          "Datum axis must be a global axis or linear edge reference."
+        );
+      }
+    } else if (datum.kind === "plane") {
+      if (!isDatumPlaneSourceRef(datum.plane)) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${datumPath}.plane`,
+          "Datum plane must be a world plane or planar face reference."
+        );
+      }
+    } else {
       addProjectIssue(
         issues,
         "INVALID_DOCUMENT",
         `${datumPath}.kind`,
-        "Datum kind must be plane."
-      );
-    }
-    if (!isDatumPlaneSourceRef(datum.plane)) {
-      addProjectIssue(
-        issues,
-        "INVALID_DOCUMENT",
-        `${datumPath}.plane`,
-        "Datum plane must be a world plane or planar face reference."
+        "Datum kind must be plane or axis."
       );
     }
   }
@@ -34723,7 +34842,7 @@ function collectValidAuthoredFeatureByBodyId(
     (value.name === undefined || typeof value.name === "string") &&
     readExclusivePatternSeed(value).ok &&
     (isPatternAxis(value.rotationAxis) ||
-      isPatternDirectionRef(value.rotationAxis)) &&
+      isPatternRotationAxisRef(value.rotationAxis)) &&
     typeof value.totalAngleDegrees === "number" &&
     isPositiveFiniteNumber(value.totalAngleDegrees) &&
     value.totalAngleDegrees <= 360 &&
@@ -34744,7 +34863,7 @@ function collectValidAuthoredFeatureByBodyId(
             ? value.seedFeatureId
             : undefined
       }),
-      rotationAxis: isPatternDirectionRef(value.rotationAxis)
+      rotationAxis: isPatternRotationAxisRef(value.rotationAxis)
         ? value.rotationAxis
         : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
       totalAngleDegrees: value.totalAngleDegrees,
@@ -34754,7 +34873,7 @@ function collectValidAuthoredFeatureByBodyId(
         isPatternInstancesShape(value.instances, value.instanceCount)
           ? value.instances
           : undefined,
-        isPatternDirectionRef(value.rotationAxis)
+        isPatternRotationAxisRef(value.rotationAxis)
           ? value.rotationAxis
           : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
         value.totalAngleDegrees,
@@ -37882,7 +38001,7 @@ function validatePatternFeatureSnapshotFields(
   if (value.kind === "circularPattern") {
     if (
       isV20Schema
-        ? !isPatternDirectionRef(value.rotationAxis)
+        ? !isPatternRotationAxisRef(value.rotationAxis)
         : !isPatternAxis(value.rotationAxis)
     ) {
       addProjectIssue(
@@ -38994,6 +39113,14 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "datum.axis.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      isPatternDirectionRef(value.axis)
+    );
+  }
+
   if (value.op === "sketch.createOnFace") {
     const hasGeneratedReference =
       typeof value.bodyId === "string" &&
@@ -39319,7 +39446,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.name) &&
       readExclusivePatternSeed(value).ok &&
       (isPatternAxis(value.rotationAxis) ||
-        isPatternDirectionRef(value.rotationAxis)) &&
+        isPatternRotationAxisRef(value.rotationAxis)) &&
       typeof value.totalAngleDegrees === "number" &&
       isPositiveFiniteNumber(value.totalAngleDegrees) &&
       value.totalAngleDegrees <= 360 &&
@@ -39495,7 +39622,7 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.id === "string" &&
       (value.rotationAxis === undefined ||
         isPatternAxis(value.rotationAxis) ||
-        isPatternDirectionRef(value.rotationAxis)) &&
+        isPatternRotationAxisRef(value.rotationAxis)) &&
       (value.totalAngleDegrees === undefined ||
         (typeof value.totalAngleDegrees === "number" &&
           isPositiveFiniteNumber(value.totalAngleDegrees) &&
@@ -40289,7 +40416,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     return (
       readExclusivePatternSeed(value).ok &&
       (isPatternAxis(value.rotationAxis) ||
-        (isPatternDirectionRef(value.rotationAxis) &&
+        (isPatternRotationAxisRef(value.rotationAxis) &&
           isPatternInstancesShape(
             value.instances,
             value.instanceCount as number
@@ -41047,6 +41174,19 @@ function isPatternDirectionRef(value: unknown): value is PatternDirectionRef {
     value.kind === "topologyAnchor" &&
     isNonEmptyString(value.bodyId) &&
     isNonEmptyString(value.anchorId)
+  );
+}
+
+function isPatternRotationAxisRef(
+  value: unknown
+): value is PatternRotationAxisRef {
+  if (isPatternDirectionRef(value)) {
+    return true;
+  }
+  return (
+    isRecord(value) &&
+    value.kind === "datumAxis" &&
+    isNonEmptyString(value.datumId)
   );
 }
 
