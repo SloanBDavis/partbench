@@ -10,7 +10,7 @@ at once.
 
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - How we work: [`docs/how-we-work.md`](docs/how-we-work.md)
-- Current user goal: [`docs/v22.md`](docs/v22.md)
+- Current user goal: [`docs/v23.md`](docs/v23.md)
 
 ## Run the app
 
