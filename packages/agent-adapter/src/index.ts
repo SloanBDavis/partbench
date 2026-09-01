@@ -42,6 +42,8 @@ import type {
   CadBodyTopologySnapshot,
   CadDependencyHealthStatus,
   CadCurrentExactResult,
+  CadCurrentTopologySelectionEvidence,
+  CadCurrentTopologySelectionProjection,
   CadExactExportPlan,
   CadExactDownstreamGeometryOp,
   CadExportBodyReadiness,
@@ -1093,13 +1095,12 @@ export interface CadOpsAgentReferenceHealthQueryResponse extends Omit<
   readonly adapterVersion: AgentAdapterVersion;
 }
 
-export interface CadOpsAgentSelectionReferenceCandidatesQueryResponse {
+interface CadOpsAgentSelectionReferenceCandidatesQueryResponseBase {
   readonly ok: true;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "selection.referenceCandidates";
-  readonly selection: CadSelectionReferenceInput;
   readonly requiredOperation?: CadSelectionReferenceOperation;
   readonly status: CadSelectionReferenceStatus;
   readonly candidateCount: number;
@@ -1107,6 +1108,16 @@ export interface CadOpsAgentSelectionReferenceCandidatesQueryResponse {
   readonly issueCount: number;
   readonly issues: readonly CadSelectionReferenceIssue[];
 }
+
+export type CadOpsAgentSelectionReferenceCandidatesQueryResponse =
+  | (CadOpsAgentSelectionReferenceCandidatesQueryResponseBase & {
+      readonly selection: CadSelectionReferenceInput;
+      readonly currentTopology?: never;
+    })
+  | (CadOpsAgentSelectionReferenceCandidatesQueryResponseBase & {
+      readonly selection?: never;
+      readonly currentTopology: CadCurrentTopologySelectionProjection;
+    });
 
 export interface CadOpsAgentTransactionHistoryQueryResponse {
   readonly ok: true;
@@ -3907,13 +3918,12 @@ function toAgentQueryResponse(
   }
 
   if (response.query === "selection.referenceCandidates") {
-    return {
-      ok: true,
+    const common = {
+      ok: true as const,
       requestId: request.requestId,
       adapterVersion: request.adapterVersion,
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
-      selection: response.selection!,
       ...(response.requiredOperation
         ? { requiredOperation: response.requiredOperation }
         : {}),
@@ -3923,6 +3933,9 @@ function toAgentQueryResponse(
       issueCount: response.issueCount,
       issues: response.issues
     };
+    return response.selection
+      ? { ...common, selection: response.selection }
+      : { ...common, currentTopology: response.currentTopology };
   }
 
   return {
@@ -4872,7 +4885,12 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
           isCadReferenceHealthTarget(value.query.target)) &&
         isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "selection.referenceCandidates" &&
-        isCadSelectionReferenceInput(value.query.selection) &&
+        ((isCadSelectionReferenceInput(value.query.selection) &&
+          value.query.currentTopologyEvidence === undefined) ||
+          (value.query.selection === undefined &&
+            isCadCurrentTopologySelectionEvidence(
+              value.query.currentTopologyEvidence
+            ))) &&
         isOptionalTopologyMatchResults(value.query.topologyMatchResults) &&
         (value.query.requiredOperation === undefined ||
           isCadSelectionReferenceOperation(value.query.requiredOperation))) ||
@@ -5271,6 +5289,30 @@ function isWcadSourceIdentityInput(
   );
 }
 
+function isCadCurrentTopologySelectionEvidence(
+  value: unknown
+): value is CadCurrentTopologySelectionEvidence {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      "bodyId",
+      "bodySourceIdentitySignature",
+      "topologySignature",
+      "entityKind",
+      "localId",
+      "entitySignature"
+    ]) &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.bodySourceIdentitySignature) &&
+    isNonEmptyString(value.topologySignature) &&
+    (value.entityKind === "face" ||
+      value.entityKind === "edge" ||
+      value.entityKind === "vertex") &&
+    isNonEmptyString(value.localId) &&
+    isNonEmptyString(value.entitySignature)
+  );
+}
+
 function isCadSelectionReferenceInput(
   value: unknown
 ): value is CadSelectionReferenceInput {
@@ -5338,6 +5380,10 @@ function isCadSelectionReferenceOperation(
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
+    value === "feature.shell" ||
+    value === "feature.mirrorPlane" ||
+    value === "feature.linearPatternDirection" ||
+    value === "feature.circularPatternAxis" ||
     value === "feature.measureReference" ||
     value === "feature.selectReference"
   );
