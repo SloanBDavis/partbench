@@ -16,11 +16,12 @@ A release is one paragraph of what a person can do in the running app when the
 release is done. That paragraph is the user goal.
 
 The current user goal is the Product Goal in the doc linked from `AGENTS.md`.
-Today that is V22 in [`docs/v22.md`](./v22.md): selectable, previewable,
-measurable, and recoverable exact single-part CAD, with no new modeling
-family.
+Today that is V23 in [`docs/v23.md`](./v23.md): a current-exact face or edge
+is a real command target for every completed collector that already accepts
+that kind, via the existing V13 checkpoint/anchor path. Vertices stay
+inspect-only. No new modeling family.
 
-Do not change V22 product scope, matrices, non-goals, or architecture
+Do not change V23 product scope, matrices, non-goals, or architecture
 constraints. When a later release becomes current, update the link in
 `AGENTS.md`. Do not paste a changelog into `AGENTS.md`.
 
@@ -58,13 +59,13 @@ Close a slice only when the user-goal increment is visible in the running app.
 If that slice already has a named command, run it too. Do not invent a new
 test runner, Playwright suite, or smoke script to close the loop.
 
-Inherited V18–V21.1 named commands are compatibility history, not the daily
+Inherited V18–V22 named commands are compatibility history, not the daily
 loop. They remain binding for those completed matrices. They are not a
 per-save checklist.
 
 V22 is completed. Gates A–G stay passed, H was deleted as a closer, and I
 closed the user goal plus release records. Do not replay historical gate
-paperwork or V7–V21.1 gauntlets.
+paperwork or V7–V22 gauntlets. V23 does not reopen V22.
 
 ## Question, delete, then build
 
