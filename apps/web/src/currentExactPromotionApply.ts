@@ -255,6 +255,13 @@ function rewriteConsumingOps(
           ...op,
           openFaceRefs: [topologyAnchor]
         };
+      case "feature.offset":
+        return op.source.kind === "face"
+          ? {
+              ...op,
+              source: { kind: "face", face: topologyAnchor }
+            }
+          : op;
       case "feature.linearPattern":
       case "feature.updateLinearPattern":
         return {

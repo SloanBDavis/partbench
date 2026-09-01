@@ -2819,6 +2819,7 @@ describe("cad-protocol", () => {
           "feature.chamfer": 0,
           "feature.fillet": 0,
           "feature.shell": 0,
+          "feature.offset": 0,
           "feature.linearPatternDirection": 0,
           "feature.circularPatternAxis": 0,
           "feature.mirrorPlane": 0,

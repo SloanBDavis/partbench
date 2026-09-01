@@ -430,6 +430,7 @@ function getFeatureSketchIds(feature: CadFeatureSummary): readonly string[] {
     case "circularPattern":
     case "mirror":
     case "combine":
+    case "offset":
     case "shell":
       return [];
   }
@@ -614,6 +615,8 @@ function featureIcon(feature: CadFeatureSummary): IconName {
       return feature.kind;
     case "combine":
       return "extrude";
+    case "offset":
+      return "shell";
   }
 }
 

@@ -1313,6 +1313,9 @@ function activeCurrentExactRequiredOperationFor(
   if (activeTool === "solid.fillet") {
     return "feature.fillet";
   }
+  if (activeTool === "solid.offset") {
+    return "feature.offset";
+  }
   if (activeTool === "sketch.create") {
     return "feature.attachSketchPlane";
   }
@@ -4166,7 +4169,8 @@ export function App() {
         ) ?? [])
       );
     }
-    return pendingCurrentExactPromotion?.requiredOperation === "feature.shell"
+    return pendingCurrentExactPromotion?.requiredOperation === "feature.shell" ||
+      pendingCurrentExactPromotion?.requiredOperation === "feature.offset"
       ? includeCurrentSolidChoice(
           choices,
           createPendingFaceChoice(pendingCurrentExactPromotion)
@@ -4316,7 +4320,8 @@ export function App() {
           selectedNamedReferenceName
         );
   const selectedShellFaceChoice =
-    pendingCurrentExactPromotion?.requiredOperation === "feature.shell"
+    pendingCurrentExactPromotion?.requiredOperation === "feature.shell" ||
+    pendingCurrentExactPromotion?.requiredOperation === "feature.offset"
       ? (solidShellFaceChoices.find(
           (choice) => choice.key === pendingPromotionKey
         ) ??
@@ -4904,6 +4909,39 @@ export function App() {
           deletable: true
         } as SolidEditorRequest;
       }
+      if (selectedFeature.kind === "offset") {
+        return {
+          key,
+          kind: "offset",
+          title: "Edit Offset",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            name: selectedFeature.name ?? "",
+            sourceKind: selectedFeature.offsetSource.kind,
+            profileSketchId:
+              selectedFeature.offsetSource.kind === "sketchProfile"
+                ? selectedFeature.offsetSource.profile.sketchId
+                : "",
+            profileEntityId:
+              selectedFeature.offsetSource.kind === "sketchProfile"
+                ? selectedFeature.offsetSource.profile.entityId
+                : "",
+            face:
+              selectedFeature.offsetSource.kind === "face"
+                ? selectedFeature.offsetSource.face
+                : undefined,
+            distance: selectedFeature.distance,
+            side: selectedFeature.side
+          },
+          choices: {
+            profiles: solidProfileChoices,
+            openFaces: solidShellFaceChoices
+          },
+          deletable: true
+        } as SolidEditorRequest;
+      }
       if (selectedFeature.kind === "shell") {
         return {
           key,
@@ -5375,6 +5413,34 @@ export function App() {
         blockedReason: selectedSeedBodyId
           ? undefined
           : "Select a supported seed body."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.offset") {
+      const face = selectedShellFaceChoice?.value;
+      return {
+        key,
+        kind: "offset",
+        title: "Offset",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          sourceKind: face && !selectedEntityProfile ? "face" : "sketchProfile",
+          profileSketchId: selectedEntityProfile?.sketchId ?? "",
+          profileEntityId: selectedEntityProfile?.entityId ?? "",
+          face,
+          distance: 2,
+          side: "outward" as const
+        },
+        choices: {
+          profiles: solidProfileChoices,
+          openFaces: solidShellFaceChoices
+        },
+        blockedReason:
+          selectedEntityProfile || face
+            ? undefined
+            : "Select a sketch profile or a face."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.combine") {
@@ -7939,7 +8005,9 @@ export function App() {
               ? "solid.fillet"
               : modelingAction.id === "feature.shell"
                 ? "solid.shell"
-                : undefined;
+                : modelingAction.id === "feature.offset"
+                  ? "solid.offset"
+                  : undefined;
         if (actionId) {
           navigateToMode("solid");
           dispatchWorkbench({ type: "set-active-tool", actionId });
@@ -8053,7 +8121,8 @@ export function App() {
       feature.kind === "hole" ||
       feature.kind === "chamfer" ||
       feature.kind === "fillet" ||
-      feature.kind === "combine"
+      feature.kind === "combine" ||
+      feature.kind === "offset"
     ) {
       return feature.targetBodyId;
     }
@@ -8069,10 +8138,16 @@ export function App() {
       feature.kind === "revolve" ||
       feature.kind === "hole" ||
       feature.kind === "sweep" ||
-      feature.kind === "loft"
+      feature.kind === "loft" ||
+      feature.kind === "offset"
     ) {
       if (feature.kind === "sweep") return feature.profileSketchId;
       if (feature.kind === "loft") return feature.sections[0]?.sketchId;
+      if (feature.kind === "offset") {
+        return feature.offsetSource.kind === "sketchProfile"
+          ? feature.offsetSource.profile.sketchId
+          : undefined;
+      }
       return feature.sketchId;
     }
 
@@ -8113,6 +8188,8 @@ export function App() {
         return "mirror";
       case "combine":
         return "combine";
+      case "offset":
+        return "offset";
       case "shell":
         return "shell";
       case "sweep":
@@ -9802,6 +9879,16 @@ export function App() {
         dispatchWorkbench({ type: "set-selection-filter", filter: "body" });
         setCommandNotice("Choose two completed exact solids, then apply.");
         return;
+      case "solid.offset":
+        navigateToMode("solid");
+        dispatchWorkbench({
+          type: "set-selection-filter",
+          filter: selectedEntityProfile ? "auto" : "face"
+        });
+        setCommandNotice(
+          "Choose a sketch profile or a face, then apply the same feature.offset batch."
+        );
+        return;
       case "solid.measure":
       case "inspect.measure":
         navigateToMode("inspect");
@@ -10315,6 +10402,10 @@ export function App() {
         solidCombineBodyChoices.length >= 2
           ? ready
           : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine),
+      "solid.offset":
+        selectedEntityProfile || selectedShellFaceChoice
+          ? ready
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidOffset),
       "solid.datum-plane": ready,
       "solid.datum-axis": ready,
       "solid.edit":

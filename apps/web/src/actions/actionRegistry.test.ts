@@ -225,6 +225,7 @@ describe("V18 command search", () => {
       "solid.chamfer",
       "solid.shell",
       "solid.combine",
+      "solid.offset",
       "sketch.trim",
       "sketch.extend",
       "sketch.split",

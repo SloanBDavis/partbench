@@ -75,6 +75,7 @@ const LINE_EDGE_OPERATIONS = [
 const PLANAR_FACE_OPERATIONS = [
   "feature.attachSketchPlane",
   "feature.shell",
+  "feature.offset",
   "feature.mirrorPlane",
   "feature.measureReference",
   "feature.selectReference"
@@ -126,6 +127,7 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesCircularPatternFeature
   | GeneratedReferencesMirrorFeature
   | GeneratedReferencesCombineFeature
+  | GeneratedReferencesOffsetFeature
   | GeneratedReferencesShellFeature
   | GeneratedReferencesSweepFeature
   | GeneratedReferencesLoftFeature;
@@ -200,6 +202,13 @@ export interface GeneratedReferencesCombineFeature {
   readonly bodyId: BodyId;
   readonly targetBodyId: BodyId;
   readonly toolBodyId: BodyId;
+}
+
+export interface GeneratedReferencesOffsetFeature {
+  readonly id: FeatureId;
+  readonly kind: "offset";
+  readonly bodyId: BodyId;
+  readonly targetBodyId?: BodyId;
 }
 
 export interface GeneratedReferencesShellFeature {

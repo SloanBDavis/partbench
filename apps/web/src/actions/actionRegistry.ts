@@ -42,6 +42,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidCircularPattern: "Select a supported body.",
   solidMirror: "Select a supported body.",
   solidCombine: "Select two completed exact solids.",
+  solidOffset: "Select a sketch profile or a face.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -446,6 +447,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine)
+  ),
+  action(
+    "solid.offset",
+    "Offset",
+    "Modify",
+    ["solid"],
+    ["offset face", "offset profile", "associative offset"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidOffset)
   ),
   action(
     "solid.datum-plane",

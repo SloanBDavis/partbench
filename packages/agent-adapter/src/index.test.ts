@@ -1461,6 +1461,71 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews feature.offset batches from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_offset",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_plate",
+              id: "rect_plate",
+              center: [0, 0],
+              width: 20,
+              height: 12
+            },
+            {
+              op: "feature.offset",
+              id: "feat_profile_offset",
+              bodyId: "body_profile_offset",
+              source: {
+                kind: "sketchProfile",
+                profile: {
+                  kind: "entity",
+                  sketchId: "sketch_plate",
+                  entityId: "rect_plate"
+                }
+              },
+              distance: 4,
+              side: "outward"
+            },
+            {
+              op: "feature.updateOffset",
+              id: "feat_profile_offset",
+              distance: 6
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.offset",
+          intent: "create",
+          featureId: "feat_profile_offset",
+          bodyId: "body_profile_offset",
+          label: expect.stringContaining("sketch profile")
+        }),
+        expect.objectContaining({
+          op: "feature.updateOffset",
+          intent: "modify",
+          featureId: "feat_profile_offset"
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews datum.axis.create and circular pattern around that axis", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(
@@ -6779,6 +6844,7 @@ describe("agent-adapter", () => {
           eligibleOperations: [
             "feature.attachSketchPlane",
             "feature.shell",
+            "feature.offset",
             "feature.mirrorPlane",
             "feature.measureReference",
             "feature.selectReference"

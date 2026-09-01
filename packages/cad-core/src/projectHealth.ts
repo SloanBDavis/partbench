@@ -78,6 +78,7 @@ import type {
   CircularPatternFeature,
   MirrorFeature,
   CombineFeature,
+  OffsetFeature,
   ShellFeature,
   SweepFeature,
   LoftFeature
@@ -146,6 +147,7 @@ export type ProjectHealthFeature =
   | CircularPatternFeature
   | MirrorFeature
   | CombineFeature
+  | OffsetFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature;
@@ -2114,6 +2116,7 @@ function getProjectHealthFeaturePrimaryEntityRef(
     | CircularPatternFeature
     | MirrorFeature
     | CombineFeature
+    | OffsetFeature
     | ShellFeature
     | SweepFeature
     | LoftFeature
@@ -2142,6 +2145,7 @@ function hasSketchEntitySource(
   | CircularPatternFeature
   | MirrorFeature
   | CombineFeature
+  | OffsetFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -2153,6 +2157,7 @@ function hasSketchEntitySource(
     feature.kind !== "linearPattern" &&
     feature.kind !== "mirror" &&
     feature.kind !== "combine" &&
+    feature.kind !== "offset" &&
     feature.kind !== "shell" &&
     feature.kind !== "sweep" &&
     feature.kind !== "loft" &&
@@ -2171,7 +2176,8 @@ function isTargetConsumingProjectHealthFeature(
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
     feature.kind === "shell" ||
-    feature.kind === "combine"
+    feature.kind === "combine" ||
+    feature.kind === "offset"
   );
 }
 
@@ -2637,6 +2643,10 @@ function describeFeatureForHealth(
 
   if (feature.kind === "combine") {
     return `combine ${feature.mode} result`;
+  }
+
+  if (feature.kind === "offset") {
+    return "offset result";
   }
 
   if (feature.kind === "shell") {

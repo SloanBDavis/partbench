@@ -128,6 +128,7 @@ function createOperationSummaries(
       op.op === "feature.circularPattern" ||
       op.op === "feature.mirror" ||
       op.op === "feature.combine" ||
+      op.op === "feature.offset" ||
       op.op === "feature.shell"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
@@ -847,6 +848,22 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.offset": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const sourceLabel =
+          op.source.kind === "sketchProfile"
+            ? `sketch profile ${op.source.profile.entityId}`
+            : "face";
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create offset feature ${featureId ?? "with generated ID"} of ${sourceLabel} distance ${op.distance} ${op.side}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId
+        });
+      }
+
       case "feature.shell": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -1061,6 +1078,23 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.updateOffset": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update offset feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          targetBodyId:
+            modifiedFeatureRef?.kind === "offset"
+              ? modifiedFeatureRef.targetBodyId
+              : undefined
+        });
+      }
+
       case "reference.nameGenerated": {
         const kindLabel = createdNamedReferenceRef?.kind
           ? `${createdNamedReferenceRef.kind} `
@@ -1170,6 +1204,7 @@ function getFeatureRefSketchEntityId(
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
+    feature.kind === "offset" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
@@ -1189,6 +1224,7 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
+    feature.kind === "offset" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

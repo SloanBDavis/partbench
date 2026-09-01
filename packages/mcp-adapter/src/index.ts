@@ -3991,6 +3991,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
             "feature.chamfer",
             "feature.fillet",
             "feature.shell",
+            "feature.offset",
             "feature.mirrorPlane",
             "feature.linearPatternDirection",
             "feature.circularPatternAxis",
@@ -4742,6 +4743,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
     value === "feature.shell" ||
+    value === "feature.offset" ||
     value === "feature.mirrorPlane" ||
     value === "feature.linearPatternDirection" ||
     value === "feature.circularPatternAxis" ||

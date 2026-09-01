@@ -686,6 +686,8 @@ function actionIdFromOperation(
       return "feature.fillet";
     case "feature.shell":
       return "feature.shell";
+    case "feature.offset":
+      return "solid.offset";
     case "feature.measureReference":
       return "feature.measureReference";
     case "feature.selectReference":

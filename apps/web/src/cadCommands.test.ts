@@ -33,6 +33,8 @@ import {
   buildFeatureLinearPatternOp,
   buildFeatureMirrorOp,
   buildFeatureCombineOp,
+  buildFeatureOffsetOp,
+  buildFeatureUpdateOffsetOp,
   buildFeatureRevolveOp,
   buildFeatureCompositeRevolveOp,
   buildFeatureSweepOp,
@@ -886,6 +888,74 @@ describe("cad command builders", () => {
       mode: "union",
       targetBodyId: "body_hub",
       toolBodyId: "body_step"
+    });
+
+    expect(
+      buildFeatureOffsetOp({
+        id: " feat_profile_offset ",
+        bodyId: " body_profile_offset ",
+        name: " Offset plate ",
+        sourceKind: "sketchProfile",
+        profileSketchId: "sketch_plate",
+        profileEntityId: "rect_plate",
+        distance: 4,
+        side: "outward"
+      })
+    ).toEqual({
+      op: "feature.offset",
+      id: "feat_profile_offset",
+      bodyId: "body_profile_offset",
+      name: "Offset plate",
+      source: {
+        kind: "sketchProfile",
+        profile: {
+          kind: "entity",
+          sketchId: "sketch_plate",
+          entityId: "rect_plate"
+        }
+      },
+      distance: 4,
+      side: "outward"
+    });
+
+    expect(
+      buildFeatureOffsetOp({
+        id: "feat_face_offset",
+        bodyId: "body_face_offset",
+        name: "",
+        sourceKind: "face",
+        profileSketchId: "",
+        profileEntityId: "",
+        face: {
+          kind: "generatedFace",
+          bodyId: "body_block",
+          stableId: "generated:face:body_block:endCap"
+        },
+        distance: 2,
+        side: "outward"
+      })
+    ).toEqual({
+      op: "feature.offset",
+      id: "feat_face_offset",
+      bodyId: "body_face_offset",
+      source: {
+        kind: "face",
+        face: {
+          kind: "generatedFace",
+          bodyId: "body_block",
+          stableId: "generated:face:body_block:endCap"
+        }
+      },
+      distance: 2,
+      side: "outward"
+    });
+
+    expect(
+      buildFeatureUpdateOffsetOp("feat_profile_offset", { distance: 6 })
+    ).toEqual({
+      op: "feature.updateOffset",
+      id: "feat_profile_offset",
+      distance: 6
     });
   });
 

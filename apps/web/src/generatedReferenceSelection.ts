@@ -257,12 +257,18 @@ export function formatSelectionReferenceOperationLabel(
       return "Use as pattern axis";
     case "feature.mirrorPlane":
       return "Use as mirror plane";
+    case "feature.chamfer":
+      return "Chamfer";
+    case "feature.fillet":
+      return "Fillet";
+    case "feature.shell":
+      return "Shell";
+    case "feature.offset":
+      return "Offset face";
     case "feature.measureReference":
       return "Measure reference";
     case "feature.selectReference":
       return "Inspect reference";
-    default:
-      return `${operation[8]?.toUpperCase()}${operation.slice(9)}`;
   }
 }
 

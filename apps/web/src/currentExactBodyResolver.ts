@@ -229,6 +229,10 @@ const BODY_SOURCE_RESOLVERS = {
     featureKind: "combine",
     resolve: resolveLegacyRuntimeSource
   },
+  offsetFeature: {
+    featureKind: "offset",
+    resolve: resolveLegacyRuntimeSource
+  },
   shellFeature: {
     featureKind: "shell",
     resolve: resolveArtifactOperationSource

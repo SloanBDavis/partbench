@@ -365,6 +365,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildFeatureCombineOp",
     "cadCommands.test.ts"
   ),
+  "solid.offset": featureAudit(
+    "Offset",
+    "createOffset",
+    "profile/face selection",
+    "buildFeatureOffsetOp",
+    "cadCommands.test.ts"
+  ),
   "solid.datum-plane": featureAudit(
     "Datum plane",
     "createDatumPlane",

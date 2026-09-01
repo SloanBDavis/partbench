@@ -217,6 +217,7 @@ describe("V21 exact export protocol", () => {
       circularPatternFeature: "authoredCircularPattern",
       mirrorFeature: "authoredMirror",
       combineFeature: "authoredCombine",
+      offsetFeature: "authoredOffset",
       shellFeature: "authoredShell",
       sweepFeature: "authoredSweep",
       loftFeature: "authoredLoft",

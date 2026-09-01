@@ -4,7 +4,8 @@ import type {
   LoftSection,
   MirrorPlaneRef,
   PatternDirectionRef,
-  PatternRotationAxisRef
+  PatternRotationAxisRef,
+  SketchProfileRefV22
 } from "@web-cad/cad-protocol";
 import type {
   FeatureCircularPatternForm,
@@ -18,6 +19,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureCombineForm,
+  FeatureOffsetForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm,
@@ -750,6 +752,18 @@ function SolidDraftFields({
           targetChoices={request.choices?.targetBodies ?? []}
           toolChoices={request.choices?.toolBodies ?? request.choices?.targetBodies ?? []}
           lockedBodies={request.mode === "edit"}
+          collecting={collecting}
+          onCollect={onCollect}
+          onChange={onChange}
+        />
+      );
+    case "offset":
+      return (
+        <OffsetFields
+          draft={draft as FeatureOffsetForm}
+          profileChoices={request.choices?.profiles ?? []}
+          faceChoices={request.choices?.openFaces ?? []}
+          lockedSource={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -2159,6 +2173,138 @@ function CombineFields({
           onChange({
             ...draft,
             mode: mode as FeatureCombineForm["mode"]
+          })
+        }
+      />
+    </>
+  );
+}
+
+function OffsetFields({
+  draft,
+  profileChoices,
+  faceChoices,
+  lockedSource,
+  collecting,
+  onCollect,
+  onChange
+}: {
+  readonly draft: FeatureOffsetForm;
+  readonly profileChoices: readonly SolidChoice<SketchProfileRefV22>[];
+  readonly faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[];
+  readonly lockedSource: boolean;
+  readonly collecting?: string;
+  readonly onCollect: (
+    collector: SolidCollectorRequest["collector"],
+    accepted: readonly string[]
+  ) => void;
+  readonly onChange: (draft: FeatureOffsetForm) => void;
+}) {
+  const selectedProfileKey = draft.profileSketchId
+    ? findChoiceKey(profileChoices, {
+        kind: "entity",
+        sketchId: draft.profileSketchId,
+        entityId: draft.profileEntityId
+      })
+    : undefined;
+  return (
+    <>
+      <FeatureIdentityFields
+        draft={draft}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Source"
+        name="offset-source-kind"
+        value={draft.sourceKind}
+        options={[
+          { value: "sketchProfile", label: "Sketch profile" },
+          { value: "face", label: "Face" }
+        ]}
+        onChange={(sourceKind) =>
+          onChange({
+            ...draft,
+            sourceKind: sourceKind as FeatureOffsetForm["sourceKind"],
+            face: sourceKind === "face" ? draft.face : undefined,
+            profileSketchId: sourceKind === "face" ? "" : draft.profileSketchId,
+            profileEntityId: sourceKind === "face" ? "" : draft.profileEntityId
+          })
+        }
+      />
+      {draft.sourceKind === "sketchProfile" ? (
+        <ChoiceCollector
+          label="Profile"
+          acceptedKinds={["closed sketch profile"]}
+          choices={profileChoices}
+          selectedKey={selectedProfileKey}
+          collecting={collecting === "profile"}
+          disabled={lockedSource}
+          required
+          onCollect={() => onCollect("profile", ["closed sketch profile"])}
+          onChange={(profile) =>
+            onChange({
+              ...draft,
+              sourceKind: "sketchProfile",
+              profileSketchId: profile.kind === "entity" ? profile.sketchId : "",
+              profileEntityId: profile.kind === "entity" ? profile.entityId : "",
+              face: undefined
+            })
+          }
+          onClear={() =>
+            onChange({
+              ...draft,
+              profileSketchId: "",
+              profileEntityId: "",
+              face: undefined
+            })
+          }
+        />
+      ) : (
+        <ChoiceCollector
+          label="Face"
+          acceptedKinds={["face", "named face"]}
+          choices={faceChoices}
+          selectedKey={draft.face ? findChoiceKey(faceChoices, draft.face) : undefined}
+          collecting={collecting === "openFaces"}
+          disabled={lockedSource}
+          required
+          onCollect={() => onCollect("openFaces", ["face", "named face"])}
+          onChange={(face) =>
+            onChange({
+              ...draft,
+              sourceKind: "face",
+              face,
+              profileSketchId: "",
+              profileEntityId: ""
+            })
+          }
+          onClear={() =>
+            onChange({
+              ...draft,
+              face: undefined
+            })
+          }
+        />
+      )}
+      <NumberField
+        label="Distance"
+        name="offset-distance"
+        value={draft.distance}
+        unit="mm"
+        onChange={(distance) => onChange({ ...draft, distance })}
+      />
+      <SelectField
+        label="Side"
+        name="offset-side"
+        value={draft.side}
+        options={[
+          { value: "outward", label: "Outward" },
+          { value: "inward", label: "Inward" }
+        ]}
+        onChange={(side) =>
+          onChange({
+            ...draft,
+            side: side as FeatureOffsetForm["side"]
           })
         }
       />

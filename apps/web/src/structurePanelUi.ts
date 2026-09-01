@@ -37,6 +37,7 @@ export type AuthoredStructureFeature = Extract<
       | "fillet"
       | "mirror"
       | "combine"
+      | "offset"
       | "sweep"
       | "loft";
   }
@@ -90,6 +91,7 @@ export function isAuthoredStructureFeature(
     feature.kind === "fillet" ||
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
+    feature.kind === "offset" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
   );
@@ -375,7 +377,7 @@ function getFeatureTargetBodyId(
     return feature.seedBodyId;
   }
 
-  if (feature.kind === "combine") {
+  if (feature.kind === "combine" || feature.kind === "offset") {
     return feature.targetBodyId;
   }
 
@@ -704,6 +706,10 @@ export function formatFeatureLine(
     return `combine / ${feature.mode} / target ${feature.targetBodyId} / tool ${feature.toolBodyId}`;
   }
 
+  if (feature.kind === "offset") {
+    return `offset / ${feature.offsetSource.kind} / ${feature.distance} ${units} / ${feature.side}`;
+  }
+
   if (feature.kind === "sweep") {
     return `sweep / profile ${feature.profile.sketchId}/${sweepProfileEntityLabel(feature.profile) ?? feature.profile.kind} / ${feature.path.kind} path`;
   }
@@ -827,6 +833,10 @@ export function formatFeatureKindLabel(
 
   if (feature.kind === "combine") {
     return "Combine";
+  }
+
+  if (feature.kind === "offset") {
+    return "Offset";
   }
 
   if (feature.kind === "sweep") {
