@@ -1,0 +1,188 @@
+{
+  "id": "v23-current-exact-promotion",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_1",
+      "name": "Profile",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_1",
+      "id": "rect_1",
+      "center": [0, 0],
+      "width": 4,
+      "height": 2
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_rect_1",
+      "bodyId": "body_rect_1",
+      "sketchId": "sketch_1",
+      "entityId": "rect_1",
+      "depth": 3
+    }
+  ],
+  "evidence": {
+    "bodyId": "body_rect_1",
+    "topologySignature": "current-topology-signature",
+    "localIdTemplate": "snapshot-local:{kind}:2",
+    "entitySignatureTemplate": "raw-occt-{kind}-signature"
+  },
+  "checkpointSourceIdentity": {
+    "algorithm": "partbench-source-v1",
+    "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "proofs": {
+    "face": {
+      "kind": "axisAlignedPlanarFace",
+      "entityKind": "face",
+      "evidenceSource": "checkpointSnapshot",
+      "exposesCheckpointLocalIds": false,
+      "planarAxis": "z",
+      "planarCoordinate": 3
+    },
+    "edge": {
+      "kind": "axisAlignedLinearEdge",
+      "entityKind": "edge",
+      "evidenceSource": "checkpointSnapshot",
+      "exposesCheckpointLocalIds": false,
+      "bounds": { "min": [-2, -1, 0], "max": [-2, 1, 0] },
+      "linearAxis": "y",
+      "length": 2
+    }
+  },
+  "privateIdPattern": "snapshot-local|raw-occt|entitySignature|localId",
+  "cases": [
+    {
+      "id": "unmatched-face-sketch-on-face",
+      "kind": "face",
+      "query": {
+        "query": "selection.referenceCandidates",
+        "requiredOperation": "feature.attachSketchPlane"
+      },
+      "expectQuery": {
+        "ok": true,
+        "status": "resolved",
+        "currentTopology": { "outcome": "promotableGeneratedMatch" },
+        "candidateCount": 1
+      },
+      "apply": {
+        "checkpointId": "checkpoint_promoted",
+        "anchorId": "anchor_promoted",
+        "sourceFeatureId": "feat_rect_1",
+        "omitStableId": true,
+        "consuming": {
+          "op": "sketch.createOnFace",
+          "id": "sketch_promoted",
+          "name": "Promoted face",
+          "topologyAnchorId": "anchor_promoted",
+          "topologyAnchorProof": {
+            "kind": "axisAlignedPlanarFace",
+            "entityKind": "face",
+            "evidenceSource": "checkpointSnapshot",
+            "exposesCheckpointLocalIds": false,
+            "planarAxis": "z",
+            "planarCoordinate": 3
+          }
+        }
+      },
+      "expectApply": {
+        "ops": [
+          "topology.checkpoint.create",
+          "topology.anchor.create",
+          "sketch.createOnFace"
+        ],
+        "anchorOmitsStableId": true,
+        "diff": {
+          "references": {
+            "topologyCheckpointsCreated": [
+              { "checkpointId": "checkpoint_promoted" }
+            ],
+            "topologyAnchorsCreated": [{ "anchorId": "anchor_promoted" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "unmatched-edge-chamfer",
+      "kind": "edge",
+      "query": {
+        "query": "selection.referenceCandidates",
+        "requiredOperation": "feature.chamfer"
+      },
+      "expectQuery": {
+        "ok": true,
+        "status": "resolved",
+        "currentTopology": { "outcome": "promotableGeneratedMatch" },
+        "candidateCount": 1
+      },
+      "apply": {
+        "checkpointId": "checkpoint_promoted",
+        "anchorId": "anchor_promoted",
+        "sourceFeatureId": "feat_rect_1",
+        "omitStableId": true,
+        "consuming": {
+          "op": "feature.chamfer",
+          "id": "feat_promoted",
+          "bodyId": "body_promoted",
+          "targetBodyId": "body_rect_1",
+          "topologyAnchorId": "anchor_promoted",
+          "topologyAnchorProof": {
+            "kind": "axisAlignedLinearEdge",
+            "entityKind": "edge",
+            "evidenceSource": "checkpointSnapshot",
+            "exposesCheckpointLocalIds": false,
+            "bounds": { "min": [-2, -1, 0], "max": [-2, 1, 0] },
+            "linearAxis": "y",
+            "length": 2
+          },
+          "distance": 0.2
+        }
+      },
+      "expectApply": {
+        "ops": [
+          "topology.checkpoint.create",
+          "topology.anchor.create",
+          "feature.chamfer"
+        ],
+        "anchorOmitsStableId": true,
+        "diff": {
+          "references": {
+            "topologyCheckpointsCreated": [
+              { "checkpointId": "checkpoint_promoted" }
+            ],
+            "topologyAnchorsCreated": [{ "anchorId": "anchor_promoted" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "vertex-inspect-only",
+      "kind": "vertex",
+      "query": {
+        "query": "selection.referenceCandidates",
+        "requiredOperation": "feature.chamfer"
+      },
+      "expectQuery": {
+        "status": "non-commandable",
+        "currentTopology": { "outcome": "inspectOnly" },
+        "candidateCount": 0
+      }
+    },
+    {
+      "id": "unlisted-pair-blocked",
+      "kind": "face",
+      "query": {
+        "query": "selection.referenceCandidates",
+        "requiredOperation": "feature.chamfer"
+      },
+      "expectQuery": {
+        "status": "non-commandable",
+        "currentTopology": { "outcome": "blocked" },
+        "issues": [{ "code": "NON_COMMANDABLE_SELECTION_TARGET" }]
+      }
+    }
+  ]
+}
