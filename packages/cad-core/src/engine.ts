@@ -90,6 +90,7 @@ import type {
   CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
   CadSemanticBodyReference,
+  CadSemanticTopologyAnchorReference,
   CadSketchEntityRef,
   CadSketchConstraintRef,
   CadSketchDimensionRef,
@@ -7273,7 +7274,8 @@ function applyOperation(
         op.axis,
         op.direction,
         "feature.linearPattern",
-        opIndex
+        opIndex,
+        op.topologyAnchorProof
       );
       const spacing = validatePatternSpacing(op.spacing, opIndex);
       const instanceCount = validatePatternInstanceCount(
@@ -7293,7 +7295,7 @@ function applyOperation(
           direction,
           spacing,
           instanceCount,
-          getResolvedPatternDirection(state, direction)
+          getResolvedPatternDirection(state, direction, op.topologyAnchorProof)
         )
       };
 
@@ -7312,7 +7314,8 @@ function applyOperation(
         state,
         op.rotationAxis,
         "feature.circularPattern",
-        opIndex
+        opIndex,
+        op.topologyAnchorProof
       );
       const totalAngleDegrees = validateCircularPatternAngle(
         op.totalAngleDegrees,
@@ -7335,7 +7338,7 @@ function applyOperation(
           rotationAxis,
           totalAngleDegrees,
           instanceCount,
-          getResolvedPatternAxis(state, rotationAxis)
+          getResolvedPatternAxis(state, rotationAxis, op.topologyAnchorProof)
         )
       };
 
@@ -7359,7 +7362,8 @@ function applyOperation(
           state,
           op.mirrorPlane,
           op.plane,
-          opIndex
+          opIndex,
+          op.topologyAnchorProof
         ),
         includeOriginal: validateMirrorIncludeOriginal(
           op.includeOriginal,
@@ -14725,7 +14729,8 @@ function updateLinearPatternFeature(
           op.axis,
           op.direction,
           "feature.updateLinearPattern",
-          opIndex
+          opIndex,
+          op.topologyAnchorProof
         );
   const spacing =
     op.spacing === undefined
@@ -14744,7 +14749,7 @@ function updateLinearPatternFeature(
       direction,
       spacing,
       instanceCount,
-      getResolvedPatternDirection(state, direction)
+      getResolvedPatternDirection(state, direction, op.topologyAnchorProof)
     )
   };
 
@@ -14793,7 +14798,8 @@ function updateCircularPatternFeature(
           state,
           op.rotationAxis,
           "feature.updateCircularPattern",
-          opIndex
+          opIndex,
+          op.topologyAnchorProof
         );
   const totalAngleDegrees =
     op.totalAngleDegrees === undefined
@@ -14812,7 +14818,7 @@ function updateCircularPatternFeature(
       rotationAxis,
       totalAngleDegrees,
       instanceCount,
-      getResolvedPatternAxis(state, rotationAxis)
+      getResolvedPatternAxis(state, rotationAxis, op.topologyAnchorProof)
     )
   };
 
@@ -14859,7 +14865,13 @@ function updateMirrorFeature(
     plane:
       op.mirrorPlane === undefined && op.plane === undefined
         ? feature.plane
-        : validateMirrorPlaneFields(state, op.mirrorPlane, op.plane, opIndex),
+        : validateMirrorPlaneFields(
+            state,
+            op.mirrorPlane,
+            op.plane,
+            opIndex,
+            op.topologyAnchorProof
+          ),
     includeOriginal:
       op.includeOriginal === undefined
         ? feature.includeOriginal
@@ -16230,7 +16242,8 @@ function validatePatternDirectionFields(
   axis: unknown,
   direction: unknown,
   operation: "feature.linearPattern" | "feature.updateLinearPattern",
-  opIndex?: number
+  opIndex?: number,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): PatternDirectionRef {
   const legacy =
     axis === undefined
@@ -16239,7 +16252,13 @@ function validatePatternDirectionFields(
   const normalized =
     direction === undefined
       ? undefined
-      : validatePatternDirectionRef(state, direction, operation, opIndex);
+      : validatePatternDirectionRef(
+          state,
+          direction,
+          operation,
+          opIndex,
+          topologyAnchorProof
+        );
 
   if (!legacy && !normalized) {
     throwValidationError({
@@ -16268,7 +16287,8 @@ function validatePatternDirectionRef(
   state: MutableDocumentState,
   value: unknown,
   operation: "feature.linearPattern" | "feature.updateLinearPattern",
-  opIndex?: number
+  opIndex?: number,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): PatternDirectionRef {
   const reference = parsePatternDirectionRef(value);
   if (!reference) {
@@ -16283,6 +16303,17 @@ function validatePatternDirectionRef(
   }
   const resolution = resolvePatternDirectionFrame(state, reference);
   if (!resolution.ok) {
+    if (reference.kind === "topologyAnchor" && topologyAnchorProof) {
+      validateExactTopologyAnchorProof(
+        state,
+        reference.bodyId,
+        reference.anchorId,
+        "edge",
+        topologyAnchorProof,
+        opIndex
+      );
+      return reference;
+    }
     throwValidationError({
       code: resolution.code,
       message: resolution.message,
@@ -16299,7 +16330,8 @@ function validatePatternRotationAxisField(
   state: MutableDocumentState,
   value: unknown,
   operation: "feature.circularPattern" | "feature.updateCircularPattern",
-  opIndex?: number
+  opIndex?: number,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): PatternRotationAxisRef {
   const reference = isPatternAxis(value)
     ? globalAxisRef(value)
@@ -16317,6 +16349,17 @@ function validatePatternRotationAxisField(
   }
   const resolution = resolvePatternRotationAxisFrame(state, reference);
   if (!resolution.ok) {
+    if (reference.kind === "topologyAnchor" && topologyAnchorProof) {
+      validateExactTopologyAnchorProof(
+        state,
+        reference.bodyId,
+        reference.anchorId,
+        "edge",
+        topologyAnchorProof,
+        opIndex
+      );
+      return reference;
+    }
     throwValidationError({
       code: resolution.code,
       message: resolution.message,
@@ -16331,24 +16374,41 @@ function validatePatternRotationAxisField(
 
 function getResolvedPatternDirection(
   state: CadDocument,
-  reference: PatternDirectionRef
+  reference: PatternDirectionRef,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): Vec3 {
   const resolution = resolvePatternDirectionFrame(state, reference);
-  if (!resolution.ok) {
-    throw new Error(resolution.message);
+  if (resolution.ok) {
+    return resolution.frame;
   }
-  return resolution.frame;
+  if (
+    topologyAnchorProof?.kind === "axisAlignedLinearEdge" &&
+    topologyAnchorProof.linearAxis
+  ) {
+    return getGlobalAxisVector(topologyAnchorProof.linearAxis);
+  }
+  throw new Error(resolution.message);
 }
 
 function getResolvedPatternAxis(
   state: CadDocument,
-  reference: PatternRotationAxisRef
+  reference: PatternRotationAxisRef,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): { readonly origin: Vec3; readonly direction: Vec3 } {
   const resolution = resolvePatternRotationAxisFrame(state, reference);
-  if (!resolution.ok) {
-    throw new Error(resolution.message);
+  if (resolution.ok) {
+    return resolution.frame;
   }
-  return resolution.frame;
+  if (
+    topologyAnchorProof?.kind === "axisAlignedLinearEdge" &&
+    topologyAnchorProof.linearAxis
+  ) {
+    return {
+      origin: topologyAnchorProof.bounds?.min ?? [0, 0, 0],
+      direction: getGlobalAxisVector(topologyAnchorProof.linearAxis)
+    };
+  }
+  throw new Error(resolution.message);
 }
 
 function parsePatternDirectionRef(
@@ -16651,7 +16711,8 @@ function validateMirrorPlaneFields(
   state: MutableDocumentState,
   mirrorPlane: unknown,
   plane: unknown,
-  opIndex?: number
+  opIndex?: number,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): MirrorPlaneRef {
   const legacy =
     mirrorPlane === undefined
@@ -16711,6 +16772,17 @@ function validateMirrorPlaneFields(
   const result = normalized ?? legacy!;
   const resolution = resolveMirrorPlaneFrame(state, result);
   if (!resolution.ok) {
+    if (result.kind === "topologyAnchor" && topologyAnchorProof) {
+      validateExactTopologyAnchorProof(
+        state,
+        result.bodyId,
+        result.anchorId,
+        "face",
+        topologyAnchorProof,
+        opIndex
+      );
+      return result;
+    }
     throwValidationError({
       code: resolution.code,
       message: resolution.message,
@@ -20783,7 +20855,89 @@ function createCurrentTopologySelectionCandidates(
         : "unsupported"
     );
   }
-  return createCurrentTopologySelectionResult(evidence, "inspectOnly");
+  if (!requiredOperation || evidence.entityKind === "vertex") {
+    return createCurrentTopologySelectionResult(evidence, "inspectOnly");
+  }
+  const promotableOperations =
+    evidence.entityKind === "face"
+      ? CURRENT_EXACT_FACE_PROMOTABLE_OPERATIONS
+      : CURRENT_EXACT_EDGE_PROMOTABLE_OPERATIONS;
+  if (
+    !promotableOperations.includes(
+      requiredOperation as (typeof promotableOperations)[number]
+    )
+  ) {
+    return createCurrentTopologySelectionResult(evidence, "blocked", {
+      candidates: [],
+      issues: [
+        createSelectionIssue(
+          "NON_COMMANDABLE_SELECTION_TARGET",
+          "non-commandable",
+          `${evidence.entityKind} reference does not support ${requiredOperation}.`,
+          {
+            bodyId: body.id,
+            expected: requiredOperation,
+            received: promotableOperations.join(", ")
+          }
+        )
+      ]
+    });
+  }
+
+  const candidate = createCurrentExactTopologyAnchorCandidate(
+    body,
+    evidence.entityKind,
+    promotableOperations
+  );
+  return createCurrentTopologySelectionResult(
+    evidence,
+    "promotableGeneratedMatch",
+    {
+      candidates: [candidate],
+      issues: []
+    }
+  );
+}
+
+const CURRENT_EXACT_FACE_PROMOTABLE_OPERATIONS = [
+  "feature.attachSketchPlane",
+  "feature.shell",
+  "feature.mirrorPlane"
+] as const satisfies readonly CadSelectionReferenceOperation[];
+
+const CURRENT_EXACT_EDGE_PROMOTABLE_OPERATIONS = [
+  "feature.chamfer",
+  "feature.fillet",
+  "feature.linearPatternDirection",
+  "feature.circularPatternAxis"
+] as const satisfies readonly CadSelectionReferenceOperation[];
+
+function createCurrentExactTopologyAnchorCandidate(
+  body: CadBodySnapshot,
+  kind: "face" | "edge",
+  operations: readonly CadSelectionReferenceOperation[]
+): CadSelectionReferenceCandidate {
+  const label = `Current exact ${kind}`;
+  return {
+    source: "topologyAnchorSelection",
+    commandable: true,
+    commandOperations: operations,
+    label,
+    issues: [],
+    target: {
+      type: "topologyAnchor",
+      bodyId: body.id,
+      kind
+    },
+    reference: {
+      kind,
+      label,
+      eligibleOperations: operations,
+      bodyId: body.id,
+      ownerPartId: body.partId,
+      sourceFeatureId: body.featureId
+    }
+  };
 }
 
 function createCurrentTopologySelectionResult(
@@ -21145,6 +21299,51 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
           });
 
   if (stableResolution.status !== "resolved") {
+    if (
+      stableResolution.status === "missing" &&
+      (anchor.entityKind === "face" || anchor.entityKind === "edge") &&
+      commandOperations.length > 0
+    ) {
+      const kind = anchor.entityKind;
+      const label = `Current exact ${kind}`;
+      const reference: CadSemanticTopologyAnchorReference = {
+        kind,
+        label,
+        eligibleOperations: commandOperations,
+        bodyId: body.id,
+        ownerPartId: body.partId,
+        sourceFeatureId: body.featureId,
+        topologyAnchorId: anchor.anchorId
+      };
+      const extraIssues = createCommandabilityIssues(
+        reference,
+        commandOperations,
+        options.requiredOperation
+      );
+      const commandable = extraIssues.length === 0;
+      const candidate: CadSelectionReferenceCandidate = {
+        source: "topologyAnchorSelection",
+        commandable,
+        commandOperations,
+        label,
+        issues: extraIssues,
+        target: {
+          type: "topologyAnchor",
+          bodyId: body.id,
+          kind,
+          topologyAnchorId: anchor.anchorId,
+          checkpointId: anchor.checkpointId
+        },
+        reference
+      };
+      return {
+        status: commandable
+          ? "resolved"
+          : chooseSelectionReferenceStatus(extraIssues),
+        candidates: [candidate],
+        issues: extraIssues
+      };
+    }
     return createSelectionFailure(
       "UNSUPPORTED_SELECTION_TARGET",
       "unsupported",
@@ -21413,7 +21612,7 @@ function createCommandabilityIssues(
         message,
         {
           bodyId: reference.bodyId,
-          stableId: reference.stableId
+          ...("stableId" in reference ? { stableId: reference.stableId } : {})
         }
       )
     ];
@@ -21430,7 +21629,7 @@ function createCommandabilityIssues(
         `${reference.kind} reference does not support ${requiredOperation}.`,
         {
           bodyId: reference.bodyId,
-          stableId: reference.stableId,
+          ...("stableId" in reference ? { stableId: reference.stableId } : {}),
           expected: requiredOperation,
           received: operations.join(", ")
         }
@@ -21747,6 +21946,67 @@ function createSketchPlaneFromFaceReference(
     path: operationPath(opIndex, path),
     expected: "axis-aligned planar generated face reference",
     received: JSON.stringify(normal)
+  });
+}
+
+function validateExactTopologyAnchorProof(
+  state: MutableDocumentState,
+  bodyId: BodyId,
+  anchorId: string,
+  entityKind: "face" | "edge",
+  proof: CadTopologyAnchorCommandProof,
+  opIndex?: number
+): void {
+  const target = resolveActiveTopologyAnchorTarget(
+    state,
+    anchorId,
+    entityKind,
+    opIndex
+  );
+  if (target.bodyId !== bodyId) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: "Topology anchor proof body does not match the command target.",
+      opIndex,
+      bodyId,
+      topologyAnchorId: target.topologyAnchorId,
+      checkpointId: target.checkpointId,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected: bodyId,
+      received: target.bodyId
+    });
+  }
+
+  if (entityKind === "face") {
+    validateTopologyAnchorFaceProof(proof, opIndex);
+    return;
+  }
+
+  if (
+    proof.kind === "axisAlignedLinearEdge" &&
+    proof.entityKind === "edge" &&
+    proof.evidenceSource === "checkpointSnapshot" &&
+    proof.exposesCheckpointLocalIds === false &&
+    isPlanarAxis(proof.linearAxis) &&
+    typeof proof.length === "number" &&
+    Number.isFinite(proof.length) &&
+    proof.length > 0
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_TOPOLOGY_ANCHOR",
+    message:
+      "topologyAnchorProof must be an axis-aligned linear edge proof with a planar axis and positive finite length.",
+    opIndex,
+    bodyId,
+    topologyAnchorId: target.topologyAnchorId,
+    checkpointId: target.checkpointId,
+    path: operationPath(opIndex, "topologyAnchorProof"),
+    expected:
+      "axisAlignedLinearEdge proof with planar axis and positive finite length",
+    received: describeReceived(proof)
   });
 }
 
