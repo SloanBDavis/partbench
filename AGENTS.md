@@ -9,7 +9,7 @@ picks, and previews are derived display.
 - How we work: [docs/how-we-work.md](docs/how-we-work.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Current user goal: [docs/v24.md](docs/v24.md). V22 and V23 are complete.
+- Current user goal: [docs/v24.md](docs/v24.md). V22, V23, and V24 are complete.
   Do not reopen them. Do not invent V25.
 
 Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md,
@@ -32,15 +32,13 @@ pnpm dev
 - pnpm test
 - pnpm typecheck
 - pnpm lint
+- pnpm smoke:v24-finished-parts — current named closer
 - pnpm smoke:v23-promotion-workflow — completed V23 closer
 - pnpm verify — typecheck plus CADOps scenarios
 
 Per-save: focused tests and typecheck of the packages you touched. pnpm verify
 is typecheck plus the scenarios/ CADOps runner. It does not rerun V7-V22 smokes.
 Never rerun V7-V23 gauntlets.
-
-The V24 named closer is in [docs/v24.md](docs/v24.md). Add that script when
-the three proof-part scenarios exist.
 
 ## Slice close
 
