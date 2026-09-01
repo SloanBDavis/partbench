@@ -18,16 +18,18 @@ The following named command passed in this run:
 pnpm smoke:v23-promotion-workflow
 ```
 
-Recorded counts from this run (to be filled from the named closer output):
+Recorded counts from this run:
 
-- cad-core `src/v23Promotion.test.ts`: pending
+- cad-core `src/v23Promotion.test.ts`: 1 file, **10 passed**
 - web four files (`currentExactPromotionApply.test.ts`,
   `exactFeaturePreviewPlan.test.ts`,
   `viewportExactCandidateAnnouncement.test.ts`,
-  `sketchOnFacePromotion.test.ts`): pending
-- mcp-adapter `src/v23PromotionMcp.test.ts`: pending
+  `sketchOnFacePromotion.test.ts`): 4 files, **52 passed**
+- mcp-adapter `src/v23PromotionMcp.test.ts`: 1 file, **5 passed**
 
-`pnpm dev` started. Vite came up. The dev server was then stopped.
+`pnpm dev` started. Vite v7.3.3 was ready in 171 ms on
+`http://localhost:5173/` and served the app HTML with HTTP 200. The dev
+server was then stopped.
 
 ## Scope
 
