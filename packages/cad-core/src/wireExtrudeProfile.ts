@@ -18,6 +18,7 @@ import {
   type SketchProfileReadinessDocument
 } from "./sketchProfilePathQueries";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import { resolveOrientedSketchSegment } from "./sketchWireGeometry";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 export type WireExtrudeProfileResolution =
@@ -129,8 +130,33 @@ export function createResolvedWireExtrudeRecipe(
   const segments: CadExactExportResolvedWireProfile["segments"][number][] = [];
   for (const reference of profile.segments) {
     const entity = entities.get(reference.entityId);
-    if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
+    if (
+      !entity ||
+      (entity.kind !== "line" &&
+        entity.kind !== "arc" &&
+        entity.kind !== "spline")
+    ) {
       return undefined;
+    }
+    if (entity.kind === "spline") {
+      const resolved = resolveOrientedSketchSegment(
+        entity,
+        reference.orientation
+      );
+      if (!resolved.ok || resolved.segment.kind !== "spline") return undefined;
+      const samples = resolved.segment.samples;
+      for (let index = 1; index < samples.length; index += 1) {
+        const start = samples[index - 1]!;
+        const end = samples[index]!;
+        if (start[0] === end[0] && start[1] === end[1]) continue;
+        segments.push({
+          kind: "line",
+          sourceEntityId: entity.id,
+          start,
+          end
+        });
+      }
+      continue;
     }
     if (entity.kind === "line") {
       segments.push({

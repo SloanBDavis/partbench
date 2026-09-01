@@ -15,6 +15,7 @@ import {
   buildCreateTorusOp,
   buildAddSketchCircleOp,
   buildAddSketchArcOp,
+  buildAddSketchSplineOp,
   buildAddSketchThreePointArcOp,
   buildAddSketchLineOp,
   buildAddSketchPointOp,
@@ -151,6 +152,32 @@ describe("cad command builders", () => {
       startAngleDegrees: 45,
       sweepAngleDegrees: -120
     };
+    expect(
+      buildAddSketchSplineOp("sketch_profile", {
+        ...entityForm,
+        id: " spline_1 ",
+        splinePointsText: "8,0; 4,6; -4,6; -8,0; -4,-6; 4,-6",
+        splineClosed: true,
+        splineForm: "interpolation"
+      })
+    ).toEqual({
+      op: "sketch.addSpline",
+      sketchId: "sketch_profile",
+      id: "spline_1",
+      construction: true,
+      definition: {
+        kind: "interpolation",
+        points: [
+          [8, 0],
+          [4, 6],
+          [-4, 6],
+          [-8, 0],
+          [-4, -6],
+          [4, -6]
+        ],
+        closed: true
+      }
+    });
     expect(buildAddSketchArcOp("sketch_profile", entityForm)).toEqual({
       op: "sketch.addArc",
       sketchId: "sketch_profile",

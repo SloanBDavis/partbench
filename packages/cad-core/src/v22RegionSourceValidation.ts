@@ -18,6 +18,7 @@ import {
 } from "./v22SourceShapes";
 import {
   areSketchPointsCoincident,
+  getSketchSegmentSignedArea,
   getSketchWireSignedArea,
   intersectSketchSegments,
   resolveOrientedSketchSegment,
@@ -297,6 +298,43 @@ function rectanglePrimitives(
   ];
 }
 
+function splineSamplePrimitives(
+  segment: Extract<ResolvedSketchSegment, { readonly kind: "spline" }>
+): readonly BoundaryPrimitive[] {
+  const primitives: BoundaryPrimitive[] = [];
+  for (let index = 1; index < segment.samples.length; index += 1) {
+    const start = segment.samples[index - 1]!;
+    const end = segment.samples[index]!;
+    if (start[0] === end[0] && start[1] === end[1]) continue;
+    primitives.push(makeLine(segment.entityId, start, end));
+  }
+  return primitives;
+}
+
+function hasFiniteResolvedBoundaryGeometry(
+  segment: ResolvedSketchSegment,
+  policy: SketchGeometryPolicy
+): boolean {
+  if (segment.kind === "spline") {
+    const primitives = splineSamplePrimitives(segment);
+    return (
+      primitives.length > 0 &&
+      primitives.every((primitive) =>
+        hasFiniteDerivedPrimitiveGeometry(primitive, policy)
+      )
+    );
+  }
+  return hasFiniteDerivedPrimitiveGeometry(segment, policy);
+}
+
+function boundaryPrimitivesFromResolved(
+  segments: readonly ResolvedSketchSegment[]
+): readonly BoundaryPrimitive[] {
+  return segments.flatMap((segment) =>
+    segment.kind === "spline" ? [...splineSamplePrimitives(segment)] : [segment]
+  );
+}
+
 function hasFiniteDerivedPrimitiveGeometry(
   primitive: BoundaryPrimitive,
   policy: SketchGeometryPolicy
@@ -370,11 +408,15 @@ function resolveLoop(
       );
       return { orientationChanged: false, cyclicStartChanged: false };
     }
-    if (entity.kind !== "rectangle" && entity.kind !== "circle") {
+    if (
+      entity.kind !== "rectangle" &&
+      entity.kind !== "circle" &&
+      entity.kind !== "spline"
+    ) {
       issues.push(
         issue(
           "SKETCH_REGION_ENTITY_UNSUPPORTED",
-          `Entity loops support only rectangle and circle entities, not ${entity.kind}.`,
+          `Entity loops support only rectangle, circle, and closed spline entities, not ${entity.kind}.`,
           { ...issueDetails, entityId: entity.id }
         )
       );
@@ -419,6 +461,38 @@ function resolveLoop(
         }
       ];
       sample = entity.center;
+    } else if (entity.kind === "spline") {
+      if (!entity.closed) {
+        issues.push(
+          issue(
+            "SKETCH_REGION_ENTITY_UNSUPPORTED",
+            "Entity loops support only closed spline entities, not open splines.",
+            { ...issueDetails, entityId: entity.id }
+          )
+        );
+        return { orientationChanged: false, cyclicStartChanged: false };
+      }
+      const resolution = resolveOrientedSketchSegment(entity, "forward", policy);
+      if (!resolution.ok || resolution.segment.kind !== "spline") {
+        issues.push(
+          issue(
+            "SKETCH_REGION_ENTITY_UNSUPPORTED",
+            resolution.ok
+              ? `Spline ${entity.id} did not resolve as spline geometry.`
+              : resolution.issue.message,
+            { ...issueDetails, entityId: entity.id }
+          )
+        );
+        return { orientationChanged: false, cyclicStartChanged: false };
+      }
+      const signedArea = getSketchSegmentSignedArea(resolution.segment);
+      area = Math.abs(signedArea);
+      primitives = splineSamplePrimitives(resolution.segment);
+      const samples = resolution.segment.samples;
+      sample = [
+        samples.reduce((sum, point) => sum + point[0], 0) / samples.length,
+        samples.reduce((sum, point) => sum + point[1], 0) / samples.length
+      ];
     } else {
       if (
         !isFinitePoint(entity.center) ||
@@ -532,11 +606,15 @@ function resolveLoop(
       );
       continue;
     }
-    if (entity.kind !== "line" && entity.kind !== "arc") {
+    if (
+      entity.kind !== "line" &&
+      entity.kind !== "arc" &&
+      entity.kind !== "spline"
+    ) {
       issues.push(
         issue(
           "SKETCH_REGION_ENTITY_UNSUPPORTED",
-          `Wire loops support only line and arc entities, not ${entity.kind}.`,
+          `Wire loops support only line, arc, and spline entities, not ${entity.kind}.`,
           { ...issueDetails, entityId: entity.id }
         )
       );
@@ -566,7 +644,7 @@ function resolveLoop(
       );
       continue;
     }
-    if (!hasFiniteDerivedPrimitiveGeometry(resolution.segment, policy)) {
+    if (!hasFiniteResolvedBoundaryGeometry(resolution.segment, policy)) {
       issues.push(
         issue(
           "SKETCH_REGION_ENTITY_UNSUPPORTED",
@@ -678,7 +756,7 @@ function resolveLoop(
         normalized.kind === "wire"
           ? normalized.segments.map((reference) => reference.entityId)
           : [normalized.entityId],
-      primitives: resolved,
+      primitives: boundaryPrimitivesFromResolved(resolved),
       signedArea: role === "outer" ? absoluteArea : -absoluteArea,
       absoluteArea,
       boundarySample: resolved[0]!.start,
@@ -802,6 +880,11 @@ function primitiveIntersection(
       endpointDistances.some(
         (value) => value > circle.radius + policy.linearTolerance
       )
+    );
+  }
+  if (segment.kind === "spline") {
+    return splineSamplePrimitives(segment).some((chord) =>
+      primitiveIntersection(circle, chord, policy)
     );
   }
   const supportDistance = distance(circle.center, segment.center);

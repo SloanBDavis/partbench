@@ -2,6 +2,7 @@ import {
   CadEngine,
   createCadProjectSourceIdentity,
   exportCadProject,
+  getProfileEntityIds,
   type AsyncCadCommandExecutor,
   type CadProject
 } from "@web-cad/cad-core";
@@ -2456,6 +2457,21 @@ function createOperationReview(
       };
     }
 
+    case "sketch.addSpline": {
+      const construction = op.construction ?? false;
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Add ${op.definition.kind} spline ${op.id ?? "with generated ID"} to ${op.sketchId} as ${construction ? "construction" : "regular"} geometry`
+        ),
+        sketchId: op.sketchId,
+        ...(op.id ? { sketchEntityId: op.id } : {}),
+        construction
+      };
+    }
+
     case "sketch.updateEntity":
       return {
         ...operationReviewBase(
@@ -2793,9 +2809,11 @@ function createOperationReview(
       const profile = "profile" in op ? op.profile : undefined;
       const path = "path" in op ? op.path : undefined;
       const sketchId = profile?.sketchId ?? op.profileSketchId;
-      const sketchEntityId = profile?.entityId ?? op.profileEntityId;
+      const sketchEntityId = profile
+        ? getProfileEntityIds(profile)[0]
+        : op.profileEntityId;
       const sourceLabel = profile
-        ? `${profile.sketchId}/${profile.entityId}`
+        ? `${profile.sketchId}/${getProfileEntityIds(profile)[0] ?? profile.kind}`
         : `${op.profileSketchId}/${op.profileEntityId}`;
       const pathLabel = path
         ? path.kind === "chain"

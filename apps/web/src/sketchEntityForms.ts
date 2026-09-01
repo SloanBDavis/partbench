@@ -4,7 +4,10 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { SKETCH_GEOMETRY_POLICY } from "@web-cad/cad-core";
-import type { SketchEntityForm } from "./cadCommands";
+import {
+  parseSketchSplinePointsText,
+  type SketchEntityForm
+} from "./cadCommands";
 
 export const defaultSketchEntityForm: SketchEntityForm = {
   id: "",
@@ -17,7 +20,10 @@ export const defaultSketchEntityForm: SketchEntityForm = {
   height: 1,
   radius: 0.5,
   startAngleDegrees: 0,
-  sweepAngleDegrees: 90
+  sweepAngleDegrees: 90,
+  splinePointsText: "8,0; 4,6; -4,6; -8,0; -4,-6; 4,-6",
+  splineClosed: true,
+  splineForm: "interpolation"
 };
 
 export function getDefaultSketchEntityFormForSketch(
@@ -162,6 +168,17 @@ export function entityToSketchEntityForm(
         startAngleDegrees: entity.startAngleDegrees,
         sweepAngleDegrees: entity.sweepAngleDegrees
       };
+    case "spline":
+      return {
+        ...defaultSketchEntityForm,
+        id: entity.id,
+        construction: entity.construction,
+        splineForm: entity.form,
+        splineClosed: entity.closed,
+        splinePointsText: entity.points
+          .map((point) => `${point[0]},${point[1]}`)
+          .join("; ")
+      };
   }
 }
 
@@ -213,6 +230,16 @@ export function sketchEntityFormToEntity(
         sweepAngleDegrees: form.sweepAngleDegrees,
         construction: form.construction
       };
+    case "spline":
+      return {
+        id,
+        kind,
+        form: form.splineForm ?? "interpolation",
+        points: parseSketchSplinePointsText(form.splinePointsText ?? ""),
+        degree: 3,
+        closed: form.splineClosed === true,
+        construction: form.construction
+      };
   }
 }
 
@@ -220,6 +247,23 @@ export function validateSketchEntityForm(
   kind: SketchEntityKind,
   form: SketchEntityForm
 ): SketchEntityFormValidation {
+  if (kind === "spline") {
+    const points = parseSketchSplinePointsText(form.splinePointsText ?? "");
+    if (
+      points.length < 3 ||
+      points.some(
+        (point) => !Number.isFinite(point[0]) || !Number.isFinite(point[1])
+      )
+    ) {
+      return {
+        ok: false,
+        message:
+          "Spline points must be at least three finite x,y pairs, separated by semicolons."
+      };
+    }
+    return { ok: true };
+  }
+
   if (!Number.isFinite(form.x) || !Number.isFinite(form.y)) {
     return {
       ok: false,
@@ -321,6 +365,8 @@ export function getSketchEntityFormLabels(
         startAngleDegrees: "Start angle (deg)",
         sweepAngleDegrees: "Signed sweep (deg)"
       };
+    case "spline":
+      return { x: "Points", y: "Closed" };
   }
 }
 
@@ -336,6 +382,8 @@ export function formatSketchEntity(entity: SketchEntitySnapshot): string {
       return `Circle r ${entity.radius} at (${entity.center[0]}, ${entity.center[1]})`;
     case "arc":
       return `Arc r ${entity.radius} at (${entity.center[0]}, ${entity.center[1]}), start ${entity.startAngleDegrees}°, sweep ${entity.sweepAngleDegrees}°`;
+    case "spline":
+      return `Spline ${entity.form} (${entity.points.length} points${entity.closed ? ", closed" : ""})`;
   }
 }
 

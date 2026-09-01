@@ -220,7 +220,8 @@ const ENTITY_TOOLS: readonly {
   { kind: "point", label: "Point" },
   { kind: "line", label: "Line" },
   { kind: "rectangle", label: "Rectangle" },
-  { kind: "circle", label: "Circle" }
+  { kind: "circle", label: "Circle" },
+  { kind: "spline", label: "Spline" }
 ];
 
 function createSketchIntentAvailabilityProjectionV19(
@@ -1091,16 +1092,49 @@ function EntityDraftForm({
         <span>Draft</span>
       </div>
       <div className="pb-sketch-field-grid">
-        {fields.map(([key, label]) =>
-          label ? (
-            <NumberField
-              key={key}
-              label={label}
-              value={draft.form[key] as number}
-              disabled={disabled}
-              onChange={(value) => onChange({ ...draft.form, [key]: value })}
-            />
-          ) : null
+        {draft.kind === "spline" ? (
+          <>
+            <label className="pb-field">
+              <span>Points (x,y; …)</span>
+              <textarea
+                value={draft.form.splinePointsText}
+                disabled={disabled}
+                rows={3}
+                onChange={(event) =>
+                  onChange({
+                    ...draft.form,
+                    splinePointsText: event.currentTarget.value
+                  })
+                }
+              />
+            </label>
+            <label className="pb-sketch-check">
+              <input
+                type="checkbox"
+                checked={draft.form.splineClosed}
+                disabled={disabled}
+                onChange={(event) =>
+                  onChange({
+                    ...draft.form,
+                    splineClosed: event.currentTarget.checked
+                  })
+                }
+              />
+              Closed
+            </label>
+          </>
+        ) : (
+          fields.map(([key, label]) =>
+            label ? (
+              <NumberField
+                key={key}
+                label={label}
+                value={draft.form[key] as number}
+                disabled={disabled}
+                onChange={(value) => onChange({ ...draft.form, [key]: value })}
+              />
+            ) : null
+          )
         )}
       </div>
       {validationMessage ? (

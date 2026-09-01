@@ -18,6 +18,8 @@ import type {
   SketchId
 } from "@web-cad/cad-protocol";
 
+import { getProfileEntityIds } from "./normalizedFeatureInputs";
+
 const SOURCE_BOUNDARY_NOTE =
   "Rebuild plan and body lifecycle are derived from authoritative document source features, bodies, dependency graph, reference health, and semantic diffs.";
 const DERIVED_BOUNDARY_NOTE =
@@ -503,7 +505,9 @@ function createAffectedSummary(
 
     if (feature.kind === "sweep") {
       affectedSketchIds.add(feature.profile.sketchId);
-      affectedSketchEntityIds.add(feature.profile.entityId);
+      for (const entityId of getProfileEntityIds(feature.profile)) {
+        affectedSketchEntityIds.add(entityId);
+      }
       affectedSketchIds.add(feature.path.sketchId);
       for (const entityId of feature.path.kind === "entity"
         ? [feature.path.entityId]

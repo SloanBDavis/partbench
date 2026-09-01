@@ -4,20 +4,24 @@ import type {
   FeatureId,
   FeatureInputReferenceSemanticDiffCurrent,
   PartId,
-  SketchEntityProfileRef,
   SketchPathDiagnosticCode,
   SketchPathRef,
+  SketchProfileRefV22,
   SweepFeatureV21
 } from "@web-cad/cad-protocol";
 
 import type { CadDocument } from "./index";
 import { createSketchPathReadinessResponse } from "./sketchProfilePathQueries";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
+import {
+  mapRegionSourceIssueToBatchError,
+  validateRegisteredV22RegionSource
+} from "./v19RegionPolicyRegistry";
 
 export type SweepResolution =
   | {
       readonly ok: true;
-      readonly profile: SketchEntityProfileRef;
+      readonly profile: SketchProfileRefV22;
       readonly path: SketchPathRef;
       readonly pathKinds: readonly ("line" | "arc")[];
     }
@@ -29,54 +33,105 @@ export type SweepResolution =
       readonly sketchEntityId?: string;
     };
 
+function profileEntityIds(profile: SketchProfileRefV22): readonly string[] {
+  if (profile.kind === "entity") return [profile.entityId];
+  if (profile.kind === "wire") {
+    return profile.segments.map((segment) => segment.entityId);
+  }
+  return profile.regions.flatMap((region) =>
+    [region.outer, ...region.holes].flatMap((loop) =>
+      loop.kind === "entity"
+        ? [loop.entityId]
+        : loop.segments.map((segment) => segment.entityId)
+    )
+  );
+}
+
 export function resolveSweep(
   document: CadDocument,
-  profile: SketchEntityProfileRef,
+  profile: SketchProfileRefV22,
   path: SketchPathRef
 ): SweepResolution {
   const profileSketch = document.sketches.get(profile.sketchId);
-  const profileEntity = profileSketch?.entities.get(profile.entityId);
-  if (!profileSketch || !profileEntity) {
+  if (!profileSketch) {
     return {
       ok: false,
       code: "SWEEP_ENTITY_UNRESOLVED",
       message: "Sweep profile sketch or entity no longer resolves.",
-      sketchId: profile.sketchId,
-      sketchEntityId: profile.entityId
+      sketchId: profile.sketchId
     };
   }
-  if (profileEntity.kind !== "rectangle" && profileEntity.kind !== "circle") {
+  if (profile.kind === "regions") {
+    const validation = validateRegisteredV22RegionSource(profile, profileSketch);
+    if (!validation.ok) {
+      const issue = validation.issues[0];
+      return {
+        ok: false,
+        code: mapRegionSourceIssueToBatchError(issue?.code),
+        message: issue?.message ?? "Sweep regions profile is not feature-ready.",
+        sketchId: profile.sketchId,
+        sketchEntityId: issue?.entityId
+      };
+    }
+    if (validation.normalizedProfile.regions.length !== 1) {
+      return {
+        ok: false,
+        code: "SKETCH_REGION_CONSUMER_UNSUPPORTED",
+        message: "A sweep regions profile accepts exactly one region.",
+        sketchId: profile.sketchId
+      };
+    }
+  } else if (profile.kind === "entity") {
+    const profileEntity = profileSketch.entities.get(profile.entityId);
+    if (!profileEntity) {
+      return {
+        ok: false,
+        code: "SWEEP_ENTITY_UNRESOLVED",
+        message: "Sweep profile sketch or entity no longer resolves.",
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId
+      };
+    }
+    if (profileEntity.kind !== "rectangle" && profileEntity.kind !== "circle") {
+      return {
+        ok: false,
+        code: "SWEEP_PROFILE_UNSUPPORTED",
+        message: "Sweep entity profile must be a rectangle or circle entity.",
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId
+      };
+    }
+    if (profileEntity.construction) {
+      return {
+        ok: false,
+        code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+        message: "Sweep profile cannot use construction geometry.",
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId
+      };
+    }
+  } else {
     return {
       ok: false,
       code: "SWEEP_PROFILE_UNSUPPORTED",
-      message: "Sweep profile must be a rectangle or circle entity.",
-      sketchId: profile.sketchId,
-      sketchEntityId: profile.entityId
-    };
-  }
-  if (profileEntity.construction) {
-    return {
-      ok: false,
-      code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
-      message: "Sweep profile cannot use construction geometry.",
-      sketchId: profile.sketchId,
-      sketchEntityId: profile.entityId
+      message: "Sweep profile must be an entity or regions profile.",
+      sketchId: profile.sketchId
     };
   }
   const pathEntityIds =
     path.kind === "entity"
       ? [path.entityId]
       : path.segments.map((segment) => segment.entityId);
-  if (
-    profile.sketchId === path.sketchId &&
-    pathEntityIds.includes(profile.entityId)
-  ) {
+  const overlapping = profileEntityIds(profile).some((entityId) =>
+    pathEntityIds.includes(entityId)
+  );
+  if (profile.sketchId === path.sketchId && overlapping) {
     return {
       ok: false,
       code: "SWEEP_PATH_UNSUPPORTED",
       message: "Sweep profile and path cannot identify the same sketch entity.",
       sketchId: path.sketchId,
-      sketchEntityId: profile.entityId
+      sketchEntityId: profileEntityIds(profile)[0]
     };
   }
   const pathSketch = document.sketches.get(path.sketchId);
@@ -126,7 +181,9 @@ export function resolveSweep(
     {
       query: "sketch.pathReadiness",
       path,
-      ...(needsV17FrameValidation ? { sweepProfile: profile } : {})
+      ...(needsV17FrameValidation && profile.kind === "entity"
+        ? { sweepProfile: profile }
+        : {})
     },
     "cadops.v1"
   );
@@ -154,6 +211,7 @@ export function createResolvedSweepSource(
 ): CadExactExportSweepBodySource | undefined {
   const resolution = resolveSweep(document, feature.profile, feature.path);
   if (!resolution.ok) return undefined;
+  if (feature.profile.kind !== "entity") return undefined;
   const profileSketch = document.sketches.get(feature.profile.sketchId);
   const pathSketch = document.sketches.get(feature.path.sketchId);
   const profileEntity = profileSketch?.entities.get(feature.profile.entityId);

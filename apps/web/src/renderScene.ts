@@ -1,7 +1,8 @@
-import type {
-  SceneObject,
-  SketchEntitySnapshot,
-  SketchSnapshot
+import {
+  sampleSketchSpline,
+  type SceneObject,
+  type SketchEntitySnapshot,
+  type SketchSnapshot
 } from "@web-cad/cad-core";
 import type {
   RenderEdgeSegment,
@@ -530,7 +531,24 @@ function createSketchEntityDisplayEdges(
         entity.sweepAngleDegrees,
         maximumCurveSegmentAngleDegrees
       );
+    case "spline":
+      return createSketchSplineDisplayEdges(frame, entity);
   }
+}
+
+function createSketchSplineDisplayEdges(
+  frame: SketchDisplayFrame,
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "spline" }>
+): readonly RenderEdgeSegment[] {
+  const samples = sampleSketchSpline(entity);
+  const edges: RenderEdgeSegment[] = [];
+  for (let index = 1; index < samples.length; index += 1) {
+    edges.push({
+      start: mapSketchPointToDisplayFrame(frame, samples[index - 1]!),
+      end: mapSketchPointToDisplayFrame(frame, samples[index]!)
+    });
+  }
+  return edges;
 }
 
 function createEmptySketchPlaneMarker(

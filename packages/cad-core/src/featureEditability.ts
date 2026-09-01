@@ -47,6 +47,7 @@ import { resolveRegionRevolveProfile } from "./regionRevolveProfile";
 import { resolveSweep } from "./sweepProfile";
 import type { CadDocument } from "./index";
 import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
+import { getProfileEntityIds } from "./normalizedFeatureInputs";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -309,7 +310,10 @@ function createSweepEditabilityResponse(
       ? {
           kind: "entity" as const,
           sketchId: proposal.profileSketchId ?? feature.profile.sketchId,
-          entityId: proposal.profileEntityId ?? feature.profile.entityId
+          entityId:
+            proposal.profileEntityId ??
+            getProfileEntityIds(feature.profile)[0] ??
+            ""
         }
       : feature.profile);
   const path: SketchPathRef =

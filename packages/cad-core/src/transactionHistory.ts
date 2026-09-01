@@ -441,7 +441,8 @@ function createOperationSummaries(
       case "sketch.addLine":
       case "sketch.addRectangle":
       case "sketch.addCircle":
-      case "sketch.addArc": {
+      case "sketch.addArc":
+      case "sketch.addSpline": {
         const entityId = op.id ?? createdSketchEntityRef?.id;
         const entityKind = getSketchEntityKindFromAddOp(op.op);
 
@@ -708,7 +709,12 @@ function createOperationSummaries(
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
         const profileSketchId = op.profile?.sketchId ?? op.profileSketchId;
-        const profileEntityId = op.profile?.entityId ?? op.profileEntityId;
+        const profileEntityId =
+          (op.profile?.kind === "entity"
+            ? op.profile.entityId
+            : op.profile
+              ? undefined
+              : undefined) ?? op.profileEntityId;
         const pathEntityIds = op.path
           ? op.path.kind === "entity"
             ? [op.path.entityId]
@@ -1417,6 +1423,7 @@ function getSketchEntityKindFromAddOp(
     | "sketch.addRectangle"
     | "sketch.addCircle"
     | "sketch.addArc"
+    | "sketch.addSpline"
 ): SketchEntityKind {
   switch (op) {
     case "sketch.addPoint":
@@ -1429,6 +1436,8 @@ function getSketchEntityKindFromAddOp(
       return "circle";
     case "sketch.addArc":
       return "arc";
+    case "sketch.addSpline":
+      return "spline";
   }
 }
 
@@ -1639,7 +1648,8 @@ function isSketchAddEntityOp(op: CadOp): op is Extract<
       | "sketch.addLine"
       | "sketch.addRectangle"
       | "sketch.addCircle"
-      | "sketch.addArc";
+      | "sketch.addArc"
+      | "sketch.addSpline";
   }
 > {
   return (
@@ -1647,6 +1657,7 @@ function isSketchAddEntityOp(op: CadOp): op is Extract<
     op.op === "sketch.addLine" ||
     op.op === "sketch.addRectangle" ||
     op.op === "sketch.addCircle" ||
-    op.op === "sketch.addArc"
+    op.op === "sketch.addArc" ||
+    op.op === "sketch.addSpline"
   );
 }

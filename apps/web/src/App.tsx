@@ -107,6 +107,7 @@ import {
   buildAddSketchThreePointArcOp,
   buildAddSketchCircleOp,
   buildAddSketchLineOp,
+  buildAddSketchSplineOp,
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
   buildDatumAndSketchOnPlaneOps,
@@ -7315,7 +7316,9 @@ export function App() {
             ? buildAddSketchRectangleOp(sketchId, form)
             : kind === "circle"
               ? buildAddSketchCircleOp(sketchId, form)
-              : buildAddSketchArcOp(sketchId, form);
+              : kind === "spline"
+                ? buildAddSketchSplineOp(sketchId, form)
+                : buildAddSketchArcOp(sketchId, form);
 
     await commitOps([op], (response) => {
       const entityId = response.createdSketchEntityIds?.[0];

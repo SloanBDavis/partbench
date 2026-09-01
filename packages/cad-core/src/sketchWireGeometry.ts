@@ -1,6 +1,7 @@
 import type {
   SketchArcEntity,
   SketchLineEntitySnapshot,
+  SketchSplineEntity,
   Vec2
 } from "@web-cad/cad-protocol";
 
@@ -8,8 +9,12 @@ import {
   SKETCH_GEOMETRY_POLICY,
   type SketchGeometryPolicy
 } from "./sketchGeometryPolicy";
+import { sampleSketchSpline, sketchSplineEndpoints } from "./sketchSplineMath";
 
-export type SketchWireEntity = SketchLineEntitySnapshot | SketchArcEntity;
+export type SketchWireEntity =
+  | SketchLineEntitySnapshot
+  | SketchArcEntity
+  | SketchSplineEntity;
 export type SketchSegmentOrientation = "forward" | "reverse";
 export type SketchSegmentEndpoint = "start" | "end";
 
@@ -32,9 +37,15 @@ export interface ResolvedSketchArcSegment extends ResolvedSketchSegmentBase {
   readonly sweepAngleRadians: number;
 }
 
+export interface ResolvedSketchSplineSegment extends ResolvedSketchSegmentBase {
+  readonly kind: "spline";
+  readonly samples: readonly Vec2[];
+}
+
 export type ResolvedSketchSegment =
   | ResolvedSketchLineSegment
-  | ResolvedSketchArcSegment;
+  | ResolvedSketchArcSegment
+  | ResolvedSketchSplineSegment;
 
 export type SketchSegmentResolutionIssueCode =
   | "SKETCH_SEGMENT_GEOMETRY_NON_FINITE"
@@ -42,7 +53,8 @@ export type SketchSegmentResolutionIssueCode =
   | "SKETCH_LINE_ZERO_LENGTH"
   | "SKETCH_ARC_RADIUS_INVALID"
   | "SKETCH_ARC_SWEEP_INVALID"
-  | "SKETCH_ARC_ZERO_LENGTH";
+  | "SKETCH_ARC_ZERO_LENGTH"
+  | "SKETCH_SPLINE_DEGENERATE";
 
 export interface SketchSegmentResolutionIssue {
   readonly code: SketchSegmentResolutionIssueCode;
@@ -172,6 +184,44 @@ export function resolveOrientedSketchSegment(
         orientation,
         start: forward ? entity.start : entity.end,
         end: forward ? entity.end : entity.start
+      }
+    };
+  }
+
+  if (entity.kind === "spline") {
+    const endpoints = sketchSplineEndpoints(entity);
+    const samples = sampleSketchSpline(entity);
+    if (
+      samples.length < 2 ||
+      samples.some((point) => !isFinitePoint(point))
+    ) {
+      return resolutionIssue(
+        entity.id,
+        "SKETCH_SPLINE_DEGENERATE",
+        "Spline samples must stay finite and longer than a point."
+      );
+    }
+    let length = 0;
+    for (let index = 1; index < samples.length; index += 1) {
+      length += distance(samples[index - 1]!, samples[index]!);
+    }
+    if (!Number.isFinite(length) || withinLinearTolerance(length, policy)) {
+      return resolutionIssue(
+        entity.id,
+        "SKETCH_SPLINE_DEGENERATE",
+        "Spline length must be greater than the sketch linear tolerance."
+      );
+    }
+    const forward = orientation === "forward";
+    return {
+      ok: true,
+      segment: {
+        entityId: entity.id,
+        kind: "spline",
+        orientation,
+        start: forward ? endpoints.start : endpoints.end,
+        end: forward ? endpoints.end : endpoints.start,
+        samples: forward ? samples : [...samples].reverse()
       }
     };
   }
@@ -308,6 +358,21 @@ function tangentAtPoint(segment: ResolvedSketchSegment, point: Vec2): Vec2 {
       segment.end[0] - segment.start[0],
       segment.end[1] - segment.start[1]
     ]);
+  }
+  if (segment.kind === "spline") {
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    for (let index = 0; index < segment.samples.length; index += 1) {
+      const candidate = distance(segment.samples[index]!, point);
+      if (candidate < bestDistance) {
+        bestDistance = candidate;
+        bestIndex = index;
+      }
+    }
+    const previous = segment.samples[Math.max(0, bestIndex - 1)]!;
+    const next =
+      segment.samples[Math.min(segment.samples.length - 1, bestIndex + 1)]!;
+    return unitVector([next[0] - previous[0], next[1] - previous[1]]);
   }
   const angle = Math.atan2(
     point[1] - segment.center[1],
@@ -658,23 +723,66 @@ function arcArcIntersection(
   };
 }
 
+function splineChords(
+  spline: ResolvedSketchSplineSegment
+): readonly ResolvedSketchLineSegment[] {
+  const chords: ResolvedSketchLineSegment[] = [];
+  for (let index = 1; index < spline.samples.length; index += 1) {
+    const start = spline.samples[index - 1]!;
+    const end = spline.samples[index]!;
+    if (start[0] === end[0] && start[1] === end[1]) continue;
+    chords.push({
+      kind: "line",
+      entityId: spline.entityId,
+      orientation: spline.orientation,
+      start,
+      end
+    });
+  }
+  return chords;
+}
+
+function intersectSplineWithSegment(
+  spline: ResolvedSketchSplineSegment,
+  other: ResolvedSketchSegment,
+  policy: SketchGeometryPolicy
+): { readonly overlap: boolean; readonly points: readonly Vec2[] } {
+  const points: Vec2[] = [];
+  let overlap = false;
+  for (const chord of splineChords(spline)) {
+    const result =
+      other.kind === "line"
+        ? lineLineIntersection(chord, other, policy)
+        : other.kind === "arc"
+          ? { overlap: false, points: lineArcIntersection(chord, other, policy) }
+          : intersectSplineWithSegment(other, chord, policy);
+    if (result.overlap) overlap = true;
+    points.push(...result.points);
+  }
+  return { overlap, points: uniquePoints(points, policy) };
+}
+
 export function intersectSketchSegments(
   left: ResolvedSketchSegment,
   right: ResolvedSketchSegment,
   policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
 ): SketchSegmentIntersection {
   const result =
-    left.kind === "line" && right.kind === "line"
-      ? lineLineIntersection(left, right, policy)
-      : left.kind === "line" && right.kind === "arc"
-        ? { overlap: false, points: lineArcIntersection(left, right, policy) }
-        : left.kind === "arc" && right.kind === "line"
-          ? { overlap: false, points: lineArcIntersection(right, left, policy) }
-          : arcArcIntersection(
-              left as ResolvedSketchArcSegment,
-              right as ResolvedSketchArcSegment,
-              policy
-            );
+    left.kind === "spline"
+      ? intersectSplineWithSegment(left, right, policy)
+      : right.kind === "spline"
+        ? intersectSplineWithSegment(right, left, policy)
+        : left.kind === "line" && right.kind === "line"
+          ? lineLineIntersection(left, right, policy)
+          : left.kind === "line" && right.kind === "arc"
+            ? { overlap: false, points: lineArcIntersection(left, right, policy) }
+            : left.kind === "arc" && right.kind === "line"
+              ? { overlap: false, points: lineArcIntersection(right, left, policy) }
+              : arcArcIntersection(
+                  left as ResolvedSketchArcSegment,
+                  right as ResolvedSketchArcSegment,
+                  policy
+                );
   return {
     overlap: result.overlap,
     points: result.points.map((point) =>
@@ -704,19 +812,28 @@ export function classifySketchSegmentAgainstInfiniteLine(
   const signedDistance = (point: Vec2): number =>
     cross(direction, [point[0] - lineStart[0], point[1] - lineStart[1]]);
 
-  if (segment.kind === "line") {
-    const startDistance = signedDistance(segment.start);
-    const endDistance = signedDistance(segment.end);
-    const startOn = Math.abs(startDistance) <= policy.linearTolerance;
-    const endOn = Math.abs(endDistance) <= policy.linearTolerance;
-    if (startOn && endOn) return "overlap";
-    if (startOn || endOn) return "vertex-touch";
-    return (startDistance < -policy.linearTolerance &&
-      endDistance > policy.linearTolerance) ||
-      (endDistance < -policy.linearTolerance &&
-        startDistance > policy.linearTolerance)
-      ? "crossing"
-      : "clear";
+  if (segment.kind === "line" || segment.kind === "spline") {
+    const points =
+      segment.kind === "line" ? [segment.start, segment.end] : segment.samples;
+    let negative = false;
+    let positive = false;
+    let onCount = 0;
+    for (const point of points) {
+      const value = signedDistance(point);
+      if (Math.abs(value) <= policy.linearTolerance) {
+        onCount += 1;
+      } else if (value < 0) {
+        negative = true;
+      } else {
+        positive = true;
+      }
+    }
+    if (onCount === points.length) return "overlap";
+    if (negative && positive) return "crossing";
+    if (onCount > 0) {
+      return segment.kind === "line" ? "vertex-touch" : "interior-touch";
+    }
+    return "clear";
   }
 
   const centerOffset: Vec2 = [
@@ -812,6 +929,11 @@ export function classifySketchWireAgainstInfiniteLine(
         }
       }
     }
+    if (segment.kind === "spline") {
+      for (const point of segment.samples) {
+        include(point);
+      }
+    }
   }
   const negative = minimum < -policy.linearTolerance;
   const positive = maximum > policy.linearTolerance;
@@ -825,6 +947,19 @@ export function getSketchSegmentSignedArea(
   segment: ResolvedSketchSegment,
   reference: Vec2 = [0, 0]
 ): number {
+  if (segment.kind === "spline") {
+    let sum = 0;
+    for (let index = 1; index < segment.samples.length; index += 1) {
+      const start = segment.samples[index - 1]!;
+      const end = segment.samples[index]!;
+      sum +=
+        cross(
+          [start[0] - reference[0], start[1] - reference[1]],
+          [end[0] - reference[0], end[1] - reference[1]]
+        ) / 2;
+    }
+    return sum;
+  }
   if (segment.kind === "line") {
     return (
       cross(
@@ -873,6 +1008,15 @@ export function reverseSketchSegmentTraversal(
   if (segment.kind === "line") {
     return { ...segment, orientation, start: segment.end, end: segment.start };
   }
+  if (segment.kind === "spline") {
+    return {
+      ...segment,
+      orientation,
+      start: segment.end,
+      end: segment.start,
+      samples: [...segment.samples].reverse()
+    };
+  }
   return {
     ...segment,
     orientation,
@@ -913,6 +1057,19 @@ export function getSketchSegmentEndpointTangent(
     const direction = Math.sign(segment.sweepAngleRadians);
     return [-Math.sin(angle) * direction, Math.cos(angle) * direction];
   }
+  if (segment.kind === "spline") {
+    const samples = segment.samples;
+    if (samples.length < 2) return [1, 0];
+    if (endpoint === "start") {
+      return [
+        samples[1]![0] - samples[0]![0],
+        samples[1]![1] - samples[0]![1]
+      ];
+    }
+    const last = samples[samples.length - 1]!;
+    const previous = samples[samples.length - 2]!;
+    return [last[0] - previous[0], last[1] - previous[1]];
+  }
   return tangentAtPoint(segment, segment[endpoint]);
 }
 
@@ -939,6 +1096,9 @@ export function getSketchSegmentBounds(
   policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
 ): SketchSegmentBounds {
   const points: Vec2[] = [segment.start, segment.end];
+  if (segment.kind === "spline") {
+    points.push(...segment.samples);
+  }
   if (segment.kind === "arc") {
     for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
       if (arcContainsAngle(segment, angle, policy)) {

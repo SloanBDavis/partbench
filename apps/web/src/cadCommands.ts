@@ -76,6 +76,7 @@ import type {
   SceneUpdateTransformOp,
   SketchAddCircleOp,
   SketchAddArcOp,
+  SketchAddSplineOp,
   SketchAddLineOp,
   SketchAddPointOp,
   SketchAddRectangleOp,
@@ -216,6 +217,9 @@ export interface SketchEntityForm {
   readonly radius: number;
   readonly startAngleDegrees: number;
   readonly sweepAngleDegrees: number;
+  readonly splinePointsText?: string;
+  readonly splineClosed?: boolean;
+  readonly splineForm?: "interpolation" | "controlPoints";
 }
 
 export type CreatableSketchEntityKind = SketchEntityKind;
@@ -846,6 +850,34 @@ export function buildAddSketchCircleOp(
     center: toVec2(form.x, form.y),
     radius: form.radius,
     construction: form.construction
+  };
+}
+
+export function parseSketchSplinePointsText(value: string): Vec2[] {
+  return value
+    .split(/[;\n]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const [x, y] = entry.split(",").map((part) => Number(part.trim()));
+      return [x, y] as Vec2;
+    });
+}
+
+export function buildAddSketchSplineOp(
+  sketchId: SketchId,
+  form: SketchEntityForm
+): SketchAddSplineOp {
+  return {
+    op: "sketch.addSpline",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    construction: form.construction,
+    definition: {
+      kind: form.splineForm ?? "interpolation",
+      points: parseSketchSplinePointsText(form.splinePointsText ?? ""),
+      closed: form.splineClosed === true
+    }
   };
 }
 

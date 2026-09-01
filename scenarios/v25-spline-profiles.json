@@ -1,0 +1,213 @@
+{
+  "id": "v25-spline-profiles",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_extrude",
+      "name": "Extrude",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_revolve",
+      "name": "Revolve",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addLine",
+      "id": "axis_revolve",
+      "sketchId": "sketch_revolve",
+      "start": [0, 0],
+      "end": [0, 12]
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_sweep_profile",
+      "name": "Sweep profile",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_sweep_path",
+      "name": "Sweep path",
+      "plane": "XZ"
+    },
+    {
+      "op": "sketch.addLine",
+      "id": "path_sweep",
+      "sketchId": "sketch_sweep_path",
+      "start": [0, 0],
+      "end": [0, 20]
+    }
+  ],
+  "steps": [
+    {
+      "id": "add-spline-profiles",
+      "ops": [
+        {
+          "op": "sketch.addSpline",
+          "id": "spline_extrude",
+          "sketchId": "sketch_extrude",
+          "definition": {
+            "kind": "interpolation",
+            "points": [
+              [8, 0],
+              [4, 6],
+              [-4, 6],
+              [-8, 0],
+              [-4, -6],
+              [4, -6]
+            ],
+            "closed": true
+          }
+        },
+        {
+          "op": "sketch.addSpline",
+          "id": "spline_revolve",
+          "sketchId": "sketch_revolve",
+          "definition": {
+            "kind": "interpolation",
+            "points": [
+              [8, 2],
+              [14, 6],
+              [8, 10],
+              [10, 6]
+            ],
+            "closed": true
+          }
+        },
+        {
+          "op": "sketch.addSpline",
+          "id": "spline_sweep",
+          "sketchId": "sketch_sweep_profile",
+          "definition": {
+            "kind": "interpolation",
+            "points": [
+              [3, 0],
+              [0, 2],
+              [-3, 0],
+              [0, -2]
+            ],
+            "closed": true
+          }
+        }
+      ],
+      "expect": {
+        "ops": ["sketch.addSpline", "sketch.addSpline", "sketch.addSpline"],
+        "diff": {
+          "sketches": {
+            "entityChanges": [
+              {
+                "entityId": "spline_extrude",
+                "action": "added",
+                "entityKind": "spline"
+              },
+              {
+                "entityId": "spline_revolve",
+                "action": "added",
+                "entityKind": "spline"
+              },
+              {
+                "entityId": "spline_sweep",
+                "action": "added",
+                "entityKind": "spline"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "consume-spline-regions",
+      "ops": [
+        {
+          "op": "feature.extrude",
+          "id": "feat_extrude",
+          "bodyId": "body_extrude",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "sketch_extrude",
+            "regions": [
+              {
+                "outer": { "kind": "entity", "entityId": "spline_extrude" },
+                "holes": []
+              }
+            ]
+          },
+          "depth": 10,
+          "operationMode": "newBody"
+        },
+        {
+          "op": "feature.revolve",
+          "id": "feat_revolve",
+          "bodyId": "body_revolve",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "sketch_revolve",
+            "regions": [
+              {
+                "outer": { "kind": "entity", "entityId": "spline_revolve" },
+                "holes": []
+              }
+            ]
+          },
+          "axis": {
+            "type": "sketchLine",
+            "sketchId": "sketch_revolve",
+            "entityId": "axis_revolve"
+          },
+          "angleDegrees": 360,
+          "operationMode": "newBody"
+        },
+        {
+          "op": "feature.sweep",
+          "id": "feat_sweep",
+          "bodyId": "body_sweep",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "sketch_sweep_profile",
+            "regions": [
+              {
+                "outer": { "kind": "entity", "entityId": "spline_sweep" },
+                "holes": []
+              }
+            ]
+          },
+          "path": {
+            "kind": "entity",
+            "sketchId": "sketch_sweep_path",
+            "entityId": "path_sweep",
+            "orientation": "forward"
+          }
+        }
+      ],
+      "expect": {
+        "ops": ["feature.extrude", "feature.revolve", "feature.sweep"],
+        "diff": {
+          "features": {
+            "created": [
+              { "id": "feat_extrude", "kind": "extrude", "bodyId": "body_extrude" },
+              { "id": "feat_revolve", "kind": "revolve", "bodyId": "body_revolve" },
+              { "id": "feat_sweep", "kind": "sweep", "bodyId": "body_sweep" }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_extrude", "featureId": "feat_extrude" },
+              { "id": "body_revolve", "featureId": "feat_revolve" },
+              { "id": "body_sweep", "featureId": "feat_sweep" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

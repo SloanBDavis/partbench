@@ -69,7 +69,8 @@ const SKETCH_ENTITY_ADD_ACTION_IDS = {
   line: "sketch.entity.add.line",
   rectangle: "sketch.entity.add.rectangle",
   circle: "sketch.entity.add.circle",
-  arc: "sketch.entity.add.arc"
+  arc: "sketch.entity.add.arc",
+  spline: "sketch.entity.add.spline"
 } as const satisfies Record<CreatableSketchEntityKind, ModelingActionId>;
 
 export type ModelingActionId =
@@ -79,6 +80,7 @@ export type ModelingActionId =
   | "sketch.entity.add.rectangle"
   | "sketch.entity.add.circle"
   | "sketch.entity.add.arc"
+  | "sketch.entity.add.spline"
   | "sketch.entity.edit"
   | "sketch.dimension.add"
   | "sketch.constraint.add"

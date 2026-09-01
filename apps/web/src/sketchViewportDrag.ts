@@ -216,6 +216,8 @@ export function applySketchViewportDrag(
       return entity;
     case "arc":
       return entity;
+    case "spline":
+      return entity;
   }
 }
 
@@ -299,6 +301,8 @@ function createEntityDragHandles(
     case "rectangle":
       return [];
     case "arc":
+      return [];
+    case "spline":
       return [];
   }
 }

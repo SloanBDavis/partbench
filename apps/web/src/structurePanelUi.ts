@@ -5,6 +5,7 @@ import type {
   CadPartSnapshot,
   NamedGeneratedReferenceEntry,
   ProjectHealthQueryResponse,
+  SketchProfileRefV22,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import type { DocumentUnits } from "@web-cad/cad-core";
@@ -326,6 +327,17 @@ function getFeatureSketchId(
   return undefined;
 }
 
+function sweepProfileEntityLabel(
+  profile: SketchProfileRefV22
+): string | undefined {
+  if (profile.kind === "entity") return profile.entityId;
+  if (profile.kind === "wire") return profile.segments[0]?.entityId;
+  const outer = profile.regions[0]?.outer;
+  return outer?.kind === "entity"
+    ? outer.entityId
+    : outer?.segments[0]?.entityId;
+}
+
 function getFeatureEntityId(
   feature: AuthoredStructureFeature
 ): string | undefined {
@@ -338,7 +350,7 @@ function getFeatureEntityId(
   }
 
   if (feature.kind === "sweep") {
-    return feature.profile.entityId;
+    return sweepProfileEntityLabel(feature.profile);
   }
 
   if (feature.kind === "loft") {
@@ -693,7 +705,7 @@ export function formatFeatureLine(
   }
 
   if (feature.kind === "sweep") {
-    return `sweep / profile ${feature.profile.sketchId}/${feature.profile.entityId} / ${feature.path.kind} path`;
+    return `sweep / profile ${feature.profile.sketchId}/${sweepProfileEntityLabel(feature.profile) ?? feature.profile.kind} / ${feature.path.kind} path`;
   }
 
   if (feature.kind === "loft") {

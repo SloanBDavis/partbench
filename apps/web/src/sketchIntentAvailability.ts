@@ -242,6 +242,13 @@ function pointTargets(entities: readonly SketchEntitySnapshot[]) {
         }
       ];
     }
+    if (entity.kind === "spline") {
+      return entity.points.map((point, index) => ({
+        ...base,
+        key: `${entity.id}:p${index}`,
+        coordinate: point
+      }));
+    }
     return [{ ...base, key: `${entity.id}:center`, coordinate: entity.center }];
   });
 }

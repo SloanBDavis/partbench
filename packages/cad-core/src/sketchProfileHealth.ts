@@ -300,12 +300,10 @@ function getFeatureProfileSources(feature: CadFeatureSummary): readonly {
   }
 
   if (feature.kind === "sweep") {
-    return [
-      {
-        sketchId: feature.profileSketchId,
-        sketchEntityId: feature.profileEntityId
-      }
-    ];
+    return getProfileEntityReferences(feature.profile).map((reference) => ({
+      sketchId: reference.sketchId,
+      sketchEntityId: reference.entityId
+    }));
   }
 
   if (feature.kind === "loft") {

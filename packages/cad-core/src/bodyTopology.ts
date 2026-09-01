@@ -25,6 +25,7 @@ import {
 import { createBodyMeasurements } from "./bodyMeasurements";
 import {
   getFeatureEntityProfileRef,
+  getProfileEntityIds,
   getProfileEntityReferences,
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
@@ -1354,9 +1355,9 @@ function createSweepSourceIdentityInput(
     units,
     featureId: feature.id,
     sourceSketchId: feature.profile.sketchId,
-    sourceSketchEntityId: feature.profile.entityId,
+    sourceSketchEntityId: getProfileEntityIds(feature.profile)[0],
     sourceSketchEntityIds: [
-      feature.profile.entityId,
+      ...getProfileEntityIds(feature.profile),
       ...(feature.path.kind === "entity"
         ? [feature.path.entityId]
         : feature.path.segments.map((segment) => segment.entityId))

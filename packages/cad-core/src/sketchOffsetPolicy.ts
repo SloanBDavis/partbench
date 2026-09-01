@@ -1464,6 +1464,14 @@ function makeIndividualShape(
       closedSegments: boundary
     };
   }
+  if (entity.kind === "spline") {
+    return diagnostic(
+      "SKETCH_OFFSET_SOURCE_UNSUPPORTED",
+      "source.entityId",
+      [entity.id],
+      "Offset source must be a line, arc, circle, or rectangle."
+    );
+  }
   const resolution = resolveSketchCurveEditEntity(entity, policy);
   if (resolution.status === "blocked") {
     return diagnostic(
