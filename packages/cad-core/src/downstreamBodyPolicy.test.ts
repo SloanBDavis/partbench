@@ -26,6 +26,7 @@ describe("V21.1 downstream body policy", () => {
       "linearPatternFeature",
       "circularPatternFeature",
       "mirrorFeature",
+      "combineFeature",
       "shellFeature",
       "sweepFeature",
       "loftFeature",

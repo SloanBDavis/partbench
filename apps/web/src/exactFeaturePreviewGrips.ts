@@ -97,6 +97,7 @@ export const EXACT_FEATURE_PREVIEW_GRIP_POLICY = {
     grips: ["planeOffset"],
     valueEditors: []
   },
+  combine: { create: "must", update: "none", grips: [], valueEditors: [] },
   shell: {
     create: "must",
     update: "must",
@@ -125,6 +126,7 @@ export const EXACT_FEATURE_PREVIEW_GRIP_SOURCE_FAMILY = {
   linearPatternFeature: "linearPattern",
   circularPatternFeature: "circularPattern",
   mirrorFeature: "mirror",
+  combineFeature: "combine",
   shellFeature: "shell",
   sweepFeature: "sweep",
   loftFeature: "loft",

@@ -477,7 +477,8 @@ function addFeatureSourceEdges(
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "combine"
   ) {
     return;
   }
@@ -657,6 +658,17 @@ function addFeatureTargetEdges(
     sourceFeatureId: feature.id,
     bodyId: targetBodyId
   });
+
+  if (feature.kind === "combine") {
+    addEdge(edges, {
+      kind: "targets",
+      from: featureNodeId(feature.id),
+      to: bodyNodeId(feature.toolBodyId),
+      label: "tool",
+      sourceFeatureId: feature.id,
+      bodyId: feature.toolBodyId
+    });
+  }
 }
 
 function createAllReferenceHealthEntries(

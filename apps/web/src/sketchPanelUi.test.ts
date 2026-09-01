@@ -1664,6 +1664,7 @@ describe("sketch panel UI helpers", () => {
       "linearPatternFeature",
       "circularPatternFeature",
       "mirrorFeature",
+      "combineFeature",
       "shellFeature",
       "sweepFeature",
       "loftFeature",

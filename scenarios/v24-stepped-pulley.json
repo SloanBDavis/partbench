@@ -1,0 +1,153 @@
+{
+  "id": "v24-stepped-pulley",
+  "kind": "cadops",
+  "seed": [
+    { "op": "sketch.create", "id": "sketch_hub", "name": "Hub", "plane": "XY" },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_hub",
+      "id": "circle_hub",
+      "center": [0, 0],
+      "radius": 20
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_hub",
+      "bodyId": "body_hub",
+      "sketchId": "sketch_hub",
+      "entityId": "circle_hub",
+      "depth": 10
+    },
+    {
+      "op": "sketch.createOnFace",
+      "id": "sketch_step",
+      "name": "Step",
+      "bodyId": "body_hub",
+      "faceStableId": "generated:face:body_hub:endCap"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_step",
+      "id": "circle_step",
+      "center": [0, 0],
+      "radius": 12
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_step",
+      "bodyId": "body_step",
+      "sketchId": "sketch_step",
+      "entityId": "circle_step",
+      "depth": 8
+    }
+  ],
+  "steps": [
+    {
+      "id": "combine-union",
+      "ops": [
+        {
+          "op": "feature.combine",
+          "id": "feat_union",
+          "bodyId": "body_pulley",
+          "mode": "union",
+          "targetBodyId": "body_hub",
+          "toolBodyId": "body_step"
+        }
+      ],
+      "expect": {
+        "ops": ["feature.combine"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_union",
+                "kind": "combine",
+                "mode": "union",
+                "targetBodyId": "body_hub",
+                "toolBodyId": "body_step",
+                "bodyId": "body_pulley"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_pulley", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_hub", "consumedByFeatureId": "feat_union" },
+              { "id": "body_step", "consumedByFeatureId": "feat_union" },
+              {
+                "id": "body_pulley",
+                "featureId": "feat_union",
+                "source": {
+                  "type": "combineFeature",
+                  "mode": "union",
+                  "targetBodyId": "body_hub",
+                  "toolBodyId": "body_step"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "bore",
+      "ops": [
+        { "op": "sketch.create", "id": "sketch_bore", "name": "Bore", "plane": "XY" },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "sketch_bore",
+          "id": "circle_bore",
+          "center": [0, 0],
+          "radius": 6
+        },
+        {
+          "op": "feature.hole",
+          "id": "feat_bore",
+          "bodyId": "body_bored",
+          "targetBodyId": "body_pulley",
+          "sketchId": "sketch_bore",
+          "circleEntityId": "circle_bore",
+          "depthMode": "throughAll"
+        }
+      ],
+      "expect": {
+        "ops": ["sketch.create", "sketch.addCircle", "feature.hole"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_bore",
+                "kind": "hole",
+                "targetBodyId": "body_pulley",
+                "bodyId": "body_bored"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_bored", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_hub", "consumedByFeatureId": "feat_union" },
+              { "id": "body_step", "consumedByFeatureId": "feat_union" },
+              { "id": "body_pulley", "consumedByFeatureId": "feat_bore" },
+              { "id": "body_bored", "featureId": "feat_bore" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

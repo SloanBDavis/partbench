@@ -18,6 +18,7 @@ import type {
   FeatureCircularPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureCombineForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm
@@ -98,7 +99,22 @@ export function applySolidCollectorSelection(
         targetTopologyAnchorId: choice.targetTopologyAnchorId
       };
     }
+    if (kind === "combine") {
+      return {
+        ...(draft as FeatureCombineForm),
+        targetBodyId: choice.value
+      };
+    }
     return draft;
+  }
+
+  if (collector === "toolBody") {
+    const value = findChoice(
+      choices?.toolBodies ?? choices?.targetBodies,
+      choiceKey
+    )?.value;
+    if (!value || kind !== "combine") return draft;
+    return { ...(draft as FeatureCombineForm), toolBodyId: value };
   }
 
   if (collector === "seedBody") {

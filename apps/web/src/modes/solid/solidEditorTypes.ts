@@ -19,6 +19,7 @@ import type {
   FeatureLinearPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureCombineForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm,
@@ -51,7 +52,8 @@ export type SolidEditorKind =
   | "shell"
   | "linearPattern"
   | "circularPattern"
-  | "mirror";
+  | "mirror"
+  | "combine";
 
 export interface SolidDraftByKind {
   readonly box: PrimitiveCommandForm;
@@ -75,6 +77,7 @@ export interface SolidDraftByKind {
   readonly linearPattern: FeatureLinearPatternForm;
   readonly circularPattern: FeatureCircularPatternForm;
   readonly mirror: FeatureMirrorForm;
+  readonly combine: FeatureCombineForm;
 }
 
 export type SolidDraft = SolidDraftByKind[SolidEditorKind];
@@ -117,6 +120,7 @@ export interface SolidEditorChoices {
   readonly addTargetBodies?: readonly SolidChoice<string>[];
   readonly cutTargetBodies?: readonly SolidChoice<string>[];
   readonly seedBodies?: readonly SolidChoice<string>[];
+  readonly toolBodies?: readonly SolidChoice<string>[];
   readonly axes?: readonly SolidChoice<string>[];
   readonly profiles?: readonly SolidChoice<SketchProfileRefV22>[];
   readonly paths?: readonly SolidChoice<SketchPathRef>[];
@@ -149,6 +153,7 @@ export interface SolidCollectorRequest {
   readonly collector:
     | "targetBody"
     | "seedBody"
+    | "toolBody"
     | "axis"
     | "profile"
     | "path"

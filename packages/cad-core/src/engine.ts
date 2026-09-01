@@ -153,6 +153,7 @@ import type {
   FeatureSnapshot,
   FeatureSnapshotV22,
   FeatureExtrudeOperationMode,
+  FeatureCombineMode,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureId,
@@ -946,6 +947,7 @@ export type Feature =
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
+  | CombineFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -1035,6 +1037,16 @@ export interface MirrorFeature {
   readonly seedBodyId: BodyId;
   readonly plane: MirrorPlaneRef;
   readonly includeOriginal: boolean;
+  readonly bodyId: BodyId;
+}
+
+export interface CombineFeature {
+  readonly id: FeatureId;
+  readonly kind: "combine";
+  readonly name?: string;
+  readonly mode: FeatureCombineMode;
+  readonly targetBodyId: BodyId;
+  readonly toolBodyId: BodyId;
   readonly bodyId: BodyId;
 }
 
@@ -1576,6 +1588,7 @@ function documentHasV20SourceRecords(
       feature.kind === "linearPattern" ||
       feature.kind === "circularPattern" ||
       feature.kind === "mirror" ||
+      feature.kind === "combine" ||
       feature.kind === "sweep" ||
       feature.kind === "loft"
   );
@@ -7376,6 +7389,28 @@ function applyOperation(
       return;
     }
 
+    case "feature.combine": {
+      const mode = validateCombineMode(op.mode, opIndex);
+      const { targetBodyId, toolBodyId } = validateCombineBodies(
+        state,
+        op.targetBodyId,
+        op.toolBodyId,
+        opIndex
+      );
+      const feature: CombineFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "combine",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        mode,
+        targetBodyId,
+        toolBodyId,
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.sweep": {
       const inputs = resolveSweepCommandInputs(state, op, undefined, opIndex);
       const feature: SweepFeature = {
@@ -8076,6 +8111,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.linearPattern":
     case "feature.circularPattern":
     case "feature.mirror":
+    case "feature.combine":
     case "feature.shell":
     case "feature.sweep":
     case "feature.loft":
@@ -14180,6 +14216,7 @@ type TargetConsumingFeature =
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
+  | CombineFeature
   | ShellFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
@@ -14315,6 +14352,10 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
       opIndex,
       feature.id
     );
+    return;
+  }
+
+  if (feature.kind === "combine") {
     return;
   }
 
@@ -16871,6 +16912,131 @@ function validateMirrorSeedBodyId(
   );
 }
 
+function validateCombineMode(
+  value: unknown,
+  opIndex?: number
+): FeatureCombineMode {
+  if (value === "union" || value === "subtract") {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "feature.combine mode must be union or subtract.",
+    opIndex,
+    path: operationPath(opIndex, "mode"),
+    expected: "union | subtract",
+    received: describeReceived(value)
+  });
+}
+
+function validateCombineBodies(
+  state: MutableDocumentState,
+  targetBodyId: BodyId | undefined,
+  toolBodyId: BodyId | undefined,
+  opIndex?: number
+): {
+  readonly targetBodyId: BodyId;
+  readonly toolBodyId: BodyId;
+} {
+  const targetId = validateCombineInputBodyId(
+    state,
+    targetBodyId,
+    opIndex,
+    "targetBodyId"
+  );
+  const toolId = validateCombineInputBodyId(
+    state,
+    toolBodyId,
+    opIndex,
+    "toolBodyId"
+  );
+  if (targetId === toolId) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "feature.combine requires two distinct completed exact solids.",
+      opIndex,
+      bodyId: targetId,
+      path: operationPath(opIndex, "toolBodyId"),
+      expected: "toolBodyId different from targetBodyId",
+      received: toolId
+    });
+  }
+  return { targetBodyId: targetId, toolBodyId: toolId };
+}
+
+function validateCombineInputBodyId(
+  state: MutableDocumentState,
+  requestedBodyId: BodyId | undefined,
+  opIndex: number | undefined,
+  field: "targetBodyId" | "toolBodyId"
+): BodyId {
+  if (
+    typeof requestedBodyId !== "string" ||
+    requestedBodyId.trim().length === 0
+  ) {
+    throwValidationError({
+      code: "TARGET_BODY_REQUIRED",
+      message: `feature.combine requires ${field}.`,
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected: "existing unconsumed exact solid body id",
+      received: describeReceived(requestedBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, requestedBodyId);
+  if (!feature) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `feature.combine ${field} does not exist: ${requestedBodyId}`,
+      opIndex,
+      bodyId: requestedBodyId,
+      path: operationPath(opIndex, field),
+      expected: "existing unconsumed exact solid body id",
+      received: requestedBodyId
+    });
+  }
+
+  if (!isCombineInputFeature(feature)) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `feature.combine ${field} must be a completed exact solid, not ${feature.kind}.`,
+      opIndex,
+      bodyId: requestedBodyId,
+      featureId: feature.id,
+      path: operationPath(opIndex, field),
+      expected: "unconsumed extrude or combine solid",
+      received: feature.kind
+    });
+  }
+
+  const consumer = findConsumingFeatureByTargetBodyId(
+    state.features,
+    requestedBodyId
+  );
+  if (consumer) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `feature.combine ${field} is already consumed by feature ${consumer.id}: ${requestedBodyId}`,
+      opIndex,
+      bodyId: requestedBodyId,
+      featureId: consumer.id,
+      path: operationPath(opIndex, field),
+      expected: "unconsumed exact solid body id",
+      received: `consumed by ${consumer.id}`
+    });
+  }
+
+  return requestedBodyId;
+}
+
+function isCombineInputFeature(
+  feature: Feature
+): feature is ExtrudeFeature | CombineFeature {
+  return feature.kind === "extrude" || feature.kind === "combine";
+}
+
 function createUpdatedHoleFeature(
   feature: HoleFeature,
   depthMode: FeatureHoleDepthMode,
@@ -17494,6 +17660,14 @@ function findConsumingFeaturesByTargetBodyId(
 
   for (const feature of features.values()) {
     if (
+      feature.kind === "combine" &&
+      (feature.targetBodyId === targetBodyId ||
+        feature.toolBodyId === targetBodyId)
+    ) {
+      consumingFeatures.push(feature);
+      continue;
+    }
+    if (
       isTargetConsumingFeature(feature) &&
       getTargetConsumingFeatureBodyId(feature) === targetBodyId
     ) {
@@ -17517,6 +17691,7 @@ function isTargetConsumingFeature(
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "shell" ||
+    feature.kind === "combine" ||
     (feature.kind === "mirror" && feature.includeOriginal)
   );
 }
@@ -17630,6 +17805,7 @@ function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
+    feature.kind === "combine" ||
     feature.kind === "shell"
   ) {
     return false;
@@ -22416,6 +22592,17 @@ function featureRef(
     };
   }
 
+  if (feature.kind === "combine") {
+    return {
+      id: feature.id,
+      kind: "combine",
+      bodyId: feature.bodyId,
+      mode: feature.mode,
+      targetBodyId: feature.targetBodyId,
+      toolBodyId: feature.toolBodyId
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.id,
@@ -23906,6 +24093,18 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
     };
   }
 
+  if (snapshot.kind === "combine") {
+    return {
+      id: snapshot.id,
+      kind: "combine",
+      name: snapshot.name,
+      mode: snapshot.mode,
+      targetBodyId: snapshot.targetBodyId,
+      toolBodyId: snapshot.toolBodyId,
+      bodyId: snapshot.bodyId
+    };
+  }
+
   if (snapshot.kind === "shell") {
     return {
       id: snapshot.id,
@@ -24746,6 +24945,25 @@ function createFeatureSummary(
     };
   }
 
+  if (feature.kind === "combine") {
+    return {
+      id: feature.id,
+      kind: "combine",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      mode: feature.mode,
+      targetBodyId: feature.targetBodyId,
+      toolBodyId: feature.toolBodyId,
+      name: feature.name,
+      source: {
+        type: "combineFeature",
+        mode: feature.mode,
+        targetBodyId: feature.targetBodyId,
+        toolBodyId: feature.toolBodyId
+      }
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.id,
@@ -25088,6 +25306,24 @@ function createFeatureBodySnapshot(
     };
   }
 
+  if (feature.kind === "combine") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "combineFeature",
+        featureId: feature.id,
+        mode: feature.mode,
+        targetBodyId: feature.targetBodyId,
+        toolBodyId: feature.toolBodyId
+      }
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.bodyId,
@@ -25261,6 +25497,11 @@ function createConsumedBodyMap(
   const consumed = new Map<BodyId, FeatureId>();
 
   for (const feature of features.values()) {
+    if (feature.kind === "combine") {
+      consumed.set(feature.targetBodyId, feature.id);
+      consumed.set(feature.toolBodyId, feature.id);
+      continue;
+    }
     if (isTargetConsumingFeature(feature)) {
       consumed.set(getTargetConsumingFeatureBodyId(feature), feature.id);
     }
@@ -29222,6 +29463,17 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "combine" && right.kind === "combine") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.mode === right.mode &&
+      left.targetBodyId === right.targetBodyId &&
+      left.toolBodyId === right.toolBodyId &&
+      left.bodyId === right.bodyId
+    );
+  }
+
   if (left.kind === "shell" && right.kind === "shell") {
     return (
       left.id === right.id &&
@@ -29300,7 +29552,8 @@ function normalizeCadProject(value: CadProject): CadProject {
         (feature) =>
           feature.kind === "linearPattern" ||
           feature.kind === "circularPattern" ||
-          feature.kind === "mirror"
+          feature.kind === "mirror" ||
+          feature.kind === "combine"
       )
         ? CAD_PROJECT_FORMAT_VERSION_V20
         : value.schemaVersion;
@@ -29744,7 +29997,8 @@ function normalizeFeatureSnapshot(
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
-    feature.kind === "shell"
+    feature.kind === "shell" ||
+    feature.kind === "combine"
   ) {
     return { ...feature };
   }
@@ -30042,6 +30296,7 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     ref.kind === "linearPattern" ||
     ref.kind === "circularPattern" ||
     ref.kind === "mirror" ||
+    ref.kind === "combine" ||
     ref.kind === "shell" ||
     ref.kind === "sweep" ||
     ref.kind === "loft"
@@ -33846,6 +34101,29 @@ function collectValidAuthoredFeatureByBodyId(
 
   if (
     isRecord(value) &&
+    value.kind === "combine" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    (value.mode === "union" || value.mode === "subtract") &&
+    typeof value.targetBodyId === "string" &&
+    typeof value.toolBodyId === "string" &&
+    value.targetBodyId !== value.toolBodyId &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "combine",
+      name: typeof value.name === "string" ? value.name : undefined,
+      mode: value.mode,
+      targetBodyId: value.targetBodyId,
+      toolBodyId: value.toolBodyId,
+      bodyId: value.bodyId,
+      path
+    });
+  }
+
+  if (
+    isRecord(value) &&
     value.kind === "shell" &&
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
@@ -33909,7 +34187,7 @@ function validateFeatureTargetBodyReferences(
       (candidate) =>
         candidate.id !== feature.id &&
         isImportTargetConsumingFeature(candidate) &&
-        getImportFeatureTargetBodyId(candidate) === targetBodyId
+        getImportFeatureConsumedBodyIds(candidate).includes(targetBodyId)
     );
 
     if (consumedBy) {
@@ -33944,6 +34222,25 @@ function validateFeatureTargetBodyReferences(
         `${feature.path}.targetBodyId`,
         `${formatTargetConsumingFeatureForIssue(feature)} requires a supported generated or anchored edge.`
       );
+    }
+
+    if (feature.kind === "combine") {
+      const tool = featuresByBodyId.get(feature.toolBodyId);
+      if (!tool) {
+        addProjectIssue(
+          issues,
+          "INVALID_FEATURE",
+          `${feature.path}.toolBodyId`,
+          "feature.combine toolBodyId must reference an existing authored body."
+        );
+      } else if (tool.id === feature.id) {
+        addProjectIssue(
+          issues,
+          "INVALID_FEATURE",
+          `${feature.path}.toolBodyId`,
+          "feature.combine toolBodyId must not reference its own result body."
+        );
+      }
     }
   }
 
@@ -34030,7 +34327,8 @@ function isImportTargetConsumingFeature(
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
-    feature.kind === "shell"
+    feature.kind === "shell" ||
+    feature.kind === "combine"
   );
 }
 
@@ -34042,6 +34340,7 @@ function getImportFeatureTargetBodyId(
     feature.kind === "fillet" ||
     feature.kind === "shell" ||
     feature.kind === "hole" ||
+    feature.kind === "combine" ||
     (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody"))
   ) {
@@ -34049,6 +34348,16 @@ function getImportFeatureTargetBodyId(
   }
 
   return undefined;
+}
+
+function getImportFeatureConsumedBodyIds(
+  feature: ImportFeatureSnapshot
+): readonly BodyId[] {
+  if (feature.kind === "combine") {
+    return [feature.targetBodyId, feature.toolBodyId];
+  }
+  const targetBodyId = getImportFeatureTargetBodyId(feature);
+  return targetBodyId ? [targetBodyId] : [];
 }
 
 function isExtrudeFeatureSnapshot(
@@ -34183,6 +34492,10 @@ function formatTargetConsumingFeatureForIssue(
 
   if (feature.kind === "shell") {
     return "Shell feature";
+  }
+
+  if (feature.kind === "combine") {
+    return "Combine feature";
   }
 
   if (
@@ -34741,7 +35054,8 @@ function validateFeatureSnapshot(
       !allowsEdgeFinishFeatures) &&
     ((value.kind !== "linearPattern" &&
       value.kind !== "circularPattern" &&
-      value.kind !== "mirror") ||
+      value.kind !== "mirror" &&
+      value.kind !== "combine") ||
       !allowsPatternFeatures) &&
     (value.kind !== "shell" || !allowsPatternFeatures) &&
     (value.kind !== "sweep" || !isV20OrLaterSchema) &&
@@ -34753,9 +35067,9 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.kind`,
       allowsImportedBodyFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, or shell."
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, or shell."
         : allowsPatternFeatures
-          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, or shell."
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, or shell."
           : allowsEdgeFinishFeatures
             ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
             : allowsHoleFeatures
@@ -34900,6 +35214,25 @@ function validateFeatureSnapshot(
       seenBodyIds,
       isV20OrLaterSchema
     );
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "combine") {
+    if (!allowsPatternFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Combine features require web-cad.project.v19."
+      );
+    }
+
+    validateCombineFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -36961,6 +37294,71 @@ function validateMirrorFeatureSnapshotFields(
   }
 }
 
+function validateCombineFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  if (value.mode !== "union" && value.mode !== "subtract") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.mode`,
+      "Combine feature mode must be union or subtract."
+    );
+  }
+
+  if (typeof value.targetBodyId !== "string" || value.targetBodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      "Combine feature targetBodyId must be a non-empty string."
+    );
+  }
+
+  if (typeof value.toolBodyId !== "string" || value.toolBodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.toolBodyId`,
+      "Combine feature toolBodyId must be a non-empty string."
+    );
+  }
+
+  if (
+    typeof value.targetBodyId === "string" &&
+    typeof value.toolBodyId === "string" &&
+    value.targetBodyId === value.toolBodyId
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.toolBodyId`,
+      "Combine feature requires two distinct completed exact solids."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Combine feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
 function validateShellFeatureSnapshotFields(
   value: Record<string, unknown>,
   path: string,
@@ -38172,6 +38570,17 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.combine") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      (value.mode === "union" || value.mode === "subtract") &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.toolBodyId === "string"
+    );
+  }
+
   if (value.op === "feature.shell") {
     return (
       isOptionalString(value.id) &&
@@ -39126,6 +39535,14 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       typeof value.seedBodyId === "string" &&
       (isMirrorPlane(value.mirrorPlane) || isMirrorPlaneRef(value.plane)) &&
       typeof value.includeOriginal === "boolean"
+    );
+  }
+
+  if (value.kind === "combine") {
+    return (
+      (value.mode === "union" || value.mode === "subtract") &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.toolBodyId === "string"
     );
   }
 

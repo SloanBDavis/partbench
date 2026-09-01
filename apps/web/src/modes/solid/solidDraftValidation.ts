@@ -10,6 +10,7 @@ import type {
   FeatureLinearPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureCombineForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm,
@@ -163,6 +164,17 @@ export function validateSolidDraft(
       : blocked(
           `Angle must be within 360° and instances must be a whole number from 2 through ${CAD_PATTERN_COMMAND_INSTANCE_LIMIT}.`
         );
+  }
+  if (kind === "combine") {
+    const form = draft as FeatureCombineForm;
+    if (!form.targetBodyId) return collecting("Select a target solid.");
+    if (!form.toolBodyId) return collecting("Select a tool solid.");
+    if (form.targetBodyId === form.toolBodyId) {
+      return blocked("Combine requires two distinct completed solids.");
+    }
+    return form.mode === "union" || form.mode === "subtract"
+      ? ready()
+      : blocked("Choose union or subtract.");
   }
   const mirror = draft as FeatureMirrorForm;
   if (!mirror.seedBodyId) return collecting("Select an exact-ready seed body.");

@@ -358,6 +358,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildFeatureMirrorOp",
     "cadCommands.test.ts"
   ),
+  "solid.combine": featureAudit(
+    "Combine",
+    "createCombine",
+    "body/feature selection",
+    "buildFeatureCombineOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

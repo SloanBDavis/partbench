@@ -12,6 +12,7 @@ import {
   buildFeatureLinearPatternOp,
   buildFeatureLoftOp,
   buildFeatureMirrorOp,
+  buildFeatureCombineOp,
   buildFeatureRevolveOp,
   buildFeatureShellOp,
   buildFeatureSweepOp,
@@ -96,7 +97,8 @@ const EXPECTED_FEATURE_KIND: Partial<
   shell: "shell",
   linearPattern: "linearPattern",
   circularPattern: "circularPattern",
-  mirror: "mirror"
+  mirror: "mirror",
+  combine: "combine"
 };
 
 function unsupported(reason: string): ExactFeaturePreviewUnsupportedPlan {
@@ -364,6 +366,10 @@ export function planExactFeaturePreview(
           feature.bodyId
         );
       }
+      case "combine":
+        return unsupported(
+          "Combine features are create-only; delete and recreate to change inputs."
+        );
     }
   }
 
@@ -407,6 +413,8 @@ export function planExactFeaturePreview(
       return supported(buildFeatureCircularPatternOp(draft));
     case "mirror":
       return supported(buildFeatureMirrorOp(draft));
+    case "combine":
+      return supported(buildFeatureCombineOp(draft));
     case "shell":
       return supported(buildFeatureShellOp(draft));
     case "sweep": {

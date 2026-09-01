@@ -28,6 +28,7 @@ const FEATURE_FAMILIES = [
   "linearPattern",
   "circularPattern",
   "mirror",
+  "combine",
   "shell",
   "sweep",
   "loft"
@@ -43,6 +44,7 @@ const SOURCE_TYPES = [
   "linearPatternFeature",
   "circularPatternFeature",
   "mirrorFeature",
+  "combineFeature",
   "shellFeature",
   "sweepFeature",
   "loftFeature",

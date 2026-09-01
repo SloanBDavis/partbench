@@ -35,6 +35,7 @@ export type AuthoredStructureFeature = Extract<
       | "chamfer"
       | "fillet"
       | "mirror"
+      | "combine"
       | "sweep"
       | "loft";
   }
@@ -87,6 +88,7 @@ export function isAuthoredStructureFeature(
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
     feature.kind === "mirror" ||
+    feature.kind === "combine" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
   );
@@ -100,6 +102,7 @@ export function isAuthoredStructureBody(body: CadBodySnapshot): boolean {
     body.source.type === "edgeChamferFeature" ||
     body.source.type === "edgeFilletFeature" ||
     body.source.type === "mirrorFeature" ||
+    body.source.type === "combineFeature" ||
     body.source.type === "sweepFeature" ||
     body.source.type === "loftFeature"
   );
@@ -358,6 +361,10 @@ function getFeatureTargetBodyId(
 
   if (feature.kind === "mirror") {
     return feature.seedBodyId;
+  }
+
+  if (feature.kind === "combine") {
+    return feature.targetBodyId;
   }
 
   if (
@@ -681,6 +688,10 @@ export function formatFeatureLine(
     } / seed ${feature.seedBodyId}`;
   }
 
+  if (feature.kind === "combine") {
+    return `combine / ${feature.mode} / target ${feature.targetBodyId} / tool ${feature.toolBodyId}`;
+  }
+
   if (feature.kind === "sweep") {
     return `sweep / profile ${feature.profile.sketchId}/${feature.profile.entityId} / ${feature.path.kind} path`;
   }
@@ -799,6 +810,10 @@ export function formatFeatureKindLabel(
 
   if (feature.kind === "mirror") {
     return "Mirror";
+  }
+
+  if (feature.kind === "combine") {
+    return "Combine";
   }
 
   if (feature.kind === "sweep") {

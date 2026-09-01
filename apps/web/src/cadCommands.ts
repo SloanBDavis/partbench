@@ -22,6 +22,8 @@ import type {
   FeatureCircularPatternOp,
   FeatureLinearPatternOp,
   FeatureMirrorOp,
+  FeatureCombineOp,
+  FeatureCombineMode,
   MirrorPlaneRef,
   PatternDirectionRef,
   PatternRotationAxisRef,
@@ -319,6 +321,15 @@ export interface FeatureMirrorForm {
 export interface FeatureMirrorEdit {
   readonly plane?: MirrorPlaneRef;
   readonly includeOriginal?: boolean;
+}
+
+export interface FeatureCombineForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly mode: FeatureCombineMode;
+  readonly targetBodyId: string;
+  readonly toolBodyId: string;
 }
 
 export interface FeatureShellForm {
@@ -1454,6 +1465,20 @@ export function buildFeatureMirrorOp(form: FeatureMirrorForm): FeatureMirrorOp {
     plane: form.plane,
     includeOriginal: form.includeOriginal,
     name: form.name.trim() || undefined
+  };
+}
+
+export function buildFeatureCombineOp(
+  form: FeatureCombineForm
+): FeatureCombineOp {
+  return {
+    op: "feature.combine",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    mode: form.mode,
+    targetBodyId: form.targetBodyId,
+    toolBodyId: form.toolBodyId
   };
 }
 

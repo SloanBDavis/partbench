@@ -156,6 +156,12 @@ export function createAuthoredFeatureDerivedGeometrySources(
       generatedFacesByKey,
       consumedBodyIds
     ),
+    ...createCombineDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      consumedBodyIds
+    ),
     ...createHoleDerivedGeometrySources(
       features,
       sketches,
@@ -393,6 +399,108 @@ export function createExtrudeDerivedGeometrySources(
   return sources;
 }
 
+type BooleanCapableFeature = Extract<
+  CadFeatureSummary,
+  { kind: "extrude" | "combine" }
+>;
+
+function createBooleanCapableFeaturesByBodyId(
+  features: readonly CadFeatureSummary[]
+): ReadonlyMap<string, BooleanCapableFeature> {
+  return new Map(
+    features
+      .filter(
+        (feature): feature is BooleanCapableFeature =>
+          feature.kind === "extrude" || feature.kind === "combine"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+}
+
+function createSolidBooleanSourceForFeature(
+  feature: BooleanCapableFeature,
+  featuresByBodyId: ReadonlyMap<string, BooleanCapableFeature>,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  visitedFeatureIds: ReadonlySet<string> = new Set()
+): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
+  if (visitedFeatureIds.has(feature.id)) {
+    return {
+      id: feature.bodyId,
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: createUnavailableExtrudeSource(feature.bodyId),
+      tool: createUnavailableExtrudeSource(feature.bodyId),
+      placementError: `Boolean feature ${feature.id} cannot be displayed because its target chain is cyclic.`
+    };
+  }
+
+  const nextVisitedFeatureIds = new Set(visitedFeatureIds);
+  nextVisitedFeatureIds.add(feature.id);
+
+  if (feature.kind === "combine") {
+    const targetFeature = featuresByBodyId.get(feature.targetBodyId);
+    const toolFeature = featuresByBodyId.get(feature.toolBodyId);
+    const target = targetFeature
+      ? createSolidBooleanSourceForFeature(
+          targetFeature,
+          featuresByBodyId,
+          sketches,
+          generatedFacesByKey,
+          nextVisitedFeatureIds
+        )
+      : undefined;
+    const tool = toolFeature
+      ? createSolidBooleanSourceForFeature(
+          toolFeature,
+          featuresByBodyId,
+          sketches,
+          generatedFacesByKey,
+          nextVisitedFeatureIds
+        )
+      : undefined;
+    const operation = feature.mode === "union" ? "add" : "cut";
+    return {
+      id: feature.bodyId,
+      kind: "extrudeBoolean",
+      operation,
+      target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+      tool: tool
+        ? { ...tool, id: `${feature.bodyId}:tool` }
+        : createUnavailableExtrudeSource(feature.bodyId),
+      ...(!target || !tool
+        ? {
+            placementError: `Combine feature ${feature.id} cannot be displayed because its target or tool solid is unavailable.`
+          }
+        : target.placementError
+          ? { placementError: target.placementError }
+          : tool.placementError
+            ? { placementError: tool.placementError }
+            : {})
+    };
+  }
+
+  if (feature.operationMode === "add" || feature.operationMode === "cut") {
+    const extrudeFeaturesByBodyId = new Map(
+      [...featuresByBodyId.entries()].flatMap(([bodyId, candidate]) =>
+        candidate.kind === "extrude" ? [[bodyId, candidate] as const] : []
+      )
+    );
+    return createBooleanSourceForFeature(
+      feature,
+      extrudeFeaturesByBodyId,
+      sketches,
+      generatedFacesByKey,
+      nextVisitedFeatureIds
+    );
+  }
+
+  return (
+    createExtrudeSourceForFeature(feature, sketches, generatedFacesByKey) ??
+    createUnavailableExtrudeSource(feature.bodyId)
+  );
+}
+
 function createBooleanSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   featuresByBodyId: ReadonlyMap<
@@ -553,6 +661,35 @@ export function createRevolveDerivedGeometrySources(
     );
 }
 
+export function createCombineDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly (
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource
+)[] {
+  const featuresByBodyId = createBooleanCapableFeaturesByBodyId(features);
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "combine" }> =>
+        feature.kind === "combine"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) =>
+      createSolidBooleanSourceForFeature(
+        feature,
+        featuresByBodyId,
+        sketches,
+        generatedFacesByKey
+      )
+    );
+}
+
 export function createHoleDerivedGeometrySources(
   features: readonly CadFeatureSummary[],
   sketches: readonly SketchSnapshot[],
@@ -562,14 +699,7 @@ export function createHoleDerivedGeometrySources(
   > = new Map(),
   consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
 ): readonly DerivedHoleGeometrySource[] {
-  const extrudeFeaturesByBodyId = new Map(
-    features
-      .filter(
-        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-          feature.kind === "extrude"
-      )
-      .map((feature) => [feature.bodyId, feature])
-  );
+  const featuresByBodyId = createBooleanCapableFeaturesByBodyId(features);
 
   return features
     .filter(
@@ -578,12 +708,12 @@ export function createHoleDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) => {
-      const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
+      const targetFeature = featuresByBodyId.get(feature.targetBodyId);
       const target =
         targetFeature !== undefined
-          ? createBooleanSourceForFeature(
+          ? createSolidBooleanSourceForFeature(
               targetFeature,
-              extrudeFeaturesByBodyId,
+              featuresByBodyId,
               sketches,
               generatedFacesByKey
             )
@@ -1169,6 +1299,10 @@ function createConsumedBodyIds(
 
         if (feature.kind === "shell") {
           return [feature.targetBodyId];
+        }
+
+        if (feature.kind === "combine") {
+          return [feature.targetBodyId, feature.toolBodyId];
         }
 
         return [];

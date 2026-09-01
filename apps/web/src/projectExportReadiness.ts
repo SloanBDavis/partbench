@@ -221,6 +221,8 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
     case "authoredCircularPattern":
     case "authoredMirror":
       return "Pattern and mirror bodies are not ready for STEP export yet.";
+    case "authoredCombine":
+      return "Combine bodies are not ready for STEP export yet.";
     case "importedBody":
       return "Imported STEP bodies need checkpoint-backed export support.";
     case "primitiveCompatibility":

@@ -219,6 +219,10 @@ const BODY_SOURCE_RESOLVERS = {
     featureKind: "mirror",
     resolve: resolveArtifactOperationSource
   },
+  combineFeature: {
+    featureKind: "combine",
+    resolve: resolveLegacyRuntimeSource
+  },
   shellFeature: {
     featureKind: "shell",
     resolve: resolveArtifactOperationSource

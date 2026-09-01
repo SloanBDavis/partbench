@@ -1394,6 +1394,8 @@ function createAuthoredFeatureTopologySourceKind(
       return "authoredCircularPattern";
     case "mirror":
       return "authoredMirror";
+    case "combine":
+      return "authoredCombine";
     case "shell":
       return "authoredShell";
     case "sweep":

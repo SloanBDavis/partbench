@@ -28,6 +28,7 @@ import {
   buildFeatureHoleOp,
   buildFeatureLinearPatternOp,
   buildFeatureMirrorOp,
+  buildFeatureCombineOp,
   buildFeatureRevolveOp,
   buildFeatureCompositeRevolveOp,
   buildFeatureSweepOp,
@@ -754,6 +755,25 @@ describe("cad command builders", () => {
       name: "Mirrored body",
       plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
       includeOriginal: true
+    });
+
+    expect(
+      buildFeatureCombineOp({
+        id: " feat_union ",
+        bodyId: " body_pulley ",
+        name: " Pulley ",
+        mode: "union",
+        targetBodyId: "body_hub",
+        toolBodyId: "body_step"
+      })
+    ).toEqual({
+      op: "feature.combine",
+      id: "feat_union",
+      bodyId: "body_pulley",
+      name: "Pulley",
+      mode: "union",
+      targetBodyId: "body_hub",
+      toolBodyId: "body_step"
     });
   });
 

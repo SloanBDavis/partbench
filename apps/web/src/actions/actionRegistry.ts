@@ -41,6 +41,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidLinearPattern: "Select a supported body.",
   solidCircularPattern: "Select a supported body.",
   solidMirror: "Select a supported body.",
+  solidCombine: "Select two completed exact solids.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -435,6 +436,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidMirror)
+  ),
+  action(
+    "solid.combine",
+    "Combine",
+    "Modify",
+    ["solid"],
+    ["union", "subtract", "boolean", "fuse"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine)
   ),
   action(
     "solid.edit",

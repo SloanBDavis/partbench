@@ -17,6 +17,7 @@ import type {
   FeatureLinearPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureCombineForm,
   FeatureRevolveForm,
   FeatureShellForm,
   FeatureSweepForm,
@@ -715,6 +716,18 @@ function SolidDraftFields({
           seedChoices={request.choices?.seedBodies ?? []}
           planeChoices={request.choices?.mirrorPlanes ?? []}
           lockedSeed={request.mode === "edit"}
+          collecting={collecting}
+          onCollect={onCollect}
+          onChange={onChange}
+        />
+      );
+    case "combine":
+      return (
+        <CombineFields
+          draft={draft as FeatureCombineForm}
+          targetChoices={request.choices?.targetBodies ?? []}
+          toolChoices={request.choices?.toolBodies ?? request.choices?.targetBodies ?? []}
+          lockedBodies={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -1892,6 +1905,75 @@ function MirrorFields({
         />
         <span>Keep original body</span>
       </label>
+    </>
+  );
+}
+
+function CombineFields({
+  draft,
+  targetChoices,
+  toolChoices,
+  lockedBodies,
+  collecting,
+  onCollect,
+  onChange
+}: {
+  readonly draft: FeatureCombineForm;
+  readonly targetChoices: readonly SolidChoice<string>[];
+  readonly toolChoices: readonly SolidChoice<string>[];
+  readonly lockedBodies: boolean;
+  readonly collecting?: string;
+  readonly onCollect: (
+    collector: SolidCollectorRequest["collector"],
+    accepted: readonly string[]
+  ) => void;
+  readonly onChange: (draft: FeatureCombineForm) => void;
+}) {
+  return (
+    <>
+      <FeatureIdentityFields
+        draft={draft}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <ChoiceCollector
+        label="Target body"
+        acceptedKinds={["body"]}
+        choices={targetChoices}
+        selectedKey={findChoiceKey(targetChoices, draft.targetBodyId)}
+        collecting={collecting === "targetBody"}
+        disabled={lockedBodies}
+        required
+        onCollect={() => onCollect("targetBody", ["body"])}
+        onChange={(targetBodyId) => onChange({ ...draft, targetBodyId })}
+        onClear={() => onChange({ ...draft, targetBodyId: "" })}
+      />
+      <ChoiceCollector
+        label="Tool body"
+        acceptedKinds={["body"]}
+        choices={toolChoices}
+        selectedKey={findChoiceKey(toolChoices, draft.toolBodyId)}
+        collecting={collecting === "toolBody"}
+        disabled={lockedBodies}
+        required
+        onCollect={() => onCollect("toolBody", ["body"])}
+        onChange={(toolBodyId) => onChange({ ...draft, toolBodyId })}
+        onClear={() => onChange({ ...draft, toolBodyId: "" })}
+      />
+      <SelectField
+        label="Mode"
+        name="combine-mode"
+        value={draft.mode}
+        options={[
+          { value: "union", label: "Union" },
+          { value: "subtract", label: "Subtract" }
+        ]}
+        onChange={(mode) =>
+          onChange({
+            ...draft,
+            mode: mode as FeatureCombineForm["mode"]
+          })
+        }
+      />
     </>
   );
 }
