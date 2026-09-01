@@ -1,5 +1,6 @@
 import type {
   CadGeneratedFaceReference,
+  DatumPlaneSnapshot,
   SketchPlane,
   SketchSnapshot,
   Vec2
@@ -42,15 +43,31 @@ export function createGeneratedFaceReferenceKey(
 
 export function createSketchDisplayState(
   sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  datums: readonly DatumPlaneSnapshot[] = []
 ): SketchDisplayState {
   const frames = new Map<string, SketchDisplayFrame>();
   const statuses = new Map<string, SketchDisplayStatus>();
+  const datumsById = new Map(datums.map((datum) => [datum.id, datum]));
 
   for (const sketch of sketches) {
     const attachment = sketch.attachment;
 
     if (!attachment) {
+      if (sketch.datumId) {
+        const datum = datumsById.get(sketch.datumId);
+        const frame = datum
+          ? createDatumSketchDisplayFrame(datum)
+          : undefined;
+        if (frame) {
+          frames.set(sketch.id, frame);
+          statuses.set(sketch.id, {
+            kind: "attached",
+            message: `Displaying on datum ${datum?.name ?? sketch.datumId}.`
+          });
+          continue;
+        }
+      }
       statuses.set(sketch.id, { kind: "unattached" });
       continue;
     }
@@ -150,6 +167,34 @@ export function createDefaultSketchDisplayFrame(
         vAxis: [0, 0, 1]
       };
   }
+}
+
+export function createDatumSketchDisplayFrame(
+  datum: DatumPlaneSnapshot
+): SketchDisplayFrame | undefined {
+  if (datum.plane.kind !== "standardPlane") {
+    return undefined;
+  }
+  const frame = createDefaultSketchDisplayFrame(datum.plane.plane);
+  const offset = datum.plane.offset ?? 0;
+  if (offset === 0) {
+    return frame;
+  }
+  const normal =
+    datum.plane.plane === "XY"
+      ? ([0, 0, 1] as const)
+      : datum.plane.plane === "XZ"
+        ? ([0, 1, 0] as const)
+        : ([1, 0, 0] as const);
+  return {
+    origin: [
+      frame.origin[0] + normal[0] * offset,
+      frame.origin[1] + normal[1] * offset,
+      frame.origin[2] + normal[2] * offset
+    ],
+    uAxis: frame.uAxis,
+    vAxis: frame.vAxis
+  };
 }
 
 export function mapSketchPointToDisplayFrame(

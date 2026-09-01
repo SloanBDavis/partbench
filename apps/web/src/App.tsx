@@ -109,7 +109,8 @@ import {
   buildAddSketchLineOp,
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
-  buildCreateSketchOp,
+  buildDatumAndSketchOnPlaneOps,
+  buildDatumPlaneCreateOp,
   buildCreateSketchOnFaceOp,
   buildCreateConeOp,
   buildCreateParameterOp,
@@ -148,6 +149,7 @@ import {
   type PrimitiveCommandForm,
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
+  type DatumPlaneCreateForm,
   type SketchEntityForm,
   type CreatableSketchEntityKind,
   type TransformCommandForm
@@ -3074,8 +3076,11 @@ export function App() {
     [derivedGeneratedReferenceEvidenceByBodyId, sketchExtrudeBodies]
   );
   const sketchDisplayState = useMemo(
-    () => createSketchDisplayState(sketches, generatedFacesByKey),
-    [generatedFacesByKey, sketches]
+    () =>
+      createSketchDisplayState(sketches, generatedFacesByKey, [
+        ...engine.getDocument().datums.values()
+      ]),
+    [generatedFacesByKey, sketches, document]
   );
   const exactArtifactGeometrySources = useMemo<
     readonly DerivedGeometrySource[]
@@ -4232,9 +4237,13 @@ export function App() {
   const solidPlaneChoices = useMemo(
     () =>
       modelingUiRuntime?.createSolidMirrorPlaneChoices(
-        solidMirrorFaceChoices
+        solidMirrorFaceChoices,
+        [...engine.getDocument().datums.values()].map((datum) => ({
+          id: datum.id,
+          name: datum.name
+        }))
       ) ?? [],
-    [solidMirrorFaceChoices, modelingUiRuntime]
+    [solidMirrorFaceChoices, modelingUiRuntime, document]
   );
   const pendingPromotionKey = pendingCurrentExactPromotion
     ? pendingCurrentExactPromotionChoiceKey(pendingCurrentExactPromotion)
@@ -4534,7 +4543,28 @@ export function App() {
         kind: "sketch",
         title: "Create Sketch",
         mode: "create",
-        initialDraft: createSketchDraft(sketches.length + 1)
+        initialDraft: createSketchDraft(sketches.length + 1),
+        choices: {
+          datums: [...engine.getDocument().datums.values()].map((datum) => ({
+            key: datum.id,
+            value: datum.id,
+            label: datum.name,
+            kind: "datum"
+          }))
+        }
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.datum-plane") {
+      return {
+        key,
+        kind: "datumPlane",
+        title: "Create Datum Plane",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          name: `Datum ${engine.getDocument().datums.size + 1}`,
+          plane: { kind: "standardPlane", plane: "XZ", offset: 0 }
+        } satisfies DatumPlaneCreateForm
       } as SolidEditorRequest;
     }
     if (actionId === "solid.edit" && selectedFeature) {
@@ -6975,7 +7005,10 @@ export function App() {
       setPreferredHoleTargetBodyId(undefined);
     }
 
-    const response = await commitOps([buildCreateSketchOp(form)], () => null);
+    const response = await commitOps(
+      [...buildDatumAndSketchOnPlaneOps(form)],
+      () => null
+    );
     const sketchId = response?.ok
       ? (response.createdSketchIds?.[0] ?? form.id.trim())
       : undefined;
@@ -6992,6 +7025,10 @@ export function App() {
     }
 
     return sketchId;
+  }
+
+  async function createDatumPlane(form: DatumPlaneCreateForm) {
+    await commitOps([buildDatumPlaneCreateOp(form)], () => null);
   }
 
   async function createSideHoleSketch(
@@ -9242,6 +9279,7 @@ export function App() {
       submission.kind === "cone" ||
       submission.kind === "torus" ||
       submission.kind === "sketch" ||
+      submission.kind === "datumPlane" ||
       submission.kind === "transform"
     );
 
@@ -9359,6 +9397,9 @@ export function App() {
         return;
       case "sketch":
         await createSketch(submission.draft);
+        return;
+      case "datumPlane":
+        await createDatumPlane(submission.draft);
         return;
       case "transform":
         await updateSelectedTransform(submission.draft);
@@ -9611,6 +9652,7 @@ export function App() {
       case "solid.cone":
       case "solid.torus":
       case "solid.sketch":
+      case "solid.datum-plane":
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
@@ -10181,6 +10223,7 @@ export function App() {
         solidCombineBodyChoices.length >= 2
           ? ready
           : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine),
+      "solid.datum-plane": ready,
       "solid.edit":
         selectedObject ||
         (selectedFeature && selectedFeature.kind !== "importedBody")

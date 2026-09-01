@@ -97,6 +97,7 @@ import type {
   CadSketchDimensionRefCurrent,
   CadSketchEditDiagnostic,
   CadSketchRef,
+  CadDatumRef,
   CadTransactionStatus,
   CadTopologyAnchorCommandProof,
   CadTopologyAnchorEntityKind,
@@ -138,10 +139,12 @@ import type {
   SketchDimensionTargetV21,
   SketchDimensionTargetV22,
   SketchSemanticDiff,
+  DatumSemanticDiff,
   SketchSnapshot,
   SphereDimensions,
   TorusDimensions,
   BodyId,
+  DatumId,
   CadTransactionAuditMetadata,
   CadTopologyAnchorRef,
   CadTopologyAnchorRepairRef,
@@ -196,6 +199,8 @@ import type {
   PatternDirectionRef,
   PatternRotationAxisRef,
   MirrorPlaneRef,
+  DatumPlaneSourceRef,
+  DatumPlaneSnapshot,
   PatternInstanceRecord,
   Vec2,
   Vec3
@@ -928,9 +933,12 @@ export interface Sketch {
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
+  readonly datumId?: DatumId;
   readonly attachment?: SketchAttachmentSnapshot;
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntity>;
 }
+
+export type DatumPlane = DatumPlaneSnapshot;
 
 export type CadParameter = CadParameterSnapshot;
 
@@ -1067,6 +1075,7 @@ export type LoftFeature = LoftFeatureV21;
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
+  readonly datums: ReadonlyMap<DatumId, DatumPlane>;
   readonly parameters: ReadonlyMap<ParameterId, CadParameter>;
   readonly sketchDimensions: ReadonlyMap<SketchDimensionId, SketchDimension>;
   readonly sketchConstraints: ReadonlyMap<SketchConstraintId, SketchConstraint>;
@@ -1102,6 +1111,7 @@ export interface CadEngineOptions {
   readonly nextSketchConstraintNumber?: number;
   readonly nextFeatureNumber?: number;
   readonly nextBodyNumber?: number;
+  readonly nextDatumNumber?: number;
 }
 
 export interface CadExecutionOptions {
@@ -1113,6 +1123,7 @@ export interface CadDocumentSnapshot {
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
+  readonly datums?: readonly DatumPlaneSnapshot[];
   readonly parameters: readonly CadParameterSnapshot[];
   readonly sketchDimensions: readonly SketchDimensionSnapshotCurrent[];
   readonly sketchConstraints: readonly SketchConstraintSnapshot[];
@@ -1846,11 +1857,13 @@ export function createCadDocument(
   namedReferences: Iterable<
     readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
   > = [],
-  topologyIdentity?: CadTopologyIdentitySourceSnapshot
+  topologyIdentity?: CadTopologyIdentitySourceSnapshot,
+  datums: Iterable<readonly [DatumId, DatumPlane]> = []
 ): CadDocument {
   return {
     objects: new Map(objects),
     sketches: new Map(sketches),
+    datums: new Map(datums),
     parameters: new Map(parameters),
     sketchDimensions: new Map(
       [...sketchDimensions].map(([id, dimension]) => [
@@ -2366,7 +2379,8 @@ export class CadEngine {
           parts: structure.parts,
           features: structure.features,
           bodies: structure.bodies,
-          objectSources: structure.objectSources
+          objectSources: structure.objectSources,
+          ...(structure.datums ? { datums: structure.datums } : {})
         };
       }
 
@@ -5892,6 +5906,7 @@ type MutableSemanticDiff = {
   deleted: CadObjectRef[];
   document?: MutableDocumentSemanticDiff;
   sketches?: MutableSketchSemanticDiff;
+  datums?: MutableDatumSemanticDiff;
   features?: MutableFeatureSemanticDiff;
   references?: MutableReferenceSemanticDiff;
   parameters?: MutableParameterSemanticDiff;
@@ -5918,6 +5933,12 @@ type MutableSketchSemanticDiff = {
   entityChanges: SketchEntitySemanticDiff[];
   curveEdits?: SketchCurveEditSemanticDiff[];
   convenienceOperations?: SketchConvenienceSemanticDiff[];
+};
+
+type MutableDatumSemanticDiff = {
+  created: CadDatumRef[];
+  modified: CadDatumRef[];
+  deleted: CadDatumRef[];
 };
 
 type MutableFeatureSemanticDiff = {
@@ -5970,6 +5991,7 @@ type SketchEntityImportRef = {
 interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
+  datums: Map<DatumId, DatumPlane>;
   parameters: Map<ParameterId, CadParameter>;
   sketchDimensions: Map<SketchDimensionId, SketchDimension>;
   sketchConstraints: Map<SketchConstraintId, SketchConstraint>;
@@ -5991,6 +6013,7 @@ function applyOperation(
   createSketchConstraintId: () => SketchConstraintId,
   createFeatureId: () => FeatureId,
   createBodyId: () => BodyId,
+  createDatumId: () => DatumId,
   opIndex: number
 ): void {
   switch (op.op) {
@@ -6376,14 +6399,33 @@ function applyOperation(
     }
 
     case "sketch.create": {
+      const resolved = resolveSketchCreateTarget(state, op, opIndex);
       const sketch: Sketch = {
         id: op.id ?? createSketchId(),
         name: normalizeSketchName(op.name, opIndex, op.id),
-        plane: validateSketchPlane(op.plane, opIndex),
+        plane: resolved.plane,
+        ...(resolved.datumId ? { datumId: resolved.datumId } : {}),
         entities: new Map()
       };
 
       addSketch(state.sketches, sketch, diff, opIndex);
+      return;
+    }
+
+    case "datum.plane.create": {
+      const plane = validateDatumPlaneSource(
+        state,
+        op.plane,
+        opIndex,
+        op.topologyAnchorProof
+      );
+      const datum: DatumPlane = {
+        id: op.id ?? createDatumId(),
+        name: normalizeSketchName(op.name, opIndex, op.id),
+        kind: "plane",
+        plane
+      };
+      addDatum(state.datums, datum, diff, opIndex);
       return;
     }
 
@@ -8078,6 +8120,7 @@ function isCadOperationKind(value: string): boolean {
     case "scene.renameObject":
     case "sketch.create":
     case "sketch.createOnFace":
+    case "datum.plane.create":
     case "sketch.rename":
     case "sketch.delete":
     case "sketch.addPoint":
@@ -13675,6 +13718,140 @@ function addSketch(
   pushSketchCreated(diff, sketchRef(sketch));
 }
 
+function addDatum(
+  datums: Map<DatumId, DatumPlane>,
+  datum: DatumPlane,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  if (datums.has(datum.id)) {
+    throwValidationError({
+      code: "DATUM_ALREADY_EXISTS",
+      message: `Datum already exists: ${datum.id}`,
+      opIndex,
+      datumId: datum.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique datum id",
+      received: datum.id
+    });
+  }
+
+  datums.set(datum.id, datum);
+  pushDatumCreated(diff, datumRef(datum));
+}
+
+function resolveSketchCreateTarget(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "sketch.create" }>,
+  opIndex?: number
+): { readonly plane: SketchPlane; readonly datumId?: DatumId } {
+  const hasPlane = op.plane !== undefined;
+  const hasDatum = op.datumId !== undefined;
+  if (hasPlane === hasDatum) {
+    throwValidationError({
+      code: "INVALID_SKETCH_PLANE",
+      message: "sketch.create requires exactly one of plane or datumId.",
+      opIndex,
+      path: operationPath(opIndex, hasDatum ? "datumId" : "plane"),
+      expected: "world XY/XZ/YZ or a persistent datum id",
+      received: hasPlane && hasDatum ? "both plane and datumId" : "missing"
+    });
+  }
+
+  if (op.datumId !== undefined) {
+    const datum = getDatumOrThrow(state.datums, op.datumId, opIndex);
+    return {
+      plane: sketchPlaneFromDatum(state, datum, opIndex),
+      datumId: datum.id
+    };
+  }
+
+  return { plane: validateSketchPlane(op.plane as SketchPlane, opIndex) };
+}
+
+function getDatumOrThrow(
+  datums: ReadonlyMap<DatumId, DatumPlane>,
+  id: DatumId,
+  opIndex?: number
+): DatumPlane {
+  const datum = datums.get(id);
+  if (!datum) {
+    throwValidationError({
+      code: "DATUM_NOT_FOUND",
+      message: `Datum does not exist: ${id}`,
+      opIndex,
+      datumId: id,
+      path: operationPath(opIndex, "datumId"),
+      expected: "existing datum id",
+      received: id
+    });
+  }
+  return datum;
+}
+
+function sketchPlaneFromDatum(
+  state: MutableDocumentState,
+  datum: DatumPlane,
+  opIndex?: number
+): SketchPlane {
+  const resolution = resolveMirrorPlaneFrame(state, datum.plane);
+  if (!resolution.ok) {
+    throwValidationError({
+      code: resolution.code === "MIRROR_OFFSET_INVALID"
+        ? "INVALID_DATUM"
+        : "INVALID_DATUM",
+      message: `Datum ${datum.id} does not resolve to a sketch plane: ${resolution.message}`,
+      opIndex,
+      datumId: datum.id,
+      path: operationPath(opIndex, "datumId"),
+      expected: "resolvable persistent datum plane",
+      received: describeReceived(datum.plane)
+    });
+  }
+  const axis = dominantAxis(resolution.frame.normal);
+  return sketchPlaneFromPlanarAxis(axis);
+}
+
+function dominantAxis(normal: Vec3): "x" | "y" | "z" {
+  const absX = Math.abs(normal[0]);
+  const absY = Math.abs(normal[1]);
+  const absZ = Math.abs(normal[2]);
+  if (absX >= absY && absX >= absZ) {
+    return "x";
+  }
+  if (absY >= absX && absY >= absZ) {
+    return "y";
+  }
+  return "z";
+}
+
+function validateDatumPlaneSource(
+  state: MutableDocumentState,
+  plane: unknown,
+  opIndex?: number,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
+): DatumPlaneSourceRef {
+  const resolved = validateMirrorPlaneFields(
+    state,
+    undefined,
+    plane,
+    opIndex,
+    topologyAnchorProof
+  );
+  if (resolved.kind === "datumPlane") {
+    throwValidationError({
+      code: "INVALID_DATUM",
+      message:
+        "datum.plane.create offsets from world XY/XZ/YZ or a planar face, not another datum.",
+      opIndex,
+      path: operationPath(opIndex, "plane"),
+      expected: "standardPlane, generatedFace, namedReference, or topologyAnchor",
+      received: describeReceived(plane)
+    });
+  }
+  return resolved;
+}
+
 function getSketchOrThrow(
   sketches: ReadonlyMap<SketchId, Sketch>,
   id: SketchId,
@@ -16786,7 +16963,7 @@ function validateMirrorPlaneFields(
       opIndex,
       path: operationPath(opIndex, "plane"),
       expected:
-        "standardPlane, generatedFace, namedReference, or topologyAnchor",
+        "standardPlane, generatedFace, namedReference, topologyAnchor, or datumPlane",
       received: describeReceived(plane)
     });
   }
@@ -16871,6 +17048,13 @@ function parseMirrorPlaneRef(value: unknown): MirrorPlaneRef | undefined {
       kind: "topologyAnchor",
       bodyId: value.bodyId,
       anchorId: value.anchorId,
+      offset
+    };
+  }
+  if (value.kind === "datumPlane" && isNonEmptyString(value.datumId)) {
+    return {
+      kind: "datumPlane",
+      datumId: value.datumId,
       offset
     };
   }
@@ -22510,7 +22694,18 @@ function objectRef(object: SceneObject): CadObjectRef {
 
 function sketchRef(sketch: Sketch): CadSketchRef {
   return {
-    id: sketch.id
+    id: sketch.id,
+    plane: sketch.plane,
+    ...(sketch.datumId ? { datumId: sketch.datumId } : {})
+  };
+}
+
+function datumRef(datum: DatumPlane): CadDatumRef {
+  return {
+    id: datum.id,
+    kind: "plane",
+    name: datum.name,
+    plane: datum.plane
   };
 }
 
@@ -22915,6 +23110,17 @@ function pushSketchModified(
 
 function pushSketchDeleted(diff: MutableSemanticDiff, ref: CadSketchRef): void {
   ensureSketchDiff(diff).deleted.push(ref);
+}
+
+function ensureDatumDiff(diff: MutableSemanticDiff): MutableDatumSemanticDiff {
+  if (!diff.datums) {
+    diff.datums = { created: [], modified: [], deleted: [] };
+  }
+  return diff.datums;
+}
+
+function pushDatumCreated(diff: MutableSemanticDiff, ref: CadDatumRef): void {
+  ensureDatumDiff(diff).created.push(ref);
 }
 
 function pushSketchEntityCreated(
@@ -23632,6 +23838,11 @@ export function createCadDocumentSnapshot(
     units: document.units,
     objects: [...document.objects.values()].map(createCadObjectSnapshot),
     sketches: [...document.sketches.values()].map(createSketchSnapshot),
+    ...(document.datums.size > 0
+      ? {
+          datums: [...document.datums.values()].map(cloneDatumPlane)
+        }
+      : {}),
     parameters: [...document.parameters.values()].map(cloneParameterSnapshot),
     sketchDimensions: [...document.sketchDimensions.values()].map(
       cloneSketchDimensionSnapshot
@@ -23695,7 +23906,10 @@ export function createCadDocumentFromSnapshot(
     ),
     snapshot.topologyIdentity
       ? cloneTopologyIdentitySourceSnapshot(snapshot.topologyIdentity)
-      : undefined
+      : undefined,
+    (snapshot.datums ?? []).map(
+      (datum) => [datum.id, cloneDatumPlane(datum)] as const
+    )
   );
 }
 
@@ -23757,6 +23971,7 @@ function createSketchSnapshot(sketch: Sketch): SketchSnapshot {
     id: sketch.id,
     name: sketch.name,
     plane: sketch.plane,
+    ...(sketch.datumId ? { datumId: sketch.datumId } : {}),
     attachment: sketch.attachment
       ? cloneSketchAttachment(sketch.attachment)
       : undefined,
@@ -23769,6 +23984,7 @@ function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
     id: snapshot.id,
     name: snapshot.name,
     plane: snapshot.plane,
+    ...(snapshot.datumId ? { datumId: snapshot.datumId } : {}),
     attachment: snapshot.attachment
       ? cloneSketchAttachment(snapshot.attachment)
       : undefined,
@@ -23980,6 +24196,15 @@ function cloneSketchAttachment(
 ): SketchAttachmentSnapshot {
   return {
     ...attachment
+  };
+}
+
+function cloneDatumPlane(datum: DatumPlane): DatumPlane {
+  return {
+    id: datum.id,
+    name: datum.name,
+    kind: "plane",
+    plane: { ...datum.plane }
   };
 }
 
@@ -24231,6 +24456,7 @@ interface CadProjectStructureSnapshot {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+  readonly datums?: readonly DatumPlaneSnapshot[];
 }
 
 const SUMMARY_REFERENCE_OPERATIONS = [
@@ -24740,14 +24966,20 @@ function createProjectStructure(
     objectIds: objects.map((object) => object.id),
     featureIds: features.map((feature) => feature.id),
     bodyIds: bodies.map((body) => body.id),
-    sketchIds: sketches.map((sketch) => sketch.id)
+    sketchIds: sketches.map((sketch) => sketch.id),
+    ...(document.datums.size > 0
+      ? { datumIds: [...document.datums.keys()] }
+      : {})
   };
 
   return {
     parts: [part],
     features,
     bodies,
-    objectSources
+    objectSources,
+    ...(document.datums.size > 0
+      ? { datums: [...document.datums.values()].map(cloneDatumPlane) }
+      : {})
   };
 }
 
@@ -27678,6 +27910,7 @@ function runOperations(
   const state: MutableDocumentState = {
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
+    datums: new Map(document.datums ?? []),
     parameters: new Map(document.parameters),
     sketchDimensions: new Map(document.sketchDimensions),
     sketchConstraints: new Map(document.sketchConstraints),
@@ -27700,6 +27933,7 @@ function runOperations(
   let nextSketchConstraintNumber = initialSketchConstraintNumber;
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
+  let nextDatumNumber = inferNextDatumNumber(document);
   const diff: MutableSemanticDiff = {
     created: [],
     modified: [],
@@ -27756,6 +27990,11 @@ function runOperations(
       const allocateBodyId = () => {
         const result = createBodyId(state, nextBodyNumber);
         nextBodyNumber = result.nextBodyNumber;
+        return result.id;
+      };
+      const allocateDatumId = () => {
+        const result = createDatumId(state.datums, nextDatumNumber);
+        nextDatumNumber = result.nextDatumNumber;
         return result.id;
       };
       if (isSketchConvenienceOp(op)) {
@@ -27888,6 +28127,7 @@ function runOperations(
         allocateSketchConstraintId,
         allocateFeatureId,
         allocateBodyId,
+        allocateDatumId,
         opIndex
       );
       appliedOps.push(op);
@@ -27914,7 +28154,8 @@ function runOperations(
     state.sketchConstraints,
     state.features,
     state.namedReferences,
-    state.topologyIdentity
+    state.topologyIdentity,
+    state.datums
   );
 
   return {
@@ -28023,6 +28264,24 @@ function createSketchId(
   return {
     id,
     nextSketchNumber: nextSketchNumber + 1
+  };
+}
+
+function createDatumId(
+  datums: ReadonlyMap<DatumId, DatumPlane>,
+  initialDatumNumber: number
+): { id: DatumId; nextDatumNumber: number } {
+  let nextDatumNumber = initialDatumNumber;
+  let id = `datum_${nextDatumNumber}`;
+
+  while (datums.has(id)) {
+    nextDatumNumber += 1;
+    id = `datum_${nextDatumNumber}`;
+  }
+
+  return {
+    id,
+    nextDatumNumber: nextDatumNumber + 1
   };
 }
 
@@ -28154,6 +28413,9 @@ function toDiffIds(diff: SemanticDiff): {
   createdSketchIds?: readonly SketchId[];
   modifiedSketchIds?: readonly SketchId[];
   deletedSketchIds?: readonly SketchId[];
+  createdDatumIds?: readonly DatumId[];
+  modifiedDatumIds?: readonly DatumId[];
+  deletedDatumIds?: readonly DatumId[];
   createdSketchEntityIds?: readonly SketchEntityId[];
   modifiedSketchEntityIds?: readonly SketchEntityId[];
   deletedSketchEntityIds?: readonly SketchEntityId[];
@@ -28178,6 +28440,7 @@ function toDiffIds(diff: SemanticDiff): {
     modifiedIds: uniqueObjectIds(diff.modified),
     deletedIds: uniqueObjectIds(diff.deleted),
     ...toSketchDiffIds(diff.sketches),
+    ...toDatumDiffIds(diff.datums),
     ...toParameterDiffIds(diff.parameters),
     ...toSketchDimensionDiffIds(diff.sketchDimensions),
     ...toSketchConstraintDiffIds(diff.sketchConstraints),
@@ -28227,6 +28490,31 @@ function toSketchDiffIds(sketches: SketchSemanticDiff | undefined): {
     ...nonEmptyIdList(
       "deletedSketchEntityIds",
       uniqueSketchEntityIds(sketches.entitiesDeleted ?? [])
+    )
+  };
+}
+
+function toDatumDiffIds(datums: DatumSemanticDiff | undefined): {
+  createdDatumIds?: readonly DatumId[];
+  modifiedDatumIds?: readonly DatumId[];
+  deletedDatumIds?: readonly DatumId[];
+} {
+  if (!datums) {
+    return {};
+  }
+
+  return {
+    ...nonEmptyIdList(
+      "createdDatumIds",
+      [...new Set((datums.created ?? []).map((datum) => datum.id))]
+    ),
+    ...nonEmptyIdList(
+      "modifiedDatumIds",
+      [...new Set((datums.modified ?? []).map((datum) => datum.id))]
+    ),
+    ...nonEmptyIdList(
+      "deletedDatumIds",
+      [...new Set((datums.deleted ?? []).map((datum) => datum.id))]
     )
   };
 }
@@ -28590,6 +28878,21 @@ function inferNextSketchNumber(document: CadDocument): number {
   }
 
   return maxSketchNumber + 1;
+}
+
+function inferNextDatumNumber(
+  document: CadDocument | { readonly datums?: ReadonlyMap<DatumId, DatumPlane> }
+): number {
+  let maxDatumNumber = 0;
+  for (const id of document.datums?.keys() ?? []) {
+    maxDatumNumber = Math.max(maxDatumNumber, parseDatumNumber(id));
+  }
+  return maxDatumNumber + 1;
+}
+
+function parseDatumNumber(id: string): number {
+  const match = /^datum_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
 }
 
 function inferNextSketchEntityNumber(document: CadDocument): number {
@@ -30749,6 +31052,33 @@ function validateCadDocumentSnapshot(
     );
   }
 
+  if (value.datums !== undefined) {
+    validateDatumPlaneSnapshots(value.datums, `${path}.datums`, issues);
+  }
+
+  if (Array.isArray(value.sketches) && Array.isArray(value.datums)) {
+    const datumIds = new Set(
+      value.datums
+        .filter(isRecord)
+        .map((datum) => datum.id)
+        .filter((id): id is string => typeof id === "string")
+    );
+    for (const [index, sketch] of value.sketches.entries()) {
+      if (
+        isRecord(sketch) &&
+        typeof sketch.datumId === "string" &&
+        !datumIds.has(sketch.datumId)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH",
+          `${path}.sketches[${index}].datumId`,
+          `Sketch datumId does not exist: ${sketch.datumId}.`
+        );
+      }
+    }
+  }
+
   const seenParameterIds = new Set<string>();
   const parameterValues = new Map<ParameterId, number>();
 
@@ -31128,6 +31458,17 @@ function validateSketchSnapshot(
     );
   }
 
+  if (value.datumId !== undefined) {
+    if (typeof value.datumId !== "string" || value.datumId.length === 0) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.datumId`,
+        "Sketch datumId must be a non-empty string when present."
+      );
+    }
+  }
+
   if (value.attachment !== undefined) {
     if (!allowsAttachment) {
       addProjectIssue(
@@ -31277,6 +31618,77 @@ function validateSketchAttachmentSnapshot(
   }
 
   return valid;
+}
+
+function validateDatumPlaneSnapshots(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!Array.isArray(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      path,
+      "Document datums must be an array when present."
+    );
+    return;
+  }
+
+  const seenDatumIds = new Set<string>();
+  for (const [index, datum] of value.entries()) {
+    const datumPath = `${path}[${index}]`;
+    if (!isRecord(datum)) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        datumPath,
+        "Datum must be an object."
+      );
+      continue;
+    }
+    if (typeof datum.id !== "string" || datum.id.length === 0) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${datumPath}.id`,
+        "Datum id must be a non-empty string."
+      );
+    } else if (seenDatumIds.has(datum.id)) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${datumPath}.id`,
+        `Duplicate datum id: ${datum.id}.`
+      );
+    } else {
+      seenDatumIds.add(datum.id);
+    }
+    if (typeof datum.name !== "string" || datum.name.trim() === "") {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${datumPath}.name`,
+        "Datum name must be a non-empty string."
+      );
+    }
+    if (datum.kind !== "plane") {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${datumPath}.kind`,
+        "Datum kind must be plane."
+      );
+    }
+    if (!isDatumPlaneSourceRef(datum.plane)) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${datumPath}.plane`,
+        "Datum plane must be a world plane or planar face reference."
+      );
+    }
+  }
 }
 
 function validateParameterSnapshot(
@@ -38224,10 +38636,22 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.create") {
+    const hasPlane = isSketchPlane(value.plane);
+    const hasDatum = typeof value.datumId === "string";
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      isSketchPlane(value.plane)
+      hasPlane !== hasDatum &&
+      (value.plane === undefined || hasPlane) &&
+      (value.datumId === undefined || hasDatum)
+    );
+  }
+
+  if (value.op === "datum.plane.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      isDatumPlaneSourceRef(value.plane)
     );
   }
 
@@ -40257,11 +40681,18 @@ function isMirrorPlaneRef(value: unknown): value is MirrorPlaneRef {
   if (value.kind === "namedReference") {
     return isNonEmptyString(value.name);
   }
+  if (value.kind === "datumPlane") {
+    return isNonEmptyString(value.datumId);
+  }
   return (
     value.kind === "topologyAnchor" &&
     isNonEmptyString(value.bodyId) &&
     isNonEmptyString(value.anchorId)
   );
+}
+
+function isDatumPlaneSourceRef(value: unknown): value is DatumPlaneSourceRef {
+  return isMirrorPlaneRef(value) && value.kind !== "datumPlane";
 }
 
 function validatePatternInstancesSnapshot(

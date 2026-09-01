@@ -135,6 +135,27 @@ export function resolveMirrorPlaneFrame(
     };
   }
 
+  if (reference.kind === "datumPlane") {
+    const datum = document.datums.get(reference.datumId);
+    if (!datum) {
+      return unresolved(
+        "MIRROR_PLANE_UNRESOLVED",
+        "Mirror plane datum no longer resolves."
+      );
+    }
+    const base = resolveMirrorPlaneFrame(document, datum.plane);
+    if (!base.ok) {
+      return base;
+    }
+    return {
+      ok: true,
+      frame: {
+        point: addVectors(base.frame.point, scaleVector(base.frame.normal, offset)),
+        normal: base.frame.normal
+      }
+    };
+  }
+
   const face = resolveFaceReference(document, reference);
   if (!face) {
     return unresolved(
@@ -186,7 +207,10 @@ function resolveEdgeReference(
 
 function resolveFaceReference(
   document: CadDocument,
-  reference: Exclude<MirrorPlaneRef, { readonly kind: "standardPlane" }>
+  reference: Exclude<
+    MirrorPlaneRef,
+    { readonly kind: "standardPlane" } | { readonly kind: "datumPlane" }
+  >
 ): CadGeneratedFaceReference | undefined {
   const target = resolveReferenceTarget(document, reference);
   if (!target) {
@@ -207,7 +231,10 @@ function resolveReferenceTarget(
   document: CadDocument,
   reference:
     | Exclude<PatternDirectionRef, { readonly kind: "globalAxis" }>
-    | Exclude<MirrorPlaneRef, { readonly kind: "standardPlane" }>
+    | Exclude<
+        MirrorPlaneRef,
+        { readonly kind: "standardPlane" } | { readonly kind: "datumPlane" }
+      >
 ): { readonly bodyId: string; readonly stableId: string } | undefined {
   if (
     reference.kind === "generatedEdge" ||

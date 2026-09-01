@@ -18,6 +18,7 @@ import {
 
 export interface SourceMeasurementSketch {
   readonly plane: SketchPlane;
+  readonly datumId?: string;
   readonly attachment?: SketchAttachmentSnapshot;
 }
 
@@ -28,10 +29,31 @@ export interface SourceMeasurementFrame {
 }
 
 export function createSourceMeasurementFrame(
-  document: GeneratedReferencesDocument,
+  document: GeneratedReferencesDocument & {
+    readonly datums?: ReadonlyMap<
+      string,
+      {
+        readonly plane: {
+          readonly kind: string;
+          readonly plane?: SketchPlane;
+          readonly offset?: number;
+        };
+      }
+    >;
+  },
   sketch: SourceMeasurementSketch,
   ownerPartId: PartId
 ): SourceMeasurementFrame | undefined {
+  if (sketch.datumId) {
+    const datum = document.datums?.get(sketch.datumId);
+    if (datum?.plane.kind === "standardPlane" && datum.plane.plane) {
+      return offsetSourceMeasurementFrame(
+        createDefaultSourceMeasurementFrame(datum.plane.plane),
+        datum.plane.offset ?? 0
+      );
+    }
+  }
+
   const attachment = sketch.attachment;
 
   if (!attachment) {
@@ -388,6 +410,25 @@ function createSourceMeasurementFrameNormal(
   frame: SourceMeasurementFrame
 ): Vec3 {
   return normalizeVec3(crossVec3(frame.uAxis, frame.vAxis));
+}
+
+function offsetSourceMeasurementFrame(
+  frame: SourceMeasurementFrame,
+  offset: number
+): SourceMeasurementFrame {
+  if (offset === 0) {
+    return frame;
+  }
+  const normal = createSourceMeasurementFrameNormal(frame);
+  return {
+    origin: [
+      frame.origin[0] + normal[0] * offset,
+      frame.origin[1] + normal[1] * offset,
+      frame.origin[2] + normal[2] * offset
+    ],
+    uAxis: frame.uAxis,
+    vAxis: frame.vAxis
+  };
 }
 
 function getSketchPlaneCoordinates(

@@ -1,0 +1,295 @@
+{
+  "id": "v24-clevis",
+  "kind": "cadops",
+  "seed": [
+    { "op": "sketch.create", "id": "sketch_plate", "name": "Plate", "plane": "XY" },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_plate",
+      "id": "rect_plate",
+      "center": [0, 0],
+      "width": 40,
+      "height": 40
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_plate",
+      "bodyId": "body_plate",
+      "sketchId": "sketch_plate",
+      "entityId": "rect_plate",
+      "depth": 8
+    }
+  ],
+  "steps": [
+    {
+      "id": "offset-datums-and-ears",
+      "ops": [
+        {
+          "op": "datum.plane.create",
+          "id": "datum_ear_a",
+          "name": "Ear A",
+          "plane": { "kind": "standardPlane", "plane": "XZ", "offset": 15 }
+        },
+        {
+          "op": "datum.plane.create",
+          "id": "datum_ear_b",
+          "name": "Ear B",
+          "plane": { "kind": "standardPlane", "plane": "XZ", "offset": -15 }
+        },
+        {
+          "op": "sketch.create",
+          "id": "sketch_ear_a",
+          "name": "Ear A",
+          "datumId": "datum_ear_a"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "sketch_ear_a",
+          "id": "rect_ear_a",
+          "center": [0, 12],
+          "width": 16,
+          "height": 24
+        },
+        {
+          "op": "feature.extrude",
+          "id": "feat_ear_a",
+          "bodyId": "body_ear_a",
+          "sketchId": "sketch_ear_a",
+          "entityId": "rect_ear_a",
+          "depth": 8
+        },
+        {
+          "op": "sketch.create",
+          "id": "sketch_ear_b",
+          "name": "Ear B",
+          "datumId": "datum_ear_b"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "sketch_ear_b",
+          "id": "rect_ear_b",
+          "center": [0, 12],
+          "width": 16,
+          "height": 24
+        },
+        {
+          "op": "feature.extrude",
+          "id": "feat_ear_b",
+          "bodyId": "body_ear_b",
+          "sketchId": "sketch_ear_b",
+          "entityId": "rect_ear_b",
+          "depth": 8,
+          "side": "negative"
+        }
+      ],
+      "expect": {
+        "ops": [
+          "datum.plane.create",
+          "datum.plane.create",
+          "sketch.create",
+          "sketch.addRectangle",
+          "feature.extrude",
+          "sketch.create",
+          "sketch.addRectangle",
+          "feature.extrude"
+        ],
+        "diff": {
+          "datums": {
+            "created": [
+              {
+                "id": "datum_ear_a",
+                "kind": "plane",
+                "name": "Ear A",
+                "plane": { "kind": "standardPlane", "plane": "XZ", "offset": 15 }
+              },
+              {
+                "id": "datum_ear_b",
+                "kind": "plane",
+                "name": "Ear B",
+                "plane": { "kind": "standardPlane", "plane": "XZ", "offset": -15 }
+              }
+            ]
+          },
+          "features": {
+            "created": [
+              {
+                "id": "feat_ear_a",
+                "kind": "extrude",
+                "bodyId": "body_ear_a"
+              },
+              {
+                "id": "feat_ear_b",
+                "kind": "extrude",
+                "bodyId": "body_ear_b"
+              }
+            ],
+            "bodiesCreated": [
+              { "id": "body_ear_a", "kind": "solid" },
+              { "id": "body_ear_b", "kind": "solid" }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "datums": [
+              {
+                "id": "datum_ear_a",
+                "kind": "plane",
+                "plane": { "kind": "standardPlane", "plane": "XZ", "offset": 15 }
+              },
+              {
+                "id": "datum_ear_b",
+                "kind": "plane",
+                "plane": { "kind": "standardPlane", "plane": "XZ", "offset": -15 }
+              }
+            ],
+            "bodies": [
+              { "id": "body_plate", "featureId": "feat_plate" },
+              { "id": "body_ear_a", "featureId": "feat_ear_a" },
+              { "id": "body_ear_b", "featureId": "feat_ear_b" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "combine-ears",
+      "ops": [
+        {
+          "op": "feature.combine",
+          "id": "feat_union_a",
+          "bodyId": "body_plate_ear_a",
+          "mode": "union",
+          "targetBodyId": "body_plate",
+          "toolBodyId": "body_ear_a"
+        },
+        {
+          "op": "feature.combine",
+          "id": "feat_union_b",
+          "bodyId": "body_clevis",
+          "mode": "union",
+          "targetBodyId": "body_plate_ear_a",
+          "toolBodyId": "body_ear_b"
+        }
+      ],
+      "expect": {
+        "ops": ["feature.combine", "feature.combine"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_union_a",
+                "kind": "combine",
+                "mode": "union",
+                "targetBodyId": "body_plate",
+                "toolBodyId": "body_ear_a",
+                "bodyId": "body_plate_ear_a"
+              },
+              {
+                "id": "feat_union_b",
+                "kind": "combine",
+                "mode": "union",
+                "targetBodyId": "body_plate_ear_a",
+                "toolBodyId": "body_ear_b",
+                "bodyId": "body_clevis"
+              }
+            ],
+            "bodiesCreated": [
+              { "id": "body_plate_ear_a", "kind": "solid" },
+              { "id": "body_clevis", "kind": "solid" }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_plate", "consumedByFeatureId": "feat_union_a" },
+              { "id": "body_ear_a", "consumedByFeatureId": "feat_union_a" },
+              { "id": "body_ear_b", "consumedByFeatureId": "feat_union_b" },
+              { "id": "body_plate_ear_a", "consumedByFeatureId": "feat_union_b" },
+              {
+                "id": "body_clevis",
+                "featureId": "feat_union_b",
+                "source": {
+                  "type": "combineFeature",
+                  "mode": "union",
+                  "targetBodyId": "body_plate_ear_a",
+                  "toolBodyId": "body_ear_b"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pin-hole",
+      "ops": [
+        { "op": "sketch.create", "id": "sketch_pin", "name": "Pin", "plane": "XZ" },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "sketch_pin",
+          "id": "circle_pin",
+          "center": [0, 16],
+          "radius": 4
+        },
+        {
+          "op": "feature.hole",
+          "id": "feat_pin",
+          "bodyId": "body_clevis_pin",
+          "targetBodyId": "body_clevis",
+          "sketchId": "sketch_pin",
+          "circleEntityId": "circle_pin",
+          "depthMode": "throughAll"
+        }
+      ],
+      "expect": {
+        "ops": ["sketch.create", "sketch.addCircle", "feature.hole"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_pin",
+                "kind": "hole",
+                "targetBodyId": "body_clevis",
+                "bodyId": "body_clevis_pin"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_clevis_pin", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "datums": [
+              { "id": "datum_ear_a" },
+              { "id": "datum_ear_b" }
+            ],
+            "bodies": [
+              { "id": "body_plate", "consumedByFeatureId": "feat_union_a" },
+              { "id": "body_ear_a", "consumedByFeatureId": "feat_union_a" },
+              { "id": "body_ear_b", "consumedByFeatureId": "feat_union_b" },
+              { "id": "body_plate_ear_a", "consumedByFeatureId": "feat_union_b" },
+              { "id": "body_clevis", "consumedByFeatureId": "feat_pin" },
+              { "id": "body_clevis_pin", "featureId": "feat_pin" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

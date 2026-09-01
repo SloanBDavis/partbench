@@ -10,6 +10,7 @@ export type ObjectId = string;
 export type PartId = string;
 export type FeatureId = string;
 export type BodyId = string;
+export type DatumId = string;
 export type SketchId = string;
 export type SketchEntityId = string;
 export type ParameterId = string;
@@ -557,6 +558,7 @@ export type CadOp =
   | SceneRenameObjectOp
   | SketchCreateOp
   | SketchCreateOnFaceOp
+  | DatumPlaneCreateOp
   | SketchRenameOp
   | SketchDeleteOp
   | SketchAddPointOp
@@ -819,7 +821,8 @@ export interface SketchCreateOp {
   readonly op: "sketch.create";
   readonly id?: SketchId;
   readonly name: string;
-  readonly plane: SketchPlane;
+  readonly plane?: SketchPlane;
+  readonly datumId?: DatumId;
 }
 
 export interface SketchCreateOnFaceOp {
@@ -1591,7 +1594,7 @@ export type PatternDirectionRef =
 
 export type PatternRotationAxisRef = PatternDirectionRef;
 
-export type MirrorPlaneRef =
+export type DatumPlaneSourceRef =
   | {
       readonly kind: "standardPlane";
       readonly plane: FeatureMirrorPlane;
@@ -1614,6 +1617,22 @@ export type MirrorPlaneRef =
       readonly anchorId: string;
       readonly offset?: number;
     };
+
+export type MirrorPlaneRef =
+  | DatumPlaneSourceRef
+  | {
+      readonly kind: "datumPlane";
+      readonly datumId: DatumId;
+      readonly offset?: number;
+    };
+
+export interface DatumPlaneCreateOp {
+  readonly op: "datum.plane.create";
+  readonly id?: DatumId;
+  readonly name: string;
+  readonly plane: DatumPlaneSourceRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
+}
 
 export interface PatternInstanceRecord {
   readonly instanceIndex: number;
@@ -2035,6 +2054,15 @@ export interface CadObjectRef {
 
 export interface CadSketchRef {
   readonly id: SketchId;
+  readonly plane?: SketchPlane;
+  readonly datumId?: DatumId;
+}
+
+export interface CadDatumRef {
+  readonly id: DatumId;
+  readonly kind: "plane";
+  readonly name: string;
+  readonly plane: DatumPlaneSourceRef;
 }
 
 export interface CadSketchEntityRef {
@@ -2317,6 +2345,12 @@ export interface SketchSemanticDiff {
   readonly convenienceOperations?: readonly SketchConvenienceSemanticDiff[];
 }
 
+export interface DatumSemanticDiff {
+  readonly created?: readonly CadDatumRef[];
+  readonly modified?: readonly CadDatumRef[];
+  readonly deleted?: readonly CadDatumRef[];
+}
+
 export interface FeatureSemanticDiff {
   readonly created?: readonly CadFeatureRef[];
   readonly modified?: readonly CadFeatureRef[];
@@ -2488,6 +2522,7 @@ export interface SemanticDiff {
   readonly deleted: readonly CadObjectRef[];
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
+  readonly datums?: DatumSemanticDiff;
   readonly features?: FeatureSemanticDiff;
   readonly references?: ReferenceSemanticDiff;
   readonly parameters?: ParameterSemanticDiff;
@@ -2551,6 +2586,10 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_ENTITY_IN_USE"
   | "INVALID_SKETCH_NAME"
   | "INVALID_SKETCH_PLANE"
+  | "DATUM_ALREADY_EXISTS"
+  | "DATUM_NOT_FOUND"
+  | "INVALID_DATUM"
+  | "INVALID_DATUM_NAME"
   | "INVALID_SKETCH_ENTITY"
   | "SKETCH_ARC_DEFINITION_INVALID"
   | "SKETCH_ARC_THREE_POINT_COLLINEAR"
@@ -2702,6 +2741,7 @@ export interface CadBatchValidationError {
   readonly objectId?: ObjectId;
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
+  readonly datumId?: DatumId;
   readonly parameterId?: ParameterId;
   readonly sketchDimensionId?: SketchDimensionId;
   readonly sketchConstraintId?: SketchConstraintId;
@@ -2750,6 +2790,9 @@ export interface CadBatchSuccessResponse {
   readonly createdSketchIds?: readonly SketchId[];
   readonly modifiedSketchIds?: readonly SketchId[];
   readonly deletedSketchIds?: readonly SketchId[];
+  readonly createdDatumIds?: readonly DatumId[];
+  readonly modifiedDatumIds?: readonly DatumId[];
+  readonly deletedDatumIds?: readonly DatumId[];
   readonly createdSketchEntityIds?: readonly SketchEntityId[];
   readonly modifiedSketchEntityIds?: readonly SketchEntityId[];
   readonly deletedSketchEntityIds?: readonly SketchEntityId[];
@@ -2785,6 +2828,9 @@ export interface CadBatchErrorResponse {
   readonly createdSketchIds?: readonly SketchId[];
   readonly modifiedSketchIds?: readonly SketchId[];
   readonly deletedSketchIds?: readonly SketchId[];
+  readonly createdDatumIds?: readonly DatumId[];
+  readonly modifiedDatumIds?: readonly DatumId[];
+  readonly deletedDatumIds?: readonly DatumId[];
   readonly createdSketchEntityIds?: readonly SketchEntityId[];
   readonly modifiedSketchEntityIds?: readonly SketchEntityId[];
   readonly deletedSketchEntityIds?: readonly SketchEntityId[];
@@ -3753,6 +3799,7 @@ export interface SketchSnapshot {
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
+  readonly datumId?: DatumId;
   readonly attachment?: SketchAttachmentSnapshot;
   readonly entities: readonly SketchEntitySnapshot[];
 }
@@ -3761,8 +3808,16 @@ export interface SketchSnapshotV21 {
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
+  readonly datumId?: DatumId;
   readonly attachment?: SketchAttachmentSnapshot;
   readonly entities: readonly SketchEntityV21[];
+}
+
+export interface DatumPlaneSnapshot {
+  readonly id: DatumId;
+  readonly name: string;
+  readonly kind: "plane";
+  readonly plane: DatumPlaneSourceRef;
 }
 
 export interface ExtrudeFeatureSnapshot {
@@ -5568,6 +5623,7 @@ export interface CadPartSnapshot {
   readonly featureIds: readonly FeatureId[];
   readonly bodyIds: readonly BodyId[];
   readonly sketchIds: readonly SketchId[];
+  readonly datumIds?: readonly DatumId[];
 }
 
 export interface CadPrimitiveBodySource {
@@ -7138,6 +7194,7 @@ export interface CadOperationSummary {
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly sketchEntityKind?: SketchEntityKind;
+  readonly datumId?: DatumId;
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
@@ -7163,6 +7220,7 @@ export interface CadSemanticDiffSummary {
   readonly deletedCount: number;
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
+  readonly datums?: DatumSemanticDiff;
   readonly features?: FeatureSemanticDiff;
   readonly references?: ReferenceSemanticDiff;
   readonly parameters?: ParameterSemanticDiff;
@@ -9011,6 +9069,7 @@ export interface ProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+  readonly datums?: readonly DatumPlaneSnapshot[];
 }
 
 export interface ProjectHealthQueryResponse {

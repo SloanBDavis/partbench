@@ -1461,6 +1461,54 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews datum.plane.create and sketch.create on a datum", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_datums",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "datum.plane.create",
+              id: "datum_ear_a",
+              name: "Ear A",
+              plane: { kind: "standardPlane", plane: "XZ", offset: 15 }
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_ear_a",
+              name: "Ear A",
+              datumId: "datum_ear_a"
+            }
+          ]
+        }
+      })
+    );
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "datum.plane.create",
+          intent: "create",
+          datumId: "datum_ear_a",
+          label: expect.stringContaining("datum")
+        }),
+        expect.objectContaining({
+          op: "sketch.create",
+          intent: "create",
+          sketchId: "sketch_ear_a",
+          datumId: "datum_ear_a",
+          label: expect.stringContaining("datum_ear_a")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews shell feature batches from external JSON callers (Slice G pass-through)", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

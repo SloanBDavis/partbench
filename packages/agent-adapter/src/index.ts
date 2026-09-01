@@ -437,6 +437,7 @@ export interface CadOpsAgentWorkflowReview {
 export interface CadOpsAgentEntityChangeSummary {
   readonly objects: CadOpsAgentEntityChangeCount;
   readonly sketches: CadOpsAgentEntityChangeCount;
+  readonly datums?: CadOpsAgentEntityChangeCount;
   readonly sketchEntities: CadOpsAgentEntityChangeCount;
   readonly parameters: CadOpsAgentEntityChangeCount;
   readonly sketchDimensions: CadOpsAgentEntityChangeCount;
@@ -467,6 +468,7 @@ export interface CadOpsAgentOperationReview {
   readonly objectId?: string;
   readonly parameterId?: string;
   readonly sketchId?: string;
+  readonly datumId?: string;
   readonly sketchEntityId?: string;
   readonly sketchDimensionId?: string;
   readonly sketchConstraintId?: string;
@@ -2000,6 +2002,17 @@ function createEntityChangeSummary(
       response?.modifiedSketchIds,
       response?.deletedSketchIds
     ),
+    ...(response?.createdDatumIds ||
+    response?.modifiedDatumIds ||
+    response?.deletedDatumIds
+      ? {
+          datums: createChangeCount(
+            response.createdDatumIds,
+            response.modifiedDatumIds,
+            response.deletedDatumIds
+          )
+        }
+      : {}),
     sketchEntities: createChangeCount(
       response?.createdSketchEntityIds,
       response?.modifiedSketchEntityIds,
@@ -2331,9 +2344,21 @@ function createOperationReview(
           index,
           op,
           "create",
-          `Create sketch ${op.id ?? op.name} on ${op.plane}`
+          `Create sketch ${op.id ?? op.name} on ${op.datumId ? `datum ${op.datumId}` : op.plane}`
         ),
-        ...(op.id ? { sketchId: op.id } : {})
+        ...(op.id ? { sketchId: op.id } : {}),
+        ...(op.datumId ? { datumId: op.datumId } : {})
+      };
+
+    case "datum.plane.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create datum plane ${op.id ?? op.name}`
+        ),
+        ...(op.id ? { datumId: op.id } : {})
       };
 
     case "sketch.createOnFace": {
@@ -5745,10 +5770,21 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.create") {
+    const hasPlane =
+      value.plane === "XY" || value.plane === "XZ" || value.plane === "YZ";
+    const hasDatum = typeof value.datumId === "string";
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      (value.plane === "XY" || value.plane === "XZ" || value.plane === "YZ")
+      hasPlane !== hasDatum
+    );
+  }
+
+  if (value.op === "datum.plane.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      isDatumPlaneSourceRefShape(value.plane)
     );
   }
 
@@ -6894,10 +6930,17 @@ function isMirrorPlaneRefShape(value: unknown): boolean {
     );
   }
   if (value.kind === "namedReference") return typeof value.name === "string";
+  if (value.kind === "datumPlane") return typeof value.datumId === "string";
   return (
     value.kind === "topologyAnchor" &&
     typeof value.bodyId === "string" &&
     typeof value.anchorId === "string"
+  );
+}
+
+function isDatumPlaneSourceRefShape(value: unknown): boolean {
+  return (
+    isMirrorPlaneRefShape(value) && isRecord(value) && value.kind !== "datumPlane"
   );
 }
 
