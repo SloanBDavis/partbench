@@ -1592,6 +1592,74 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews a grown chamfer feature-pattern batch", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_chamfer_pattern",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_block",
+              id: "rect_block",
+              center: [0, 0],
+              width: 20,
+              height: 12
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_block",
+              bodyId: "body_block",
+              sketchId: "sketch_block",
+              entityId: "rect_block",
+              depth: 8
+            },
+            {
+              op: "feature.chamfer",
+              id: "feat_chamfer",
+              bodyId: "body_chamfer",
+              targetBodyId: "body_block",
+              edgeStableId: "generated:edge:body_block:start:uMin",
+              distance: 2
+            },
+            {
+              op: "feature.linearPattern",
+              id: "feat_pattern",
+              bodyId: "body_patterned",
+              seedFeatureId: "feat_chamfer",
+              direction: { kind: "globalAxis", axis: "x" },
+              spacing: 30,
+              instanceCount: 3
+            }
+          ]
+        }
+      })
+    );
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.chamfer",
+          intent: "create",
+          featureId: "feat_chamfer"
+        }),
+        expect.objectContaining({
+          op: "feature.linearPattern",
+          intent: "create",
+          featureId: "feat_pattern",
+          label: expect.stringContaining("feat_chamfer")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews datum.plane.create and sketch.create on a datum", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

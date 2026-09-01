@@ -1,0 +1,99 @@
+{
+  "id": "v25-feature-pattern",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_block",
+      "name": "Block",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block",
+      "id": "rect_block",
+      "center": [0, 0],
+      "width": 20,
+      "height": 12
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block",
+      "bodyId": "body_block",
+      "sketchId": "sketch_block",
+      "entityId": "rect_block",
+      "depth": 8
+    },
+    {
+      "op": "feature.chamfer",
+      "id": "feat_chamfer",
+      "bodyId": "body_chamfer",
+      "targetBodyId": "body_block",
+      "edgeStableId": "generated:edge:body_block:start:uMin",
+      "distance": 2
+    }
+  ],
+  "steps": [
+    {
+      "id": "linear-chamfer-pattern",
+      "ops": [
+        {
+          "op": "feature.linearPattern",
+          "id": "feat_pattern",
+          "bodyId": "body_patterned",
+          "seedFeatureId": "feat_chamfer",
+          "direction": { "kind": "globalAxis", "axis": "x" },
+          "spacing": 30,
+          "instanceCount": 3
+        }
+      ],
+      "expect": {
+        "ops": ["feature.linearPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_chamfer",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_patterned", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "features": [
+              { "id": "feat_block", "kind": "extrude" },
+              { "id": "feat_chamfer", "kind": "chamfer" },
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_chamfer",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodies": [
+              { "id": "body_block", "consumedByFeatureId": "feat_chamfer" },
+              { "id": "body_chamfer", "consumedByFeatureId": "feat_pattern" },
+              {
+                "id": "body_patterned",
+                "featureId": "feat_pattern",
+                "source": {
+                  "type": "linearPatternFeature",
+                  "seedFeatureId": "feat_chamfer"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -804,6 +804,28 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildFeatureLinearPatternOp({
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedBodyId: "",
+        seedFeatureId: "feat_chamfer",
+        name: "Chamfer copies",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 30,
+        instanceCount: 3
+      })
+    ).toEqual({
+      op: "feature.linearPattern",
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedFeatureId: "feat_chamfer",
+      name: "Chamfer copies",
+      direction: { kind: "globalAxis", axis: "x" },
+      spacing: 30,
+      instanceCount: 3
+    });
+
+    expect(
       buildFeatureUpdateLinearPatternOp("feat_linear", {
         direction: { kind: "globalAxis", axis: "y" },
         spacing: 40,

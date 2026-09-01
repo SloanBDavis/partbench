@@ -136,9 +136,18 @@ describe("feature pattern hole seed", () => {
     );
   });
 
-  it("rejects missing, combined, or non-hole pattern seeds", () => {
+  it("rejects missing, combined, or nested pattern-of-pattern seeds", () => {
     const engine = new CadEngine();
     seedFlangeDiscAndHoles(engine);
+    engine.apply({
+      op: "feature.circularPattern",
+      id: "feat_bolts",
+      bodyId: "body_flange",
+      seedFeatureId: "feat_bolt",
+      rotationAxis: { kind: "globalAxis", axis: "z" },
+      totalAngleDegrees: 360,
+      instanceCount: 6
+    });
 
     expect(() =>
       engine.apply({
@@ -162,13 +171,13 @@ describe("feature pattern hole seed", () => {
 
     expect(() =>
       engine.apply({
-        op: "feature.circularPattern",
-        seedFeatureId: "feat_disc",
-        rotationAxis: { kind: "globalAxis", axis: "z" },
-        totalAngleDegrees: 360,
-        instanceCount: 6
+        op: "feature.linearPattern",
+        seedFeatureId: "feat_bolts",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 20,
+        instanceCount: 2
       })
-    ).toThrow(/feature\.hole/);
+    ).toThrow(/nested pattern-of-pattern/);
   });
 
   it("round-trips a hole-seeded pattern on existing project schema without a bump", () => {

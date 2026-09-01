@@ -10,6 +10,7 @@ import {
 } from "@web-cad/cad-core";
 import {
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
+  isPatternedSeedFeatureKind,
   type CadBodySnapshot,
   type CadBodySource,
   type CadCurrentExactResultStatus,
@@ -949,7 +950,7 @@ function getArtifactOperationError(
       if (source.kind !== "linearPattern") {
         return `Linear pattern ${feature.id} has no current artifact operation source.`;
       }
-      const holeToolError = getPatternHoleToolError(feature, source);
+      const holeToolError = getPatternHoleToolError(feature, source, context);
       if (holeToolError) return holeToolError;
       const frame = resolvePatternDirectionFrame(
         context.document,
@@ -961,7 +962,7 @@ function getArtifactOperationError(
       if (source.kind !== "circularPattern") {
         return `Circular pattern ${feature.id} has no current artifact operation source.`;
       }
-      const holeToolError = getPatternHoleToolError(feature, source);
+      const holeToolError = getPatternHoleToolError(feature, source, context);
       if (holeToolError) return holeToolError;
       const frame = resolvePatternRotationAxisFrame(
         context.document,
@@ -1049,7 +1050,8 @@ function getPatternHoleToolError(
   source: Extract<
     CurrentExactArtifactOperationSource,
     { readonly kind: "linearPattern" | "circularPattern" }
-  >
+  >,
+  context: ResolverContext
 ): string | undefined {
   if (
     feature.kind !== "linearPattern" &&
@@ -1062,8 +1064,18 @@ function getPatternHoleToolError(
       ? `Pattern ${feature.id} cannot attach a hole tool to a body seed.`
       : undefined;
   }
-  if (!source.holeTool || !isValidHoleTool(source.holeTool)) {
-    return `Pattern ${feature.id} has no current hole tool for seed feature ${feature.seedFeatureId}.`;
+  const seed = context.featuresById.get(feature.seedFeatureId);
+  if (seed?.kind === "hole") {
+    if (!source.holeTool || !isValidHoleTool(source.holeTool)) {
+      return `Pattern ${feature.id} has no current hole tool for seed feature ${feature.seedFeatureId}.`;
+    }
+    return undefined;
+  }
+  if (source.holeTool) {
+    return `Pattern ${feature.id} cannot attach a hole tool to a ${seed?.kind ?? "non-hole"} feature seed.`;
+  }
+  if (seed && !isPatternedSeedFeatureKind(seed.kind)) {
+    return `Pattern ${feature.id} seed feature ${feature.seedFeatureId} is not a patterned solid feature.`;
   }
   return undefined;
 }
