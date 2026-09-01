@@ -1471,6 +1471,23 @@ describe("agent-adapter", () => {
           version: "cadops.v1",
           mode: "dryRun",
           ops: [
+            { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_block",
+              id: "rect_block",
+              center: [20, 0],
+              width: 10,
+              height: 10
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_block",
+              bodyId: "body_block",
+              sketchId: "sketch_block",
+              entityId: "rect_block",
+              depth: 8
+            },
             {
               op: "datum.axis.create",
               id: "datum_axis_z",

@@ -176,9 +176,9 @@ export function createDefaultSketchDisplayFrame(
 }
 
 export function createDatumSketchDisplayFrame(
-  datum: DatumPlaneSnapshot
+  datum: DatumSnapshot
 ): SketchDisplayFrame | undefined {
-  if (datum.plane.kind !== "standardPlane") {
+  if (datum.kind !== "plane" || datum.plane.kind !== "standardPlane") {
     return undefined;
   }
   const frame = createDefaultSketchDisplayFrame(datum.plane.plane);

@@ -37,7 +37,6 @@ import type {
   CadGeneratedFaceReference,
   CadTopologyAnchorCommandProof,
   FeatureShellOpenFaceRef,
-  PatternDirectionRef,
   PatternRotationAxisRef,
   CadQueryRequest,
   CadSelectionReferenceOperation,
@@ -1294,7 +1293,7 @@ function createPendingFaceChoice(
 
 function createPendingDirectionChoice(
   pending: PendingCurrentExactPromotion
-): SolidChoice<PatternDirectionRef> {
+): SolidChoice<PatternRotationAxisRef> {
   return {
     key: pendingCurrentExactPromotionChoiceKey(pending),
     value: {
