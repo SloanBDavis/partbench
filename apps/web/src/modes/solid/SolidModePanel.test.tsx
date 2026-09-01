@@ -774,6 +774,7 @@ describe("Solid editor session", () => {
         id: "",
         bodyId: "",
         seedBodyId: "body-a",
+        seedFeatureId: "",
         name: "",
         direction: { kind: "globalAxis", axis: "x" },
         spacing: 10,

@@ -1,3 +1,4 @@
+import { patternSeedSourceFields } from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
   CadBatch,
@@ -291,6 +292,7 @@ export interface FeatureLinearPatternForm {
   readonly id: string;
   readonly bodyId: string;
   readonly seedBodyId: string;
+  readonly seedFeatureId: string;
   readonly name: string;
   readonly direction: PatternDirectionRef;
   readonly spacing: number;
@@ -307,6 +309,7 @@ export interface FeatureCircularPatternForm {
   readonly id: string;
   readonly bodyId: string;
   readonly seedBodyId: string;
+  readonly seedFeatureId: string;
   readonly name: string;
   readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
@@ -1458,7 +1461,10 @@ export function buildFeatureLinearPatternOp(
     op: "feature.linearPattern",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
-    seedBodyId: form.seedBodyId,
+    ...patternSeedSourceFields({
+      seedBodyId: form.seedBodyId.trim() || undefined,
+      seedFeatureId: form.seedFeatureId.trim() || undefined
+    }),
     direction: form.direction,
     spacing: form.spacing,
     instanceCount: form.instanceCount,
@@ -1488,7 +1494,10 @@ export function buildFeatureCircularPatternOp(
     op: "feature.circularPattern",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
-    seedBodyId: form.seedBodyId,
+    ...patternSeedSourceFields({
+      seedBodyId: form.seedBodyId.trim() || undefined,
+      seedFeatureId: form.seedFeatureId.trim() || undefined
+    }),
     rotationAxis: form.rotationAxis,
     totalAngleDegrees: form.totalAngleDegrees,
     instanceCount: form.instanceCount,

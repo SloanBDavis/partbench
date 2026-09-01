@@ -3,6 +3,8 @@ import {
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   isSketchDimensionTargetV22,
   isSketchRegionsProfileRef,
+  patternSeedSourceFields,
+  readExclusivePatternSeed,
   validateV19CadOp,
   validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
@@ -198,6 +200,7 @@ import type {
   Mat4,
   PatternDirectionRef,
   PatternRotationAxisRef,
+  PatternSeedFields,
   MirrorPlaneRef,
   DatumPlaneSourceRef,
   DatumPlaneSnapshot,
@@ -1018,7 +1021,8 @@ export interface LinearPatternFeature {
   readonly id: FeatureId;
   readonly kind: "linearPattern";
   readonly name?: string;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
@@ -1030,7 +1034,8 @@ export interface CircularPatternFeature {
   readonly id: FeatureId;
   readonly kind: "circularPattern";
   readonly name?: string;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
@@ -7318,10 +7323,10 @@ function applyOperation(
     }
 
     case "feature.linearPattern": {
-      const seedBodyId = validatePatternSeedBodyId(
+      const seed = validatePatternSeed(
         state,
         "feature.linearPattern",
-        op.seedBodyId,
+        op,
         opIndex
       );
       const direction = validatePatternDirectionFields(
@@ -7341,7 +7346,7 @@ function applyOperation(
         id: op.id ?? createFeatureId(),
         kind: "linearPattern",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        seedBodyId,
+        ...seed,
         direction,
         spacing,
         instanceCount,
@@ -7359,10 +7364,10 @@ function applyOperation(
     }
 
     case "feature.circularPattern": {
-      const seedBodyId = validatePatternSeedBodyId(
+      const seed = validatePatternSeed(
         state,
         "feature.circularPattern",
-        op.seedBodyId,
+        op,
         opIndex
       );
       const rotationAxis = validatePatternRotationAxisField(
@@ -7384,7 +7389,7 @@ function applyOperation(
         id: op.id ?? createFeatureId(),
         kind: "circularPattern",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        seedBodyId,
+        ...seed,
         rotationAxis,
         totalAngleDegrees,
         instanceCount,
@@ -13379,7 +13384,7 @@ function updateSketchEntityAndDependents(
 
   for (const feature of nextFeatures.values()) {
     const targetBodyId = isTargetConsumingFeature(feature)
-      ? getTargetConsumingFeatureBodyId(feature)
+      ? getTargetConsumingFeatureBodyId(feature, nextFeatures)
       : undefined;
 
     if (
@@ -13488,7 +13493,7 @@ function pushSketchSourceRebuildEffectsForDependentFeatures(
       }
 
       if (
-        getTargetConsumingFeatureBodyId(downstreamFeature) !==
+        getTargetConsumingFeatureBodyId(downstreamFeature, state.features) !==
         sourceFeature.bodyId
       ) {
         continue;
@@ -14850,7 +14855,8 @@ function updateHoleFeature(
       diff,
       createConsumingFeatureEditLifecycleEffects(
         updated,
-        "Hole result body was modified and derived geometry rebuild is pending after supported source parameter edit."
+        "Hole result body was modified and derived geometry rebuild is pending after supported source parameter edit.",
+        state.features
       )
     );
   }
@@ -14886,7 +14892,8 @@ function updateChamferFeature(
     diff,
     createConsumingFeatureEditLifecycleEffects(
       updated,
-      "Chamfer result body requires derived rebuild and topology repair after supported source parameter edit."
+      "Chamfer result body requires derived rebuild and topology repair after supported source parameter edit.",
+      state.features
     )
   );
 }
@@ -14921,7 +14928,8 @@ function updateFilletFeature(
     diff,
     createConsumingFeatureEditLifecycleEffects(
       updated,
-      "Fillet result body requires derived rebuild and topology repair after supported source parameter edit."
+      "Fillet result body requires derived rebuild and topology repair after supported source parameter edit.",
+      state.features
     )
   );
 }
@@ -14991,7 +14999,8 @@ function updateLinearPatternFeature(
     diff,
     createConsumingFeatureEditLifecycleEffects(
       updated,
-      "Linear pattern result body requires derived rebuild and topology repair after supported source parameter edit."
+      "Linear pattern result body requires derived rebuild and topology repair after supported source parameter edit.",
+      state.features
     )
   );
 }
@@ -15060,7 +15069,8 @@ function updateCircularPatternFeature(
     diff,
     createConsumingFeatureEditLifecycleEffects(
       updated,
-      "Circular pattern result body requires derived rebuild and topology repair after supported source parameter edit."
+      "Circular pattern result body requires derived rebuild and topology repair after supported source parameter edit.",
+      state.features
     )
   );
 }
@@ -15112,7 +15122,8 @@ function updateMirrorFeature(
     updated.includeOriginal
       ? createConsumingFeatureEditLifecycleEffects(
           updated,
-          "Mirror result body requires derived rebuild and topology repair after supported source parameter edit."
+          "Mirror result body requires derived rebuild and topology repair after supported source parameter edit.",
+          state.features
         )
       : createAmbiguousResultFeatureEditLifecycleEffects(
           updated,
@@ -15166,7 +15177,8 @@ function updateShellFeature(
     diff,
     createConsumingFeatureEditLifecycleEffects(
       updated,
-      "Shell result body requires derived rebuild and topology repair after supported source parameter edit."
+      "Shell result body requires derived rebuild and topology repair after supported source parameter edit.",
+      state.features
     )
   );
 }
@@ -16040,16 +16052,11 @@ function assertPatternFeatureSeedEditable(
     | "feature.updateCircularPattern",
   opIndex?: number
 ): void {
-  validatePatternSeedBodyId(
-    state,
-    operation,
-    feature.seedBodyId,
-    opIndex,
-    feature.id
-  );
+  validatePatternSeed(state, operation, feature, opIndex, feature.id);
+  const consumedBodyId = getPatternConsumedBodyId(feature, state.features);
   const consumingFeature = findConsumingFeatureByTargetBodyId(
     state.features,
-    feature.seedBodyId
+    consumedBodyId
   );
 
   if (consumingFeature?.id === feature.id) {
@@ -16061,7 +16068,7 @@ function assertPatternFeatureSeedEditable(
     message: "The feature no longer owns its seed body.",
     opIndex,
     featureId: feature.id,
-    bodyId: feature.seedBodyId,
+    bodyId: consumedBodyId,
     path: operationPath(opIndex, "id"),
     expected: "seed body consumed only by the edited pattern feature",
     received: consumingFeature?.id ?? "active seed body"
@@ -16130,6 +16137,10 @@ function assertSupportedEdgeFinishTarget(
 type PatternCreateOperation =
   | "feature.linearPattern"
   | "feature.circularPattern";
+type PatternSeedOperation =
+  | PatternCreateOperation
+  | "feature.updateLinearPattern"
+  | "feature.updateCircularPattern";
 
 type ShellOperation = "feature.shell" | "feature.updateShell";
 
@@ -16403,12 +16414,98 @@ function validateShellOpenFaceRef(
   });
 }
 
+function validatePatternSeed(
+  state: MutableDocumentState,
+  operation: PatternSeedOperation,
+  op: {
+    readonly seedBodyId?: BodyId;
+    readonly seedFeatureId?: FeatureId;
+  },
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
+): PatternSeedFields {
+  const seed = readExclusivePatternSeed(op);
+  if (!seed.ok) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} requires exactly one of seedBodyId or seedFeatureId.`,
+      opIndex,
+      path: operationPath(
+        opIndex,
+        op.seedBodyId && op.seedFeatureId ? "seedFeatureId" : "seedBodyId"
+      ),
+      expected: "seedBodyId XOR seedFeatureId",
+      received:
+        op.seedBodyId && op.seedFeatureId
+          ? "both seedBodyId and seedFeatureId"
+          : "missing"
+    });
+  }
+  if ("seedFeatureId" in seed.seed) {
+    return {
+      seedFeatureId: validatePatternSeedFeatureId(
+        state,
+        operation,
+        seed.seed.seedFeatureId,
+        opIndex,
+        ignoreConsumingFeatureId
+      )
+    };
+  }
+  return {
+    seedBodyId: validatePatternSeedBodyId(
+      state,
+      operation,
+      seed.seed.seedBodyId,
+      opIndex,
+      ignoreConsumingFeatureId
+    )
+  };
+}
+
+function validatePatternSeedFeatureId(
+  state: MutableDocumentState,
+  operation: PatternSeedOperation,
+  seedFeatureId: FeatureId,
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
+): FeatureId {
+  const seedFeature = state.features.get(seedFeatureId);
+  if (!seedFeature) {
+    throwValidationError({
+      code: "FEATURE_NOT_FOUND",
+      message: `${operation} seedFeatureId does not exist: ${seedFeatureId}`,
+      opIndex,
+      featureId: seedFeatureId,
+      path: operationPath(opIndex, "seedFeatureId"),
+      expected: "completed feature.hole id",
+      received: seedFeatureId
+    });
+  }
+  if (seedFeature.kind !== "hole") {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} seedFeatureId must name a completed feature.hole.`,
+      opIndex,
+      featureId: seedFeatureId,
+      path: operationPath(opIndex, "seedFeatureId"),
+      expected: "feature.hole",
+      received: seedFeature.kind
+    });
+  }
+  validatePatternSeedBodyId(
+    state,
+    operation,
+    seedFeature.bodyId,
+    opIndex,
+    ignoreConsumingFeatureId
+  );
+  return seedFeatureId;
+}
+
 function validatePatternSeedBodyId(
   state: MutableDocumentState,
-  operation:
-    | PatternCreateOperation
-    | "feature.updateLinearPattern"
-    | "feature.updateCircularPattern",
+  operation: PatternSeedOperation,
   seedBodyId: BodyId,
   opIndex?: number,
   ignoreConsumingFeatureId?: FeatureId
@@ -17521,9 +17618,10 @@ function createConsumingFeatureEditLifecycleEffects(
     | CircularPatternFeature
     | MirrorFeature
     | ShellFeature,
-  resultMessage: string
+  resultMessage: string,
+  features: ReadonlyMap<FeatureId, Feature>
 ): readonly CadBodyLifecycleEffectSummary[] {
-  const consumedBodyId = getTargetConsumingFeatureBodyId(feature);
+  const consumedBodyId = getTargetConsumingFeatureBodyId(feature, features);
   const resultEffects =
     feature.kind === "hole"
       ? [
@@ -17853,7 +17951,7 @@ function findConsumingFeaturesByTargetBodyId(
     }
     if (
       isTargetConsumingFeature(feature) &&
-      getTargetConsumingFeatureBodyId(feature) === targetBodyId
+      getTargetConsumingFeatureBodyId(feature, features) === targetBodyId
     ) {
       consumingFeatures.push(feature);
     }
@@ -17880,14 +17978,35 @@ function isTargetConsumingFeature(
   );
 }
 
+function getPatternConsumedBodyId(
+  feature: LinearPatternFeature | CircularPatternFeature,
+  features: ReadonlyMap<FeatureId, Feature>
+): BodyId {
+  if (feature.seedBodyId) {
+    return feature.seedBodyId;
+  }
+  const seedFeature = feature.seedFeatureId
+    ? features.get(feature.seedFeatureId)
+    : undefined;
+  if (seedFeature?.kind === "hole") {
+    return seedFeature.bodyId;
+  }
+  throw new Error(
+    `Pattern feature ${feature.id} is missing an exclusive body or hole seed.`
+  );
+}
+
 function getTargetConsumingFeatureBodyId(
-  feature: TargetConsumingFeature
+  feature: TargetConsumingFeature,
+  features: ReadonlyMap<FeatureId, Feature>
 ): BodyId {
   if (
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "circularPattern"
   ) {
+    return getPatternConsumedBodyId(feature, features);
+  }
+  if (feature.kind === "mirror") {
     return feature.seedBodyId;
   }
 
@@ -22755,7 +22874,7 @@ function featureRef(
       id: feature.id,
       kind: "linearPattern",
       bodyId: feature.bodyId,
-      seedBodyId: feature.seedBodyId,
+      ...patternSeedSourceFields(feature),
       direction: feature.direction,
       spacing: feature.spacing,
       instanceCount: feature.instanceCount,
@@ -22768,7 +22887,7 @@ function featureRef(
       id: feature.id,
       kind: "circularPattern",
       bodyId: feature.bodyId,
-      seedBodyId: feature.seedBodyId,
+      ...patternSeedSourceFields(feature),
       rotationAxis: feature.rotationAxis,
       totalAngleDegrees: feature.totalAngleDegrees,
       instanceCount: feature.instanceCount,
@@ -24250,7 +24369,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
       id: snapshot.id,
       kind: "linearPattern",
       name: snapshot.name,
-      seedBodyId: snapshot.seedBodyId,
+      ...patternSeedSourceFields(snapshot),
       direction,
       spacing: snapshot.spacing,
       instanceCount: snapshot.instanceCount,
@@ -24280,7 +24399,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
       id: snapshot.id,
       kind: "circularPattern",
       name: snapshot.name,
-      seedBodyId: snapshot.seedBodyId,
+      ...patternSeedSourceFields(snapshot),
       rotationAxis,
       totalAngleDegrees: snapshot.totalAngleDegrees,
       instanceCount: snapshot.instanceCount,
@@ -25120,12 +25239,13 @@ function createFeatureSummary(
   }
 
   if (feature.kind === "linearPattern") {
+    const seed = patternSeedSourceFields(feature);
     return {
       id: feature.id,
       kind: "linearPattern",
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
-      seedBodyId: feature.seedBodyId,
+      ...seed,
       direction: feature.direction,
       spacing: feature.spacing,
       instanceCount: feature.instanceCount,
@@ -25133,19 +25253,20 @@ function createFeatureSummary(
       name: feature.name,
       source: {
         type: "linearPatternFeature",
-        seedBodyId: feature.seedBodyId,
+        ...seed,
         direction: feature.direction
       }
     };
   }
 
   if (feature.kind === "circularPattern") {
+    const seed = patternSeedSourceFields(feature);
     return {
       id: feature.id,
       kind: "circularPattern",
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
-      seedBodyId: feature.seedBodyId,
+      ...seed,
       rotationAxis: feature.rotationAxis,
       totalAngleDegrees: feature.totalAngleDegrees,
       instanceCount: feature.instanceCount,
@@ -25153,7 +25274,7 @@ function createFeatureSummary(
       name: feature.name,
       source: {
         type: "circularPatternFeature",
-        seedBodyId: feature.seedBodyId,
+        ...seed,
         rotationAxis: feature.rotationAxis
       }
     };
@@ -25491,7 +25612,7 @@ function createFeatureBodySnapshot(
       source: {
         type: "linearPatternFeature",
         featureId: feature.id,
-        seedBodyId: feature.seedBodyId,
+        ...patternSeedSourceFields(feature),
         direction: feature.direction,
         spacing: feature.spacing,
         instanceCount: feature.instanceCount,
@@ -25511,7 +25632,7 @@ function createFeatureBodySnapshot(
       source: {
         type: "circularPatternFeature",
         featureId: feature.id,
-        seedBodyId: feature.seedBodyId,
+        ...patternSeedSourceFields(feature),
         rotationAxis: feature.rotationAxis,
         totalAngleDegrees: feature.totalAngleDegrees,
         instanceCount: feature.instanceCount,
@@ -25735,7 +25856,7 @@ function createConsumedBodyMap(
       continue;
     }
     if (isTargetConsumingFeature(feature)) {
-      consumed.set(getTargetConsumingFeatureBodyId(feature), feature.id);
+      consumed.set(getTargetConsumingFeatureBodyId(feature, features), feature.id);
     }
   }
 
@@ -29734,6 +29855,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.id === right.id &&
       left.name === right.name &&
       left.seedBodyId === right.seedBodyId &&
+      left.seedFeatureId === right.seedFeatureId &&
       stableJsonEqual(left.direction, right.direction) &&
       left.spacing === right.spacing &&
       left.instanceCount === right.instanceCount &&
@@ -29747,6 +29869,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.id === right.id &&
       left.name === right.name &&
       left.seedBodyId === right.seedBodyId &&
+      left.seedFeatureId === right.seedFeatureId &&
       stableJsonEqual(left.rotationAxis, right.rotationAxis) &&
       left.totalAngleDegrees === right.totalAngleDegrees &&
       left.instanceCount === right.instanceCount &&
@@ -30247,7 +30370,7 @@ function normalizeFeatureSnapshot(
           id: feature.id,
           kind: feature.kind,
           name: feature.name,
-          seedBodyId: feature.seedBodyId,
+          ...patternSeedSourceFields(feature),
           direction,
           spacing: feature.spacing,
           instanceCount: feature.instanceCount,
@@ -34408,7 +34531,7 @@ function collectValidAuthoredFeatureByBodyId(
     value.kind === "linearPattern" &&
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
-    typeof value.seedBodyId === "string" &&
+    readExclusivePatternSeed(value).ok &&
     (isPatternAxis(value.axis) || isPatternDirectionRef(value.direction)) &&
     typeof value.spacing === "number" &&
     isPositiveFiniteNumber(value.spacing) &&
@@ -34421,7 +34544,14 @@ function collectValidAuthoredFeatureByBodyId(
       id: value.id,
       kind: "linearPattern",
       name: typeof value.name === "string" ? value.name : undefined,
-      seedBodyId: value.seedBodyId,
+      ...patternSeedSourceFields({
+        seedBodyId:
+          typeof value.seedBodyId === "string" ? value.seedBodyId : undefined,
+        seedFeatureId:
+          typeof value.seedFeatureId === "string"
+            ? value.seedFeatureId
+            : undefined
+      }),
       direction: isPatternDirectionRef(value.direction)
         ? value.direction
         : globalAxisRef(value.axis as "x" | "y" | "z"),
@@ -34447,7 +34577,7 @@ function collectValidAuthoredFeatureByBodyId(
     value.kind === "circularPattern" &&
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
-    typeof value.seedBodyId === "string" &&
+    readExclusivePatternSeed(value).ok &&
     (isPatternAxis(value.rotationAxis) ||
       isPatternDirectionRef(value.rotationAxis)) &&
     typeof value.totalAngleDegrees === "number" &&
@@ -34462,7 +34592,14 @@ function collectValidAuthoredFeatureByBodyId(
       id: value.id,
       kind: "circularPattern",
       name: typeof value.name === "string" ? value.name : undefined,
-      seedBodyId: value.seedBodyId,
+      ...patternSeedSourceFields({
+        seedBodyId:
+          typeof value.seedBodyId === "string" ? value.seedBodyId : undefined,
+        seedFeatureId:
+          typeof value.seedFeatureId === "string"
+            ? value.seedFeatureId
+            : undefined
+      }),
       rotationAxis: isPatternDirectionRef(value.rotationAxis)
         ? value.rotationAxis
         : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
@@ -37498,12 +37635,12 @@ function validatePatternFeatureSnapshotFields(
   const label =
     value.kind === "linearPattern" ? "Linear pattern" : "Circular pattern";
 
-  if (typeof value.seedBodyId !== "string" || value.seedBodyId.length === 0) {
+  if (!readExclusivePatternSeed(value).ok) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.seedBodyId`,
-      `${label} feature seedBodyId must be a non-empty string.`
+      `${label} feature requires exactly one of seedBodyId or seedFeatureId.`
     );
   }
 
@@ -38951,7 +39088,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      typeof value.seedBodyId === "string" &&
+      readExclusivePatternSeed(value).ok &&
       (value.axis === undefined || isPatternAxis(value.axis)) &&
       (value.direction === undefined ||
         isPatternDirectionRef(value.direction)) &&
@@ -38969,7 +39106,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      typeof value.seedBodyId === "string" &&
+      readExclusivePatternSeed(value).ok &&
       (isPatternAxis(value.rotationAxis) ||
         isPatternDirectionRef(value.rotationAxis)) &&
       typeof value.totalAngleDegrees === "number" &&

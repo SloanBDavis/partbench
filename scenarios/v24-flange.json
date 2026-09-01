@@ -1,0 +1,110 @@
+{
+  "id": "v24-flange",
+  "kind": "cadops",
+  "seed": [
+    { "op": "sketch.create", "id": "sketch_disc", "name": "Disc", "plane": "XY" },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_disc",
+      "id": "circle_disc",
+      "center": [0, 0],
+      "radius": 40
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_disc",
+      "bodyId": "body_disc",
+      "sketchId": "sketch_disc",
+      "entityId": "circle_disc",
+      "depth": 8
+    },
+    { "op": "sketch.create", "id": "sketch_bore", "name": "Bore", "plane": "XY" },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_bore",
+      "id": "circle_bore",
+      "center": [0, 0],
+      "radius": 8
+    },
+    {
+      "op": "feature.hole",
+      "id": "feat_bore",
+      "bodyId": "body_bored",
+      "targetBodyId": "body_disc",
+      "sketchId": "sketch_bore",
+      "circleEntityId": "circle_bore",
+      "depthMode": "throughAll"
+    },
+    { "op": "sketch.create", "id": "sketch_bolt", "name": "Bolt", "plane": "XY" },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_bolt",
+      "id": "circle_bolt",
+      "center": [28, 0],
+      "radius": 3
+    },
+    {
+      "op": "feature.hole",
+      "id": "feat_bolt",
+      "bodyId": "body_bolt",
+      "targetBodyId": "body_bored",
+      "sketchId": "sketch_bolt",
+      "circleEntityId": "circle_bolt",
+      "depthMode": "throughAll"
+    }
+  ],
+  "steps": [
+    {
+      "id": "circular-hole-pattern",
+      "ops": [
+        {
+          "op": "feature.circularPattern",
+          "id": "feat_bolts",
+          "bodyId": "body_flange",
+          "seedFeatureId": "feat_bolt",
+          "rotationAxis": { "kind": "globalAxis", "axis": "z" },
+          "totalAngleDegrees": 360,
+          "instanceCount": 6
+        }
+      ],
+      "expect": {
+        "ops": ["feature.circularPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_bolts",
+                "kind": "circularPattern",
+                "seedFeatureId": "feat_bolt",
+                "bodyId": "body_flange"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_flange", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_disc", "consumedByFeatureId": "feat_bore" },
+              { "id": "body_bored", "consumedByFeatureId": "feat_bolt" },
+              { "id": "body_bolt", "consumedByFeatureId": "feat_bolts" },
+              {
+                "id": "body_flange",
+                "featureId": "feat_bolts",
+                "source": {
+                  "type": "circularPatternFeature",
+                  "seedFeatureId": "feat_bolt"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

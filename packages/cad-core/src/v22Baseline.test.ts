@@ -127,7 +127,7 @@ const COLLECTORS = [
     SINGLE_SHAPE,
     ["feature.hole", "feature.updateHole"]
   ),
-  collector(B, [], ["patternSeed"], ["seedBodyId"], SINGLE_SHAPE, [
+  collector(B, [], ["patternSeed"], ["seedBodyId", "seedFeatureId"], SINGLE_SHAPE, [
     "feature.linearPattern",
     "feature.circularPattern"
   ]),

@@ -39,6 +39,10 @@ import type {
   ExactBodyArtifactSource,
   GeometryKernelExactBodyArtifact
 } from "@web-cad/geometry-worker";
+import {
+  createDatumSketchDisplayFrame,
+  createTopologyAnchorFaceDisplayFrame
+} from "./sketchDisplayFrames";
 
 export type CurrentExactBodySource =
   | DerivedExactMetadataSource
@@ -54,6 +58,7 @@ export type CurrentExactArtifactOperationSource =
       readonly direction: readonly [number, number, number];
       readonly spacing: number;
       readonly instanceCount: number;
+      readonly holeTool?: DerivedHoleGeometrySource["tool"];
       readonly sourceIdentitySignature: string;
     }
   | {
@@ -65,6 +70,7 @@ export type CurrentExactArtifactOperationSource =
       };
       readonly totalAngleDegrees: number;
       readonly instanceCount: number;
+      readonly holeTool?: DerivedHoleGeometrySource["tool"];
       readonly sourceIdentitySignature: string;
     }
   | {
@@ -590,7 +596,7 @@ function resolveCurrentExactBody(
   );
   if (isResolution(resolved)) return resolved;
 
-  const dependencyBodyId = getArtifactDependencyBodyId(feature);
+  const dependencyBodyId = getArtifactDependencyBodyId(feature, context);
   const operationError = dependencyBodyId
     ? getArtifactOperationError(feature, resolved, context)
     : undefined;
@@ -785,7 +791,7 @@ function resolveArtifactDependency(
 
     const childBodyId: string | undefined = checkpoint?.ok
       ? undefined
-      : getArtifactDependencyBodyId(feature);
+      : getArtifactDependencyBodyId(feature, context);
     const operationError = childBodyId
       ? getArtifactOperationError(feature, resolved, context)
       : undefined;
@@ -878,14 +884,16 @@ function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
         kind: "artifactLinearPattern",
         direction: source.direction,
         spacing: source.spacing,
-        instanceCount: source.instanceCount
+        instanceCount: source.instanceCount,
+        ...(source.holeTool ? { holeTool: source.holeTool } : {})
       } as const;
     case "circularPattern":
       return {
         kind: "artifactCircularPattern",
         axis: source.axis,
         totalAngleDegrees: source.totalAngleDegrees,
-        instanceCount: source.instanceCount
+        instanceCount: source.instanceCount,
+        ...(source.holeTool ? { holeTool: source.holeTool } : {})
       } as const;
     case "mirror":
       return {
@@ -937,6 +945,8 @@ function getArtifactOperationError(
       if (source.kind !== "linearPattern") {
         return `Linear pattern ${feature.id} has no current artifact operation source.`;
       }
+      const holeToolError = getPatternHoleToolError(feature, source);
+      if (holeToolError) return holeToolError;
       const frame = resolvePatternDirectionFrame(
         context.document,
         feature.direction
@@ -947,6 +957,8 @@ function getArtifactOperationError(
       if (source.kind !== "circularPattern") {
         return `Circular pattern ${feature.id} has no current artifact operation source.`;
       }
+      const holeToolError = getPatternHoleToolError(feature, source);
+      if (holeToolError) return holeToolError;
       const frame = resolvePatternRotationAxisFrame(
         context.document,
         feature.rotationAxis
@@ -1028,8 +1040,73 @@ function isValidHoleTool(tool: DerivedHoleGeometrySource["tool"]): boolean {
   );
 }
 
+function getPatternHoleToolError(
+  feature: CadFeatureSummary,
+  source: Extract<
+    CurrentExactArtifactOperationSource,
+    { readonly kind: "linearPattern" | "circularPattern" }
+  >
+): string | undefined {
+  if (
+    feature.kind !== "linearPattern" &&
+    feature.kind !== "circularPattern"
+  ) {
+    return undefined;
+  }
+  if (!feature.seedFeatureId) {
+    return source.holeTool
+      ? `Pattern ${feature.id} cannot attach a hole tool to a body seed.`
+      : undefined;
+  }
+  if (!source.holeTool || !isValidHoleTool(source.holeTool)) {
+    return `Pattern ${feature.id} has no current hole tool for seed feature ${feature.seedFeatureId}.`;
+  }
+  return undefined;
+}
+
+function createPatternHoleTool(
+  feature: CadFeatureSummary,
+  context: ResolverContext
+): DerivedHoleGeometrySource["tool"] | undefined {
+  if (
+    (feature.kind !== "linearPattern" && feature.kind !== "circularPattern") ||
+    !feature.seedFeatureId
+  ) {
+    return undefined;
+  }
+  const seed = context.featuresById.get(feature.seedFeatureId);
+  if (seed?.kind !== "hole") return undefined;
+  const sketch = context.document.sketches.get(seed.sketchId);
+  const entity = sketch?.entities.get(seed.circleEntityId);
+  if (!sketch || entity?.kind !== "circle") return undefined;
+
+  let placementFrame: DerivedHoleGeometrySource["tool"]["placementFrame"];
+  if (!sketch.attachment && sketch.datumId) {
+    const datum = context.document.datums.get(sketch.datumId);
+    placementFrame = datum
+      ? createDatumSketchDisplayFrame(datum)
+      : undefined;
+  } else if (sketch.attachment?.kind === "topologyAnchorFace") {
+    placementFrame = createTopologyAnchorFaceDisplayFrame(sketch.attachment);
+  }
+
+  return {
+    sketchPlane: sketch.plane,
+    circle: {
+      kind: "circle",
+      center: entity.center,
+      radius: entity.radius
+    },
+    depthMode: seed.depthMode,
+    depth: seed.depth,
+    direction: seed.direction,
+    ...(placementFrame ? { placementFrame } : {})
+  };
+}
+
 function getArtifactDependencyBodyId(
-  feature: CadFeatureSummary
+  feature: CadFeatureSummary,
+  context: ResolverContext
 ): string | undefined {
   switch (feature.kind) {
     case "hole":
@@ -1038,6 +1115,11 @@ function getArtifactDependencyBodyId(
       return feature.targetBodyId;
     case "linearPattern":
     case "circularPattern":
+      if (feature.seedBodyId) return feature.seedBodyId;
+      if (feature.seedFeatureId) {
+        return context.featuresById.get(feature.seedFeatureId)?.bodyId;
+      }
+      return undefined;
     case "mirror":
       return feature.seedBodyId;
     default:
@@ -1117,42 +1199,48 @@ function resolveArtifactOperationSource(
         context.document,
         feature.direction
       );
-      return direction.ok
-        ? {
-            id: body.id,
-            kind: "linearPattern",
-            direction: direction.frame,
-            spacing: feature.spacing,
-            instanceCount: feature.instanceCount,
-            sourceIdentitySignature
-          }
-        : blocked(
-            body,
-            "blocked",
-            "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-            direction.message
-          );
+      if (!direction.ok) {
+        return blocked(
+          body,
+          "blocked",
+          "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+          direction.message
+        );
+      }
+      const holeTool = createPatternHoleTool(feature, context);
+      return {
+        id: body.id,
+        kind: "linearPattern",
+        direction: direction.frame,
+        spacing: feature.spacing,
+        instanceCount: feature.instanceCount,
+        ...(holeTool ? { holeTool } : {}),
+        sourceIdentitySignature
+      };
     }
     case "circularPattern": {
       const axis = resolvePatternRotationAxisFrame(
         context.document,
         feature.rotationAxis
       );
-      return axis.ok
-        ? {
-            id: body.id,
-            kind: "circularPattern",
-            axis: axis.frame,
-            totalAngleDegrees: feature.totalAngleDegrees,
-            instanceCount: feature.instanceCount,
-            sourceIdentitySignature
-          }
-        : blocked(
-            body,
-            "blocked",
-            "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-            axis.message
-          );
+      if (!axis.ok) {
+        return blocked(
+          body,
+          "blocked",
+          "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+          axis.message
+        );
+      }
+      const holeTool = createPatternHoleTool(feature, context);
+      return {
+        id: body.id,
+        kind: "circularPattern",
+        axis: axis.frame,
+        totalAngleDegrees: feature.totalAngleDegrees,
+        instanceCount: feature.instanceCount,
+        ...(holeTool ? { holeTool } : {}),
+        sourceIdentitySignature
+      };
     }
     case "mirror": {
       const plane = resolveMirrorPlaneFrame(context.document, feature.plane);

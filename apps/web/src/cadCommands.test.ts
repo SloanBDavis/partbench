@@ -722,6 +722,7 @@ describe("cad command builders", () => {
         id: " feat_linear ",
         bodyId: " body_linear ",
         seedBodyId: "body_seed",
+        seedFeatureId: "",
         name: " Linear copies ",
         direction: { kind: "globalAxis", axis: "x" },
         spacing: 30,
@@ -736,6 +737,28 @@ describe("cad command builders", () => {
       direction: { kind: "globalAxis", axis: "x" },
       spacing: 30,
       instanceCount: 4
+    });
+
+    expect(
+      buildFeatureCircularPatternOp({
+        id: "feat_bolts",
+        bodyId: "body_flange",
+        seedBodyId: "",
+        seedFeatureId: "feat_bolt",
+        name: "Bolt circle",
+        rotationAxis: { kind: "globalAxis", axis: "z" },
+        totalAngleDegrees: 360,
+        instanceCount: 6
+      })
+    ).toEqual({
+      op: "feature.circularPattern",
+      id: "feat_bolts",
+      bodyId: "body_flange",
+      seedFeatureId: "feat_bolt",
+      name: "Bolt circle",
+      rotationAxis: { kind: "globalAxis", axis: "z" },
+      totalAngleDegrees: 360,
+      instanceCount: 6
     });
 
     expect(
@@ -757,6 +780,7 @@ describe("cad command builders", () => {
         id: "   ",
         bodyId: "",
         seedBodyId: "body_seed",
+        seedFeatureId: "",
         name: "   ",
         rotationAxis: { kind: "globalAxis", axis: "z" },
         totalAngleDegrees: 360,

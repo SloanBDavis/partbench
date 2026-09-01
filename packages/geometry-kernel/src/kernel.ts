@@ -747,6 +747,7 @@ export interface ExactArtifactLinearPatternSource {
   readonly direction: GeometryKernelDirection;
   readonly spacing: number;
   readonly instanceCount: number;
+  readonly holeTool?: HoleToolSource;
 }
 
 export interface ExactArtifactCircularPatternSource {
@@ -755,6 +756,7 @@ export interface ExactArtifactCircularPatternSource {
   readonly axis: GeometryKernelAxisFrame;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+  readonly holeTool?: HoleToolSource;
 }
 
 export interface ExactArtifactMirrorSource {
@@ -4089,6 +4091,12 @@ function isValidHoleToolSource(source: HoleToolSource): boolean {
   );
 }
 
+function isValidOptionalHoleToolSource(
+  source: HoleToolSource | undefined
+): boolean {
+  return source === undefined || isValidHoleToolSource(source);
+}
+
 function isValidEdgeFinishAmount(request: EdgeFinishRequest): boolean {
   if (
     typeof request.edgeStableId !== "string" ||
@@ -4443,7 +4451,8 @@ function validateExactBodyArtifactSource(
       validateExactBodyArtifactLeaf(source.seed) ??
       (isUnitVec3(source.direction) &&
       isPositiveFiniteNumber(source.spacing) &&
-      isValidArtifactPatternInstanceCount(source.instanceCount)
+      isValidArtifactPatternInstanceCount(source.instanceCount) &&
+      isValidOptionalHoleToolSource(source.holeTool)
         ? undefined
         : createInvalidExactBodyMetadataSourceError())
     );
@@ -4455,7 +4464,8 @@ function validateExactBodyArtifactSource(
       isUnitVec3(source.axis.direction) &&
       isPositiveFiniteNumber(source.totalAngleDegrees) &&
       source.totalAngleDegrees <= 360 &&
-      isValidArtifactPatternInstanceCount(source.instanceCount)
+      isValidArtifactPatternInstanceCount(source.instanceCount) &&
+      isValidOptionalHoleToolSource(source.holeTool)
         ? undefined
         : createInvalidExactBodyMetadataSourceError())
     );

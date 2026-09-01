@@ -224,7 +224,33 @@ function readShapeVolume(oc: OpenCascadeInstance, shape: TopoDS_Shape): number {
   }
 }
 
-function makeHoleToolShape(
+export function cutHoleToolFromTarget(
+  oc: OpenCascadeInstance,
+  target: TopoDS_Shape,
+  tool: TopoDS_Shape
+): TopoDS_Shape {
+  assertHoleResultBindings(oc);
+  const targetVolume = readShapeVolume(oc, target);
+  const range = new oc.Message_ProgressRange_1();
+  let cut: InstanceType<typeof oc.BRepAlgoAPI_Cut_3> | undefined;
+  let resultShape: TopoDS_Shape | undefined;
+
+  try {
+    cut = new oc.BRepAlgoAPI_Cut_3(target, tool, range);
+    if (cut.HasErrors()) {
+      throw new Error("Open CASCADE hole cut failed.");
+    }
+    resultShape = cut.Shape();
+    assertValidHoleResult(oc, resultShape, targetVolume);
+    return copyHoleShape(oc, resultShape);
+  } finally {
+    resultShape?.delete();
+    cut?.delete();
+    range.delete();
+  }
+}
+
+export function makeHoleToolShape(
   oc: OpenCascadeInstance,
   targetShape: TopoDS_Shape,
   tool: OcctHoleToolSource
@@ -284,6 +310,18 @@ function makeHoleToolShape(
     shape?.delete();
     axes.delete();
     throw error;
+  }
+}
+
+function copyHoleShape(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape
+): TopoDS_Shape {
+  const copy = new oc.BRepBuilderAPI_Copy_2(shape, true, false);
+  try {
+    return copy.Shape();
+  } finally {
+    copy.delete();
   }
 }
 

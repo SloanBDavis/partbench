@@ -9,6 +9,7 @@ import {
   CAD_EXPORT_DIAGNOSTIC_CODES,
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   isCadExactDownstreamGeometryOp,
+  readExclusivePatternSeed,
   validateCadExactExportPlan,
   validateFeatureUpdateHoleOp,
   validateV19CadOp,
@@ -1879,7 +1880,9 @@ function createStandaloneExactDownstreamPreflightError(
       : op.op === "feature.linearPattern" ||
           op.op === "feature.circularPattern" ||
           op.op === "feature.mirror"
-        ? { bodyId: op.seedBodyId }
+        ? op.seedBodyId
+          ? { bodyId: op.seedBodyId }
+          : {}
         : {}),
     path: `$.ops[${opIndex}]`
   });
@@ -2986,11 +2989,11 @@ function createOperationReview(
           index,
           op,
           "create",
-          `Create linear pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} along ${formatPatternDirection(op.direction ?? op.axis)})`
+          `Create linear pattern feature ${op.id ?? "with generated ID"} of ${op.seedFeatureId ?? op.seedBodyId} (${op.instanceCount} along ${formatPatternDirection(op.direction ?? op.axis)})`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
-        targetBodyId: op.seedBodyId
+        ...(op.seedBodyId ? { targetBodyId: op.seedBodyId } : {})
       };
 
     case "feature.circularPattern":
@@ -2999,11 +3002,11 @@ function createOperationReview(
           index,
           op,
           "create",
-          `Create circular pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} across ${op.totalAngleDegrees}° around ${formatPatternDirection(op.rotationAxis)})`
+          `Create circular pattern feature ${op.id ?? "with generated ID"} of ${op.seedFeatureId ?? op.seedBodyId} (${op.instanceCount} across ${op.totalAngleDegrees}° around ${formatPatternDirection(op.rotationAxis)})`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
-        targetBodyId: op.seedBodyId
+        ...(op.seedBodyId ? { targetBodyId: op.seedBodyId } : {})
       };
 
     case "feature.mirror":
@@ -6085,7 +6088,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      typeof value.seedBodyId === "string" &&
+      readExclusivePatternSeed(value).ok &&
       (value.axis === undefined || isFeaturePatternAxis(value.axis)) &&
       (value.direction === undefined ||
         isPatternDirectionRefShape(value.direction)) &&
@@ -6100,7 +6103,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      typeof value.seedBodyId === "string" &&
+      readExclusivePatternSeed(value).ok &&
       (isFeaturePatternAxis(value.rotationAxis) ||
         isPatternDirectionRefShape(value.rotationAxis)) &&
       typeof value.totalAngleDegrees === "number" &&

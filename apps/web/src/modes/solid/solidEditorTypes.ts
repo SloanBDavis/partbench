@@ -123,6 +123,7 @@ export interface SolidEditorChoices {
   readonly addTargetBodies?: readonly SolidChoice<string>[];
   readonly cutTargetBodies?: readonly SolidChoice<string>[];
   readonly seedBodies?: readonly SolidChoice<string>[];
+  readonly seedFeatures?: readonly SolidChoice<string>[];
   readonly toolBodies?: readonly SolidChoice<string>[];
   readonly axes?: readonly SolidChoice<string>[];
   readonly profiles?: readonly SolidChoice<SketchProfileRefV22>[];
@@ -157,6 +158,7 @@ export interface SolidCollectorRequest {
   readonly collector:
     | "targetBody"
     | "seedBody"
+    | "seedFeature"
     | "toolBody"
     | "axis"
     | "profile"
