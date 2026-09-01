@@ -1648,6 +1648,7 @@ export interface FeatureLinearPatternOp {
   readonly seedBodyId: BodyId;
   readonly axis?: FeaturePatternAxis;
   readonly direction?: PatternDirectionRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly name?: string;
@@ -1659,6 +1660,7 @@ export interface FeatureCircularPatternOp {
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
   readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly name?: string;
@@ -1807,6 +1809,7 @@ export interface FeatureUpdateLinearPatternOp {
   readonly id: FeatureId;
   readonly axis?: FeaturePatternAxis;
   readonly direction?: PatternDirectionRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly spacing?: number;
   readonly instanceCount?: number;
 }
@@ -1815,6 +1818,7 @@ export interface FeatureUpdateCircularPatternOp {
   readonly op: "feature.updateCircularPattern";
   readonly id: FeatureId;
   readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly totalAngleDegrees?: number;
   readonly instanceCount?: number;
 }
@@ -1826,6 +1830,7 @@ export interface FeatureMirrorOp {
   readonly seedBodyId: BodyId;
   readonly mirrorPlane?: FeatureMirrorPlane;
   readonly plane?: MirrorPlaneRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly includeOriginal: boolean;
   readonly name?: string;
 }
@@ -1835,6 +1840,7 @@ export interface FeatureUpdateMirrorOp {
   readonly id: FeatureId;
   readonly mirrorPlane?: FeatureMirrorPlane;
   readonly plane?: MirrorPlaneRef;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly includeOriginal?: boolean;
 }
 
@@ -6700,6 +6706,13 @@ export type CadSelectionReferenceCommandTarget =
       readonly topologyAnchorId?: string;
       readonly checkpointId?: string;
       readonly referenceName?: NamedReferenceName;
+    }
+  | {
+      readonly type: "topologyAnchor";
+      readonly bodyId: BodyId;
+      readonly kind: "face" | "edge";
+      readonly topologyAnchorId?: string;
+      readonly checkpointId?: string;
     };
 
 export type CadSelectionReferenceCandidateSource =
@@ -6731,6 +6744,13 @@ export type CadSelectionReferenceCandidate =
         { readonly type: "generatedReference" }
       >;
       readonly reference: CadGeneratedReference;
+    })
+  | (CadSelectionReferenceCandidateBase & {
+      readonly target: Extract<
+        CadSelectionReferenceCommandTarget,
+        { readonly type: "topologyAnchor" }
+      >;
+      readonly reference: CadSemanticTopologyAnchorReference;
     });
 
 /** Whole-body selection proof for bodies without feature-generated references. */
@@ -6743,6 +6763,17 @@ export interface CadSemanticBodyReference {
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
+}
+
+export interface CadSemanticTopologyAnchorReference {
+  readonly kind: "face" | "edge";
+  readonly label: string;
+  readonly description?: string;
+  readonly eligibleOperations: readonly CadSelectionReferenceOperation[];
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
+  readonly topologyAnchorId?: string;
 }
 
 export type CadDependencyHealthStatus =

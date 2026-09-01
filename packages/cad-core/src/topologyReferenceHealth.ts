@@ -269,6 +269,24 @@ function createGenericTopologyAnchorCommandOperations(
   }
 
   if (!anchor.stableId) {
+    if (anchor.sourceSemanticRole) {
+      return [];
+    }
+    if (anchor.entityKind === "face") {
+      return [
+        "feature.attachSketchPlane",
+        "feature.shell",
+        "feature.mirrorPlane"
+      ];
+    }
+    if (anchor.entityKind === "edge") {
+      return [
+        "feature.chamfer",
+        "feature.fillet",
+        "feature.linearPatternDirection",
+        "feature.circularPatternAxis"
+      ];
+    }
     return [];
   }
 

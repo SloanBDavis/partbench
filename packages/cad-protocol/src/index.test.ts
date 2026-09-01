@@ -35,6 +35,7 @@ import type {
   CadCurrentTopologySelectionEvidence,
   CadCurrentTopologySelectionOutcome,
   CadCurrentTopologySelectionProjection,
+  CadSelectionReferenceCandidate,
   CadTopologyAnchorDescriptor,
   CadTopologyCheckpointMetadata,
   CadTopologyIdentityState,
@@ -4450,12 +4451,44 @@ describe("cad-protocol", () => {
       issues: []
     };
     const publicJson = JSON.stringify(response);
+    const promotedAnchorCandidate: CadSelectionReferenceCandidate = {
+      source: "topologyAnchorSelection",
+      commandable: true,
+      commandOperations: ["feature.attachSketchPlane"],
+      label: "Current exact face",
+      issues: [],
+      target: {
+        type: "topologyAnchor",
+        bodyId: evidence.bodyId,
+        kind: "face"
+      },
+      reference: {
+        kind: "face",
+        label: "Current exact face",
+        eligibleOperations: ["feature.attachSketchPlane"],
+        bodyId: evidence.bodyId,
+        ownerPartId: "part:default",
+        sourceFeatureId: "feat_1"
+      }
+    };
 
     expect(outcomes).toHaveLength(11);
     expect(response.currentTopology.outcome).toBe("inspectOnly");
+    expect(promotedAnchorCandidate.target).toEqual({
+      type: "topologyAnchor",
+      bodyId: evidence.bodyId,
+      kind: "face"
+    });
     expect(publicJson).not.toContain("localId");
     expect(publicJson).not.toContain("entitySignature");
     expect(publicJson).not.toContain("rendererHitId");
     expect(publicJson).not.toContain("selectionBufferHitId");
+    expect(JSON.stringify(promotedAnchorCandidate)).not.toContain("localId");
+    expect(JSON.stringify(promotedAnchorCandidate)).not.toContain(
+      "entitySignature"
+    );
+    expect(JSON.stringify(promotedAnchorCandidate)).not.toContain(
+      "rendererHitId"
+    );
   });
 });
