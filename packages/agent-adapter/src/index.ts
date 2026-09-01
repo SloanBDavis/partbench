@@ -69,6 +69,7 @@ import type {
   CadOpsVersion,
   CadParameterSnapshot,
   CadPartSnapshot,
+  DatumPlaneSnapshot,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectDependencyGraphQueryResponse,
@@ -338,6 +339,9 @@ export interface CadOpsAgentSuccessResponse {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
+  readonly createdDatumIds?: readonly string[];
+  readonly modifiedDatumIds?: readonly string[];
+  readonly deletedDatumIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
@@ -387,6 +391,9 @@ export interface CadOpsAgentErrorResponse {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
+  readonly createdDatumIds?: readonly string[];
+  readonly modifiedDatumIds?: readonly string[];
+  readonly deletedDatumIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
@@ -656,6 +663,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+  readonly datums?: readonly DatumPlaneSnapshot[];
 }
 
 export interface CadOpsAgentProjectHealthQueryResponse {
@@ -1711,6 +1719,9 @@ function toAgentDiffIds(response: CadBatchResponse): {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
+  readonly createdDatumIds?: readonly string[];
+  readonly modifiedDatumIds?: readonly string[];
+  readonly deletedDatumIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
@@ -1736,6 +1747,15 @@ function toAgentDiffIds(response: CadBatchResponse): {
       : {}),
     ...(response.deletedSketchIds
       ? { deletedSketchIds: response.deletedSketchIds }
+      : {}),
+    ...(response.createdDatumIds
+      ? { createdDatumIds: response.createdDatumIds }
+      : {}),
+    ...(response.modifiedDatumIds
+      ? { modifiedDatumIds: response.modifiedDatumIds }
+      : {}),
+    ...(response.deletedDatumIds
+      ? { deletedDatumIds: response.deletedDatumIds }
       : {}),
     ...(response.createdSketchEntityIds
       ? { createdSketchEntityIds: response.createdSketchEntityIds }
@@ -3395,7 +3415,8 @@ function toAgentQueryResponse(
       parts: response.parts,
       features: response.features,
       bodies: response.bodies,
-      objectSources: response.objectSources
+      objectSources: response.objectSources,
+      ...(response.datums ? { datums: response.datums } : {})
     };
   }
 
