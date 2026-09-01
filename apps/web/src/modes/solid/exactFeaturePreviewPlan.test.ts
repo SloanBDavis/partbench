@@ -767,4 +767,59 @@ describe("V22 exact feature preview planner", () => {
       });
     }
   });
+
+  it("prepends pending current-exact promotion ops onto a chamfer create plan", () => {
+    const pendingCurrentExactPromotionOps = [
+      {
+        op: "topology.checkpoint.create" as const,
+        checkpointId: "topology_checkpoint_current_abc",
+        bodyId: "body_rect_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1" as const,
+          sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        status: "active" as const
+      },
+      {
+        op: "topology.anchor.create" as const,
+        anchorId: "topology_anchor_current_abc",
+        entityKind: "edge" as const,
+        bodyId: "body_rect_1",
+        checkpointId: "topology_checkpoint_current_abc",
+        checkpointEntityId: "snapshot-local:edge:2"
+      }
+    ];
+    const draft: FeatureEdgeFinishForm = {
+      id: "feature-created",
+      bodyId: "body-created",
+      targetBodyId: "body_rect_1",
+      topologyAnchorId: "topology_anchor_current_abc",
+      name: "",
+      distance: 1,
+      radius: 1
+    };
+    const result = planExactFeaturePreview({
+      request: {
+        key: "create:chamfer",
+        kind: "chamfer",
+        title: "chamfer",
+        mode: "create",
+        initialDraft: draft,
+        pendingCurrentExactPromotionOps
+      },
+      submission: { kind: "chamfer", draft }
+    });
+
+    expect(result.status).toBe("supported");
+    if (result.status !== "supported") return;
+    expect(result.ops.map((op) => op.op)).toEqual([
+      "topology.checkpoint.create",
+      "topology.anchor.create",
+      "feature.chamfer"
+    ]);
+    expect(result.ops[2]).toMatchObject({
+      op: "feature.chamfer",
+      topologyAnchorId: "topology_anchor_current_abc"
+    });
+  });
 });

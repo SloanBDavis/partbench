@@ -301,7 +301,12 @@ export function createSelectionReferenceCandidateSummary(
       issueMessages[0] ??
       `${candidate.commandOperations.length} available action${candidate.commandOperations.length === 1 ? "" : "s"}`,
     topologyDetail: createSelectionReferenceTopologyDetail(candidate),
-    stableId: candidate.reference.stableId,
+    stableId:
+      "stableId" in candidate.reference
+        ? candidate.reference.stableId
+        : candidate.target.type === "topologyAnchor"
+          ? candidate.target.topologyAnchorId ?? candidate.label
+          : candidate.label,
     commandOperations: candidate.commandOperations,
     issues: issueMessages
   };

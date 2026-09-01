@@ -107,14 +107,15 @@ function bodyIdFromOp(op: CadOp): string | undefined {
   return "bodyId" in op && typeof op.bodyId === "string" ? op.bodyId : undefined;
 }
 
-function supported(
+function globalSupported(
   op: CadOp,
-  fallbackBodyId?: string
+  fallbackBodyId?: string,
+  prefixOps?: readonly CadOp[]
 ): ExactFeaturePreviewSupportedPlan {
   const bodyId = bodyIdFromOp(op) ?? fallbackBodyId;
   return {
     status: "supported",
-    ops: [op],
+    ops: [...(prefixOps ?? []), op],
     ...(bodyId ? { affectedBodyId: bodyId, resultBodyId: bodyId } : {}),
     requiresExactDownstreamCommitPreflight: EXACT_DOWNSTREAM_OPS.has(op.op)
   };
@@ -195,6 +196,12 @@ export function planExactFeaturePreview(
       "Preview is not supported for primitives, sketches, transforms, imports, or lifecycle operations."
     );
   }
+
+  const supported = (
+    op: CadOp,
+    fallbackBodyId?: string,
+    prefixOps = request.pendingCurrentExactPromotionOps
+  ) => globalSupported(op, fallbackBodyId, prefixOps);
 
   const edit = (request.mode ?? (existingFeature ? "edit" : "create")) === "edit";
   if (edit) {
