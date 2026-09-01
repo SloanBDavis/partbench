@@ -6,7 +6,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import {
   CadEngine,
-  CURRENT_CAD_PROJECT_FORMAT_VERSION,
+  CAD_PROJECT_FORMAT_VERSION_V22,
   exportCadProject
 } from "./index";
 
@@ -371,8 +371,10 @@ describe("V23 slice B current-exact promotion", () => {
           expect.objectContaining({ anchorId: "anchor_promoted" })
         ]
       });
-      expect(CURRENT_CAD_PROJECT_FORMAT_VERSION).toBe("web-cad.project.v22");
-      expect(exportCadProject(engine).schemaVersion).not.toMatch(/v23/);
+      expect(CAD_PROJECT_FORMAT_VERSION_V22).toBe("web-cad.project.v22");
+      expect(exportCadProject(engine).schemaVersion).toMatch(
+        /^web-cad\.project\.v(1[6-9]|2[0-2])$/
+      );
       expect(
         engine.getDocument().topologyIdentity?.checkpoints[0]?.packageVersion
       ).toBe("partbench.wcad.v2");

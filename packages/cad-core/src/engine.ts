@@ -20858,15 +20858,11 @@ function createCurrentTopologySelectionCandidates(
   if (!requiredOperation || evidence.entityKind === "vertex") {
     return createCurrentTopologySelectionResult(evidence, "inspectOnly");
   }
-  const promotableOperations =
+  const promotableOperations: readonly CadSelectionReferenceOperation[] =
     evidence.entityKind === "face"
       ? CURRENT_EXACT_FACE_PROMOTABLE_OPERATIONS
       : CURRENT_EXACT_EDGE_PROMOTABLE_OPERATIONS;
-  if (
-    !promotableOperations.includes(
-      requiredOperation as (typeof promotableOperations)[number]
-    )
-  ) {
+  if (!promotableOperations.includes(requiredOperation)) {
     return createCurrentTopologySelectionResult(evidence, "blocked", {
       candidates: [],
       issues: [
