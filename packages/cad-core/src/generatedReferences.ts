@@ -38,6 +38,7 @@ import type {
   SketchLoopRef,
   SketchRectangleEntitySnapshot,
   SketchRegionsProfileRef,
+  SketchSplineEntity,
   SketchId,
   SketchWireProfileRef,
   Vec2,
@@ -111,7 +112,8 @@ export type GeneratedReferencesSketchEntity =
   | SketchLineEntitySnapshot
   | SketchRectangleEntitySnapshot
   | SketchCircleEntitySnapshot
-  | SketchArcEntity;
+  | SketchArcEntity
+  | SketchSplineEntity;
 
 export type GeneratedReferencesFeature =
   | GeneratedReferencesExtrudeFeature

@@ -1024,5 +1024,10 @@ function cloneEntity(entity: SketchEntitySnapshot): SketchEntitySnapshot {
         ...entity,
         center: [entity.center[0], entity.center[1]]
       };
+    case "spline":
+      return {
+        ...entity,
+        points: entity.points.map((point) => [point[0], point[1]] as const)
+      };
   }
 }

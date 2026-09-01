@@ -505,6 +505,7 @@ export const UI_ACTION_METADATA = [
     true
   ),
   action("sketch.circle", "Circle", "Create", ["sketch"], ["add circle"], true),
+  action("sketch.spline", "Spline", "Create", ["sketch"], ["add spline"], true),
   action("sketch.slot", "Slot", "Create", ["sketch"], ["add slot"], true),
   action(
     "sketch.rounded-rectangle",

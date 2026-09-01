@@ -326,6 +326,8 @@ export function getSketchEntityOptionLabel(
       return `${entity.id} / circle r ${entity.radius}`;
     case "arc":
       return `${entity.id} / arc r ${entity.radius} / ${entity.startAngleDegrees}° + ${entity.sweepAngleDegrees}°`;
+    case "spline":
+      return `${entity.id} / spline ${entity.form} ${entity.points.length} pts${entity.closed ? " closed" : ""}`;
   }
 }
 
@@ -341,6 +343,8 @@ export function getSketchEntityKindLabel(kind: SketchEntityKind): string {
       return "Circle";
     case "arc":
       return "Arc";
+    case "spline":
+      return "Spline";
   }
 }
 
@@ -362,6 +366,8 @@ function getSketchEntityListDetail(entity: SketchEntitySnapshot): string {
       }`;
     case "arc":
       return `Center ${formatSketchPointCoordinate(entity.center)} / radius ${entity.radius} / start ${entity.startAngleDegrees}° / sweep ${entity.sweepAngleDegrees}°`;
+    case "spline":
+      return `${entity.form} / ${entity.points.length} points${entity.closed ? " / closed" : ""}`;
   }
 }
 

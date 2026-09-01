@@ -315,6 +315,17 @@ function createResolvedRegionLoop(
       radius: entity.radius
     };
   }
+  if (entity?.kind === "spline" && entity.closed) {
+    return createResolvedWireExtrudeRecipe(
+      {
+        kind: "wire",
+        sketchId,
+        segments: [{ entityId: entity.id, orientation: "forward" }]
+      },
+      entities,
+      frame
+    );
+  }
   return undefined;
 }
 
@@ -326,7 +337,12 @@ function resolveLoopSegments(
     const segments: ResolvedSketchSegment[] = [];
     for (const reference of loop.segments) {
       const entity = entities.get(reference.entityId);
-      if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
+      if (
+        !entity ||
+        (entity.kind !== "line" &&
+          entity.kind !== "arc" &&
+          entity.kind !== "spline")
+      ) {
         return undefined;
       }
       const resolved = resolveOrientedSketchSegment(
@@ -385,6 +401,10 @@ function resolveLoopSegments(
         sweepAngleRadians: Math.PI
       }
     ];
+  }
+  if (entity?.kind === "spline" && entity.closed) {
+    const resolved = resolveOrientedSketchSegment(entity, "forward");
+    return resolved.ok ? [resolved.segment] : undefined;
   }
   return undefined;
 }

@@ -1118,6 +1118,13 @@ export function getSketchEntityWitnessPoint(
         entity.center[1] + entity.radius * Math.sin(angle)
       ];
     }
+    case "spline": {
+      const index = Math.min(
+        entity.points.length - 1,
+        Math.max(0, Math.floor(entity.points.length * fraction))
+      );
+      return entity.points[index] ?? [0, 0];
+    }
   }
 }
 
@@ -1202,5 +1209,7 @@ function formatEntityKind(kind: SketchEntitySnapshot["kind"]): string {
       return "Circle";
     case "arc":
       return "Arc";
+    case "spline":
+      return "Spline";
   }
 }

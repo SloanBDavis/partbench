@@ -416,6 +416,7 @@ const ACTION_AUDIT_BY_ID = {
     "buildAddSketchRectangleOp"
   ),
   "sketch.circle": sketchEntityAudit("Circle", "buildAddSketchCircleOp"),
+  "sketch.spline": sketchEntityAudit("Spline", "buildAddSketchSplineOp"),
   "sketch.slot": sketchConvenienceAudit("Slot", "buildAddSketchSlotOp"),
   "sketch.rounded-rectangle": sketchConvenienceAudit(
     "Rounded Rectangle",

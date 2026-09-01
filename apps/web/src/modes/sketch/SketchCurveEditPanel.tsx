@@ -1483,6 +1483,8 @@ function formatResultEntityKind(entity: SketchEntitySnapshot): string {
       return "Circle";
     case "arc":
       return "Arc";
+    case "spline":
+      return "Spline";
   }
 }
 
@@ -1586,6 +1588,8 @@ function formatResultEntity(entity: SketchEntitySnapshot): string {
       return `rectangle centered at ${formatPoint(entity.center)}, ${formatNumber(entity.width)} × ${formatNumber(entity.height)}`;
     case "point":
       return `point ${formatPoint(entity.point)}`;
+    case "spline":
+      return `spline ${entity.form} (${entity.points.length} points${entity.closed ? ", closed" : ""})`;
   }
 }
 

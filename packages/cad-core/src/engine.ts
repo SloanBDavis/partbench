@@ -119,7 +119,6 @@ import type {
   SemanticDiff,
   SketchEntityId,
   SketchEntityKind,
-  SketchEntityKindV21,
   SketchEntitySemanticDiff,
   SketchEntitySnapshot,
   SketchEntityUpdateInput,
@@ -233,6 +232,11 @@ import {
   getSketchArcPoint,
   type SketchArcValidationIssue
 } from "./sketchArcMath";
+import {
+  canonicalizeSketchSplineDefinition,
+  createCanonicalSketchSplineEntity,
+  type SketchSplineCanonicalizationIssue
+} from "./sketchSplineMath";
 import {
   getProfileEntityIds,
   normalizeFeatureInputs
@@ -443,6 +447,12 @@ export {
   type SketchArcValidationIssueCode,
   type SketchArcValidationResult
 } from "./sketchArcMath";
+export {
+  canonicalizeSketchSplineDefinition,
+  createCanonicalSketchSplineEntity,
+  sampleSketchSpline,
+  type SketchSplineCanonicalizationIssue
+} from "./sketchSplineMath";
 export {
   validateProfileInputSource,
   validateSketchPathRefSource,
@@ -1354,11 +1364,28 @@ function documentHasV22SourceRecords(
     return true;
   }
 
+  const sketches = Array.isArray(document.sketches)
+    ? document.sketches
+    : [...document.sketches.values()];
+  if (
+    sketches.some((sketch) =>
+      [...sketch.entities.values()].some(
+        (entity) => isRecord(entity) && entity.kind === "spline"
+      )
+    )
+  ) {
+    return true;
+  }
+
   const features = Array.isArray(document.features)
     ? document.features
     : [...document.features.values()];
   return features.some((feature) => {
-    if (feature.kind !== "extrude" && feature.kind !== "revolve") {
+    if (
+      feature.kind !== "extrude" &&
+      feature.kind !== "revolve" &&
+      feature.kind !== "sweep"
+    ) {
       return false;
     }
     const profile = (feature as unknown as Record<string, unknown>).profile;
@@ -1383,6 +1410,7 @@ function cadOpRequiresV22(op: CadOp): boolean {
     op.op === "sketch.offset" ||
     op.op === "sketch.addSlot" ||
     op.op === "sketch.addRoundedRectangle" ||
+    op.op === "sketch.addSpline" ||
     op.op === "sketch.constraint.update"
   ) {
     return true;
@@ -1575,7 +1603,7 @@ function findSketchEntityKind(
   sketches: readonly (Sketch | SketchSnapshot)[],
   sketchId: unknown,
   entityId: string
-): SketchEntityKindV21 | undefined {
+): SketchEntityKind | undefined {
   if (typeof sketchId !== "string") {
     return undefined;
   }
@@ -1587,7 +1615,7 @@ function findSketchEntityKind(
     ? sketch.entities
     : [...sketch.entities.values()];
   return entities.find((entity) => entity.id === entityId)?.kind as
-    | SketchEntityKindV21
+    | SketchEntityKind
     | undefined;
 }
 
@@ -5989,7 +6017,7 @@ type MutableSketchConstraintSemanticDiff = {
 
 type SketchEntityImportRef = {
   readonly sketchId: SketchId;
-  readonly kind: SketchEntityKindV21;
+  readonly kind: SketchEntityKind;
   readonly entity: unknown;
 };
 
@@ -6616,6 +6644,29 @@ function applyOperation(
         construction
       };
 
+      addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
+      return;
+    }
+
+    case "sketch.addSpline": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const construction = validateSketchEntityConstruction(
+        op.construction === undefined ? false : op.construction,
+        opIndex,
+        "construction"
+      );
+      const geometry = canonicalizeSketchSplineDefinition(
+        op.definition,
+        SKETCH_GEOMETRY_POLICY
+      );
+      if (!geometry.ok) {
+        throwSketchSplineValidationIssue(geometry.issues[0]!, opIndex);
+      }
+      const entity: SketchEntity = {
+        id: normalizeSketchEntityId(op.id, opIndex) ?? createSketchEntityId(),
+        ...geometry.value,
+        construction
+      };
       addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
       return;
     }
@@ -8133,6 +8184,7 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.addRectangle":
     case "sketch.addCircle":
     case "sketch.addArc":
+    case "sketch.addSpline":
     case "sketch.updateEntity":
     case "sketch.deleteEntity":
     case "sketch.setEntityConstruction":
@@ -10644,7 +10696,7 @@ function validateSketchDimensionTargetV22(
   const sketch = getSketchOrThrow(state.sketches, sketchId, opIndex);
   const requireEntity = (
     entityId: SketchEntityId,
-    entityKind: SketchEntityKindV21,
+    entityKind: SketchEntityKind,
     field: string
   ): SketchEntity => {
     const entity = sketch.entities.get(entityId);
@@ -15289,7 +15341,9 @@ function resolveSweepCommandInputs(
   let requested: Pick<SweepFeature, "profile" | "path">;
   if (hasNormalized) {
     const profileResult = owns("profile")
-      ? validateSketchProfileRefSource(input.profile, "profile")
+      ? isSketchRegionsProfileRef(input.profile)
+        ? { ok: true as const, value: input.profile }
+        : validateSketchProfileRefSource(input.profile, "profile")
       : { ok: true as const, value: prior?.profile };
     const pathResult = owns("path")
       ? validateSketchPathRefSource(input.path, "path")
@@ -15326,12 +15380,15 @@ function resolveSweepCommandInputs(
         opIndex
       );
     }
-    if (profileResult.value.kind !== "entity") {
+    if (
+      profileResult.value.kind !== "entity" &&
+      profileResult.value.kind !== "regions"
+    ) {
       throwSweepValidationError(
         "SWEEP_PROFILE_UNSUPPORTED",
-        "V17 sweep profiles remain one rectangle or circle entity.",
+        "Sweep profiles must be one rectangle/circle entity or one regions profile.",
         "profile",
-        "entity profile",
+        "entity or regions profile",
         profileResult.value.kind,
         opIndex
       );
@@ -15369,7 +15426,11 @@ function resolveSweepCommandInputs(
     requested = validateLegacySweepInputs(
       state,
       profilePatch ? input.profileSketchId : prior?.profile.sketchId,
-      profilePatch ? input.profileEntityId : prior?.profile.entityId,
+      profilePatch
+        ? input.profileEntityId
+        : prior
+          ? getProfileEntityIds(prior.profile)[0]
+          : undefined,
       pathPatch ? input.pathSketchId : prior?.path.sketchId,
       pathPatch
         ? input.pathEntityIds
@@ -18174,7 +18235,7 @@ function findFeaturesBySketchEntity(
     if (
       feature.kind === "sweep" &&
       ((feature.profile.sketchId === sketchId &&
-        feature.profile.entityId === entityId) ||
+        getProfileEntityIds(feature.profile).includes(entityId)) ||
         (feature.path.sketchId === sketchId &&
           (feature.path.kind === "entity"
             ? feature.path.entityId === entityId
@@ -22665,6 +22726,20 @@ function validateSketchEntityConstruction(
   });
 }
 
+function throwSketchSplineValidationIssue(
+  issue: SketchSplineCanonicalizationIssue,
+  opIndex: number | undefined
+): never {
+  throwValidationError({
+    code: "INVALID_SKETCH_ENTITY",
+    message: issue.message,
+    opIndex,
+    path: operationPath(opIndex, issue.path),
+    expected: "canonical interpolation or control-point spline",
+    received: issue.code
+  });
+}
+
 function throwSketchArcValidationIssue(
   issue: SketchArcValidationIssue,
   opIndex: number | undefined,
@@ -22780,6 +22855,23 @@ function normalizeSketchEntity(
       }
       return result.value;
     }
+    case "spline": {
+      const result = createCanonicalSketchSplineEntity(
+        entity.id,
+        {
+          kind: entity.form,
+          points: entity.points,
+          degree: entity.form === "controlPoints" ? entity.degree : undefined,
+          closed: entity.closed
+        },
+        construction,
+        SKETCH_GEOMETRY_POLICY
+      );
+      if (!result.ok) {
+        throwSketchSplineValidationIssue(result.issues[0]!, opIndex);
+      }
+      return result.entity;
+    }
   }
 }
 
@@ -22855,6 +22947,15 @@ function featureRef(
   feature: Feature
 ): CadFeatureRef {
   if (feature.kind === "sweep") {
+    if (feature.profile.kind !== "entity") {
+      return {
+        id: feature.id,
+        kind: "sweep",
+        bodyId: feature.bodyId,
+        profile: feature.profile,
+        path: feature.path
+      };
+    }
     return {
       id: feature.id,
       kind: "sweep",
@@ -23324,6 +23425,8 @@ function getSketchEntityGeometryFields(
       return ["center", "radius"];
     case "arc":
       return ["center", "radius", "startAngleDegrees", "sweepAngleDegrees"];
+    case "spline":
+      return ["form", "points", "degree", "closed"];
   }
 }
 
@@ -23934,6 +24037,11 @@ function scaleSketchEntityLengthValues(
         ...entity,
         center: scaleVec2(entity.center, scaleFactor),
         radius: scaleLength(entity.radius, scaleFactor)
+      };
+    case "spline":
+      return {
+        ...entity,
+        points: entity.points.map((point) => scaleVec2(point, scaleFactor))
       };
   }
 }
@@ -24576,6 +24684,16 @@ function cloneSketchEntity(entity: SketchEntitySnapshot): SketchEntity {
         radius: entity.radius,
         ...construction
       };
+    case "spline":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        form: entity.form,
+        points: entity.points.map((point) => [point[0], point[1]] as const),
+        degree: entity.degree,
+        closed: entity.closed,
+        ...construction
+      };
   }
 
   throw new Error(`Unsupported sketch entity kind: ${entity.kind}`);
@@ -25201,6 +25319,7 @@ function createFeatureSummary(
             ...feature.path,
             segments: feature.path.segments.map((segment) => ({ ...segment }))
           };
+    const profileEntityId = getProfileEntityIds(feature.profile)[0];
     return {
       id: feature.id,
       kind: "sweep",
@@ -25210,7 +25329,7 @@ function createFeatureSummary(
       profile,
       path,
       profileSketchId: feature.profile.sketchId,
-      profileEntityId: feature.profile.entityId,
+      ...(profileEntityId ? { profileEntityId } : {}),
       pathSketchId: feature.path.sketchId,
       pathEntityIds:
         feature.path.kind === "entity"
@@ -25221,7 +25340,7 @@ function createFeatureSummary(
         profile,
         path,
         profileSketchId: feature.profile.sketchId,
-        profileEntityId: feature.profile.entityId,
+        ...(profileEntityId ? { profileEntityId } : {}),
         pathSketchId: feature.path.sketchId,
         pathEntityIds:
           feature.path.kind === "entity"
@@ -25573,6 +25692,7 @@ function createFeatureBodySnapshot(
             ...feature.path,
             segments: feature.path.segments.map((segment) => ({ ...segment }))
           };
+    const profileEntityId = getProfileEntityIds(feature.profile)[0];
     return {
       id: feature.bodyId,
       kind: "solid",
@@ -25586,7 +25706,7 @@ function createFeatureBodySnapshot(
         profile,
         path,
         profileSketchId: feature.profile.sketchId,
-        profileEntityId: feature.profile.entityId,
+        ...(profileEntityId ? { profileEntityId } : {}),
         pathSketchId: feature.path.sketchId,
         pathEntityIds:
           feature.path.kind === "entity"
@@ -29769,6 +29889,16 @@ function sketchEntitiesEqual(left: SketchEntity, right: SketchEntity): boolean {
     return vec2Equal(left.center, right.center) && left.radius === right.radius;
   }
 
+  if (left.kind === "spline" && right.kind === "spline") {
+    return (
+      left.form === right.form &&
+      left.degree === right.degree &&
+      left.closed === right.closed &&
+      left.points.length === right.points.length &&
+      left.points.every((point, index) => vec2Equal(point, right.points[index]!))
+    );
+  }
+
   return false;
 }
 
@@ -31154,7 +31284,8 @@ function validateCadDocumentSnapshot(
           seenSketchEntityIds,
           allowsSketchAttachments,
           sketchAttachments,
-          isV21Schema
+          isV21Schema,
+          isV22Schema
         );
         maxGeneratedSketchNumber = Math.max(
           maxGeneratedSketchNumber,
@@ -31534,7 +31665,8 @@ function validateSketchSnapshot(
     readonly path: string;
     readonly attachment: SketchAttachmentSnapshot;
   }[],
-  isV21Schema: boolean
+  isV21Schema: boolean,
+  isV22Schema = false
 ): {
   readonly maxGeneratedSketchNumber: number;
   readonly maxGeneratedSketchEntityNumber: number;
@@ -31641,7 +31773,8 @@ function validateSketchSnapshot(
           `${path}.entities[${index}]`,
           issues,
           seenSketchEntityIds,
-          isV21Schema
+          isV21Schema,
+          isV22Schema
         )
       );
     }
@@ -32133,11 +32266,11 @@ function validateSketchDimensionV22Source(
   const sketchId =
     typeof value.sketchId === "string" ? value.sketchId : undefined;
   const target = value.target;
-  const expectedKindById = new Map<SketchEntityId, SketchEntityKindV21>();
+  const expectedKindById = new Map<SketchEntityId, SketchEntityKind>();
   const directionLineIds = new Set<SketchEntityId>();
   const addPointTarget = (point: {
     readonly entityId: SketchEntityId;
-    readonly entityKind: SketchEntityKindV21;
+    readonly entityKind: SketchEntityKind;
   }): void => {
     expectedKindById.set(point.entityId, point.entityKind);
   };
@@ -32324,7 +32457,7 @@ function isValidV22DimensionEffectiveValue(
 function validateSketchDimensionTargetShape(
   value: unknown,
   path: string,
-  entityKind: SketchEntityKindV21,
+  entityKind: SketchEntityKind,
   issues: CadProjectImportIssue[],
   isV21Schema: boolean
 ): boolean {
@@ -32622,7 +32755,7 @@ function validateSketchEntityReferenceForImport(args: {
   readonly kindPath?: string;
   readonly label: string;
   readonly sketchId: unknown;
-  readonly expectedKind: SketchEntityKindV21;
+  readonly expectedKind: SketchEntityKind;
   readonly sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>;
   readonly issues: CadProjectImportIssue[];
 }): void {
@@ -32699,7 +32832,7 @@ function validateSketchCurveTargetEntityForImport(args: {
 }
 
 function isSketchPointTargetSupportedForImport(
-  entityKind: SketchEntityKindV21,
+  entityKind: SketchEntityKind,
   target: SketchPointTargetV21
 ): boolean {
   return (
@@ -32718,7 +32851,7 @@ function isSketchPointTargetSupportedForImport(
 }
 
 function validateSketchPointTargetEntityKindForImport(
-  entityKind: SketchEntityKindV21,
+  entityKind: SketchEntityKind,
   target: SketchPointTargetV21,
   path: string,
   issues: CadProjectImportIssue[],
@@ -32739,7 +32872,7 @@ function validateSketchPointTargetEntityKindForImport(
 }
 
 function isMidpointSketchPointTargetSupportedForImport(
-  entityKind: SketchEntityKindV21,
+  entityKind: SketchEntityKind,
   target: SketchPointTargetV21
 ): boolean {
   return (
@@ -35139,7 +35272,8 @@ function validateSketchEntitySnapshot(
   path: string,
   issues: CadProjectImportIssue[],
   seenSketchEntityIds: Set<string>,
-  isV21Schema: boolean
+  isV21Schema: boolean,
+  isV22Schema = false
 ): number {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -35166,9 +35300,22 @@ function validateSketchEntitySnapshot(
       point: ["id", "kind", "point", "construction"],
       line: ["id", "kind", "start", "end", "construction"],
       rectangle: ["id", "kind", "center", "width", "height", "construction"],
-      circle: ["id", "kind", "center", "radius", "construction"]
+      circle: ["id", "kind", "center", "radius", "construction"],
+      spline: [
+        "id",
+        "kind",
+        "form",
+        "points",
+        "degree",
+        "closed",
+        "construction"
+      ]
     };
-    if (typeof value.kind === "string" && value.kind !== "arc") {
+    if (
+      typeof value.kind === "string" &&
+      value.kind !== "arc" &&
+      (value.kind !== "spline" || isV22Schema)
+    ) {
       validateV21ExactObjectKeys(
         value,
         allowedKeysByKind[value.kind] ?? [],
@@ -35291,14 +35438,58 @@ function validateSketchEntitySnapshot(
         "V21 arc sweepAngleDegrees must be signed, finite, and within the shared angular tolerance bounds."
       );
     }
+  } else if (value.kind === "spline" && isV22Schema) {
+    if (value.form !== "interpolation" && value.form !== "controlPoints") {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_ENTITY",
+        `${path}.form`,
+        "Spline form must be interpolation or controlPoints."
+      );
+    }
+    if (!Array.isArray(value.points) || value.points.length < 2) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_ENTITY",
+        `${path}.points`,
+        "Spline points must be a non-empty array of finite 2D coordinates."
+      );
+    } else {
+      for (const [index, point] of value.points.entries()) {
+        validateVec2Field(point, `${path}.points[${index}]`, issues);
+      }
+    }
+    if (
+      typeof value.degree !== "number" ||
+      !Number.isInteger(value.degree) ||
+      value.degree < 1 ||
+      value.degree > 7
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_ENTITY",
+        `${path}.degree`,
+        "Spline degree must be an integer from 1 to 7."
+      );
+    }
+    if (typeof value.closed !== "boolean") {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_ENTITY",
+        `${path}.closed`,
+        "Spline closed must be a boolean."
+      );
+    }
   } else {
     addProjectIssue(
       issues,
       "INVALID_SKETCH_ENTITY",
       `${path}.kind`,
-      isV21Schema
-        ? "V21 sketch entity kind must be point, line, rectangle, circle, or arc."
-        : "Sketch entity kind must be point, line, rectangle, or circle."
+      isV22Schema
+        ? "V22 sketch entity kind must be point, line, rectangle, circle, arc, or spline."
+        : isV21Schema
+          ? "V21 sketch entity kind must be point, line, rectangle, circle, or arc."
+          : "Sketch entity kind must be point, line, rectangle, or circle."
     );
   }
 
@@ -36481,7 +36672,7 @@ function validateV21OrientedSegments(
   value: unknown,
   path: string,
   sketchId: SketchId | undefined,
-  supportedKinds: readonly SketchEntityKindV21[],
+  supportedKinds: readonly SketchEntityKind[],
   issues: CadProjectImportIssue[],
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowConstruction: boolean
@@ -36546,7 +36737,7 @@ function validateV21ReferencedEntity(
   entityIdValue: unknown,
   path: string,
   sketchId: SketchId | undefined,
-  supportedKinds: readonly SketchEntityKindV21[],
+  supportedKinds: readonly SketchEntityKind[],
   issues: CadProjectImportIssue[],
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowConstruction: boolean
@@ -38045,7 +38236,7 @@ function validateSweepSnapshotEntityRef(
   sketchId: unknown,
   entityId: unknown,
   path: string,
-  supportedKinds: readonly SketchEntityKindV21[],
+  supportedKinds: readonly SketchEntityKind[],
   label: string,
   issues: CadProjectImportIssue[],
   seenSketchIds: ReadonlySet<string>,
@@ -38891,6 +39082,15 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.addSpline") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isOptionalBoolean(value.construction) &&
+      isSketchSplineDefinition(value.definition)
+    );
+  }
+
   if (value.op === "sketch.updateEntity") {
     return (
       typeof value.sketchId === "string" &&
@@ -39169,7 +39369,8 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "feature.sweep") {
     const normalized =
-      validateSketchProfileRefSource(value.profile).ok &&
+      (isSketchRegionsProfileRef(value.profile) ||
+        validateSketchProfileRefSource(value.profile).ok) &&
       validateSketchPathRefSource(value.path).ok &&
       value.profileSketchId === undefined &&
       value.profileEntityId === undefined &&
@@ -40129,14 +40330,18 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   }
 
   if (value.kind === "sweep") {
-    return (
+    const legacy =
       typeof value.profileSketchId === "string" &&
       typeof value.profileEntityId === "string" &&
       typeof value.pathSketchId === "string" &&
       Array.isArray(value.pathEntityIds) &&
       value.pathEntityIds.length === 1 &&
-      value.pathEntityIds.every((id) => typeof id === "string")
-    );
+      value.pathEntityIds.every((id) => typeof id === "string");
+    const normalized =
+      (isSketchRegionsProfileRef(value.profile) ||
+        validateSketchProfileRefSource(value.profile).ok) &&
+      validateSketchPathRefSource(value.path).ok;
+    return legacy || normalized;
   }
 
   if (value.kind === "loft") {
@@ -40486,6 +40691,17 @@ function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
     );
   }
 
+  if (value.kind === "spline") {
+    return (
+      (value.form === "interpolation" || value.form === "controlPoints") &&
+      Array.isArray(value.points) &&
+      value.points.every((point) => isVec2(point)) &&
+      typeof value.degree === "number" &&
+      Number.isInteger(value.degree) &&
+      typeof value.closed === "boolean"
+    );
+  }
+
   return false;
 }
 
@@ -40500,7 +40716,7 @@ function isSketchEntityUpdateInput(
     return false;
   }
 
-  if (value.kind === "arc") {
+  if (value.kind === "arc" || value.kind === "spline") {
     return isSketchEntity(value);
   }
 
@@ -40527,6 +40743,29 @@ function isSketchEntityUpdateInput(
     isVec2(value.center) &&
     typeof value.radius === "number" &&
     isPositiveFiniteNumber(value.radius)
+  );
+}
+
+function isSketchSplineDefinition(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.points) || value.points.length === 0) {
+    return false;
+  }
+  if (!value.points.every((point) => isVec2(point))) {
+    return false;
+  }
+  if (value.closed !== undefined && typeof value.closed !== "boolean") {
+    return false;
+  }
+  if (value.kind === "interpolation") {
+    return value.degree === undefined;
+  }
+  return (
+    value.kind === "controlPoints" &&
+    (value.degree === undefined ||
+      (typeof value.degree === "number" &&
+        Number.isInteger(value.degree) &&
+        value.degree >= 1 &&
+        value.degree <= 7))
   );
 }
 
@@ -40605,13 +40844,14 @@ function isSketchPlane(value: unknown): value is SketchPlane {
   return value === "XY" || value === "XZ" || value === "YZ";
 }
 
-function isSketchEntityKind(value: unknown): value is SketchEntityKindV21 {
+function isSketchEntityKind(value: unknown): value is SketchEntityKind {
   return (
     value === "point" ||
     value === "line" ||
     value === "rectangle" ||
     value === "circle" ||
-    value === "arc"
+    value === "arc" ||
+    value === "spline"
   );
 }
 

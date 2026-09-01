@@ -6,7 +6,7 @@ import type {
   FeatureId,
   SketchEntityId,
   SketchId,
-  SketchProfileRef
+  SketchProfileRefV22
 } from "@web-cad/cad-protocol";
 
 import { getSupportedEntityProfileKind } from "./normalizedFeatureInputs";
@@ -15,7 +15,7 @@ export interface BooleanTargetSupportFeature {
   readonly id: FeatureId;
   readonly kind: string;
   readonly bodyId: BodyId;
-  readonly profile?: SketchProfileRef;
+  readonly profile?: SketchProfileRefV22;
   readonly operationMode?: string;
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;

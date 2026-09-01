@@ -224,8 +224,8 @@ export interface TorusDimensions {
 export type CadObjectKind = "box" | "cylinder" | "sphere" | "cone" | "torus";
 export type SketchEntityKindV20 = "point" | "line" | "rectangle" | "circle";
 
-export type SketchEntityKind = SketchEntityKindV20 | "arc";
-export type SketchEntityKindV21 = SketchEntityKind;
+export type SketchEntityKindV21 = SketchEntityKindV20 | "arc";
+export type SketchEntityKind = SketchEntityKindV21 | "spline";
 
 export type SketchSegmentOrientation = "forward" | "reverse";
 
@@ -566,6 +566,7 @@ export type CadOp =
   | SketchAddRectangleOp
   | SketchAddCircleOp
   | SketchAddArcOp
+  | SketchAddSplineOp
   | SketchUpdateEntityOp
   | SketchDeleteEntityOp
   | SketchSetEntityConstructionOp
@@ -910,6 +911,31 @@ export interface SketchAddArcOp {
   readonly definition: SketchArcDefinition;
 }
 
+export type SketchSplineDefinition =
+  | SketchSplineInterpolationDefinition
+  | SketchSplineControlPointsDefinition;
+
+export interface SketchSplineInterpolationDefinition {
+  readonly kind: "interpolation";
+  readonly points: readonly Vec2[];
+  readonly closed?: boolean;
+}
+
+export interface SketchSplineControlPointsDefinition {
+  readonly kind: "controlPoints";
+  readonly points: readonly Vec2[];
+  readonly degree?: number;
+  readonly closed?: boolean;
+}
+
+export interface SketchAddSplineOp {
+  readonly op: "sketch.addSpline";
+  readonly sketchId: SketchId;
+  readonly id?: SketchEntityId;
+  readonly construction?: boolean;
+  readonly definition: SketchSplineDefinition;
+}
+
 export interface SketchUpdateEntityOp {
   readonly op: "sketch.updateEntity";
   readonly sketchId: SketchId;
@@ -929,7 +955,8 @@ export type SketchEntityUpdateInput =
   | (Omit<SketchCircleEntitySnapshot, "construction"> & {
       readonly construction?: boolean;
     })
-  | SketchArcEntity;
+  | SketchArcEntity
+  | SketchSplineEntity;
 
 export interface SketchUpdateEntityOpV21 {
   readonly op: "sketch.updateEntity";
@@ -1737,7 +1764,7 @@ export interface FeatureSweepOpV21 extends Omit<
   FeatureSweepOp,
   "profileSketchId" | "profileEntityId" | "pathSketchId" | "pathEntityIds"
 > {
-  readonly profile: SketchEntityProfileRef;
+  readonly profile: SketchProfileRefV22;
   readonly path: SketchPathRef;
   readonly profileSketchId?: never;
   readonly profileEntityId?: never;
@@ -2247,7 +2274,9 @@ export interface CadCombineFeatureRef {
   readonly toolBodyId: BodyId;
 }
 
-export type CadSweepFeatureRef = SweepFeatureSnapshot;
+export type CadSweepFeatureRef =
+  | SweepFeatureSnapshot
+  | SweepFeatureV21;
 export type CadLoftFeatureRef = LoftFeatureSnapshot;
 
 export interface CadShellFeatureRef {
@@ -2402,7 +2431,7 @@ export interface SketchEntitySemanticDiff {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly action: "added" | "updated" | "deleted";
-  readonly entityKind: SketchEntityKindV21;
+  readonly entityKind: SketchEntityKind;
   readonly changedFields: readonly string[];
   readonly constructionBefore?: boolean;
   readonly constructionAfter?: boolean;
@@ -3443,7 +3472,8 @@ export type SketchEntitySnapshot =
   | SketchLineEntitySnapshot
   | SketchRectangleEntitySnapshot
   | SketchCircleEntitySnapshot
-  | SketchArcEntity;
+  | SketchArcEntity
+  | SketchSplineEntity;
 
 export interface SketchPointEntitySnapshot {
   readonly id: SketchEntityId;
@@ -3484,6 +3514,18 @@ export interface SketchArcEntity {
   readonly radius: number;
   readonly startAngleDegrees: number;
   readonly sweepAngleDegrees: number;
+  readonly construction: boolean;
+}
+
+export type SketchSplineForm = "interpolation" | "controlPoints";
+
+export interface SketchSplineEntity {
+  readonly id: SketchEntityId;
+  readonly kind: "spline";
+  readonly form: SketchSplineForm;
+  readonly points: readonly Vec2[];
+  readonly degree: number;
+  readonly closed: boolean;
   readonly construction: boolean;
 }
 
@@ -4042,7 +4084,7 @@ export interface SweepFeatureV21 {
   readonly id: FeatureId;
   readonly kind: "sweep";
   readonly name?: string;
-  readonly profile: SketchEntityProfileRef;
+  readonly profile: SketchProfileRefV22;
   readonly path: SketchPathRef;
   readonly bodyId: BodyId;
 }
@@ -4650,10 +4692,10 @@ export interface CadShellFeatureSummary {
 
 export interface CadSweepFeatureSource {
   readonly type: "sweepFeature";
-  readonly profile: SketchEntityProfileRef;
+  readonly profile: SketchProfileRefV22;
   readonly path: SketchPathRef;
   readonly profileSketchId: SketchId;
-  readonly profileEntityId: SketchEntityId;
+  readonly profileEntityId?: SketchEntityId;
   readonly pathSketchId: SketchId;
   readonly pathEntityIds: readonly SketchEntityId[];
 }
@@ -4661,7 +4703,7 @@ export interface CadSweepFeatureSource {
 export interface CadSweepFeatureSummary extends SweepFeatureV21 {
   readonly partId: PartId;
   readonly profileSketchId: SketchId;
-  readonly profileEntityId: SketchEntityId;
+  readonly profileEntityId?: SketchEntityId;
   readonly pathSketchId: SketchId;
   readonly pathEntityIds: readonly SketchEntityId[];
   readonly source: CadSweepFeatureSource;
@@ -5790,10 +5832,10 @@ export interface CadShellBodySource {
 export interface CadSweepBodySource {
   readonly type: "sweepFeature";
   readonly featureId: FeatureId;
-  readonly profile: SketchEntityProfileRef;
+  readonly profile: SketchProfileRefV22;
   readonly path: SketchPathRef;
   readonly profileSketchId: SketchId;
-  readonly profileEntityId: SketchEntityId;
+  readonly profileEntityId?: SketchEntityId;
   readonly pathSketchId: SketchId;
   readonly pathEntityIds: readonly SketchEntityId[];
 }

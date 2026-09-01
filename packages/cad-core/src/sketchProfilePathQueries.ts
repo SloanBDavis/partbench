@@ -127,6 +127,20 @@ function distance(left: Vec2, right: Vec2): number {
   return Math.hypot(left[0] - right[0], left[1] - right[1]);
 }
 
+function resolvedSketchSegmentLength(segment: ResolvedSketchSegment): number {
+  if (segment.kind === "line") {
+    return distance(segment.start, segment.end);
+  }
+  if (segment.kind === "spline") {
+    let length = 0;
+    for (let index = 1; index < segment.samples.length; index += 1) {
+      length += distance(segment.samples[index - 1]!, segment.samples[index]!);
+    }
+    return length;
+  }
+  return segment.radius * Math.abs(segment.sweepAngleRadians);
+}
+
 function profileDiagnostic(
   code: SketchProfileDiagnostic["code"],
   message: string,
@@ -230,11 +244,15 @@ function resolveWire(
       );
       return;
     }
-    if (entity.kind !== "line" && entity.kind !== "arc") {
+    if (
+      entity.kind !== "line" &&
+      entity.kind !== "arc" &&
+      entity.kind !== "spline"
+    ) {
       diagnostics.push(
         profileDiagnostic(
           "SKETCH_PROFILE_ENTITY_UNSUPPORTED",
-          `Wire profiles support only line and arc entities, not ${entity.kind}.`,
+          `Wire profiles support only line, arc, and spline entities, not ${entity.kind}.`,
           { sketchId: sketch.id, entityId: entity.id, segmentIndex }
         )
       );
@@ -599,12 +617,7 @@ function resolvePath(sketch: Sketch, path: SketchPathRef): ResolvedPath {
         : "tangent",
     selfIntersectionStatus,
     length: segments.reduce((total, segment) => {
-      return (
-        total +
-        (segment.kind === "line"
-          ? distance(segment.start, segment.end)
-          : segment.radius * Math.abs(segment.sweepAngleRadians))
-      );
+      return total + resolvedSketchSegmentLength(segment);
     }, 0),
     bounds: mergeSketchSegmentBounds(segments)
   };
@@ -1132,6 +1145,23 @@ function pointInsideWire(
         start[0] * end[1] - start[1] * end[0],
         start[0] * end[0] + start[1] * end[1]
       );
+      continue;
+    }
+    if (segment.kind === "spline") {
+      for (let index = 1; index < segment.samples.length; index += 1) {
+        const start = [
+          segment.samples[index - 1]![0] - point[0],
+          segment.samples[index - 1]![1] - point[1]
+        ] as Vec2;
+        const end = [
+          segment.samples[index]![0] - point[0],
+          segment.samples[index]![1] - point[1]
+        ] as Vec2;
+        winding += Math.atan2(
+          start[0] * end[1] - start[1] * end[0],
+          start[0] * end[0] + start[1] * end[1]
+        );
+      }
       continue;
     }
     const centerOffset = [

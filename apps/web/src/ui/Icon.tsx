@@ -36,6 +36,7 @@ export type IconName =
   | "rectangle"
   | "circle"
   | "arc"
+  | "spline"
   | "constraint"
   | "dimension"
   | "measure"
@@ -141,6 +142,7 @@ const ICONS: Readonly<Record<IconName, IconGeometry>> = {
   rectangle: ["M4 6h16v12H4V6Z"],
   circle: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"],
   arc: ["M4 17A13 13 0 0 1 19 5", "M3 16h3v3H3v-3ZM18 4h3v3h-3V4Z"],
+  spline: ["M4 16c3-10 5 8 8 0s5 8 8 0"],
   constraint: ["M4 8h6v8H4V8ZM14 8h6v8h-6V8Z", "M10 12h4"],
   dimension: ["M5 7v10M19 7v10M5 12h14", "m8 9-3 3 3 3", "m16 9 3 3-3 3"],
   measure: ["m4 17 13-13 3 3-13 13-3-3Z", "m9 12 3 3M12 9l3 3M15 6l3 3"],

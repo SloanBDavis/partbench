@@ -1490,6 +1490,9 @@ function pointCoordinate(
       entity.center[1] + entity.radius * Math.sin(radians)
     ];
   }
+  if (entity.kind === "spline") {
+    return entity.points[0] ?? [0, 0];
+  }
   return entity.center;
 }
 

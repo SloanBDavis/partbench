@@ -34,7 +34,10 @@ import {
   type GeneratedReferencesFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
-import { getProfileEntityReferences } from "./normalizedFeatureInputs";
+import {
+  getProfileEntityIds,
+  getProfileEntityReferences
+} from "./normalizedFeatureInputs";
 import {
   findSketchProfileHealthEntry,
   type SketchProfileHealthEntry
@@ -485,8 +488,18 @@ function addFeatureSourceEdges(
 
   if (feature.kind === "sweep") {
     for (const [sketchId, entityIds, label] of [
-      [feature.profileSketchId, [feature.profileEntityId], "profile source"],
-      [feature.pathSketchId, feature.pathEntityIds, "path source"]
+      [
+        feature.profile.sketchId,
+        getProfileEntityIds(feature.profile),
+        "profile source"
+      ],
+      [
+        feature.path.sketchId,
+        feature.path.kind === "entity"
+          ? [feature.path.entityId]
+          : feature.path.segments.map((segment) => segment.entityId),
+        "path source"
+      ]
     ] as const) {
       addEdge(edges, {
         kind: "sources",

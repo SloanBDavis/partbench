@@ -142,6 +142,16 @@ function discoveryEntityProjection(
         sweepAngleDegrees: entity.sweepAngleDegrees,
         construction: entity.construction
       };
+    case "spline":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        form: entity.form,
+        points: entity.points,
+        degree: entity.degree,
+        closed: entity.closed,
+        construction: entity.construction
+      };
     default:
       return undefined;
   }
