@@ -716,6 +716,7 @@ function formatMirrorPlaneSource(
   if (ref.kind === "standardPlane") return ref.plane;
   if (ref.kind === "namedReference") return ref.name;
   if (ref.kind === "generatedFace") return ref.stableId;
+  if (ref.kind === "datumPlane") return ref.datumId;
   return ref.anchorId;
 }
 

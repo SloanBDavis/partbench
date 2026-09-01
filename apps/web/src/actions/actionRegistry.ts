@@ -448,6 +448,14 @@ export const UI_ACTION_METADATA = [
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCombine)
   ),
   action(
+    "solid.datum-plane",
+    "Datum plane",
+    "Sketch",
+    ["solid", "sketch"],
+    ["offset plane", "construction plane"],
+    true
+  ),
+  action(
     "solid.edit",
     "Edit",
     "Selection",

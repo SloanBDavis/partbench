@@ -69,6 +69,7 @@ import type {
   CadOpsVersion,
   CadParameterSnapshot,
   CadPartSnapshot,
+  DatumPlaneSnapshot,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectDependencyGraphQueryResponse,
@@ -338,6 +339,9 @@ export interface CadOpsAgentSuccessResponse {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
+  readonly createdDatumIds?: readonly string[];
+  readonly modifiedDatumIds?: readonly string[];
+  readonly deletedDatumIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
@@ -387,6 +391,9 @@ export interface CadOpsAgentErrorResponse {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
+  readonly createdDatumIds?: readonly string[];
+  readonly modifiedDatumIds?: readonly string[];
+  readonly deletedDatumIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
@@ -437,6 +444,7 @@ export interface CadOpsAgentWorkflowReview {
 export interface CadOpsAgentEntityChangeSummary {
   readonly objects: CadOpsAgentEntityChangeCount;
   readonly sketches: CadOpsAgentEntityChangeCount;
+  readonly datums?: CadOpsAgentEntityChangeCount;
   readonly sketchEntities: CadOpsAgentEntityChangeCount;
   readonly parameters: CadOpsAgentEntityChangeCount;
   readonly sketchDimensions: CadOpsAgentEntityChangeCount;
@@ -467,6 +475,7 @@ export interface CadOpsAgentOperationReview {
   readonly objectId?: string;
   readonly parameterId?: string;
   readonly sketchId?: string;
+  readonly datumId?: string;
   readonly sketchEntityId?: string;
   readonly sketchDimensionId?: string;
   readonly sketchConstraintId?: string;
@@ -654,6 +663,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+  readonly datums?: readonly DatumPlaneSnapshot[];
 }
 
 export interface CadOpsAgentProjectHealthQueryResponse {
@@ -1709,6 +1719,9 @@ function toAgentDiffIds(response: CadBatchResponse): {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
+  readonly createdDatumIds?: readonly string[];
+  readonly modifiedDatumIds?: readonly string[];
+  readonly deletedDatumIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
@@ -1734,6 +1747,15 @@ function toAgentDiffIds(response: CadBatchResponse): {
       : {}),
     ...(response.deletedSketchIds
       ? { deletedSketchIds: response.deletedSketchIds }
+      : {}),
+    ...(response.createdDatumIds
+      ? { createdDatumIds: response.createdDatumIds }
+      : {}),
+    ...(response.modifiedDatumIds
+      ? { modifiedDatumIds: response.modifiedDatumIds }
+      : {}),
+    ...(response.deletedDatumIds
+      ? { deletedDatumIds: response.deletedDatumIds }
       : {}),
     ...(response.createdSketchEntityIds
       ? { createdSketchEntityIds: response.createdSketchEntityIds }
@@ -2000,6 +2022,17 @@ function createEntityChangeSummary(
       response?.modifiedSketchIds,
       response?.deletedSketchIds
     ),
+    ...(response?.createdDatumIds ||
+    response?.modifiedDatumIds ||
+    response?.deletedDatumIds
+      ? {
+          datums: createChangeCount(
+            response.createdDatumIds,
+            response.modifiedDatumIds,
+            response.deletedDatumIds
+          )
+        }
+      : {}),
     sketchEntities: createChangeCount(
       response?.createdSketchEntityIds,
       response?.modifiedSketchEntityIds,
@@ -2331,9 +2364,21 @@ function createOperationReview(
           index,
           op,
           "create",
-          `Create sketch ${op.id ?? op.name} on ${op.plane}`
+          `Create sketch ${op.id ?? op.name} on ${op.datumId ? `datum ${op.datumId}` : op.plane}`
         ),
-        ...(op.id ? { sketchId: op.id } : {})
+        ...(op.id ? { sketchId: op.id } : {}),
+        ...(op.datumId ? { datumId: op.datumId } : {})
+      };
+
+    case "datum.plane.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create datum plane ${op.id ?? op.name}`
+        ),
+        ...(op.id ? { datumId: op.id } : {})
       };
 
     case "sketch.createOnFace": {
@@ -3370,7 +3415,8 @@ function toAgentQueryResponse(
       parts: response.parts,
       features: response.features,
       bodies: response.bodies,
-      objectSources: response.objectSources
+      objectSources: response.objectSources,
+      ...(response.datums ? { datums: response.datums } : {})
     };
   }
 
@@ -5745,10 +5791,21 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.create") {
+    const hasPlane =
+      value.plane === "XY" || value.plane === "XZ" || value.plane === "YZ";
+    const hasDatum = typeof value.datumId === "string";
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      (value.plane === "XY" || value.plane === "XZ" || value.plane === "YZ")
+      hasPlane !== hasDatum
+    );
+  }
+
+  if (value.op === "datum.plane.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      isDatumPlaneSourceRefShape(value.plane)
     );
   }
 
@@ -6894,10 +6951,17 @@ function isMirrorPlaneRefShape(value: unknown): boolean {
     );
   }
   if (value.kind === "namedReference") return typeof value.name === "string";
+  if (value.kind === "datumPlane") return typeof value.datumId === "string";
   return (
     value.kind === "topologyAnchor" &&
     typeof value.bodyId === "string" &&
     typeof value.anchorId === "string"
+  );
+}
+
+function isDatumPlaneSourceRefShape(value: unknown): boolean {
+  return (
+    isMirrorPlaneRefShape(value) && isRecord(value) && value.kind !== "datumPlane"
   );
 }
 

@@ -359,7 +359,8 @@ export function createSolidFaceChoices(
 }
 
 export function createSolidMirrorPlaneChoices(
-  faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[]
+  faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[],
+  datums: readonly { readonly id: string; readonly name: string }[] = []
 ): readonly SolidChoice<MirrorPlaneRef>[] {
   return [
     ...(["XY", "XZ", "YZ"] as const).map((plane) => ({
@@ -367,6 +368,12 @@ export function createSolidMirrorPlaneChoices(
       value: { kind: "standardPlane" as const, plane },
       label: `${plane} plane`,
       kind: "standard plane"
+    })),
+    ...datums.map((datum) => ({
+      key: `feature.mirrorPlane:datum:${datum.id}`,
+      value: { kind: "datumPlane" as const, datumId: datum.id },
+      label: datum.name,
+      kind: "datum"
     })),
     ...faceChoices.map((choice) => ({
       ...choice,

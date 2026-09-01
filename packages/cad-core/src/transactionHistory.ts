@@ -79,6 +79,7 @@ function createOperationSummaries(
 ): readonly CadOperationSummary[] {
   let createdIndex = 0;
   let createdSketchIndex = 0;
+  let createdDatumIndex = 0;
   let createdSketchEntityIndex = 0;
   let createdFeatureIndex = 0;
   let deletedFeatureIndex = 0;
@@ -107,6 +108,10 @@ function createOperationSummaries(
     const createdSketchRef =
       op.op === "sketch.create" || op.op === "sketch.createOnFace"
         ? transaction.diff.sketches?.created?.[createdSketchIndex++]
+        : undefined;
+    const createdDatumRef =
+      op.op === "datum.plane.create"
+        ? transaction.diff.datums?.created?.[createdDatumIndex++]
         : undefined;
     const createdSketchEntityRef = isSketchAddEntityOp(op)
       ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
@@ -376,12 +381,25 @@ function createOperationSummaries(
 
       case "sketch.create": {
         const sketchId = op.id ?? createdSketchRef?.id;
+        const planeLabel = op.datumId
+          ? `datum ${op.datumId}`
+          : (op.plane ?? createdSketchRef?.plane ?? "plane");
 
         return createSketchOperationSummary({
           op: op.op,
-          label: `Create sketch ${sketchId ?? "with generated ID"}`,
-          sketchId
+          label: `Create sketch ${sketchId ?? "with generated ID"} on ${planeLabel}`,
+          sketchId,
+          ...(op.datumId ? { datumId: op.datumId } : {})
         });
+      }
+
+      case "datum.plane.create": {
+        const datumId = op.id ?? createdDatumRef?.id;
+        return {
+          op: op.op,
+          label: `Create datum plane ${datumId ?? "with generated ID"}`,
+          datumId
+        };
       }
 
       case "sketch.createOnFace": {
@@ -1278,6 +1296,7 @@ function createSketchOperationSummary(
     op: summary.op,
     label: summary.label,
     ...(summary.sketchId ? { sketchId: summary.sketchId } : {}),
+    ...(summary.datumId ? { datumId: summary.datumId } : {}),
     ...(summary.sketchEntityId
       ? { sketchEntityId: summary.sketchEntityId }
       : {}),
@@ -1424,6 +1443,21 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
     ...(diff.sketches
       ? {
           sketches: cloneSketchSemanticDiff(diff.sketches)
+        }
+      : {}),
+    ...(diff.datums
+      ? {
+          datums: {
+            ...(diff.datums.created
+              ? { created: [...diff.datums.created] }
+              : {}),
+            ...(diff.datums.modified
+              ? { modified: [...diff.datums.modified] }
+              : {}),
+            ...(diff.datums.deleted
+              ? { deleted: [...diff.datums.deleted] }
+              : {})
+          }
         }
       : {}),
     ...(diff.features

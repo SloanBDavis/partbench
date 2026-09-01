@@ -10,6 +10,8 @@ import {
   buildCreateSphereOp,
   buildCreateSketchDimensionOp,
   buildCreateSketchOp,
+  buildDatumAndSketchOnPlaneOps,
+  buildDatumPlaneCreateOp,
   buildCreateTorusOp,
   buildAddSketchCircleOp,
   buildAddSketchArcOp,
@@ -588,6 +590,52 @@ describe("cad command builders", () => {
       name: "Profile",
       plane: "XY"
     });
+    expect(
+      buildCreateSketchOp({
+        id: "sketch_ear_a",
+        name: "Ear A",
+        plane: "XZ",
+        datumId: "datum_ear_a"
+      })
+    ).toEqual({
+      op: "sketch.create",
+      id: "sketch_ear_a",
+      name: "Ear A",
+      datumId: "datum_ear_a"
+    });
+    expect(
+      buildDatumPlaneCreateOp({
+        id: "datum_ear_a",
+        name: "Ear A",
+        plane: { kind: "standardPlane", plane: "XZ", offset: 15 }
+      })
+    ).toEqual({
+      op: "datum.plane.create",
+      id: "datum_ear_a",
+      name: "Ear A",
+      plane: { kind: "standardPlane", plane: "XZ", offset: 15 }
+    });
+    expect(
+      buildDatumAndSketchOnPlaneOps({
+        id: "sketch_ear_a",
+        name: "Ear A",
+        plane: "XZ",
+        offset: 15
+      })
+    ).toEqual([
+      {
+        op: "datum.plane.create",
+        id: "datum_sketch_ear_a",
+        name: "Ear A plane",
+        plane: { kind: "standardPlane", plane: "XZ", offset: 15 }
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_ear_a",
+        name: "Ear A",
+        datumId: "datum_sketch_ear_a"
+      }
+    ]);
     expect(buildRenameSketchOp("sketch_1", " Updated profile ")).toEqual({
       op: "sketch.rename",
       id: "sketch_1",

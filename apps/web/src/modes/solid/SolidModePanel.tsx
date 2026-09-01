@@ -23,6 +23,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
 import {
@@ -566,7 +567,18 @@ function SolidDraftFields({
       );
     case "sketch":
       return (
-        <SketchFields draft={draft as SketchCreateForm} onChange={onChange} />
+        <SketchFields
+          draft={draft as SketchCreateForm}
+          datumChoices={request.choices?.datums ?? []}
+          onChange={onChange}
+        />
+      );
+    case "datumPlane":
+      return (
+        <DatumPlaneFields
+          draft={draft as DatumPlaneCreateForm}
+          onChange={onChange}
+        />
       );
     case "transform":
       return (
@@ -860,11 +872,14 @@ function PrimitiveFields({
 
 function SketchFields({
   draft,
+  datumChoices,
   onChange
 }: {
   readonly draft: SketchCreateForm;
+  readonly datumChoices: readonly SolidChoice<string>[];
   readonly onChange: (draft: SketchCreateForm) => void;
 }) {
+  const planeValue = draft.datumId ? `datum:${draft.datumId}` : draft.plane;
   return (
     <>
       <TextField
@@ -876,14 +891,97 @@ function SketchFields({
       <SelectField
         label="Plane"
         name="sketch-plane"
-        value={draft.plane}
+        value={planeValue}
+        options={[
+          { value: "XY", label: "XY plane" },
+          { value: "XZ", label: "XZ plane" },
+          { value: "YZ", label: "YZ plane" },
+          ...datumChoices.map((choice) => ({
+            value: `datum:${choice.value}`,
+            label: choice.label
+          }))
+        ]}
+        onChange={(value) => {
+          if (value.startsWith("datum:")) {
+            onChange({
+              ...draft,
+              datumId: value.slice("datum:".length),
+              offset: undefined
+            });
+            return;
+          }
+          onChange({
+            ...draft,
+            plane: value as SketchCreateForm["plane"],
+            datumId: undefined
+          });
+        }}
+      />
+      {draft.datumId ? null : (
+        <NumberField
+          label="Offset"
+          name="sketch-plane-offset"
+          value={draft.offset ?? 0}
+          unit="mm"
+          onChange={(offset) => onChange({ ...draft, offset })}
+        />
+      )}
+    </>
+  );
+}
+
+function DatumPlaneFields({
+  draft,
+  onChange
+}: {
+  readonly draft: DatumPlaneCreateForm;
+  readonly onChange: (draft: DatumPlaneCreateForm) => void;
+}) {
+  const source =
+    draft.plane.kind === "standardPlane" ? draft.plane.plane : "XY";
+  const offset = draft.plane.offset ?? 0;
+  return (
+    <>
+      <TextField
+        label="Name"
+        name="datum-name"
+        value={draft.name}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Source plane"
+        name="datum-source-plane"
+        value={source}
         options={[
           { value: "XY", label: "XY plane" },
           { value: "XZ", label: "XZ plane" },
           { value: "YZ", label: "YZ plane" }
         ]}
         onChange={(plane) =>
-          onChange({ ...draft, plane: plane as SketchCreateForm["plane"] })
+          onChange({
+            ...draft,
+            plane: {
+              kind: "standardPlane",
+              plane: plane as "XY" | "XZ" | "YZ",
+              offset
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Offset"
+        name="datum-offset"
+        value={offset}
+        unit="mm"
+        onChange={(nextOffset) =>
+          onChange({
+            ...draft,
+            plane: {
+              kind: "standardPlane",
+              plane: source,
+              offset: nextOffset
+            }
+          })
         }
       />
     </>

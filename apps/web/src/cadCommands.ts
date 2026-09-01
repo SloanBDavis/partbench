@@ -24,6 +24,8 @@ import type {
   FeatureMirrorOp,
   FeatureCombineOp,
   FeatureCombineMode,
+  DatumPlaneCreateOp,
+  DatumPlaneSourceRef,
   MirrorPlaneRef,
   PatternDirectionRef,
   PatternRotationAxisRef,
@@ -148,6 +150,14 @@ export interface SketchCreateForm {
   readonly id: string;
   readonly name: string;
   readonly plane: SketchPlane;
+  readonly datumId?: string;
+  readonly offset?: number;
+}
+
+export interface DatumPlaneCreateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly plane: DatumPlaneSourceRef;
 }
 
 export interface SketchCreateOnFaceForm {
@@ -566,12 +576,61 @@ export function buildDeleteObjectOp(id: ObjectId): SceneDeleteObjectOp {
 }
 
 export function buildCreateSketchOp(form: SketchCreateForm): SketchCreateOp {
+  const datumId = normalizeOptionalId(form.datumId ?? "");
+  if (datumId) {
+    return {
+      op: "sketch.create",
+      id: normalizeOptionalId(form.id),
+      name: form.name.trim(),
+      datumId
+    };
+  }
+
   return {
     op: "sketch.create",
     id: normalizeOptionalId(form.id),
     name: form.name.trim(),
     plane: form.plane
   };
+}
+
+export function buildDatumPlaneCreateOp(
+  form: DatumPlaneCreateForm
+): DatumPlaneCreateOp {
+  return {
+    op: "datum.plane.create",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    plane: form.plane
+  };
+}
+
+export function buildDatumAndSketchOnPlaneOps(form: SketchCreateForm): readonly CadOp[] {
+  const offset = form.offset;
+  const datumId = normalizeOptionalId(form.datumId ?? "");
+  if (datumId) {
+    return [buildCreateSketchOp(form)];
+  }
+  if (offset !== undefined && Number.isFinite(offset) && offset !== 0) {
+    const createdDatumId =
+      normalizeOptionalId(form.id) !== undefined
+        ? `datum_${normalizeOptionalId(form.id)}`
+        : form.name.trim()
+          ? `datum_${form.name.trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, "_")}`
+          : "datum_1";
+    return [
+      buildDatumPlaneCreateOp({
+        id: createdDatumId,
+        name: `${form.name.trim() || "Sketch"} plane`,
+        plane: { kind: "standardPlane", plane: form.plane, offset }
+      }),
+      buildCreateSketchOp({
+        ...form,
+        datumId: createdDatumId
+      })
+    ];
+  }
+  return [buildCreateSketchOp(form)];
 }
 
 export function buildCreateSketchOnFaceOp(

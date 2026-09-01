@@ -179,6 +179,7 @@ export function getActionIcon(id: UiActionId, group?: string): IconName {
     "circular-pattern": "circular-pattern",
     mirror: "mirror",
     combine: "extrude",
+    "datum-plane": "extrude",
     edit: "edit",
     rename: "edit",
     delete: "delete",

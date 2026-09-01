@@ -28,6 +28,7 @@ export type FeatureEditorKind =
   | "circular-pattern"
   | "mirror"
   | "combine"
+  | "datum-plane"
   | "named-reference"
   | "named-reference-repair";
 

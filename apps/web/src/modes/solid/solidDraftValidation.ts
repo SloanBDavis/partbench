@@ -16,6 +16,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
 import type { FeatureEditorValidation } from "../../editors/featureEditorState";
@@ -50,10 +51,25 @@ export function validateSolidDraft(
       ? ready()
       : blocked("Major radius must be greater than the positive minor radius.");
   }
-  if (kind === "sketch")
-    return (draft as SketchCreateForm).name.trim()
+  if (kind === "sketch") {
+    const form = draft as SketchCreateForm;
+    if (!form.name.trim()) {
+      return blocked("Enter a sketch name.");
+    }
+    if (
+      form.offset !== undefined &&
+      (!Number.isFinite(form.offset) || form.offset === Number.NaN)
+    ) {
+      return blocked("Offset must be finite.");
+    }
+    return ready();
+  }
+  if (kind === "datumPlane") {
+    const form = draft as DatumPlaneCreateForm;
+    return form.name.trim()
       ? ready()
-      : blocked("Enter a sketch name.");
+      : blocked("Enter a datum name.");
+  }
   if (kind === "transform") {
     const form = draft as TransformCommandForm;
     return [

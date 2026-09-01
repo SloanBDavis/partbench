@@ -29,11 +29,14 @@ import {
 import {
   createAttachedSketchGeometryFrame,
   createDefaultSketchDisplayFrame,
+  createDatumSketchDisplayFrame,
   createGeneratedFaceReferenceKey,
   createTopologyAnchorFaceDisplayFrame,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
 import { mapResolvedSweepPathSegmentToWorld } from "./sweepGeometryRecipe";
+
+type DatumMap = CadDocument["datums"] | undefined;
 export {
   getReadyRuntimeExactSources,
   resolveCurrentExactBodies
@@ -79,6 +82,7 @@ export function createDerivedGeometrySourcesFromDocument(
     id: sketch.id,
     name: sketch.name,
     plane: sketch.plane,
+    ...(sketch.datumId ? { datumId: sketch.datumId } : {}),
     attachment: sketch.attachment,
     entities: [...sketch.entities.values()]
   }));
@@ -129,12 +133,14 @@ export function createAuthoredFeatureDerivedGeometrySources(
     ? new Set<string>()
     : createConsumedBodyIds(features);
 
+  const datums = referenceDocument?.datums;
   const sources = [
     ...createExtrudeDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds
+      consumedBodyIds,
+      datums
     ),
     ...createRevolveDerivedGeometrySources(
       features,
@@ -154,19 +160,22 @@ export function createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds
+      consumedBodyIds,
+      datums
     ),
     ...createCombineDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds
+      consumedBodyIds,
+      datums
     ),
     ...createHoleDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds
+      consumedBodyIds,
+      datums
     ),
     ...createEdgeFinishDerivedGeometrySources(
       features,
@@ -194,7 +203,8 @@ export function createLoftDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  datums?: DatumMap
 ): readonly DerivedLoftGeometrySource[] {
   return features
     .filter(
@@ -221,7 +231,8 @@ export function createLoftDerivedGeometrySources(
         const placement = createAttachedSketchFeaturePlacement(
           sketch,
           generatedFacesByKey,
-          "loft"
+          "loft",
+          datums
         );
         if (placement.placementError)
           placementErrors.push(placement.placementError);
@@ -294,12 +305,14 @@ export function createSweepDerivedGeometrySources(
       const profilePlacement = createAttachedSketchFeaturePlacement(
         profileSketch,
         generatedFacesByKey,
-        "sweep"
+        "sweep",
+        referenceDocument?.datums
       );
       const pathPlacement = createAttachedSketchFeaturePlacement(
         pathSketch,
         generatedFacesByKey,
-        "sweep"
+        "sweep",
+        referenceDocument?.datums
       );
       const pathFrame =
         pathPlacement.placementFrame ??
@@ -347,7 +360,8 @@ export function createExtrudeDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  datums?: DatumMap
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -375,7 +389,9 @@ export function createExtrudeDerivedGeometrySources(
           feature,
           featuresByBodyId,
           sketches,
-          generatedFacesByKey
+          generatedFacesByKey,
+          new Set(),
+          datums
         )
       );
       continue;
@@ -384,7 +400,8 @@ export function createExtrudeDerivedGeometrySources(
     const source = createExtrudeSourceForFeature(
       feature,
       sketches,
-      generatedFacesByKey
+      generatedFacesByKey,
+      datums
     );
 
     sources.push(
@@ -422,7 +439,8 @@ function createSolidBooleanSourceForFeature(
   featuresByBodyId: ReadonlyMap<string, BooleanCapableFeature>,
   sketches: readonly SketchSnapshot[],
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  visitedFeatureIds: ReadonlySet<string> = new Set()
+  visitedFeatureIds: ReadonlySet<string> = new Set(),
+  datums?: DatumMap
 ): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
   if (visitedFeatureIds.has(feature.id)) {
     return {
@@ -447,7 +465,8 @@ function createSolidBooleanSourceForFeature(
           featuresByBodyId,
           sketches,
           generatedFacesByKey,
-          nextVisitedFeatureIds
+          nextVisitedFeatureIds,
+          datums
         )
       : undefined;
     const tool = toolFeature
@@ -456,7 +475,8 @@ function createSolidBooleanSourceForFeature(
           featuresByBodyId,
           sketches,
           generatedFacesByKey,
-          nextVisitedFeatureIds
+          nextVisitedFeatureIds,
+          datums
         )
       : undefined;
     const operation = feature.mode === "union" ? "add" : "cut";
@@ -491,13 +511,18 @@ function createSolidBooleanSourceForFeature(
       extrudeFeaturesByBodyId,
       sketches,
       generatedFacesByKey,
-      nextVisitedFeatureIds
+      nextVisitedFeatureIds,
+      datums
     );
   }
 
   return (
-    createExtrudeSourceForFeature(feature, sketches, generatedFacesByKey) ??
-    createUnavailableExtrudeSource(feature.bodyId)
+    createExtrudeSourceForFeature(
+      feature,
+      sketches,
+      generatedFacesByKey,
+      datums
+    ) ?? createUnavailableExtrudeSource(feature.bodyId)
   );
 }
 
@@ -509,12 +534,17 @@ function createBooleanSourceForFeature(
   >,
   sketches: readonly SketchSnapshot[],
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  visitedFeatureIds: ReadonlySet<string> = new Set()
+  visitedFeatureIds: ReadonlySet<string> = new Set(),
+  datums?: DatumMap
 ): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
   if (feature.operationMode !== "add" && feature.operationMode !== "cut") {
     return (
-      createExtrudeSourceForFeature(feature, sketches, generatedFacesByKey) ??
-      createUnavailableExtrudeSource(feature.bodyId)
+      createExtrudeSourceForFeature(
+        feature,
+        sketches,
+        generatedFacesByKey,
+        datums
+      ) ?? createUnavailableExtrudeSource(feature.bodyId)
     );
   }
 
@@ -540,7 +570,8 @@ function createBooleanSourceForFeature(
         featuresByBodyId,
         sketches,
         generatedFacesByKey,
-        nextVisitedFeatureIds
+        nextVisitedFeatureIds,
+        datums
       )
     : undefined;
   if (feature.profile?.kind === "regions") {
@@ -584,7 +615,8 @@ function createBooleanSourceForFeature(
           },
           region,
           sketch,
-          generatedFacesByKey
+          generatedFacesByKey,
+          datums
         )
     );
     return tools.reduce<
@@ -612,7 +644,8 @@ function createBooleanSourceForFeature(
   const resolvedTool = createExtrudeSourceForFeature(
     feature,
     sketches,
-    generatedFacesByKey
+    generatedFacesByKey,
+    datums
   );
   const tool = resolvedTool
     ? { ...resolvedTool, id: `${feature.bodyId}:tool` }
@@ -668,7 +701,8 @@ export function createCombineDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  datums?: DatumMap
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -685,7 +719,9 @@ export function createCombineDerivedGeometrySources(
         feature,
         featuresByBodyId,
         sketches,
-        generatedFacesByKey
+        generatedFacesByKey,
+        new Set(),
+        datums
       )
     );
 }
@@ -697,7 +733,8 @@ export function createHoleDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  datums?: DatumMap
 ): readonly DerivedHoleGeometrySource[] {
   const featuresByBodyId = createBooleanCapableFeaturesByBodyId(features);
 
@@ -715,13 +752,16 @@ export function createHoleDerivedGeometrySources(
               targetFeature,
               featuresByBodyId,
               sketches,
-              generatedFacesByKey
+              generatedFacesByKey,
+              new Set(),
+              datums
             )
           : undefined;
       const toolResult = createHoleToolSourceForFeature(
         feature,
         sketches,
-        generatedFacesByKey
+        generatedFacesByKey,
+        datums
       );
 
       return {
@@ -808,7 +848,8 @@ export function createEdgeFinishDerivedGeometrySources(
 function createExtrudeSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  datums?: DatumMap
 ):
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -826,7 +867,8 @@ function createExtrudeSourceForFeature(
       feature,
       feature.profile,
       sketch,
-      generatedFacesByKey
+      generatedFacesByKey,
+      datums
     );
   }
 
@@ -836,7 +878,8 @@ function createExtrudeSourceForFeature(
           feature,
           feature.profile,
           sketch,
-          generatedFacesByKey
+          generatedFacesByKey,
+          datums
         )
       : createUnavailableExtrudeSource(
           feature.bodyId,
@@ -855,7 +898,8 @@ function createExtrudeSourceForFeature(
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "extrude"
+    "extrude",
+    datums
   );
 
   if (entity.kind === "rectangle") {
@@ -901,7 +945,8 @@ function createRegionNewBodyExtrudeSource(
   >,
   profile: SketchRegionsProfileRef,
   sketch: SketchSnapshot,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  datums?: DatumMap
 ): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
   const validation = validateRegisteredV22RegionSource(profile, {
     id: sketch.id,
@@ -917,7 +962,8 @@ function createRegionNewBodyExtrudeSource(
     feature,
     validation.normalizedProfile.regions[0],
     sketch,
-    generatedFacesByKey
+    generatedFacesByKey,
+    datums
   );
 }
 
@@ -928,14 +974,16 @@ function createRegionMaterialExtrudeSource(
   >,
   region: SketchRegionsProfileRef["regions"][number],
   sketch: SketchSnapshot,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  datums?: DatumMap
 ): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
   const outer = createRegionLoopExtrudeSource(
     feature,
     region.outer,
     sketch,
     generatedFacesByKey,
-    `${feature.bodyId}:outer`
+    `${feature.bodyId}:outer`,
+    datums
   );
   if (!outer) {
     return createUnavailableExtrudeSource(
@@ -953,7 +1001,8 @@ function createRegionMaterialExtrudeSource(
       hole,
       sketch,
       generatedFacesByKey,
-      `${feature.bodyId}:hole:${holeIndex}`
+      `${feature.bodyId}:hole:${holeIndex}`,
+      datums
     );
     if (!tool) {
       return createUnavailableExtrudeSource(
@@ -990,12 +1039,14 @@ function createRegionLoopExtrudeSource(
   loop: SketchLoopRef,
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  id: string
+  id: string,
+  datums?: DatumMap
 ): DerivedExtrudeGeometrySource | undefined {
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "extrude"
+    "extrude",
+    datums
   );
   if (loop.kind === "entity") {
     const entity = sketch.entities.find(
@@ -1059,12 +1110,14 @@ function createWireExtrudeSource(
     { kind: "wire" }
   >,
   sketch: SketchSnapshot,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  datums?: DatumMap
 ): DerivedExtrudeGeometrySource {
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "extrude"
+    "extrude",
+    datums
   );
   const frame =
     placement.placementFrame ?? createDefaultSketchDisplayFrame(sketch.plane);
@@ -1103,7 +1156,8 @@ function createWireExtrudeSource(
 function createHoleToolSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "hole" }>,
   sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  datums?: DatumMap
 ): {
   readonly tool?: DerivedHoleGeometrySource["tool"];
   readonly placementError?: string;
@@ -1122,7 +1176,8 @@ function createHoleToolSourceForFeature(
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "hole"
+    "hole",
+    datums
   );
 
   if (placement.placementError) {
@@ -1168,7 +1223,8 @@ function createRevolveSourceForFeature(
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "revolve"
+    "revolve",
+    referenceDocument?.datums
   );
   const placementState =
     feature.operationMode === "newBody"
@@ -1477,11 +1533,18 @@ function createUnavailableHoleToolSource(): DerivedHoleGeometrySource["tool"] {
 function createAttachedSketchFeaturePlacement(
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  featureKind: "extrude" | "revolve" | "hole" | "sweep" | "loft"
+  featureKind: "extrude" | "revolve" | "hole" | "sweep" | "loft",
+  datums?: CadDocument["datums"]
 ): {
   readonly placementFrame?: SketchDisplayFrame;
   readonly placementError?: string;
 } {
+  if (!sketch.attachment && sketch.datumId) {
+    const datum = datums?.get(sketch.datumId);
+    const frame = datum ? createDatumSketchDisplayFrame(datum) : undefined;
+    return frame ? { placementFrame: frame } : {};
+  }
+
   const attachment = sketch.attachment;
 
   if (!attachment) {

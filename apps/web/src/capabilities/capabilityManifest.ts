@@ -365,6 +365,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildFeatureCombineOp",
     "cadCommands.test.ts"
   ),
+  "solid.datum-plane": featureAudit(
+    "Datum plane",
+    "createDatumPlane",
+    "none",
+    "buildDatumPlaneCreateOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",
