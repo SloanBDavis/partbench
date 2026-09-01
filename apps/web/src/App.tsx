@@ -31,10 +31,13 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBatchResponse,
+  CadBodyExactTopologyEntityDescriptor,
   CadCurrentTopologySelectionEvidence,
   CadCurrentExactResult,
   CadGeneratedFaceReference,
+  CadTopologyAnchorCommandProof,
   FeatureShellOpenFaceRef,
+  PatternDirectionRef,
   PatternRotationAxisRef,
   CadQueryRequest,
   CadSelectionReferenceOperation,
@@ -107,6 +110,7 @@ import {
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
   buildCreateSketchOp,
+  buildCreateSketchOnFaceOp,
   buildCreateConeOp,
   buildCreateParameterOp,
   buildCreateSphereOp,
@@ -198,12 +202,18 @@ import {
   createPrimitiveDraft,
   createSketchDraft,
   createTransformDraft,
+  type EdgeChoiceValue,
   type SolidChoice,
   type SolidCollectorRequest,
   type SolidCollectorSelection,
   type SolidEditorRequest,
   type SolidEditorSubmission
 } from "./modes/solid";
+import {
+  createCurrentExactTopologyAnchorCommandProof,
+  mapCollectorToRequiredOperation,
+  prependCurrentExactPromotionOps
+} from "./currentExactPromotionApply";
 import { applyCommittedSolidEditorSubmission } from "./modes/solid/solidEditorApply";
 import { materializeSolidEditorRequestIds } from "./modes/solid/exactFeaturePreviewIds";
 import {
@@ -1079,7 +1089,8 @@ function readReferenceHealth(): ReferenceHealthQueryResponse | undefined {
 }
 
 function readSelectionReferenceCandidates(
-  selection: CadSelectionReferenceInput | CadCurrentTopologySelectionEvidence
+  selection: CadSelectionReferenceInput | CadCurrentTopologySelectionEvidence,
+  requiredOperation?: CadSelectionReferenceOperation
 ): SelectionReferenceCandidatesQueryResponse | undefined {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -1087,7 +1098,8 @@ function readSelectionReferenceCandidates(
       query: "selection.referenceCandidates",
       ...("type" in selection
         ? { selection }
-        : { currentTopologyEvidence: selection })
+        : { currentTopologyEvidence: selection }),
+      ...(requiredOperation ? { requiredOperation } : {})
     }
   });
 
@@ -1096,13 +1108,22 @@ function readSelectionReferenceCandidates(
     : undefined;
 }
 
-function readViewportReferenceCandidates(candidate: RenderExactPickCandidate) {
+function readViewportReferenceCandidates(
+  candidate: RenderExactPickCandidate,
+  requiredOperation?: CadSelectionReferenceOperation
+) {
   return candidate.entityKind === "body"
-    ? readSelectionReferenceCandidates({
-        type: "body",
-        bodyId: candidate.bodyId
-      })
-    : readSelectionReferenceCandidates(createViewportExactSelection(candidate));
+    ? readSelectionReferenceCandidates(
+        {
+          type: "body",
+          bodyId: candidate.bodyId
+        },
+        requiredOperation
+      )
+    : readSelectionReferenceCandidates(
+        createViewportExactSelection(candidate),
+        requiredOperation
+      );
 }
 
 function readTopologyCommandTargetReadiness(
@@ -1219,6 +1240,81 @@ function includeCurrentSolidChoice<Value>(
     ? choices
     : [choice, ...choices];
 }
+
+interface PendingCurrentExactPromotion {
+  readonly bodyId: string;
+  readonly entityKind: "face" | "edge";
+  readonly requiredOperation: CadSelectionReferenceOperation;
+  readonly topologyAnchorId: string;
+  readonly proof: CadTopologyAnchorCommandProof;
+  readonly ops: readonly CadOp[];
+}
+
+function pendingCurrentExactPromotionChoiceKey(
+  pending: Pick<PendingCurrentExactPromotion, "topologyAnchorId">
+): string {
+  return `current-exact:${pending.topologyAnchorId}`;
+}
+
+function createPendingEdgeChoice(
+  pending: PendingCurrentExactPromotion
+): SolidChoice<EdgeChoiceValue> {
+  return {
+    key: pendingCurrentExactPromotionChoiceKey(pending),
+    value: {
+      targetBodyId: pending.bodyId,
+      topologyAnchorId: pending.topologyAnchorId,
+      topologyAnchorProof: pending.proof
+    },
+    label: "Current exact edge",
+    kind: "edge"
+  };
+}
+
+function createPendingFaceChoice(
+  pending: PendingCurrentExactPromotion
+): SolidChoice<FeatureShellOpenFaceRef> {
+  return {
+    key: pendingCurrentExactPromotionChoiceKey(pending),
+    value: {
+      kind: "topologyAnchor",
+      bodyId: pending.bodyId,
+      anchorId: pending.topologyAnchorId
+    },
+    label: "Current exact face",
+    kind: "face",
+    targetBodyId: pending.bodyId
+  };
+}
+
+function createPendingDirectionChoice(
+  pending: PendingCurrentExactPromotion
+): SolidChoice<PatternDirectionRef> {
+  return {
+    key: pendingCurrentExactPromotionChoiceKey(pending),
+    value: {
+      kind: "topologyAnchor",
+      bodyId: pending.bodyId,
+      anchorId: pending.topologyAnchorId
+    },
+    label: "Current exact edge",
+    kind: "edge"
+  };
+}
+
+function activeCurrentExactRequiredOperationFor(
+  activeTool: string | undefined,
+  collector: SolidCollectorRequest["collector"] | undefined
+): CadSelectionReferenceOperation | undefined {
+  if (activeTool === "solid.fillet") {
+    return "feature.fillet";
+  }
+  if (activeTool === "sketch.create") {
+    return "feature.attachSketchPlane";
+  }
+  return mapCollectorToRequiredOperation(collector);
+}
+
 
 function readParameters(): readonly CadParameterSnapshot[] {
   const response = engine.executeQuery({
@@ -2107,6 +2203,8 @@ export function App() {
   const [solidCollectorRequest, setSolidCollectorRequest] = useState<
     SolidCollectorRequest | undefined
   >();
+  const [pendingCurrentExactPromotion, setPendingCurrentExactPromotion] =
+    useState<PendingCurrentExactPromotion | undefined>();
   const [solidCollectorSelectionOverride, setSolidCollectorSelectionOverride] =
     useState<SolidCollectorSelection | undefined>();
   const [solidGripDescriptors, setSolidGripDescriptors] = useState<
@@ -3930,40 +4028,64 @@ export function App() {
       ),
     [sketches]
   );
-  const solidChamferEdgeChoices = useMemo(
-    () =>
+  const activeCurrentExactRequiredOperation =
+    activeCurrentExactRequiredOperationFor(
+      workbenchUi.activeTool,
+      solidCollectorRequest?.collector
+    );
+  useEffect(() => {
+    setPendingCurrentExactPromotion((current) =>
+      current && current.requiredOperation !== activeCurrentExactRequiredOperation
+        ? undefined
+        : current
+    );
+  }, [activeCurrentExactRequiredOperation]);
+  const solidChamferEdgeChoices = useMemo(() => {
+    const choices =
       modelingUiRuntime?.createSolidEdgeChoices(
         selectedBodyGeneratedReferences.references,
         namedReferences,
         referenceCandidatesByStableId,
         namedReferenceCandidatesByName,
         "feature.chamfer"
-      ) ?? [],
-    [
-      namedReferenceCandidatesByName,
-      namedReferences,
-      referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references,
-      modelingUiRuntime
-    ]
-  );
-  const solidFilletEdgeChoices = useMemo(
-    () =>
+      ) ?? [];
+    return pendingCurrentExactPromotion?.requiredOperation === "feature.chamfer"
+      ? includeCurrentSolidChoice(
+          choices,
+          createPendingEdgeChoice(pendingCurrentExactPromotion)
+        )
+      : choices;
+  }, [
+    namedReferenceCandidatesByName,
+    namedReferences,
+    pendingCurrentExactPromotion,
+    referenceCandidatesByStableId,
+    selectedBodyGeneratedReferences.references,
+    modelingUiRuntime
+  ]);
+  const solidFilletEdgeChoices = useMemo(() => {
+    const choices =
       modelingUiRuntime?.createSolidEdgeChoices(
         selectedBodyGeneratedReferences.references,
         namedReferences,
         referenceCandidatesByStableId,
         namedReferenceCandidatesByName,
         "feature.fillet"
-      ) ?? [],
-    [
-      namedReferenceCandidatesByName,
-      namedReferences,
-      referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references,
-      modelingUiRuntime
-    ]
-  );
+      ) ?? [];
+    return pendingCurrentExactPromotion?.requiredOperation === "feature.fillet"
+      ? includeCurrentSolidChoice(
+          choices,
+          createPendingEdgeChoice(pendingCurrentExactPromotion)
+        )
+      : choices;
+  }, [
+    namedReferenceCandidatesByName,
+    namedReferences,
+    pendingCurrentExactPromotion,
+    referenceCandidatesByStableId,
+    selectedBodyGeneratedReferences.references,
+    modelingUiRuntime
+  ]);
   const solidShellFaceChoices = useMemo(() => {
     const choices = [
       ...(modelingUiRuntime?.createSolidFaceChoices(
@@ -3991,53 +4113,73 @@ export function App() {
         ) ?? [])
       );
     }
-    return choices;
+    return pendingCurrentExactPromotion?.requiredOperation === "feature.shell"
+      ? includeCurrentSolidChoice(
+          choices,
+          createPendingFaceChoice(pendingCurrentExactPromotion)
+        )
+      : choices;
   }, [
     derivedGeneratedReferenceEvidenceByBodyId,
     document.topologyIdentity?.anchors,
     namedReferenceCandidatesByName,
     namedReferences,
+    pendingCurrentExactPromotion,
     modelingUiRuntime,
     projectStructure.bodies
   ]);
-  const solidLinearDirectionChoices = useMemo(
-    () =>
+  const solidLinearDirectionChoices = useMemo(() => {
+    const choices =
       modelingUiRuntime?.createSolidDirectionChoices(
         selectedBodyGeneratedReferences.references,
         namedReferences,
         referenceCandidatesByStableId,
         namedReferenceCandidatesByName,
         "feature.linearPatternDirection"
-      ) ?? [],
-    [
-      namedReferenceCandidatesByName,
-      namedReferences,
-      referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references,
-      modelingUiRuntime
-    ]
-  );
+      ) ?? [];
+    return pendingCurrentExactPromotion?.requiredOperation ===
+      "feature.linearPatternDirection"
+      ? includeCurrentSolidChoice(
+          choices,
+          createPendingDirectionChoice(pendingCurrentExactPromotion)
+        )
+      : choices;
+  }, [
+    namedReferenceCandidatesByName,
+    namedReferences,
+    pendingCurrentExactPromotion,
+    referenceCandidatesByStableId,
+    selectedBodyGeneratedReferences.references,
+    modelingUiRuntime
+  ]);
   const solidRotationAxisChoices = useMemo<
     readonly SolidChoice<PatternRotationAxisRef>[]
-  >(
-    () =>
+  >(() => {
+    const choices =
       modelingUiRuntime?.createSolidDirectionChoices(
         selectedBodyGeneratedReferences.references,
         namedReferences,
         referenceCandidatesByStableId,
         namedReferenceCandidatesByName,
         "feature.circularPatternAxis"
-      ) ?? [],
-    [
-      namedReferenceCandidatesByName,
-      namedReferences,
-      referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references,
-      modelingUiRuntime
-    ]
-  );
-  const solidMirrorFaceChoices = useMemo(
-    () =>
+      ) ?? [];
+    return pendingCurrentExactPromotion?.requiredOperation ===
+      "feature.circularPatternAxis"
+      ? includeCurrentSolidChoice(
+          choices,
+          createPendingDirectionChoice(pendingCurrentExactPromotion)
+        )
+      : choices;
+  }, [
+    namedReferenceCandidatesByName,
+    namedReferences,
+    pendingCurrentExactPromotion,
+    referenceCandidatesByStableId,
+    selectedBodyGeneratedReferences.references,
+    modelingUiRuntime
+  ]);
+  const solidMirrorFaceChoices = useMemo(() => {
+    const choices =
       modelingUiRuntime?.createSolidFaceChoices(
         selectedBodyGeneratedReferences.references,
         namedReferences,
@@ -4046,17 +4188,24 @@ export function App() {
         "feature.mirrorPlane",
         document.topologyIdentity?.anchors,
         selectedBodyId
-      ) ?? [],
-    [
-      document.topologyIdentity?.anchors,
-      namedReferenceCandidatesByName,
-      namedReferences,
-      referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references,
-      selectedBodyId,
-      modelingUiRuntime
-    ]
-  );
+      ) ?? [];
+    return pendingCurrentExactPromotion?.requiredOperation ===
+      "feature.mirrorPlane"
+      ? includeCurrentSolidChoice(
+          choices,
+          createPendingFaceChoice(pendingCurrentExactPromotion)
+        )
+      : choices;
+  }, [
+    document.topologyIdentity?.anchors,
+    namedReferenceCandidatesByName,
+    namedReferences,
+    pendingCurrentExactPromotion,
+    referenceCandidatesByStableId,
+    selectedBodyGeneratedReferences.references,
+    selectedBodyId,
+    modelingUiRuntime
+  ]);
   const solidPlaneChoices = useMemo(
     () =>
       modelingUiRuntime?.createSolidMirrorPlaneChoices(
@@ -4064,38 +4213,101 @@ export function App() {
       ) ?? [],
     [solidMirrorFaceChoices, modelingUiRuntime]
   );
-  const selectedChamferEdgeChoice = modelingUiRuntime?.findSelectedEdgeChoice(
-    solidChamferEdgeChoices,
-    selectedGeneratedReferenceState,
-    selectedNamedReferenceName
-  );
-  const selectedFilletEdgeChoice = modelingUiRuntime?.findSelectedEdgeChoice(
-    solidFilletEdgeChoices,
-    selectedGeneratedReferenceState,
-    selectedNamedReferenceName
-  );
-  const selectedShellFaceChoice = modelingUiRuntime?.findSelectedFaceChoice(
-    solidShellFaceChoices,
-    selectedGeneratedReferenceState,
-    selectedNamedReferenceName
-  );
+  const pendingPromotionKey = pendingCurrentExactPromotion
+    ? pendingCurrentExactPromotionChoiceKey(pendingCurrentExactPromotion)
+    : undefined;
+  const selectedChamferEdgeChoice =
+    pendingCurrentExactPromotion?.requiredOperation === "feature.chamfer"
+      ? (solidChamferEdgeChoices.find(
+          (choice) => choice.key === pendingPromotionKey
+        ) ??
+        modelingUiRuntime?.findSelectedEdgeChoice(
+          solidChamferEdgeChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        ))
+      : modelingUiRuntime?.findSelectedEdgeChoice(
+          solidChamferEdgeChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        );
+  const selectedFilletEdgeChoice =
+    pendingCurrentExactPromotion?.requiredOperation === "feature.fillet"
+      ? (solidFilletEdgeChoices.find(
+          (choice) => choice.key === pendingPromotionKey
+        ) ??
+        modelingUiRuntime?.findSelectedEdgeChoice(
+          solidFilletEdgeChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        ))
+      : modelingUiRuntime?.findSelectedEdgeChoice(
+          solidFilletEdgeChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        );
+  const selectedShellFaceChoice =
+    pendingCurrentExactPromotion?.requiredOperation === "feature.shell"
+      ? (solidShellFaceChoices.find(
+          (choice) => choice.key === pendingPromotionKey
+        ) ??
+        modelingUiRuntime?.findSelectedFaceChoice(
+          solidShellFaceChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        ))
+      : modelingUiRuntime?.findSelectedFaceChoice(
+          solidShellFaceChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        );
   const selectedLinearDirectionChoice =
-    modelingUiRuntime?.findSelectedDirectionChoice(
-      solidLinearDirectionChoices,
-      selectedGeneratedReferenceState,
-      selectedNamedReferenceName
-    );
+    pendingCurrentExactPromotion?.requiredOperation ===
+    "feature.linearPatternDirection"
+      ? (solidLinearDirectionChoices.find(
+          (choice) => choice.key === pendingPromotionKey
+        ) ??
+        modelingUiRuntime?.findSelectedDirectionChoice(
+          solidLinearDirectionChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        ))
+      : modelingUiRuntime?.findSelectedDirectionChoice(
+          solidLinearDirectionChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        );
   const selectedRotationAxisChoice =
-    modelingUiRuntime?.findSelectedDirectionChoice(
-      solidRotationAxisChoices,
-      selectedGeneratedReferenceState,
-      selectedNamedReferenceName
-    );
-  const selectedMirrorFaceChoice = modelingUiRuntime?.findSelectedFaceChoice(
-    solidMirrorFaceChoices,
-    selectedGeneratedReferenceState,
-    selectedNamedReferenceName
-  );
+    pendingCurrentExactPromotion?.requiredOperation ===
+    "feature.circularPatternAxis"
+      ? (solidRotationAxisChoices.find(
+          (choice) => choice.key === pendingPromotionKey
+        ) ??
+        modelingUiRuntime?.findSelectedDirectionChoice(
+          solidRotationAxisChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        ))
+      : modelingUiRuntime?.findSelectedDirectionChoice(
+          solidRotationAxisChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        );
+  const selectedMirrorFaceChoice =
+    pendingCurrentExactPromotion?.requiredOperation === "feature.mirrorPlane"
+      ? (solidMirrorFaceChoices.find(
+          (choice) => choice.key === pendingPromotionKey
+        ) ??
+        modelingUiRuntime?.findSelectedFaceChoice(
+          solidMirrorFaceChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        ))
+      : modelingUiRuntime?.findSelectedFaceChoice(
+          solidMirrorFaceChoices,
+          selectedGeneratedReferenceState,
+          selectedNamedReferenceName
+        );
   const selectedProfileChoice =
     modelingSelectionContext.selectionKind === "sketchEntity"
       ? solidProfileChoices.find(
@@ -5070,11 +5282,17 @@ export function App() {
   const solidEditorRequest = useMemo(() => {
     if (!unmaterializedSolidEditorRequest) return undefined;
     const snapshot = engine.createSnapshot();
-    return materializeSolidEditorRequestIds(
+    const materialized = materializeSolidEditorRequestIds(
       unmaterializedSolidEditorRequest,
       snapshot
     );
-  }, [unmaterializedSolidEditorRequest]);
+    return pendingCurrentExactPromotion
+      ? {
+          ...materialized,
+          pendingCurrentExactPromotionOps: pendingCurrentExactPromotion.ops
+        }
+      : materialized;
+  }, [pendingCurrentExactPromotion, unmaterializedSolidEditorRequest]);
   const solidGripActiveEditorKeyRef = useRef<string | undefined>(undefined);
   const solidGripDescriptorOwnerKeyRef = useRef<string | undefined>(undefined);
   solidGripActiveEditorKeyRef.current = solidEditorRequest?.key;
@@ -5338,7 +5556,11 @@ export function App() {
         bodies: projectStructure.bodies,
         objects: sceneObjects,
         sketches,
-        readReferenceCandidates: readSelectionReferenceCandidates
+        readReferenceCandidates: (selection) =>
+          readSelectionReferenceCandidates(
+            selection,
+            activeCurrentExactRequiredOperation
+          )
       })
     : undefined;
   const viewportVisualState: ViewportVisualStateModel =
@@ -6034,7 +6256,10 @@ export function App() {
   const viewportCandidateRows =
     viewportExactCandidateSession?.candidates.map((candidate, index) => {
       const commandability = createViewportExactCandidateCommandability(
-        readViewportReferenceCandidates(candidate)
+        readViewportReferenceCandidates(
+          candidate,
+          activeCurrentExactRequiredOperation
+        )
       );
       return formatViewportExactCandidateRow({
         index,
@@ -6227,6 +6452,7 @@ export function App() {
       startTransition(() => {
         setDocument(nextDocument);
         clearViewportExactSelection();
+        setPendingCurrentExactPromotion(undefined);
         setCurveEditSourceAuthorityRevision((current) => current + 1);
         setSelectedId(
           nextSelectedId !== null &&
@@ -6318,13 +6544,20 @@ export function App() {
           bodies: projectStructure.bodies,
           objects: sceneObjects,
           sketches,
-          readReferenceCandidates: readSelectionReferenceCandidates
+          readReferenceCandidates: (selection) =>
+            readSelectionReferenceCandidates(
+              selection,
+              activeCurrentExactRequiredOperation
+            )
         })
       );
       return;
     }
 
-    const referenceCandidates = readViewportReferenceCandidates(candidate);
+    const referenceCandidates = readViewportReferenceCandidates(
+      candidate,
+      activeCurrentExactRequiredOperation
+    );
     const target =
       referenceCandidates?.status === "resolved"
         ? referenceCandidates.candidates.find(
@@ -6336,6 +6569,50 @@ export function App() {
     );
     setSelectedGeneratedReference(
       target?.type === "generatedReference" ? target : undefined
+    );
+
+    if (candidate.entityKind !== "face" && candidate.entityKind !== "edge") {
+      setPendingCurrentExactPromotion(undefined);
+      return;
+    }
+
+    const artifact = currentExactArtifactProjection.artifacts.find(
+      (item) => item.bodyId === candidate.bodyId
+    );
+    const entity = artifact?.topologySnapshot.entities.find(
+      (item) =>
+        item.localId === candidate.localId &&
+        item.signature === candidate.entitySignature
+    );
+    const proof = entity
+      ? createCurrentExactTopologyAnchorCommandProof(
+          candidate.entityKind,
+          entity
+        )
+      : undefined;
+    if (!entity || !proof || !activeCurrentExactRequiredOperation) {
+      setPendingCurrentExactPromotion(undefined);
+      return;
+    }
+
+    const promotion = prependCurrentExactPromotionOps({
+      engine,
+      evidence: createViewportExactSelection(candidate),
+      requiredOperation: activeCurrentExactRequiredOperation,
+      entity: entity as CadBodyExactTopologyEntityDescriptor,
+      consumingOps: []
+    });
+    setPendingCurrentExactPromotion(
+      promotion.ok
+        ? {
+            bodyId: candidate.bodyId,
+            entityKind: candidate.entityKind,
+            requiredOperation: activeCurrentExactRequiredOperation,
+            topologyAnchorId: promotion.topologyAnchorId,
+            proof: promotion.proof,
+            ops: promotion.ops
+          }
+        : undefined
     );
   }
 
@@ -6381,7 +6658,11 @@ export function App() {
       bodies: projectStructure.bodies,
       objects: sceneObjects,
       sketches,
-      readReferenceCandidates: readSelectionReferenceCandidates
+      readReferenceCandidates: (selection) =>
+        readSelectionReferenceCandidates(
+          selection,
+          activeCurrentExactRequiredOperation
+        )
     });
 
     publishViewportPickIntent(intent);
@@ -6613,6 +6894,21 @@ export function App() {
     form: SketchCreateForm,
     options: { readonly preferredHoleTargetBodyId?: string } = {}
   ) {
+    if (
+      pendingCurrentExactPromotion?.requiredOperation ===
+      "feature.attachSketchPlane"
+    ) {
+      await createSketchOnFace({
+        id: form.id,
+        name: form.name,
+        bodyId: pendingCurrentExactPromotion.bodyId,
+        faceStableId: "",
+        topologyAnchorId: pendingCurrentExactPromotion.topologyAnchorId,
+        topologyAnchorProof: pendingCurrentExactPromotion.proof
+      });
+      return undefined;
+    }
+
     if (options.preferredHoleTargetBodyId === undefined) {
       setPreferredHoleTargetBodyId(undefined);
     }
@@ -6677,31 +6973,50 @@ export function App() {
     setCommandError(undefined);
     setCommandNotice(undefined);
 
-    const commandForm = enrichSketchOnFaceFormWithTopologyAnchor(
-      form,
-      document.topologyIdentity
-    );
+    const pending =
+      pendingCurrentExactPromotion?.requiredOperation ===
+      "feature.attachSketchPlane"
+        ? pendingCurrentExactPromotion
+        : undefined;
+    const commandForm = pending
+      ? {
+          ...form,
+          bodyId: pending.bodyId,
+          topologyAnchorId: pending.topologyAnchorId,
+          topologyAnchorProof: pending.proof
+        }
+      : enrichSketchOnFaceFormWithTopologyAnchor(
+          form,
+          document.topologyIdentity
+        );
     const currentStructure = readProjectStructure();
     let ops: readonly CadOp[] = [];
 
     try {
-      const { createSketchOnFaceCommandPlan } =
-        await import("./sketchOnFacePromotion");
-      const plan = await createSketchOnFaceCommandPlan({
-        engine,
-        features: currentStructure.features,
-        sketches,
-        generatedFacesByKey,
-        runtime: getDerivedGeometryRuntime(),
-        form: commandForm
-      });
+      if (pending) {
+        ops = [
+          ...pending.ops,
+          buildCreateSketchOnFaceOp(commandForm)
+        ];
+      } else {
+        const { createSketchOnFaceCommandPlan } =
+          await import("./sketchOnFacePromotion");
+        const plan = await createSketchOnFaceCommandPlan({
+          engine,
+          features: currentStructure.features,
+          sketches,
+          generatedFacesByKey,
+          runtime: getDerivedGeometryRuntime(),
+          form: commandForm
+        });
 
-      if (!plan.ok) {
-        setCommandError(plan.message);
-        return;
+        if (!plan.ok) {
+          setCommandError(plan.message);
+          return;
+        }
+
+        ops = plan.ops;
       }
-
-      ops = plan.ops;
 
       const dryRun = await commandExecutor.executeBatch(
         buildBatch("dryRun", ops, WEB_UI_ACTOR)
@@ -6738,21 +7053,54 @@ export function App() {
     operation: EdgeFinishOperation,
     form: FeatureEdgeFinishForm
   ) {
+    const pendingOperation =
+      operation === "chamfer" ? "feature.chamfer" : "feature.fillet";
+    const pending =
+      pendingCurrentExactPromotion?.requiredOperation === pendingOperation
+        ? pendingCurrentExactPromotion
+        : undefined;
+    const commandForm = pending
+      ? {
+          ...form,
+          targetBodyId: pending.bodyId,
+          topologyAnchorId: pending.topologyAnchorId,
+          topologyAnchorProof: pending.proof,
+          edgeStableId: undefined,
+          namedReference: undefined
+        }
+      : form;
     const op =
       operation === "chamfer"
-        ? buildFeatureChamferOp(form)
-        : buildFeatureFilletOp(form);
+        ? buildFeatureChamferOp(commandForm)
+        : buildFeatureFilletOp(commandForm);
 
     await commitOps(
-      [op],
+      pending ? [...pending.ops, op] : [op],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }
 
   async function createShell(form: FeatureShellForm) {
-    const op = buildFeatureShellOp(form);
+    const pending =
+      pendingCurrentExactPromotion?.requiredOperation === "feature.shell"
+        ? pendingCurrentExactPromotion
+        : undefined;
+    const commandForm = pending
+      ? {
+          ...form,
+          targetBodyId: pending.bodyId,
+          openFaceRefs: [
+            {
+              kind: "topologyAnchor" as const,
+              bodyId: pending.bodyId,
+              anchorId: pending.topologyAnchorId
+            }
+          ]
+        }
+      : form;
+    const op = buildFeatureShellOp(commandForm);
     await commitPreflightedExactOps(
-      [op],
+      pending ? [...pending.ops, op] : [op],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }

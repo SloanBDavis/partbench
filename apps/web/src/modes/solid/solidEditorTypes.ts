@@ -1,4 +1,5 @@
 import type {
+  CadOp,
   FeatureShellOpenFaceRef,
   LoftSection,
   MirrorPlaneRef,
@@ -139,6 +140,8 @@ export interface SolidEditorRequest<
   readonly choices?: SolidEditorChoices;
   readonly blockedReason?: string;
   readonly deletable?: boolean;
+  /** Browser-session-only promotion batch prefix for an unmatched exact pick. */
+  readonly pendingCurrentExactPromotionOps?: readonly CadOp[];
 }
 
 export interface SolidCollectorRequest {
