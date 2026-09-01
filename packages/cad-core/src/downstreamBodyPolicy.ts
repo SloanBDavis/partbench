@@ -202,6 +202,12 @@ function getDirectBodyDependency(
       return source.targetBodyId;
     case "linearPatternFeature":
     case "circularPatternFeature":
+      if (source.seedBodyId) return source.seedBodyId;
+      if (source.seedFeatureId) {
+        const seed = document.features.get(source.seedFeatureId);
+        return seed?.kind === "hole" ? seed.bodyId : undefined;
+      }
+      return undefined;
     case "mirrorFeature":
       return source.seedBodyId;
     case "combineFeature":

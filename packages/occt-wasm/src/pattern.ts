@@ -12,7 +12,12 @@ import {
   type OcctRevolveProfile,
   type OcctRevolveSketchPlane
 } from "./revolveProfile";
-import { withOcctHoleResultShape, type OcctHoleToolSource } from "./hole";
+import {
+  cutHoleToolFromTarget,
+  makeHoleToolShape,
+  withOcctHoleResultShape,
+  type OcctHoleToolSource
+} from "./hole";
 import {
   withOcctEdgeFinishResultShape,
   type OcctChamferEdgeFinishInput,
@@ -397,6 +402,104 @@ export function makeCircularPatternShape(
       throw {
         code: "EMPTY_RESULT",
         message: "Open CASCADE circular pattern produced no shapes."
+      } satisfies GeometryKernelLikeError;
+    }
+
+    const finalShape = previousShape;
+    previousShape = undefined;
+    return finalShape;
+  } finally {
+    previousShape?.delete();
+  }
+}
+
+export function makeLinearHolePatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  input: Pick<OcctLinearPatternInput, "direction" | "spacing" | "instanceCount">,
+  holeTool: OcctHoleToolSource
+): TopoDS_Shape {
+  const { direction, spacing } = input;
+  return makeTransformedHolePatternShape(
+    oc,
+    seedShape,
+    input.instanceCount,
+    holeTool,
+    (toolShape, instanceIndex) =>
+      applyTranslation(oc, toolShape, [
+        direction[0] * spacing * instanceIndex,
+        direction[1] * spacing * instanceIndex,
+        direction[2] * spacing * instanceIndex
+      ])
+  );
+}
+
+export function makeCircularHolePatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  input: Pick<
+    OcctCircularPatternInput,
+    "axis" | "totalAngleDegrees" | "instanceCount"
+  >,
+  holeTool: OcctHoleToolSource
+): TopoDS_Shape {
+  const { axis, totalAngleDegrees, instanceCount } = input;
+  const isFullCircle = totalAngleDegrees === 360;
+  return makeTransformedHolePatternShape(
+    oc,
+    seedShape,
+    instanceCount,
+    holeTool,
+    (toolShape, instanceIndex) => {
+      const angleDeg = isFullCircle
+        ? (totalAngleDegrees / instanceCount) * instanceIndex
+        : (totalAngleDegrees / (instanceCount - 1)) * instanceIndex;
+      return applyRotation(
+        oc,
+        toolShape,
+        axis.origin,
+        axis.direction,
+        angleDeg
+      );
+    }
+  );
+}
+
+function makeTransformedHolePatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  instanceCount: number,
+  holeTool: OcctHoleToolSource,
+  transformTool: (toolShape: TopoDS_Shape, instanceIndex: number) => TopoDS_Shape
+): TopoDS_Shape {
+  let previousShape: TopoDS_Shape | undefined = copyShape(oc, seedShape);
+
+  try {
+    for (let i = 1; i < instanceCount; i++) {
+      const toolHandle = makeHoleToolShape(oc, seedShape, holeTool);
+      let toolShape: TopoDS_Shape | undefined;
+      let transformedTool: TopoDS_Shape | undefined;
+      try {
+        toolShape = toolHandle.shape.Shape();
+        transformedTool = transformTool(toolShape, i);
+        const cutShape = cutHoleToolFromTarget(
+          oc,
+          previousShape,
+          transformedTool
+        );
+        previousShape.delete();
+        previousShape = cutShape;
+      } finally {
+        transformedTool?.delete();
+        toolShape?.delete();
+        toolHandle.delete();
+      }
+    }
+
+    if (!previousShape) {
+      throw {
+        code: "EMPTY_RESULT",
+        message: "Open CASCADE hole pattern produced no shapes."
       } satisfies GeometryKernelLikeError;
     }
 

@@ -10,6 +10,7 @@ describe("solid draft validation", () => {
         id: "",
         bodyId: "",
         seedBodyId: "body_seed",
+        seedFeatureId: "",
         name: "",
         instanceCount: 4_097
       };

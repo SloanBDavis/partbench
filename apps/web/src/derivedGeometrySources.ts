@@ -1346,7 +1346,14 @@ function createConsumedBodyIds(
           feature.kind === "linearPattern" ||
           feature.kind === "circularPattern"
         ) {
-          return [feature.seedBodyId];
+          if (feature.seedBodyId) return [feature.seedBodyId];
+          if (feature.seedFeatureId) {
+            const seed = features.find(
+              (candidate) => candidate.id === feature.seedFeatureId
+            );
+            return seed ? [seed.bodyId] : [];
+          }
+          return [];
         }
 
         if (feature.kind === "mirror" && feature.includeOriginal) {

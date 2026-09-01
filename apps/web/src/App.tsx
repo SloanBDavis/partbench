@@ -3868,6 +3868,29 @@ export function App() {
   );
   const solidSeedBodyChoices =
     exactDownstreamModelingState?.patternSeedBodyChoices ?? EMPTY_SOLID_CHOICES;
+  const solidHolePatternChoices = useMemo<readonly SolidChoice<string>[]>(() => {
+    const bodiesById = new Map(
+      projectStructure.bodies.map((body) => [body.id, body])
+    );
+    return projectStructure.features.flatMap((feature) => {
+      if (feature.kind !== "hole") return [];
+      const body = bodiesById.get(feature.bodyId);
+      if (!body || body.consumedByFeatureId) return [];
+      const seedChoice = solidSeedBodyChoices.find(
+        (choice) => choice.value === feature.bodyId
+      );
+      if (seedChoice?.disabled) return [];
+      return [
+        {
+          key: feature.id,
+          value: feature.id,
+          label: feature.name ?? body.name ?? feature.id,
+          kind: "hole feature",
+          detail: "Completed hole on the current exact body"
+        }
+      ];
+    });
+  }, [projectStructure.bodies, projectStructure.features, solidSeedBodyChoices]);
   const solidShellTargetBodyChoices =
     exactDownstreamModelingState?.shellTargetBodyChoices ?? EMPTY_SOLID_CHOICES;
   const solidCombineBodyChoices = useMemo<readonly SolidChoice<string>[]>(() => {
@@ -4381,6 +4404,13 @@ export function App() {
     solidSeedBodyChoices.find(
       (choice) => choice.value === selectedBody?.id && !choice.disabled
     )?.value ?? "";
+  const selectedSeedFeatureId =
+    selectedFeature?.kind === "hole" &&
+    solidHolePatternChoices.some(
+      (choice) => choice.value === selectedFeature.id
+    )
+      ? selectedFeature.id
+      : "";
   const selectedShellTargetBodyId =
     solidShellTargetBodyChoices.find(
       (choice) => choice.value === selectedBody?.id && !choice.disabled
@@ -4886,7 +4916,8 @@ export function App() {
           initialDraft: {
             id: selectedFeature.id,
             bodyId: selectedFeature.bodyId,
-            seedBodyId: selectedFeature.seedBodyId,
+            seedBodyId: selectedFeature.seedBodyId ?? "",
+            seedFeatureId: selectedFeature.seedFeatureId ?? "",
             name: selectedFeature.name ?? "",
             direction: selectedFeature.direction,
             spacing: selectedFeature.spacing,
@@ -4894,6 +4925,7 @@ export function App() {
           },
           choices: {
             seedBodies: allSolidBodyChoices,
+            seedFeatures: solidHolePatternChoices,
             directions: includeCurrentSolidChoice(solidLinearDirectionChoices, {
               key: `current:${selectedFeature.id}`,
               value: selectedFeature.direction,
@@ -4913,7 +4945,8 @@ export function App() {
           initialDraft: {
             id: selectedFeature.id,
             bodyId: selectedFeature.bodyId,
-            seedBodyId: selectedFeature.seedBodyId,
+            seedBodyId: selectedFeature.seedBodyId ?? "",
+            seedFeatureId: selectedFeature.seedFeatureId ?? "",
             name: selectedFeature.name ?? "",
             rotationAxis: selectedFeature.rotationAxis,
             totalAngleDegrees: selectedFeature.totalAngleDegrees,
@@ -4921,6 +4954,7 @@ export function App() {
           },
           choices: {
             seedBodies: allSolidBodyChoices,
+            seedFeatures: solidHolePatternChoices,
             rotationAxes: includeCurrentSolidChoice(solidRotationAxisChoices, {
               key: `current:${selectedFeature.id}`,
               value: selectedFeature.rotationAxis,
@@ -5233,12 +5267,13 @@ export function App() {
       return {
         key,
         kind: "linearPattern",
-        title: "Linear Body Pattern",
+        title: "Linear Pattern",
         mode: "create",
         initialDraft: {
           id: "",
           bodyId: "",
-          seedBodyId: selectedSeedBodyId,
+          seedBodyId: selectedSeedFeatureId ? "" : selectedSeedBodyId,
+          seedFeatureId: selectedSeedFeatureId,
           name: "",
           direction:
             selectedLinearDirectionChoice?.value ??
@@ -5248,23 +5283,28 @@ export function App() {
         },
         choices: {
           seedBodies: solidSeedBodyChoices,
+          seedFeatures: solidHolePatternChoices,
           directions: solidLinearDirectionChoices
         },
-        blockedReason: selectedSeedBodyId
-          ? undefined
-          : "Select a supported seed body."
+        blockedReason:
+          selectedSeedBodyId ||
+          selectedSeedFeatureId ||
+          solidHolePatternChoices.length > 0
+            ? undefined
+            : "Select a supported seed body or hole feature."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.circular-pattern") {
       return {
         key,
         kind: "circularPattern",
-        title: "Circular Body Pattern",
+        title: "Circular Pattern",
         mode: "create",
         initialDraft: {
           id: "",
           bodyId: "",
-          seedBodyId: selectedSeedBodyId,
+          seedBodyId: selectedSeedFeatureId ? "" : selectedSeedBodyId,
+          seedFeatureId: selectedSeedFeatureId,
           name: "",
           rotationAxis:
             selectedRotationAxisChoice?.value ??
@@ -5274,11 +5314,15 @@ export function App() {
         },
         choices: {
           seedBodies: solidSeedBodyChoices,
+          seedFeatures: solidHolePatternChoices,
           rotationAxes: solidRotationAxisChoices
         },
-        blockedReason: selectedSeedBodyId
-          ? undefined
-          : "Select a supported seed body."
+        blockedReason:
+          selectedSeedBodyId ||
+          selectedSeedFeatureId ||
+          solidHolePatternChoices.length > 0
+            ? undefined
+            : "Select a supported seed body or hole feature."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.mirror") {
@@ -5346,6 +5390,7 @@ export function App() {
     selectedProfile,
     selectedRotationAxisChoice,
     selectedSeedBodyId,
+    selectedSeedFeatureId,
     selectedShellTargetBodyId,
     selectedCombineTargetBodyId,
     selectedCombineToolBodyId,
@@ -5361,6 +5406,7 @@ export function App() {
     solidLinearDirectionChoices,
     solidRotationAxisChoices,
     solidSeedBodyChoices,
+    solidHolePatternChoices,
     solidCombineBodyChoices,
     solidShellTargetBodyChoices,
     solidShellFaceChoices,
@@ -10210,12 +10256,18 @@ export function App() {
       "solid.shell": selectedShellTargetBodyId
         ? ready
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidShell),
-      "solid.linear-pattern": selectedSeedBodyId
-        ? ready
-        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLinearPattern),
-      "solid.circular-pattern": selectedSeedBodyId
-        ? ready
-        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCircularPattern),
+      "solid.linear-pattern":
+        selectedSeedBodyId ||
+        selectedSeedFeatureId ||
+        solidHolePatternChoices.length > 0
+          ? ready
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLinearPattern),
+      "solid.circular-pattern":
+        selectedSeedBodyId ||
+        selectedSeedFeatureId ||
+        solidHolePatternChoices.length > 0
+          ? ready
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCircularPattern),
       "solid.mirror": selectedSeedBodyId
         ? ready
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidMirror),
@@ -10332,6 +10384,7 @@ export function App() {
     selectedObject,
     selectedProfile,
     selectedSeedBodyId,
+    selectedSeedFeatureId,
     selectedShellTargetBodyId,
     selectedSketchContext,
     selectedViewportRenderId,
@@ -10340,6 +10393,7 @@ export function App() {
     sketches,
     solidAxisChoices.length,
     solidCombineBodyChoices.length,
+    solidHolePatternChoices.length,
     solidHoleTargetChoices.length,
     solidPathChoices.length,
     solidProfileChoices,

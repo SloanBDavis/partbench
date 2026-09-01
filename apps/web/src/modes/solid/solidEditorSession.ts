@@ -121,11 +121,37 @@ export function applySolidCollectorSelection(
     const value = findChoice(choices?.seedBodies, choiceKey)?.value;
     if (!value) return draft;
     if (kind === "linearPattern")
-      return { ...(draft as FeatureLinearPatternForm), seedBodyId: value };
+      return {
+        ...(draft as FeatureLinearPatternForm),
+        seedBodyId: value,
+        seedFeatureId: ""
+      };
     if (kind === "circularPattern")
-      return { ...(draft as FeatureCircularPatternForm), seedBodyId: value };
+      return {
+        ...(draft as FeatureCircularPatternForm),
+        seedBodyId: value,
+        seedFeatureId: ""
+      };
     if (kind === "mirror")
       return { ...(draft as FeatureMirrorForm), seedBodyId: value };
+    return draft;
+  }
+
+  if (collector === "seedFeature") {
+    const value = findChoice(choices?.seedFeatures, choiceKey)?.value;
+    if (!value) return draft;
+    if (kind === "linearPattern")
+      return {
+        ...(draft as FeatureLinearPatternForm),
+        seedFeatureId: value,
+        seedBodyId: ""
+      };
+    if (kind === "circularPattern")
+      return {
+        ...(draft as FeatureCircularPatternForm),
+        seedFeatureId: value,
+        seedBodyId: ""
+      };
     return draft;
   }
 

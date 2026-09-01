@@ -1634,6 +1634,37 @@ export interface DatumPlaneCreateOp {
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
+export type PatternSeedFields =
+  | { readonly seedBodyId: BodyId; readonly seedFeatureId?: never }
+  | { readonly seedFeatureId: FeatureId; readonly seedBodyId?: never };
+
+export function readExclusivePatternSeed(value: {
+  readonly seedBodyId?: unknown;
+  readonly seedFeatureId?: unknown;
+}):
+  | { readonly ok: true; readonly seed: PatternSeedFields }
+  | { readonly ok: false } {
+  const hasBody =
+    typeof value.seedBodyId === "string" && value.seedBodyId.length > 0;
+  const hasFeature =
+    typeof value.seedFeatureId === "string" && value.seedFeatureId.length > 0;
+  if (hasBody === hasFeature) {
+    return { ok: false };
+  }
+  return hasBody
+    ? { ok: true, seed: { seedBodyId: value.seedBodyId as BodyId } }
+    : { ok: true, seed: { seedFeatureId: value.seedFeatureId as FeatureId } };
+}
+
+export function patternSeedSourceFields(seed: {
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
+}): PatternSeedFields {
+  return seed.seedFeatureId
+    ? { seedFeatureId: seed.seedFeatureId }
+    : { seedBodyId: seed.seedBodyId as BodyId };
+}
+
 export interface PatternInstanceRecord {
   readonly instanceIndex: number;
   readonly transform: Mat4;
@@ -1665,7 +1696,8 @@ export interface FeatureLinearPatternOp {
   readonly op: "feature.linearPattern";
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly axis?: FeaturePatternAxis;
   readonly direction?: PatternDirectionRef;
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
@@ -1678,7 +1710,8 @@ export interface FeatureCircularPatternOp {
   readonly op: "feature.circularPattern";
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly totalAngleDegrees: number;
@@ -2176,7 +2209,8 @@ export interface CadLinearPatternFeatureRef {
   readonly id: FeatureId;
   readonly kind: "linearPattern";
   readonly bodyId: BodyId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
@@ -2187,7 +2221,8 @@ export interface CadCircularPatternFeatureRef {
   readonly id: FeatureId;
   readonly kind: "circularPattern";
   readonly bodyId: BodyId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
@@ -3902,7 +3937,8 @@ export interface LinearPatternFeatureSnapshot {
   readonly id: FeatureId;
   readonly kind: "linearPattern";
   readonly name?: string;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly axis?: FeaturePatternAxis;
   readonly direction?: PatternDirectionRef;
   readonly spacing: number;
@@ -3915,7 +3951,8 @@ export interface CircularPatternFeatureSnapshot {
   readonly id: FeatureId;
   readonly kind: "circularPattern";
   readonly name?: string;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
@@ -4515,7 +4552,8 @@ export interface CadImportedBodyFeatureSummary {
 
 export interface CadLinearPatternFeatureSource {
   readonly type: "linearPatternFeature";
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly direction: PatternDirectionRef;
 }
 
@@ -4524,7 +4562,8 @@ export interface CadLinearPatternFeatureSummary {
   readonly kind: "linearPattern";
   readonly partId: PartId;
   readonly bodyId: BodyId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
@@ -4535,7 +4574,8 @@ export interface CadLinearPatternFeatureSummary {
 
 export interface CadCircularPatternFeatureSource {
   readonly type: "circularPatternFeature";
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis: PatternRotationAxisRef;
 }
 
@@ -4544,7 +4584,8 @@ export interface CadCircularPatternFeatureSummary {
   readonly kind: "circularPattern";
   readonly partId: PartId;
   readonly bodyId: BodyId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
@@ -5703,7 +5744,8 @@ export interface CadFilletBodySource {
 export interface CadLinearPatternBodySource {
   readonly type: "linearPatternFeature";
   readonly featureId: FeatureId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
@@ -5713,7 +5755,8 @@ export interface CadLinearPatternBodySource {
 export interface CadCircularPatternBodySource {
   readonly type: "circularPatternFeature";
   readonly featureId: FeatureId;
-  readonly seedBodyId: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly seedFeatureId?: FeatureId;
   readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;

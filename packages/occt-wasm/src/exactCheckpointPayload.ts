@@ -21,7 +21,9 @@ import {
 } from "./booleanExtrudes";
 import { withOcctHoleResultOnShape, type OcctHoleToolSource } from "./hole";
 import {
+  makeCircularHolePatternShape,
   makeCircularPatternShape,
+  makeLinearHolePatternShape,
   makeLinearPatternShape,
   type OcctAxisFrame,
   type OcctDirection
@@ -146,6 +148,7 @@ export interface OcctArtifactLinearPatternSource {
   readonly direction: OcctDirection;
   readonly spacing: number;
   readonly instanceCount: number;
+  readonly holeTool?: OcctHoleToolSource;
 }
 
 export interface OcctArtifactCircularPatternSource {
@@ -154,6 +157,7 @@ export interface OcctArtifactCircularPatternSource {
   readonly axis: OcctAxisFrame;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+  readonly holeTool?: OcctHoleToolSource;
 }
 
 export interface OcctArtifactMirrorSource {
@@ -432,12 +436,16 @@ function withArtifactBackedExactBodyShape<T>(
     try {
       if (source.kind === "artifactLinearPattern") {
         assertArtifactPatternInput(source);
-        result = makeLinearPatternShape(oc, operand, source);
+        result = source.holeTool
+          ? makeLinearHolePatternShape(oc, operand, source, source.holeTool)
+          : makeLinearPatternShape(oc, operand, source);
         return readResult(result, "linearPattern");
       }
       if (source.kind === "artifactCircularPattern") {
         assertArtifactPatternInput(source);
-        result = makeCircularPatternShape(oc, operand, source);
+        result = source.holeTool
+          ? makeCircularHolePatternShape(oc, operand, source, source.holeTool)
+          : makeCircularPatternShape(oc, operand, source);
         return readResult(result, "circularPattern");
       }
       if (source.kind === "artifactMirror") {

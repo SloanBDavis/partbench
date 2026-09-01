@@ -181,6 +181,16 @@ function sameFields<D extends object, F extends object, K extends keyof D & keyo
   return keys.every((key) => (draft[key] as unknown) === feature[key]);
 }
 
+function samePatternSeed(
+  draft: { readonly seedBodyId: string; readonly seedFeatureId: string },
+  feature: { readonly seedBodyId?: string; readonly seedFeatureId?: string }
+): boolean {
+  return (
+    (draft.seedBodyId || undefined) === feature.seedBodyId &&
+    (draft.seedFeatureId || undefined) === feature.seedFeatureId
+  );
+}
+
 export function planExactFeaturePreview(
   input: ExactFeaturePreviewPlanInput
 ): ExactFeaturePreviewPlan {
@@ -298,9 +308,9 @@ export function planExactFeaturePreview(
       case "linearPattern":
       case "circularPattern": {
         const feature = current as Feature<"linearPattern" | "circularPattern">;
-        if (!sameFields(draft, feature, "seedBodyId")) {
+        if (!samePatternSeed(draft, feature)) {
           return unsupported(
-            "The pattern update command does not change its seed body."
+            "The pattern update command does not change its seed body or hole."
           );
         }
         return supported(

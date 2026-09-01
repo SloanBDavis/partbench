@@ -135,6 +135,9 @@ describe("currentExactBodyResolver", () => {
     if (!feature || feature.kind !== "linearPattern") {
       throw new Error("Expected linear pattern fixture.");
     }
+    if (!feature.seedBodyId) {
+      throw new Error("Expected body-seeded linear pattern fixture.");
+    }
     const artifactBacked = resolveCurrentExactBodies({
       ...context.input,
       geometrySources: context.input.geometrySources
