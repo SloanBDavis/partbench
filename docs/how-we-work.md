@@ -12,74 +12,41 @@ architecture. Do not implement the whole architecture at once.
 
 ## A release is a user goal
 
-A release is one paragraph of what a person can do in the running app when the
-release is done. That paragraph is the user goal.
+A release is one paragraph of what a person can do in the running app when
+the release is done. That paragraph is the user goal.
 
-The current user goal is the Product Goal in the doc linked from `AGENTS.md`.
-Today that is V23 in [`docs/v23.md`](./v23.md): a current-exact face or edge
-is a real command target for every completed collector that already accepts
-that kind, via the existing V13 checkpoint/anchor path. Vertices stay
-inspect-only. No new modeling family. V23 is complete (slices A–E).
+The current user goal is the Product Goal in [`docs/v23.md`](./v23.md).
+V22 and V23 are complete. There is no next release. Do not invent V24.
 
-Do not replay V23 gates or V7–V22 gauntlets. Do not invent V24. When a later
-release becomes current, `AGENTS.md` will change; do not invent a
-next-release link. Do not paste a changelog into `AGENTS.md`.
+Do not replay V23 gates or V7–V22 gauntlets. Do not paste a changelog into
+`AGENTS.md`.
 
 ## A slice is a step toward the user goal
 
-A slice is a step toward that user goal, not a process artifact. If a slice
-does not make the user goal more true in the running app, delete it.
+A slice is a step toward that user goal, not a process artifact. If a
+slice does not make the user goal more true, delete it.
 
-Do not add a slice to replay paperwork, rerun a historical gauntlet, or
-satisfy a named-command ritual that does not change what a person can do.
+## Proof
 
-## Intense verification is the job
+Proof is a `scenarios/` CADOps scenario and its semantic diffs, not
+Playwright. `pnpm verify` runs typecheck plus the scenarios runner.
 
-The default loop is:
+Historical named smokes live under the `legacy:` prefix. They are
+compatibility history. They are not the daily loop. Never rerun V7–V22
+gauntlets.
 
-1. Start the real Vite app with `pnpm dev`.
-2. Drive the actual UI toward the user goal.
-3. Observe.
-4. Change code.
-5. Observe again.
+Per-save: focused tests and typecheck of the packages you touched.
 
-Repeat until the user goal is true.
-
-Tests and named smokes are supporting evidence. They are not a substitute for
-seeing the goal in the running app. If you cannot demonstrate the user goal in
-`pnpm dev`, you are not done.
-
-## What to run
-
-Do not rerun the full historical release gauntlet on every save.
-
-Per-save: focused tests and typecheck for the packages you touched.
-
-Close a slice only when the user-goal increment is visible in the running app.
-If that slice already has a named command, run it too. Do not invent a new
-test runner, Playwright suite, or smoke script to close the loop.
-
-Inherited V18–V22 named commands are compatibility history, not the daily
-loop. They remain binding for those completed matrices. They are not a
-per-save checklist.
-
-V22 is completed. Gates A–G stay passed, H was deleted as a closer, and I
-closed the user goal plus release records. Do not replay historical gate
-paperwork or V7–V22 gauntlets. V23 does not reopen V22.
+Close a slice when the named closer is green and the user-goal increment
+is visible via a scenarios/ CADOps scenario (and `pnpm dev` if the slice
+is UI).
 
 ## Question, delete, then build
 
-Question process requirements. Delete the dumb ones instead of deferring them
-to a later gate. Then build.
+Question process requirements. Delete the dumb ones. Then build.
 
-Do not add a new modeling family unless the current user-goal doc says so. Do
-not add a schema, `.wcad` version, workspace package, or production dependency
-unless that doc says so.
-
-## Bundle sizes
-
-Bundle sizes may be measured as informational evidence. Never cheat the metric
-in the same change as a feature: no minifier, script, dependency, or cap
-change that makes the number look better.
+Do not add a new modeling family, schema, `.wcad` version, workspace
+package, or production dependency unless the current user-goal doc says
+so.
 
 V21.1 gzip ceilings are not per-slice vetoes.
