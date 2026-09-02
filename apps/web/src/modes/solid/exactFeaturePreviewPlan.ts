@@ -13,6 +13,7 @@ import {
   buildFeatureLoftOp,
   buildFeatureMirrorOp,
   buildFeatureAlignOp,
+  buildFeatureDraftOp,
   buildFeatureCombineOp,
   buildFeatureOffsetOp,
   buildFeatureUpdateOffsetOp,
@@ -103,7 +104,8 @@ const EXPECTED_FEATURE_KIND: Partial<
   mirror: "mirror",
   combine: "combine",
   offset: "offset",
-  align: "align"
+  align: "align",
+  draft: "draft"
 };
 
 function unsupported(reason: string): ExactFeaturePreviewUnsupportedPlan {
@@ -389,6 +391,10 @@ export function planExactFeaturePreview(
         return unsupported(
           "Align features are create-only; delete and recreate to change inputs."
         );
+      case "draft":
+        return unsupported(
+          "Draft features are create-only; delete and recreate to change inputs."
+        );
       case "offset": {
         const feature = current as Feature<"offset">;
         return supported(
@@ -448,6 +454,8 @@ export function planExactFeaturePreview(
       return supported(buildFeatureOffsetOp(draft));
     case "align":
       return supported(buildFeatureAlignOp(draft));
+    case "draft":
+      return supported(buildFeatureDraftOp(draft));
     case "shell":
       return supported(buildFeatureShellOp(draft));
     case "sweep": {

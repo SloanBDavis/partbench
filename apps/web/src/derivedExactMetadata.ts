@@ -25,6 +25,7 @@ import type {
   DerivedRevolveGeometrySource,
   DerivedSweepGeometrySource,
   DerivedLoftGeometrySource,
+  DerivedDraftGeometrySource,
   DerivedPrimitiveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
@@ -52,6 +53,7 @@ export type DerivedExactMetadataSource =
   | DerivedEdgeFinishGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
+  | DerivedDraftGeometrySource
   | DerivedExactBodyGeometrySource
   | DerivedImportedBodyExactMetadataSource;
 
@@ -741,6 +743,21 @@ export function createExactMetadataRuntimeInput(
     };
   }
 
+  if (source.kind === "draft") {
+    return {
+      id: source.id,
+      source: {
+        kind: "draft",
+        target: source.target,
+        faceStableIds: source.faceStableIds,
+        angleDegrees: source.angleDegrees,
+        pullDirection: source.pullDirection,
+        neutralPlane: source.neutralPlane,
+        draftedFaces: source.draftedFaces
+      }
+    };
+  }
+
   if (source.kind === "hole") {
     return {
       id: source.id,
@@ -889,6 +906,7 @@ export function isExactMetadataSource(source: {
     source.kind === "edgeFinish" ||
     source.kind === "sweep" ||
     source.kind === "loft" ||
+    source.kind === "draft" ||
     source.kind === "exactBody" ||
     source.kind === "importedBody"
   );
@@ -921,6 +939,10 @@ function getUnsupportedExactMetadataSourceMessage(
   }
 
   if (source.kind === "loft") {
+    return source.placementError;
+  }
+
+  if (source.kind === "draft") {
     return source.placementError;
   }
 

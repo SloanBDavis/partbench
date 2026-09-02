@@ -24,7 +24,8 @@ import {
   type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedSweepGeometrySource,
-  type DerivedLoftGeometrySource
+  type DerivedLoftGeometrySource,
+  type DerivedDraftGeometrySource
 } from "./derivedGeometry";
 import {
   createAttachedSketchGeometryFrame,
@@ -128,6 +129,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedEdgeFinishGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
+  | DerivedDraftGeometrySource
 )[] {
   const consumedBodyIds = includeConsumed
     ? new Set<string>()
@@ -183,6 +185,14 @@ export function createAuthoredFeatureDerivedGeometrySources(
       generatedFacesByKey,
       namedReferences,
       consumedBodyIds
+    ),
+    ...createDraftDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      namedReferences,
+      consumedBodyIds,
+      datums
     )
   ];
 
@@ -850,6 +860,104 @@ export function createEdgeFinishDerivedGeometrySources(
     });
 }
 
+export function createDraftDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  namedReferences: CadDocument["namedReferences"] = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  datums?: DatumMap
+): readonly DerivedDraftGeometrySource[] {
+  const extrudeFeaturesByBodyId = new Map(
+    features
+      .filter(
+        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          feature.kind === "extrude"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "draft" }> =>
+        feature.kind === "draft"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
+      const targetSource =
+        targetFeature !== undefined
+          ? createExtrudeSourceForFeature(
+              targetFeature,
+              sketches,
+              generatedFacesByKey,
+              datums
+            )
+          : undefined;
+      const faceStableIds = feature.faces.flatMap((face) => {
+        if (face.kind === "generatedFace") return [face.stableId];
+        if (face.kind === "namedReference") {
+          const stableId = namedReferences.get(face.name)?.stableId;
+          return stableId ? [stableId] : [];
+        }
+        return [];
+      });
+      const target =
+        targetSource?.kind === "extrude" &&
+        (targetSource.profile.kind === "rectangle" ||
+          targetSource.profile.kind === "circle")
+          ? {
+              kind: "extrude" as const,
+              sketchPlane: targetSource.sketchPlane,
+              profile: targetSource.profile,
+              depth: targetSource.depth,
+              side: targetSource.side,
+              ...(targetSource.placementFrame
+                ? { placementFrame: targetSource.placementFrame }
+                : {})
+            }
+          : {
+              kind: "extrude" as const,
+              sketchPlane: "XY" as const,
+              profile: {
+                kind: "rectangle" as const,
+                center: [0, 0] as const,
+                width: 1,
+                height: 1
+              },
+              depth: 1,
+              side: "positive" as const
+            };
+      const placementError =
+        targetSource?.placementError ??
+        (!targetSource ||
+        targetSource.kind !== "extrude" ||
+        (targetSource.profile.kind !== "rectangle" &&
+          targetSource.profile.kind !== "circle") ||
+        faceStableIds.length !== feature.faces.length
+          ? `Draft feature ${feature.id} cannot be displayed because its target or face set is unavailable.`
+          : undefined);
+
+      return {
+        id: feature.bodyId,
+        kind: "draft" as const,
+        target,
+        faceStableIds,
+        angleDegrees: feature.angleDegrees,
+        pullDirection: feature.pullDirection,
+        neutralPlane: {
+          point: feature.draftedFaces[0]?.plane.point ?? [0, 0, 0],
+          normal: feature.pullDirection
+        },
+        draftedFaces: feature.draftedFaces.map((record) => record.plane),
+        ...(placementError ? { placementError } : {})
+      };
+    });
+}
+
 function createExtrudeSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   sketches: readonly SketchSnapshot[],
@@ -1379,6 +1487,10 @@ function createConsumedBodyIds(
 
         if (feature.kind === "align") {
           return [feature.seedBodyId];
+        }
+
+        if (feature.kind === "draft") {
+          return [feature.targetBodyId];
         }
 
         return [];

@@ -4156,6 +4156,13 @@ export const V21_EXACT_BODY_SOURCE_POLICY = {
     shapePolicy: "singleSolid",
     cases: ["planar-face", "datum-plane", "datum-axis"]
   },
+  draftFeature: {
+    featureKind: "draft",
+    completedRelease: "V25",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["planar-face"]
+  },
   shellFeature: {
     featureKind: "shell",
     completedRelease: "V16",
@@ -4218,6 +4225,7 @@ export const V21_EXACT_FEATURE_FAMILY_SOURCE = {
   combine: "combineFeature",
   offset: "offsetFeature",
   align: "alignFeature",
+  draft: "draftFeature",
   shell: "shellFeature",
   sweep: "sweepFeature",
   loft: "loftFeature"
@@ -4284,6 +4292,7 @@ export type V21ExactBodyMatrixRowId =
   | "combine"
   | "offset"
   | "align"
+  | "draft"
   | "shell"
   | "imported-standalone-compound"
   | "imported-downstream"
@@ -4432,6 +4441,13 @@ export const V21_EXACT_BODY_MATRIX_ROWS = [
     id: "align",
     sourceTypes: ["alignFeature"],
     cases: V21_EXACT_BODY_SOURCE_POLICY.alignFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "draft",
+    sourceTypes: ["draftFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.draftFeature.cases,
     expectedSolidCount: "one"
   },
   {

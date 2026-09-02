@@ -30,6 +30,7 @@ export type FeatureEditorKind =
   | "combine"
   | "offset"
   | "align"
+  | "draft"
   | "datum-plane"
   | "datum-axis"
   | "named-reference"

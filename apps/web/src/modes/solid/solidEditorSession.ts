@@ -19,6 +19,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureAlignForm,
+  FeatureDraftForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -92,6 +93,13 @@ export function applySolidCollectorSelection(
         ...(draft as FeatureShellForm),
         targetBodyId: choice.value,
         openFaceRefs: []
+      };
+    }
+    if (kind === "draft") {
+      return {
+        ...(draft as FeatureDraftForm),
+        targetBodyId: choice.value,
+        faces: []
       };
     }
     if (kind === "extrude" || kind === "compositeExtrude") {
@@ -247,6 +255,23 @@ export function applySolidCollectorSelection(
     };
   }
 
+  if (collector === "openFaces" && kind === "draft") {
+    const choice = findChoice(choices?.openFaces, choiceKey);
+    if (
+      !choice ||
+      (choice.targetBodyId &&
+        choice.targetBodyId !== (draft as FeatureDraftForm).targetBodyId)
+    )
+      return draft;
+    const value = choice.value;
+    const current = draft as FeatureDraftForm;
+    return current.faces.some(
+      (face) => stableSerialize(face) === stableSerialize(value)
+    )
+      ? draft
+      : { ...current, faces: [...current.faces, value] };
+  }
+
   if (collector === "openFaces" && kind === "shell") {
     const choice = findChoice(choices?.openFaces, choiceKey);
     if (
@@ -268,6 +293,20 @@ export function applySolidCollectorSelection(
     const value = findChoice(choices?.directions, choiceKey)?.value;
     return value
       ? { ...(draft as FeatureLinearPatternForm), direction: value }
+      : draft;
+  }
+
+  if (collector === "rotationAxis" && kind === "draft") {
+    const value = findChoice(choices?.datums, choiceKey)?.value;
+    return value
+      ? { ...(draft as FeatureDraftForm), neutralDatumId: value }
+      : draft;
+  }
+
+  if (collector === "mirrorPlane" && kind === "draft") {
+    const choice = findChoice(choices?.openFaces, choiceKey);
+    return choice
+      ? { ...(draft as FeatureDraftForm), neutralFace: choice.value }
       : draft;
   }
 

@@ -18,6 +18,7 @@ import {
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
   createOcctShellMesh,
+  createOcctDraftMesh,
   createOcctSweepMesh,
   createOcctLoftMesh,
   createOcctSphereMesh,
@@ -4974,6 +4975,75 @@ describe("occt-wasm", () => {
       expect(open.triangleCount).toBeGreaterThan(0);
       expect(open.positions).toHaveLength(open.vertexCount * 3);
       expect(open.indices).toHaveLength(open.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "drafts a 10x10x8 prism so the exact solid is smaller than volume 800",
+    async () => {
+      const target = {
+        kind: "extrude" as const,
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 10,
+          height: 10
+        },
+        depth: 8,
+        side: "positive" as const
+      };
+      const angleDegrees = 10;
+      const tanAngle = Math.tan((angleDegrees * Math.PI) / 180);
+      const expectedVolume = 800 - 320 * tanAngle;
+      const draftedNormal: readonly [number, number, number] = [
+        Math.cos((angleDegrees * Math.PI) / 180),
+        0,
+        Math.sin((angleDegrees * Math.PI) / 180)
+      ];
+      const draftInput = {
+        target,
+        faceStableIds: ["generated:face:body_block:side:uMax"],
+        angleDegrees,
+        pullDirection: [0, 0, 1] as const,
+        neutralPlane: {
+          point: [5, 0, 0] as const,
+          normal: [0, 0, 1] as const
+        },
+        draftedFaces: [
+          {
+            point: [5, 0, 0] as const,
+            normal: draftedNormal
+          }
+        ]
+      };
+
+      const undrafted = await createOcctExactBodyMetadata({
+        source: target
+      });
+      const drafted = await createOcctExactBodyMetadata({
+        source: {
+          kind: "draft",
+          target,
+          faceStableIds: draftInput.faceStableIds,
+          angleDegrees: draftInput.angleDegrees,
+          pullDirection: draftInput.pullDirection,
+          neutralPlane: draftInput.neutralPlane,
+          draftedFaces: draftInput.draftedFaces
+        }
+      });
+      const mesh = await createOcctDraftMesh(draftInput);
+
+      expect(undrafted.volume).toBeCloseTo(800, 6);
+      expect(drafted.sourceKind).toBe("draft");
+      expect(drafted.volume).toBeLessThan(800);
+      expect(drafted.volume).not.toBeCloseTo(800, 3);
+      expect(drafted.volume).toBeCloseTo(expectedVolume, 3);
+      expect(drafted.topologyCounts.solidCount).toBe(1);
+      expect(mesh.primitive).toBe("boolean");
+      expect(mesh.faceCount).toBeGreaterThan(0);
+      expect(mesh.vertexCount).toBeGreaterThan(0);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

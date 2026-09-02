@@ -254,6 +254,10 @@ const BODY_SOURCE_RESOLVERS = {
     featureKind: "align",
     resolve: resolveLegacyRuntimeSource
   },
+  draftFeature: {
+    featureKind: "draft",
+    resolve: resolveLegacyRuntimeSource
+  },
   shellFeature: {
     featureKind: "shell",
     resolve: resolveArtifactOperationSource

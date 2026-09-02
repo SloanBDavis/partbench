@@ -20,6 +20,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureAlignForm,
+  FeatureDraftForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -61,7 +62,8 @@ export type SolidEditorKind =
   | "mirror"
   | "combine"
   | "offset"
-  | "align";
+  | "align"
+  | "draft";
 
 export interface SolidDraftByKind {
   readonly box: PrimitiveCommandForm;
@@ -90,6 +92,7 @@ export interface SolidDraftByKind {
   readonly combine: FeatureCombineForm;
   readonly offset: FeatureOffsetForm;
   readonly align: FeatureAlignForm;
+  readonly draft: FeatureDraftForm;
 }
 
 export type SolidDraft = SolidDraftByKind[SolidEditorKind];

@@ -45,6 +45,9 @@ import type {
   GeometryKernelPlaneFrame,
   ShellRequest,
   ShellTargetSource,
+  DraftRequest,
+  DraftTargetSource,
+  DraftPlane,
   SweepRequest,
   SweepProfileSource,
   SweepPathSegment,
@@ -92,6 +95,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.circularPatternFeature"
   | "geometry-worker.mirrorFeature"
   | "geometry-worker.shellFeature"
+  | "geometry-worker.draftFeature"
   | "geometry-worker.sweepFeature"
   | "geometry-worker.loftFeature"
   | "geometry-worker.exactMetadata"
@@ -1116,6 +1120,39 @@ export function createShellWorkerRequest(input: {
       target: input.target,
       wallThickness: input.wallThickness,
       openFaceStableIds: input.openFaceStableIds,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createDraftWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly target: DraftTargetSource;
+  readonly faceStableIds: readonly string[];
+  readonly angleDegrees: number;
+  readonly pullDirection: GeometryKernelDirection;
+  readonly neutralPlane: DraftPlane;
+  readonly draftedFaces: readonly DraftPlane[];
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<DraftRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.draftFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.draft",
+      target: input.target,
+      faceStableIds: input.faceStableIds,
+      angleDegrees: input.angleDegrees,
+      pullDirection: input.pullDirection,
+      neutralPlane: input.neutralPlane,
+      draftedFaces: input.draftedFaces,
       ...(tessellation ? { tessellation } : {})
     }
   };

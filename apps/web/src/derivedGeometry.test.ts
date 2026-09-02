@@ -35,6 +35,7 @@ import type {
   DerivedGeometryEdgeFinishInput,
   DerivedGeometryMirrorInput,
   DerivedGeometryShellInput,
+  DerivedGeometryDraftInput,
   DerivedGeometrySweepInput,
   DerivedGeometryLoftInput,
   DerivedExactMetadataResult,
@@ -72,6 +73,7 @@ type RuntimeInput =
   | DerivedGeometryCircularPatternInput
   | DerivedGeometryMirrorInput
   | DerivedGeometryShellInput
+  | DerivedGeometryDraftInput
   | DerivedGeometrySweepInput
   | DerivedGeometryLoftInput
   | DerivedExactBodyGeometryInput;
@@ -5414,6 +5416,10 @@ function createRuntime(
       return handler(input);
     },
     shell(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    draft(input) {
       inputs.push(input);
       return handler(input);
     },

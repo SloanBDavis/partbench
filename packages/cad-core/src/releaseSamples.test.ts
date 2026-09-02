@@ -865,6 +865,7 @@ describe("V21 exact body source matrix", () => {
     "combineFeature",
     "offsetFeature",
     "alignFeature",
+    "draftFeature",
     "shellFeature",
     "sweepFeature",
     "loftFeature",
@@ -884,6 +885,7 @@ describe("V21 exact body source matrix", () => {
     "combine",
     "offset",
     "align",
+    "draft",
     "shell",
     "sweep",
     "loft"
@@ -898,9 +900,9 @@ describe("V21 exact body source matrix", () => {
     for (const policy of Object.values(V21_EXACT_BODY_SOURCE_POLICY)) {
       expect(policy.cases.length).toBeGreaterThan(0);
     }
-    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(24);
+    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(25);
     expect(new Set(V21_EXACT_BODY_MATRIX_ROWS.map(({ id }) => id)).size).toBe(
-      24
+      25
     );
     const activeRows = V21_EXACT_BODY_MATRIX_ROWS.filter(
       ({ expectedArtifact }) => expectedArtifact === "required"
@@ -1107,6 +1109,50 @@ describe("V21 exact body source matrix", () => {
       }
     ]);
     record(alignEngine);
+
+    const draftEngine = new CadEngine();
+    draftEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_block",
+        id: "rect_block",
+        center: [0, 0],
+        width: 10,
+        height: 10
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_block",
+        bodyId: "body_block",
+        sketchId: "sketch_block",
+        entityId: "rect_block",
+        depth: 8
+      },
+      {
+        op: "feature.draft",
+        id: "feat_draft",
+        bodyId: "body_draft",
+        targetBodyId: "body_block",
+        faces: [
+          {
+            kind: "generatedFace",
+            bodyId: "body_block",
+            stableId: "generated:face:body_block:side:uMax"
+          }
+        ],
+        angleDegrees: 10,
+        neutralPlane: {
+          kind: "planarFace",
+          face: {
+            kind: "generatedFace",
+            bodyId: "body_block",
+            stableId: "generated:face:body_block:startCap"
+          }
+        }
+      }
+    ]);
+    record(draftEngine);
 
     expect(covered).toEqual(new Set(sourceTypes));
   });

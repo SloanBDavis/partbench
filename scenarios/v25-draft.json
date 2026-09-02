@@ -1,0 +1,152 @@
+{
+  "id": "v25-draft",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_block",
+      "name": "Block",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block",
+      "id": "rect_block",
+      "center": [0, 0],
+      "width": 10,
+      "height": 10
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block",
+      "bodyId": "body_block",
+      "sketchId": "sketch_block",
+      "entityId": "rect_block",
+      "depth": 8
+    }
+  ],
+  "steps": [
+    {
+      "id": "draft-invert-60",
+      "ops": [
+        {
+          "op": "feature.draft",
+          "id": "feat_draft_invert",
+          "bodyId": "body_draft_invert",
+          "targetBodyId": "body_block",
+          "faces": [
+            {
+              "kind": "generatedFace",
+              "bodyId": "body_block",
+              "stableId": "generated:face:body_block:side:uMax"
+            }
+          ],
+          "angleDegrees": 60,
+          "neutralPlane": {
+            "kind": "planarFace",
+            "face": {
+              "kind": "generatedFace",
+              "bodyId": "body_block",
+              "stableId": "generated:face:body_block:startCap"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "INVALID_FEATURE",
+          "messageIncludes": "invert"
+        }
+      }
+    },
+    {
+      "id": "draft-planar-side-face",
+      "ops": [
+        {
+          "op": "feature.draft",
+          "id": "feat_draft_side",
+          "bodyId": "body_draft_side",
+          "targetBodyId": "body_block",
+          "faces": [
+            {
+              "kind": "generatedFace",
+              "bodyId": "body_block",
+              "stableId": "generated:face:body_block:side:uMax"
+            }
+          ],
+          "angleDegrees": 10,
+          "neutralPlane": {
+            "kind": "planarFace",
+            "face": {
+              "kind": "generatedFace",
+              "bodyId": "body_block",
+              "stableId": "generated:face:body_block:startCap"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "ops": ["feature.draft"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_draft_side",
+                "kind": "draft",
+                "targetBodyId": "body_block",
+                "angleDegrees": 10,
+                "pullDirection": [0, 0, 1],
+                "draftedFaces": [
+                  {
+                    "face": {
+                      "kind": "generatedFace",
+                      "bodyId": "body_block",
+                      "stableId": "generated:face:body_block:side:uMax"
+                    },
+                    "plane": {
+                      "point": [5, 0, 0],
+                      "normal": [0.984807753012, 0, 0.173648177667]
+                    }
+                  }
+                ],
+                "bodyId": "body_draft_side"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_draft_side", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure"
+          }
+        },
+        {
+          "query": { "query": "body.measurements", "bodyId": "body_block" },
+          "expect": {
+            "ok": true,
+            "query": "body.measurements",
+            "measurements": {
+              "bodyId": "body_block",
+              "volume": 800
+            }
+          }
+        },
+        {
+          "query": { "query": "body.measurements", "bodyId": "body_draft_side" },
+          "expect": {
+            "ok": true,
+            "query": "body.measurements",
+            "measurements": {
+              "bodyId": "body_draft_side",
+              "volume": 743.575366173291
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

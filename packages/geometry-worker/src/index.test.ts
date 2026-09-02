@@ -19,6 +19,7 @@ import {
   createMirrorWorkerRequest,
   createRevolveProfileWorkerRequest,
   createShellWorkerRequest,
+  createDraftWorkerRequest,
   createSweepWorkerRequest,
   createLoftWorkerRequest,
   createSphereTessellationWorkerRequest,
@@ -404,6 +405,51 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("creates a typed draft feature worker request", () => {
+    const target = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 10,
+        height: 10
+      },
+      depth: 8
+    };
+
+    const request = createDraftWorkerRequest({
+      id: "worker_req_draft",
+      target,
+      faceStableIds: ["generated:face:body_block:side:uMax"],
+      angleDegrees: 10,
+      pullDirection: [0, 0, 1],
+      neutralPlane: { point: [5, 0, 0], normal: [0, 0, 1] },
+      draftedFaces: [
+        {
+          point: [5, 0, 0],
+          normal: [0.984807753012, 0, 0.173648177667]
+        }
+      ],
+      linearDeflection: 0.25
+    });
+
+    expect(request).toMatchObject({
+      id: "worker_req_draft",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.draftFeature",
+      payload: {
+        id: "worker_req_draft:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.draft",
+        target,
+        angleDegrees: 10,
+        faceStableIds: ["generated:face:body_block:side:uMax"],
+        tessellation: { linearDeflection: 0.25 }
+      }
+    });
+  });
+
   it("creates a typed sweep feature worker request", () => {
     const profile = {
       sketchPlane: "XY" as const,
@@ -530,6 +576,55 @@ describe("geometry-worker", () => {
     });
     expect(JSON.stringify(response)).not.toContain(
       "Unsupported geometry kernel operation: geometry.shell."
+    );
+
+    if (response.response.ok) {
+      expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    } else {
+      expect(response.diagnostics?.stage).not.toBe("requestValidation");
+      expect(response.diagnostics?.error?.code).not.toBe(
+        "UNSUPPORTED_PRIMITIVE"
+      );
+    }
+  });
+
+  it("lets browser draft feature requests pass request validation", async () => {
+    const target = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 10,
+        height: 10
+      },
+      depth: 8,
+      side: "positive" as const
+    };
+    const worker = new GeometryKernelBrowserWorker();
+    const response = await worker.execute(
+      createDraftWorkerRequest({
+        id: "worker_req_browser_draft",
+        target,
+        faceStableIds: ["generated:face:body_block:side:uMax"],
+        angleDegrees: 10,
+        pullDirection: [0, 0, 1],
+        neutralPlane: { point: [5, 0, 0], normal: [0, 0, 1] },
+        draftedFaces: [
+          {
+            point: [5, 0, 0],
+            normal: [0.984807753012, 0, 0.173648177667]
+          }
+        ]
+      })
+    );
+
+    expect(response.response).toMatchObject({
+      id: "worker_req_browser_draft:payload",
+      op: "geometry.draft"
+    });
+    expect(JSON.stringify(response)).not.toContain(
+      "Unsupported geometry kernel operation: geometry.draft."
     );
 
     if (response.response.ok) {

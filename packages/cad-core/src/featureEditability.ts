@@ -1521,6 +1521,7 @@ function createDeferredFields(
     feature.kind === "combine" ||
     feature.kind === "offset" ||
     feature.kind === "align" ||
+    feature.kind === "draft" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

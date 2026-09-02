@@ -227,6 +227,7 @@ describe("V18 command search", () => {
       "solid.combine",
       "solid.offset",
       "solid.align",
+      "solid.draft",
       "sketch.trim",
       "sketch.extend",
       "sketch.split",

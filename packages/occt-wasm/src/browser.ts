@@ -144,6 +144,13 @@ import {
   type OcctShellTargetSource
 } from "./shell";
 import {
+  createOcctDraftMeshWithInstance,
+  createOcctDraftMeshWithLoader,
+  type OcctDraftInput,
+  type OcctDraftTargetSource,
+  type OcctDraftPlane
+} from "./draft";
+import {
   createOcctSweepMeshWithInstance,
   createOcctSweepMeshWithLoader,
   type OcctSweepInput,
@@ -222,6 +229,9 @@ export type {
   OcctMirrorInput,
   OcctShellInput,
   OcctShellTargetSource,
+  OcctDraftInput,
+  OcctDraftTargetSource,
+  OcctDraftPlane,
   OcctSweepInput,
   OcctSweepPathSegment,
   OcctSweepProfileSource,
@@ -291,6 +301,8 @@ export {
   createOcctMirrorMeshWithLoader,
   createOcctShellMeshWithInstance,
   createOcctShellMeshWithLoader,
+  createOcctDraftMeshWithInstance,
+  createOcctDraftMeshWithLoader,
   createOcctSweepMeshWithInstance,
   createOcctSweepMeshWithLoader,
   createOcctLoftMeshWithInstance,

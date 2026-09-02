@@ -48,6 +48,7 @@ export type DerivedGeometrySourceKind =
   | "edgeFinish"
   | "sweep"
   | "loft"
+  | "draft"
   | "exactBody";
 
 export type DerivedGeometrySource =
@@ -59,6 +60,7 @@ export type DerivedGeometrySource =
   | DerivedEdgeFinishGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
+  | DerivedDraftGeometrySource
   | DerivedExactBodyGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
@@ -141,6 +143,31 @@ export interface DerivedLoftGeometrySource extends DerivedAuthoredGeometrySource
   readonly id: string;
   readonly kind: "loft";
   readonly sections: readonly DerivedSweepGeometrySource["profile"][];
+  readonly placementError?: string;
+}
+
+export interface DerivedDraftGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
+  readonly id: string;
+  readonly kind: "draft";
+  readonly target: {
+    readonly kind: "extrude";
+    readonly sketchPlane: "XY" | "XZ" | "YZ";
+    readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
+    readonly depth: number;
+    readonly side: "positive" | "negative" | "symmetric";
+    readonly placementFrame?: SketchDisplayFrame;
+  };
+  readonly faceStableIds: readonly string[];
+  readonly angleDegrees: number;
+  readonly pullDirection: readonly [number, number, number];
+  readonly neutralPlane: {
+    readonly point: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  };
+  readonly draftedFaces: readonly {
+    readonly point: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  }[];
   readonly placementError?: string;
 }
 
@@ -286,6 +313,7 @@ type SupportedDerivedGeometrySource =
   | DerivedEdgeFinishGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
+  | DerivedDraftGeometrySource
   | DerivedExactBodyGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
@@ -631,6 +659,7 @@ function toDerivedGeometrySource(
     input.kind === "edgeFinish" ||
     input.kind === "sweep" ||
     input.kind === "loft" ||
+    input.kind === "draft" ||
     input.kind === "exactBody"
   ) {
     return input;
@@ -664,6 +693,10 @@ function isSupportedDerivedGeometrySource(
   }
 
   if (source.kind === "sweep" || source.kind === "loft") {
+    return !source.placementError;
+  }
+
+  if (source.kind === "draft") {
     return !source.placementError;
   }
 
@@ -864,6 +897,25 @@ function deriveSourceMesh(
     );
   }
 
+  if (source.kind === "draft") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime.draft(
+      {
+        id: source.id,
+        target: source.target,
+        faceStableIds: source.faceStableIds,
+        angleDegrees: source.angleDegrees,
+        pullDirection: source.pullDirection,
+        neutralPlane: source.neutralPlane,
+        draftedFaces: source.draftedFaces
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
+  }
+
   const object = source.object as SupportedDerivedGeometryObject;
 
   switch (object.kind) {
@@ -1056,7 +1108,10 @@ function isAuthoredFeatureSourceKind(
     kind === "extrudeBoolean" ||
     kind === "revolve" ||
     kind === "hole" ||
-    kind === "edgeFinish"
+    kind === "edgeFinish" ||
+    kind === "sweep" ||
+    kind === "loft" ||
+    kind === "draft"
   );
 }
 
@@ -1326,6 +1381,22 @@ export function createDerivedGeometryCacheKey(
                         sections: source.sections,
                         placementError: source.placementError
                       }
+                    : source.kind === "draft"
+                      ? {
+                          kind: source.kind,
+                          sourceIdentitySignature:
+                            source.sourceIdentitySignature,
+                          target: createDerivedGeometryCacheKey({
+                            id: `${source.id}:target`,
+                            ...source.target
+                          }),
+                          faceStableIds: source.faceStableIds,
+                          angleDegrees: source.angleDegrees,
+                          pullDirection: source.pullDirection,
+                          neutralPlane: source.neutralPlane,
+                          draftedFaces: source.draftedFaces,
+                          placementError: source.placementError
+                        }
                     : {
                         kind: source.kind,
                         dimensions: source.object.dimensions,

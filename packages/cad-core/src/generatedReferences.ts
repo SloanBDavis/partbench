@@ -24,6 +24,7 @@ import type {
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureId,
+  DraftFeatureSnapshot,
   ExtrudeFeatureV21,
   RevolveFeatureV21,
   SweepFeatureV21,
@@ -77,6 +78,7 @@ const PLANAR_FACE_OPERATIONS = [
   "feature.shell",
   "feature.offset",
   "feature.align",
+  "feature.draft",
   "feature.mirrorPlane",
   "feature.measureReference",
   "feature.selectReference"
@@ -130,6 +132,7 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesCombineFeature
   | GeneratedReferencesOffsetFeature
   | GeneratedReferencesAlignFeature
+  | GeneratedReferencesDraftFeature
   | GeneratedReferencesShellFeature
   | GeneratedReferencesSweepFeature
   | GeneratedReferencesLoftFeature;
@@ -219,6 +222,8 @@ export interface GeneratedReferencesAlignFeature {
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
 }
+
+export type GeneratedReferencesDraftFeature = DraftFeatureSnapshot;
 
 export interface GeneratedReferencesShellFeature {
   readonly id: FeatureId;

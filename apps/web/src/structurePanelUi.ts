@@ -39,6 +39,7 @@ export type AuthoredStructureFeature = Extract<
       | "combine"
       | "offset"
       | "align"
+      | "draft"
       | "sweep"
       | "loft";
   }
@@ -94,6 +95,7 @@ export function isAuthoredStructureFeature(
     feature.kind === "combine" ||
     feature.kind === "offset" ||
     feature.kind === "align" ||
+    feature.kind === "draft" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
   );
@@ -385,6 +387,10 @@ function getFeatureTargetBodyId(
 
   if (feature.kind === "align") {
     return feature.seedBodyId;
+  }
+
+  if (feature.kind === "draft") {
+    return feature.targetBodyId;
   }
 
   if (
@@ -720,6 +726,10 @@ export function formatFeatureLine(
     return `align / ${feature.target.kind} / seed ${feature.seedBodyId}`;
   }
 
+  if (feature.kind === "draft") {
+    return `draft / ${feature.angleDegrees}° / ${feature.faces.length} face${feature.faces.length === 1 ? "" : "s"} / target ${feature.targetBodyId}`;
+  }
+
   if (feature.kind === "sweep") {
     return `sweep / profile ${feature.profile.sketchId}/${sweepProfileEntityLabel(feature.profile) ?? feature.profile.kind} / ${feature.path.kind} path`;
   }
@@ -851,6 +861,10 @@ export function formatFeatureKindLabel(
 
   if (feature.kind === "align") {
     return "Align";
+  }
+
+  if (feature.kind === "draft") {
+    return "Draft";
   }
 
   if (feature.kind === "sweep") {

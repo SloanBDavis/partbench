@@ -1635,6 +1635,77 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews feature.draft batches from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_draft",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_block",
+              id: "rect_block",
+              center: [0, 0],
+              width: 10,
+              height: 10
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_block",
+              bodyId: "body_block",
+              sketchId: "sketch_block",
+              entityId: "rect_block",
+              depth: 8
+            },
+            {
+              op: "feature.draft",
+              id: "feat_draft_side",
+              bodyId: "body_draft_side",
+              targetBodyId: "body_block",
+              faces: [
+                {
+                  kind: "generatedFace",
+                  bodyId: "body_block",
+                  stableId: "generated:face:body_block:side:uMax"
+                }
+              ],
+              angleDegrees: 10,
+              neutralPlane: {
+                kind: "planarFace",
+                face: {
+                  kind: "generatedFace",
+                  bodyId: "body_block",
+                  stableId: "generated:face:body_block:startCap"
+                }
+              }
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.draft",
+          intent: "create",
+          featureId: "feat_draft_side",
+          bodyId: "body_draft_side",
+          targetBodyId: "body_block",
+          label: expect.stringContaining("10°")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews feature.offset batches from external JSON callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(
@@ -7100,6 +7171,7 @@ describe("agent-adapter", () => {
             "feature.shell",
             "feature.offset",
             "feature.align",
+            "feature.draft",
             "feature.mirrorPlane",
             "feature.measureReference",
             "feature.selectReference"

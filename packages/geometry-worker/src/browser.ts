@@ -36,6 +36,7 @@ export {
   createCircularPatternWorkerRequest,
   createMirrorWorkerRequest,
   createShellWorkerRequest,
+  createDraftWorkerRequest,
   createSweepWorkerRequest,
   createLoftWorkerRequest,
   createExactBodyMetadataWorkerRequest,
@@ -212,6 +213,7 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.circularPatternFeature" &&
     kind !== "geometry-worker.mirrorFeature" &&
     kind !== "geometry-worker.shellFeature" &&
+    kind !== "geometry-worker.draftFeature" &&
     kind !== "geometry-worker.sweepFeature" &&
     kind !== "geometry-worker.loftFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
@@ -240,6 +242,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.circularPattern" &&
     op !== "geometry.mirror" &&
     op !== "geometry.shell" &&
+    op !== "geometry.draft" &&
     op !== "geometry.sweep" &&
     op !== "geometry.loft" &&
     op !== "geometry.tessellateExactBody" &&

@@ -432,6 +432,7 @@ function getFeatureSketchIds(feature: CadFeatureSummary): readonly string[] {
     case "combine":
     case "offset":
     case "align":
+    case "draft":
     case "shell":
       return [];
   }
@@ -620,6 +621,8 @@ function featureIcon(feature: CadFeatureSummary): IconName {
       return "shell";
     case "align":
       return "transform";
+    case "draft":
+      return "shell";
   }
 }
 

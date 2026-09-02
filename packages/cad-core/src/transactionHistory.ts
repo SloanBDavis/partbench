@@ -130,6 +130,7 @@ function createOperationSummaries(
       op.op === "feature.combine" ||
       op.op === "feature.offset" ||
       op.op === "feature.align" ||
+      op.op === "feature.draft" ||
       op.op === "feature.shell"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
@@ -883,6 +884,20 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.draft": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const faceCount = op.faces.length;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create draft feature ${featureId ?? "with generated ID"} on ${faceCount} face${faceCount === 1 ? "" : "s"} of body ${op.targetBodyId} at ${op.angleDegrees}°${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId
+        });
+      }
+
       case "feature.shell": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -1225,6 +1240,7 @@ function getFeatureRefSketchEntityId(
     feature.kind === "combine" ||
     feature.kind === "offset" ||
     feature.kind === "align" ||
+    feature.kind === "draft" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
@@ -1246,6 +1262,7 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "combine" ||
     feature.kind === "offset" ||
     feature.kind === "align" ||
+    feature.kind === "draft" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

@@ -2821,6 +2821,7 @@ describe("cad-protocol", () => {
           "feature.shell": 0,
           "feature.offset": 0,
           "feature.align": 0,
+          "feature.draft": 0,
           "feature.linearPatternDirection": 0,
           "feature.circularPatternAxis": 0,
           "feature.mirrorPlane": 0,

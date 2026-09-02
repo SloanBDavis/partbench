@@ -887,6 +887,7 @@ const FEATURE_KIND_BY_BODY_SOURCE_TYPE = {
   combineFeature: "combine",
   offsetFeature: "offset",
   alignFeature: "align",
+  draftFeature: "draft",
   shellFeature: "shell",
   sweepFeature: "sweep",
   loftFeature: "loft",
@@ -1593,6 +1594,7 @@ function getBodyExportSourceKind(
     case "combineFeature":
     case "offsetFeature":
     case "alignFeature":
+    case "draftFeature":
     case "loftFeature":
       return "unresolvedSource";
     case "sweepFeature":
