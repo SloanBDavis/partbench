@@ -913,6 +913,25 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildFeatureCombineOp({
+        id: " feat_intersect ",
+        bodyId: " body_overlap ",
+        name: " Overlap ",
+        mode: "intersect",
+        targetBodyId: "body_block_a",
+        toolBodyId: "body_block_b"
+      })
+    ).toEqual({
+      op: "feature.combine",
+      id: "feat_intersect",
+      bodyId: "body_overlap",
+      name: "Overlap",
+      mode: "intersect",
+      targetBodyId: "body_block_a",
+      toolBodyId: "body_block_b"
+    });
+
+    expect(
       buildFeatureOffsetOp({
         id: " feat_profile_offset ",
         bodyId: " body_profile_offset ",

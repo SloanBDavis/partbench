@@ -1952,7 +1952,17 @@ export interface FeatureMirrorOp {
   readonly name?: string;
 }
 
-export type FeatureCombineMode = "union" | "subtract";
+export const FEATURE_COMBINE_MODES = ["union", "subtract", "intersect"] as const;
+
+export type FeatureCombineMode = (typeof FEATURE_COMBINE_MODES)[number];
+
+export function isFeatureCombineMode(
+  value: unknown
+): value is FeatureCombineMode {
+  return (
+    value === "union" || value === "subtract" || value === "intersect"
+  );
+}
 
 export interface FeatureCombineOp {
   readonly op: "feature.combine";

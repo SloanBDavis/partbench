@@ -1004,6 +1004,14 @@ function getUnsupportedExactMetadataSourceMessage(
     return "Exact metadata for cut currently supports rectangle or circle target extrudes only.";
   }
 
+  if (
+    source.operation === "intersect" &&
+    targetProfileKind !== "rectangle" &&
+    targetProfileKind !== "circle"
+  ) {
+    return "Exact metadata for intersect currently supports rectangle or circle target extrudes only.";
+  }
+
   return undefined;
 }
 

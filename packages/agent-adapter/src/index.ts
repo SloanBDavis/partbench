@@ -10,6 +10,7 @@ import {
   CAD_EXPORT_DIAGNOSTIC_CODES,
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   isCadExactDownstreamGeometryOp,
+  isFeatureCombineMode,
   readExclusivePatternSeed,
   validateCadExactExportPlan,
   validateFeatureUpdateHoleOp,
@@ -6191,7 +6192,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      (value.mode === "union" || value.mode === "subtract") &&
+      isFeatureCombineMode(value.mode) &&
       typeof value.targetBodyId === "string" &&
       typeof value.toolBodyId === "string"
     );

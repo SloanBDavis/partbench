@@ -114,7 +114,7 @@ export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle" | "wire";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
 export type GeometryKernelDocumentUnit = "mm" | "cm" | "m" | "in";
-export type GeometryKernelBooleanOperation = "add" | "cut";
+export type GeometryKernelBooleanOperation = "add" | "cut" | "intersect";
 export const MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH = 64;
 export type GeometryKernelHoleDepthMode = "blind" | "throughAll";
 export type GeometryKernelHoleDirection = "positive" | "negative";
@@ -263,7 +263,8 @@ export interface BooleanExtrudePrimitiveSource {
 
 export type BooleanExtrudeResultSource =
   | BooleanExtrudeAddResultSource
-  | BooleanExtrudeCutResultSource;
+  | BooleanExtrudeCutResultSource
+  | BooleanExtrudeIntersectResultSource;
 
 export interface BooleanExtrudeAddResultSource {
   readonly kind: "booleanExtrudes";
@@ -276,6 +277,14 @@ export interface BooleanExtrudeAddResultSource {
 export interface BooleanExtrudeCutResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
+  readonly target: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudeToolSource;
+}
+
+export interface BooleanExtrudeIntersectResultSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: "intersect";
   readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: BooleanExtrudeSource;
   readonly tool: BooleanExtrudeToolSource;
@@ -363,15 +372,10 @@ interface BooleanExtrudesRequestBase {
   readonly tessellation?: TessellationOptions;
 }
 
-export type BooleanExtrudesRequest =
-  | (BooleanExtrudesRequestBase & {
-      readonly operation: "add";
-      readonly tool: BooleanExtrudeToolSource;
-    })
-  | (BooleanExtrudesRequestBase & {
-      readonly operation: "cut";
-      readonly tool: BooleanExtrudeToolSource;
-    });
+export type BooleanExtrudesRequest = BooleanExtrudesRequestBase & {
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly tool: BooleanExtrudeToolSource;
+};
 
 export interface HoleToolSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
@@ -2267,7 +2271,7 @@ function validateRequest(
     ) {
       return {
         code: "INVALID_DIMENSIONS",
-        message: "Boolean extrude requests require operation add or cut."
+        message: "Boolean extrude requests require operation add, cut, or intersect."
       };
     }
 
@@ -2568,27 +2572,16 @@ function createMesh(
     case "geometry.revolveProfile":
       return createRevolveProfileMesh(factories, request);
     case "geometry.booleanExtrudes":
-      return request.operation === "cut"
-        ? factories.createBooleanExtrudeMesh({
-            operation: "cut",
-            ...(request.materialPolicy
-              ? { materialPolicy: request.materialPolicy }
-              : {}),
-            target: request.target,
-            tool: request.tool,
-            linearDeflection: request.tessellation?.linearDeflection,
-            angularDeflection: request.tessellation?.angularDeflection
-          })
-        : factories.createBooleanExtrudeMesh({
-            operation: "add",
-            ...(request.materialPolicy
-              ? { materialPolicy: request.materialPolicy }
-              : {}),
-            target: request.target,
-            tool: request.tool,
-            linearDeflection: request.tessellation?.linearDeflection,
-            angularDeflection: request.tessellation?.angularDeflection
-          });
+      return factories.createBooleanExtrudeMesh({
+        operation: request.operation,
+        ...(request.materialPolicy
+          ? { materialPolicy: request.materialPolicy }
+          : {}),
+        target: request.target,
+        tool: request.tool,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
     case "geometry.hole":
       return createHoleMesh(factories, request);
     case "geometry.edgeFinish":
@@ -3301,7 +3294,7 @@ function isExtrudeSide(value: unknown): value is GeometryKernelExtrudeSide {
 function isBooleanOperation(
   value: unknown
 ): value is GeometryKernelBooleanOperation {
-  return value === "add" || value === "cut";
+  return value === "add" || value === "cut" || value === "intersect";
 }
 
 function isBooleanMaterialPolicy(
@@ -5760,7 +5753,9 @@ function isSupportedBooleanExtrudeProfileKinds(
   targetProfile: GeometryKernelExtrudeProfileKind
 ): boolean {
   return (
-    (operation === "add" || operation === "cut") &&
+    (operation === "add" ||
+      operation === "cut" ||
+      operation === "intersect") &&
     (targetProfile === "rectangle" ||
       targetProfile === "circle" ||
       targetProfile === "wire")

@@ -2167,7 +2167,8 @@ function CombineFields({
         value={draft.mode}
         options={[
           { value: "union", label: "Union" },
-          { value: "subtract", label: "Subtract" }
+          { value: "subtract", label: "Subtract" },
+          { value: "intersect", label: "Intersect" }
         ]}
         onChange={(mode) =>
           onChange({

@@ -97,7 +97,7 @@ export interface DerivedExtrudeGeometrySource extends DerivedAuthoredGeometrySou
 export interface DerivedBooleanExtrudeGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "extrudeBoolean";
-  readonly operation: "add" | "cut";
+  readonly operation: "add" | "cut" | "intersect";
   readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target:
     | DerivedExtrudeGeometrySource
@@ -765,31 +765,18 @@ function deriveSourceMesh(
     }
 
     const runtimeSource = createBooleanExtrudeResultRuntimeSource(source);
-    return runtimeSource.operation === "cut"
-      ? runtime.booleanExtrudes(
-          {
-            id: source.id,
-            operation: "cut",
-            ...(runtimeSource.materialPolicy
-              ? { materialPolicy: runtimeSource.materialPolicy }
-              : {}),
-            target: runtimeSource.target,
-            tool: runtimeSource.tool
-          },
-          context as DerivedGeometryRequestContext | undefined
-        )
-      : runtime.booleanExtrudes(
-          {
-            id: source.id,
-            operation: "add",
-            ...(runtimeSource.materialPolicy
-              ? { materialPolicy: runtimeSource.materialPolicy }
-              : {}),
-            target: runtimeSource.target,
-            tool: runtimeSource.tool
-          },
-          context as DerivedGeometryRequestContext | undefined
-        );
+    return runtime.booleanExtrudes(
+      {
+        id: source.id,
+        operation: runtimeSource.operation,
+        ...(runtimeSource.materialPolicy
+          ? { materialPolicy: runtimeSource.materialPolicy }
+          : {}),
+        target: runtimeSource.target,
+        tool: runtimeSource.tool
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   if (source.kind === "hole") {
@@ -1101,6 +1088,14 @@ function getUnsupportedBooleanSourceMessage(
     targetProfileKind !== "circle"
   ) {
     return "Boolean cut display currently supports rectangle or circle target extrudes only.";
+  }
+
+  if (
+    source.operation === "intersect" &&
+    targetProfileKind !== "rectangle" &&
+    targetProfileKind !== "circle"
+  ) {
+    return "Boolean intersect display currently supports rectangle or circle target extrudes only.";
   }
 
   return undefined;

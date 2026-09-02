@@ -423,32 +423,18 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
 
-      const request =
-        input.operation === "cut"
-          ? createExtrudeBooleanWorkerRequest({
-              id: requestId,
-              payloadId: `${requestId}:kernel`,
-              operation: "cut",
-              ...(input.materialPolicy
-                ? { materialPolicy: input.materialPolicy }
-                : {}),
-              target: input.target,
-              tool: input.tool,
-              linearDeflection: 0.25,
-              angularDeflection: 0.5
-            })
-          : createExtrudeBooleanWorkerRequest({
-              id: requestId,
-              payloadId: `${requestId}:kernel`,
-              operation: "add",
-              ...(input.materialPolicy
-                ? { materialPolicy: input.materialPolicy }
-                : {}),
-              target: input.target,
-              tool: input.tool,
-              linearDeflection: 0.25,
-              angularDeflection: 0.5
-            });
+      const request = createExtrudeBooleanWorkerRequest({
+        id: requestId,
+        payloadId: `${requestId}:kernel`,
+        operation: input.operation,
+        ...(input.materialPolicy
+          ? { materialPolicy: input.materialPolicy }
+          : {}),
+        target: input.target,
+        tool: input.tool,
+        linearDeflection: 0.25,
+        angularDeflection: 0.5
+      });
 
       return executeTessellationRequest(input, request, context);
     },

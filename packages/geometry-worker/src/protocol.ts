@@ -643,17 +643,10 @@ type ExtrudeBooleanWorkerRequestInputBase = {
 };
 
 export type ExtrudeBooleanWorkerRequestInput =
-  | (ExtrudeBooleanWorkerRequestInputBase & {
-      readonly operation: "add";
-      readonly tool: BooleanExtrudeToolSource;
-    })
-  | (ExtrudeBooleanWorkerRequestInputBase & {
-      readonly operation: "cut";
-      readonly tool: Extract<
-        BooleanExtrudesRequest,
-        { operation: "cut" }
-      >["tool"];
-    });
+  ExtrudeBooleanWorkerRequestInputBase & {
+    readonly operation: BooleanExtrudesRequest["operation"];
+    readonly tool: BooleanExtrudeToolSource;
+  };
 
 export function createExtrudeBooleanWorkerRequest(
   input: ExtrudeBooleanWorkerRequestInput
@@ -672,21 +665,11 @@ export function createExtrudeBooleanWorkerRequest(
     target: input.target,
     ...(tessellation ? { tessellation } : {})
   };
-  if (input.operation === "cut") {
-    return {
-      ...base,
-      payload: {
-        ...payloadBase,
-        operation: "cut",
-        tool: input.tool
-      }
-    };
-  }
   return {
     ...base,
     payload: {
       ...payloadBase,
-      operation: "add",
+      operation: input.operation,
       tool: input.tool
     }
   };

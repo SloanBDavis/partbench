@@ -10,7 +10,7 @@ import {
   type OcctWireExtrudeSource
 } from "./wireExtrude";
 
-export type OcctBooleanOperation = "add" | "cut";
+export type OcctBooleanOperation = "add" | "cut" | "intersect";
 export const MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH = 64;
 export type OcctSketchPlane = "XY" | "XZ" | "YZ";
 export type OcctExtrudeSide = "positive" | "negative" | "symmetric";
@@ -53,7 +53,8 @@ export interface OcctBooleanExtrudePrimitiveSource {
 
 export type OcctBooleanExtrudeResultSource =
   | OcctBooleanExtrudeAddResultSource
-  | OcctBooleanExtrudeCutResultSource;
+  | OcctBooleanExtrudeCutResultSource
+  | OcctBooleanExtrudeIntersectResultSource;
 
 export interface OcctBooleanExtrudeAddResultSource {
   readonly kind: "booleanExtrudes";
@@ -66,6 +67,14 @@ export interface OcctBooleanExtrudeAddResultSource {
 export interface OcctBooleanExtrudeCutResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
+  readonly target: OcctBooleanExtrudeSource;
+  readonly tool: OcctBooleanExtrudeToolSource;
+}
+
+export interface OcctBooleanExtrudeIntersectResultSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: "intersect";
   readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: OcctBooleanExtrudeSource;
   readonly tool: OcctBooleanExtrudeToolSource;
@@ -84,15 +93,10 @@ interface OcctBooleanExtrudeInputBase {
   readonly angularDeflection?: number;
 }
 
-export type OcctBooleanExtrudeInput =
-  | (OcctBooleanExtrudeInputBase & {
-      readonly operation: "add";
-      readonly tool: OcctBooleanExtrudeToolSource;
-    })
-  | (OcctBooleanExtrudeInputBase & {
-      readonly operation: "cut";
-      readonly tool: OcctBooleanExtrudeToolSource;
-    });
+export type OcctBooleanExtrudeInput = OcctBooleanExtrudeInputBase & {
+  readonly operation: OcctBooleanOperation;
+  readonly tool: OcctBooleanExtrudeToolSource;
+};
 
 interface ExtrudeFrame {
   readonly origin: readonly [number, number, number];
@@ -104,6 +108,27 @@ interface ExtrudeFrame {
 export interface OcctBooleanExtrudeShapeBuilder {
   Shape(): TopoDS_Shape;
   delete(): void;
+}
+
+type OcctBooleanBuilder =
+  | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Fuse_3"]>
+  | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Cut_3"]>
+  | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Common_3"]>;
+
+function createOcctBooleanBuilder(
+  oc: OpenCascadeInstance,
+  operation: OcctBooleanOperation,
+  target: TopoDS_Shape,
+  tool: TopoDS_Shape,
+  range: InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+): OcctBooleanBuilder {
+  if (operation === "add") {
+    return new oc.BRepAlgoAPI_Fuse_3(target, tool, range);
+  }
+  if (operation === "intersect") {
+    return new oc.BRepAlgoAPI_Common_3(target, tool, range);
+  }
+  return new oc.BRepAlgoAPI_Cut_3(target, tool, range);
 }
 
 export interface OcctBooleanExtrudeShapeFactories {
@@ -167,10 +192,7 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
   let range:
     | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
     | undefined;
-  let booleanOperation:
-    | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
-    | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
-    | undefined;
+  let booleanOperation: OcctBooleanBuilder | undefined;
 
   try {
     targetShape = factories.target(oc, input.target);
@@ -185,10 +207,13 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
       if (input.materialPolicy === "regionPositiveVolumeSingleSolid") {
         targetVolume = readShapeVolume(oc, target);
       }
-      booleanOperation =
-        input.operation === "add"
-          ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
-          : new oc.BRepAlgoAPI_Cut_3(target, tool, range);
+      booleanOperation = createOcctBooleanBuilder(
+        oc,
+        input.operation,
+        target,
+        tool,
+        range
+      );
     } finally {
       tool?.delete();
       target?.delete();
@@ -378,10 +403,7 @@ function makeBooleanExtrudeResultShape(
   let range:
     | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
     | undefined;
-  let operation:
-    | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
-    | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
-    | undefined;
+  let operation: OcctBooleanBuilder | undefined;
 
   try {
     targetShape = makeBooleanExtrudeShapeWithContext(oc, source.target, {
@@ -399,10 +421,13 @@ function makeBooleanExtrudeResultShape(
       if (source.materialPolicy === "regionPositiveVolumeSingleSolid") {
         targetVolume = readShapeVolume(oc, target);
       }
-      operation =
-        source.operation === "add"
-          ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
-          : new oc.BRepAlgoAPI_Cut_3(target, tool, range);
+      operation = createOcctBooleanBuilder(
+        oc,
+        source.operation,
+        target,
+        tool,
+        range
+      );
     } finally {
       tool?.delete();
       target?.delete();
@@ -445,9 +470,7 @@ function makeBooleanExtrudeResultShape(
 }
 
 function assertBooleanBuilderCompleted(
-  operation:
-    | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Fuse_3"]>
-    | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Cut_3"]>,
+  operation: OcctBooleanBuilder,
   kind: OcctBooleanOperation
 ): void {
   if (!operation.IsDone()) {
@@ -494,7 +517,7 @@ function assertValidBooleanResult(
         `Region ${operation} must return exactly one connected solid; received ${solidCount}.`
       );
     }
-  } else if (operation === "add") {
+  } else if (operation === "add" || operation === "intersect") {
     assertBooleanAddSolidCount(countSolids(oc, shape));
   }
 }
@@ -509,7 +532,9 @@ function assertPositiveRegionMaterialChange(
   const materialChange =
     operation === "add"
       ? resultVolume - targetVolume
-      : targetVolume - resultVolume;
+      : operation === "intersect"
+        ? targetVolume - resultVolume
+        : targetVolume - resultVolume;
   const tolerance = Math.max(1e-9, targetVolume * 1e-12);
   if (!Number.isFinite(materialChange) || materialChange <= tolerance) {
     throw new OcctRegionResultError(

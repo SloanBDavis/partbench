@@ -984,10 +984,7 @@ describe("geometry-worker", () => {
       profile: workerWireProfile,
       depth: 4
     };
-    type CutTool = Extract<
-      ExtrudeBooleanWorkerRequestInput,
-      { operation: "cut" }
-    >["tool"];
+    type CutTool = ExtrudeBooleanWorkerRequestInput["tool"];
     type WireToolFitsCut = typeof wireTool extends CutTool ? true : false;
     expectTypeOf<WireToolFitsCut>().toEqualTypeOf<true>();
     const request = createExtrudeBooleanWorkerRequest({
