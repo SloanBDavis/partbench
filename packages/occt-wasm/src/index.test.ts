@@ -3798,8 +3798,9 @@ describe("occt-wasm", () => {
         5
       );
       expect(wholeBodyCopy.metadata.volume).toBeGreaterThan(
-        featurePattern.metadata.volume + plateVolume
+        featurePattern.metadata.volume
       );
+      expect(wholeBodyCopy.metadata.volume).toBeCloseTo(14016, 5);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

@@ -540,18 +540,26 @@ function makeTransformedBooleanPatternShape(
       let toolShape: TopoDS_Shape | undefined;
       let transformedTool: TopoDS_Shape | undefined;
       try {
+        if (!previousShape) {
+          throw {
+            code: "EMPTY_RESULT",
+            message:
+              "Open CASCADE boolean feature pattern lost its accumulated result shape."
+          } satisfies GeometryKernelLikeError;
+        }
         toolShape = toolHandle.Shape();
         transformedTool = transformTool(toolShape, i);
-        const nextShape =
+        const operand = previousShape;
+        const nextShape: TopoDS_Shape =
           booleanTool.operation === "add"
             ? fusePatternShapes(
                 oc,
-                previousShape,
+                operand,
                 transformedTool,
                 `Open CASCADE boolean pattern fuse failed at instance ${i}.`
               )
-            : cutHoleToolFromTarget(oc, previousShape, transformedTool);
-        previousShape.delete();
+            : cutHoleToolFromTarget(oc, operand, transformedTool);
+        operand.delete();
         previousShape = nextShape;
       } finally {
         transformedTool?.delete();
