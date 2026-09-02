@@ -1706,6 +1706,96 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews a composite-path feature.sweep batch from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_sweep_path",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_profile",
+              name: "Sweep profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_profile",
+              id: "profile_circle",
+              center: [0, 0],
+              radius: 1
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_path",
+              name: "Sweep path",
+              plane: "XZ"
+            },
+            {
+              op: "sketch.addLine",
+              id: "path_line",
+              sketchId: "sketch_path",
+              start: [0, 0],
+              end: [0, 10]
+            },
+            {
+              op: "sketch.addSpline",
+              id: "path_spline",
+              sketchId: "sketch_path",
+              definition: {
+                kind: "interpolation",
+                points: [
+                  [0, 10],
+                  [0, 16],
+                  [0, 22],
+                  [8, 28]
+                ],
+                closed: false
+              }
+            },
+            {
+              op: "feature.sweep",
+              id: "feat_sweep_composite",
+              bodyId: "body_sweep_composite",
+              profile: {
+                kind: "entity",
+                sketchId: "sketch_profile",
+                entityId: "profile_circle"
+              },
+              path: {
+                kind: "chain",
+                sketchId: "sketch_path",
+                segments: [
+                  { entityId: "path_line", orientation: "forward" },
+                  { entityId: "path_spline", orientation: "forward" }
+                ]
+              }
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.sweep",
+          intent: "create",
+          featureId: "feat_sweep_composite",
+          bodyId: "body_sweep_composite",
+          label: expect.stringContaining("chain")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews feature.offset batches from external JSON callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

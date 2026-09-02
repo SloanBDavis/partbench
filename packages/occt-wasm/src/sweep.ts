@@ -29,9 +29,15 @@ export interface OcctSweepArcPathSegment {
   readonly sweepAngleDegrees: number;
 }
 
+export interface OcctSweepSplinePathSegment {
+  readonly kind: "spline";
+  readonly points: readonly OcctSweepPoint[];
+}
+
 export type OcctSweepPathSegment =
   | OcctSweepLinePathSegment
-  | OcctSweepArcPathSegment;
+  | OcctSweepArcPathSegment
+  | OcctSweepSplinePathSegment;
 
 export interface OcctSweepProfileSource {
   readonly sketchPlane: OcctRevolveSketchPlane;
@@ -100,7 +106,7 @@ export function makeSweepShape(
     throw {
       code: "SWEEP_PATH_UNSUPPORTED",
       message:
-        "Open CASCADE sweep requires an oriented line, arc, or open line/arc chain."
+        "Open CASCADE sweep requires an oriented line, arc, spline, or open composite path."
     };
   }
   assertValidSweepPath(input.pathSegments);
@@ -114,7 +120,9 @@ export function makeSweepShape(
     : "SWEEP_GEOMETRY_FAILED";
   assertSweepBindings(
     oc,
-    input.pathSegments.some((segment) => segment.kind === "arc")
+    input.pathSegments.some(
+      (segment) => segment.kind === "arc" || segment.kind === "spline"
+    )
   );
   const pathEdges: SweepPathEdgeHandle[] = [];
   let wireBuilder:
@@ -156,11 +164,13 @@ export function makeSweepShape(
 
   try {
     for (const segment of input.pathSegments) {
-      pathEdges.push(
-        segment.kind === "arc"
-          ? makeArcPathEdge(oc, segment)
-          : makeLinePathEdge(oc, segment)
-      );
+      if (segment.kind === "arc") {
+        pathEdges.push(makeArcPathEdge(oc, segment));
+      } else if (segment.kind === "spline") {
+        pathEdges.push(...makeSplinePathEdges(oc, segment));
+      } else {
+        pathEdges.push(makeLinePathEdge(oc, segment));
+      }
     }
     wireBuilder = new oc.BRepBuilderAPI_MakeWire_1();
     for (const pathEdge of pathEdges) wireBuilder.Add_1(pathEdge.edge);
@@ -361,6 +371,79 @@ function assertValidArcPathSegment(segment: OcctSweepArcPathSegment): void {
   }
 }
 
+function makeSplinePathEdges(
+  oc: OpenCascadeInstance,
+  segment: OcctSweepSplinePathSegment
+): SweepPathEdgeHandle[] {
+  assertValidSplinePathSegment(segment);
+  const edges: SweepPathEdgeHandle[] = [];
+  try {
+    for (let index = 1; index < segment.points.length; index += 1) {
+      edges.push(
+        makeLinePathEdge(oc, {
+          kind: "line",
+          start: segment.points[index - 1]!,
+          end: segment.points[index]!
+        })
+      );
+    }
+    return edges;
+  } catch (error) {
+    disposePathEdges(edges);
+    throw error;
+  }
+}
+
+function assertValidSplinePathSegment(
+  segment: OcctSweepSplinePathSegment
+): void {
+  if (
+    segment.kind !== "spline" ||
+    !Array.isArray(segment.points) ||
+    segment.points.length < 2
+  ) {
+    throw {
+      code: "SWEEP_CURVED_PATH_UNSUPPORTED",
+      message:
+        "Open CASCADE sweep requires an open spline path with at least two finite points."
+    };
+  }
+  for (const point of segment.points) {
+    if (
+      !Number.isFinite(point[0]) ||
+      !Number.isFinite(point[1]) ||
+      !Number.isFinite(point[2])
+    ) {
+      throw {
+        code: "SWEEP_CURVED_PATH_UNSUPPORTED",
+        message:
+          "Open CASCADE sweep requires finite non-degenerate spline path points."
+      };
+    }
+  }
+  for (let index = 1; index < segment.points.length; index += 1) {
+    if (distance(segment.points[index - 1]!, segment.points[index]!) <= 1e-12) {
+      throw {
+        code: "SWEEP_CURVED_PATH_UNSUPPORTED",
+        message:
+          "Open CASCADE sweep requires finite non-degenerate spline path points."
+      };
+    }
+  }
+}
+
+function sweepSegmentStart(segment: OcctSweepPathSegment): OcctSweepPoint {
+  if (segment.kind === "spline") return segment.points[0]!;
+  return segment.start;
+}
+
+function sweepSegmentEnd(segment: OcctSweepPathSegment): OcctSweepPoint {
+  if (segment.kind === "spline") {
+    return segment.points[segment.points.length - 1]!;
+  }
+  return segment.end;
+}
+
 function assertValidSweepPath(segments: readonly OcctSweepPathSegment[]): void {
   const tolerance = 1e-7;
   const minimumCosine = Math.cos((0.1 * Math.PI) / 180);
@@ -370,6 +453,8 @@ function assertValidSweepPath(segments: readonly OcctSweepPathSegment[]): void {
   for (const segment of segments) {
     if (segment.kind === "arc") {
       assertValidArcPathSegment(segment);
+    } else if (segment.kind === "spline") {
+      assertValidSplinePathSegment(segment);
     } else if (
       (segment.kind !== undefined && segment.kind !== "line") ||
       [...segment.start, ...segment.end].some(
@@ -388,7 +473,8 @@ function assertValidSweepPath(segments: readonly OcctSweepPathSegment[]): void {
     const previous = segments[index - 1]!;
     const current = segments[index]!;
     if (
-      distance(previous.end, current.start) > tolerance ||
+      distance(sweepSegmentEnd(previous), sweepSegmentStart(current)) >
+        tolerance ||
       dot(pathTangent(previous, "end"), pathTangent(current, "start")) <
         minimumCosine
     ) {
@@ -399,17 +485,25 @@ function assertValidSweepPath(segments: readonly OcctSweepPathSegment[]): void {
       };
     }
   }
-  if (distance(segments[0]!.start, segments.at(-1)!.end) <= tolerance) {
+  if (
+    distance(
+      sweepSegmentStart(segments[0]!),
+      sweepSegmentEnd(segments.at(-1)!)
+    ) <= tolerance
+  ) {
     throw {
       code: pathFailureCode,
-      message: "Closed sweep paths are unsupported in V17."
+      message: "Closed sweep paths are unsupported."
     };
   }
 }
 
 function isCurvedSweepPath(segments: readonly OcctSweepPathSegment[]): boolean {
   return (
-    segments.length > 1 || segments.some((segment) => segment.kind === "arc")
+    segments.length > 1 ||
+    segments.some(
+      (segment) => segment.kind === "arc" || segment.kind === "spline"
+    )
   );
 }
 
@@ -417,6 +511,15 @@ function pathTangent(
   segment: OcctSweepPathSegment,
   endpoint: "start" | "end"
 ): OcctSweepPoint {
+  if (segment.kind === "spline") {
+    const points = segment.points;
+    if (endpoint === "start") {
+      return normalize(subtract(points[1]!, points[0]!));
+    }
+    return normalize(
+      subtract(points[points.length - 1]!, points[points.length - 2]!)
+    );
+  }
   if (segment.kind !== "arc") {
     return normalize(subtract(segment.end, segment.start));
   }

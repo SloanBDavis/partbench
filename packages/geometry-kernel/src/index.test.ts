@@ -4658,6 +4658,73 @@ describe("geometry-kernel facade", () => {
     expect(captured).toHaveLength(2);
   });
 
+  it("passes a composite line-plus-spline sweep path to the injected factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let captured:
+      | Parameters<
+          NonNullable<GeometryKernelMeshFactories["createSweepMesh"]>
+        >[0]
+      | undefined;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createSweepMesh: async (input) => {
+        captured = input;
+        return {
+          primitive: "sweep",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_spline_path_sweep",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile: {
+          sketchPlane: "XY",
+          profile: { kind: "circle", center: [0, 0], radius: 1 }
+        },
+        pathSegments: [
+          { kind: "line", start: [0, 0, 0], end: [10, 0, 0] },
+          {
+            kind: "spline",
+            points: [
+              [10, 0, 0],
+              [16, 0, 0],
+              [22, 0, 0],
+              [28, 0, 8]
+            ]
+          }
+        ]
+      }
+    );
+    expect(response.ok).toBe(true);
+    expect(captured?.pathSegments).toEqual([
+      { kind: "line", start: [0, 0, 0], end: [10, 0, 0] },
+      {
+        kind: "spline",
+        points: [
+          [10, 0, 0],
+          [16, 0, 0],
+          [22, 0, 0],
+          [28, 0, 8]
+        ]
+      }
+    ]);
+  });
+
   it("rejects inconsistent arcs and non-G1 path chains", async () => {
     const profile = {
       sketchPlane: "XY" as const,

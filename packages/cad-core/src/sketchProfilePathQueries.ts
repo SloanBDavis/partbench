@@ -461,11 +461,15 @@ function resolvePath(sketch: Sketch, path: SketchPathRef): ResolvedPath {
       );
       return;
     }
-    if (entity.kind !== "line" && entity.kind !== "arc") {
+    if (
+      entity.kind !== "line" &&
+      entity.kind !== "arc" &&
+      entity.kind !== "spline"
+    ) {
       diagnostics.push(
         pathDiagnostic(
           "SKETCH_PATH_ENTITY_UNSUPPORTED",
-          `Sweep paths support only line and arc entities, not ${entity.kind}.`,
+          `Sweep paths support only line, arc, and open spline entities, not ${entity.kind}.`,
           { sketchId: sketch.id, entityId: entity.id, segmentIndex }
         )
       );
@@ -551,13 +555,14 @@ function resolvePath(sketch: Sketch, path: SketchPathRef): ResolvedPath {
   }
 
   if (
-    segments.length > 1 &&
+    segments.length > 0 &&
+    (segments.length > 1 || segments[0]!.kind === "spline") &&
     areSketchPointsCoincident(segments[0]!.start, segments.at(-1)!.end)
   ) {
     diagnostics.push(
       pathDiagnostic(
         "SKETCH_PATH_CLOSED_UNSUPPORTED",
-        "Closed sweep paths are not supported in V17.",
+        "Closed sweep paths are not supported.",
         { sketchId: sketch.id }
       )
     );
@@ -1890,7 +1895,9 @@ export function createSketchPathCandidatesResponse(
   const entities = [...sketch.entities.values()]
     .filter(
       (entity): entity is SketchWireEntity =>
-        entity.kind === "line" || entity.kind === "arc"
+        entity.kind === "line" ||
+        entity.kind === "arc" ||
+        entity.kind === "spline"
     )
     .sort((left, right) => left.id.localeCompare(right.id));
   for (const entity of entities) {

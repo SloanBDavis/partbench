@@ -1,0 +1,140 @@
+{
+  "id": "v25-sweep-path",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_profile",
+      "name": "Sweep profile",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_profile",
+      "id": "profile_circle",
+      "center": [0, 0],
+      "radius": 1
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_path",
+      "name": "Sweep path",
+      "plane": "XZ"
+    },
+    {
+      "op": "sketch.addLine",
+      "id": "path_line",
+      "sketchId": "sketch_path",
+      "start": [0, 0],
+      "end": [0, 10]
+    },
+    {
+      "op": "sketch.addSpline",
+      "id": "path_spline",
+      "sketchId": "sketch_path",
+      "definition": {
+        "kind": "interpolation",
+        "points": [
+          [0, 10],
+          [0, 16],
+          [0, 22],
+          [8, 28]
+        ],
+        "closed": false
+      }
+    },
+    {
+      "op": "sketch.addSpline",
+      "id": "path_disconnected",
+      "sketchId": "sketch_path",
+      "definition": {
+        "kind": "interpolation",
+        "points": [
+          [10, 0],
+          [14, 2],
+          [18, 4]
+        ],
+        "closed": false
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "illegal-disconnected-path",
+      "ops": [
+        {
+          "op": "feature.sweep",
+          "id": "feat_sweep_disconnected",
+          "bodyId": "body_sweep_disconnected",
+          "profile": {
+            "kind": "entity",
+            "sketchId": "sketch_profile",
+            "entityId": "profile_circle"
+          },
+          "path": {
+            "kind": "chain",
+            "sketchId": "sketch_path",
+            "segments": [
+              { "entityId": "path_line", "orientation": "forward" },
+              { "entityId": "path_disconnected", "orientation": "forward" }
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "SKETCH_PATH_DISCONNECTED"
+        }
+      }
+    },
+    {
+      "id": "composite-line-spline-path",
+      "ops": [
+        {
+          "op": "feature.sweep",
+          "id": "feat_sweep_composite",
+          "bodyId": "body_sweep_composite",
+          "profile": {
+            "kind": "entity",
+            "sketchId": "sketch_profile",
+            "entityId": "profile_circle"
+          },
+          "path": {
+            "kind": "chain",
+            "sketchId": "sketch_path",
+            "segments": [
+              { "entityId": "path_line", "orientation": "forward" },
+              { "entityId": "path_spline", "orientation": "forward" }
+            ]
+          }
+        }
+      ],
+      "expect": {
+        "ops": ["feature.sweep"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_sweep_composite",
+                "kind": "sweep",
+                "bodyId": "body_sweep_composite"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_sweep_composite", "featureId": "feat_sweep_composite" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

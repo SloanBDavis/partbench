@@ -649,7 +649,7 @@ function SolidDraftFields({
           draft={draft as FeatureSweepForm}
           choices={request.choices?.sweepPaths ?? []}
           collecting={collecting === "path"}
-          onCollect={() => onCollect("path", ["line", "arc", "tangent path"])}
+          onCollect={() => onCollect("path", ["line", "arc", "spline", "tangent path"])}
           onChange={onChange}
         />
       );
@@ -1501,7 +1501,7 @@ function SweepFields({
       />
       <ChoiceCollector
         label="Sweep path"
-        acceptedKinds={["line", "arc", "tangent path"]}
+        acceptedKinds={["line", "arc", "spline", "tangent path"]}
         choices={choices}
         selectedKey={selected?.key}
         collecting={collecting}
@@ -1556,12 +1556,12 @@ function CompositeSweepFields({
       />
       <ChoiceCollector
         label="Sweep path"
-        acceptedKinds={["line", "arc", "tangent path"]}
+        acceptedKinds={["line", "arc", "spline", "tangent path"]}
         choices={paths}
         selectedKey={findChoiceKey(paths, draft.path)}
         collecting={collecting === "path"}
         required
-        onCollect={() => onCollect("path", ["line", "arc", "tangent path"])}
+        onCollect={() => onCollect("path", ["line", "arc", "spline", "tangent path"])}
         onChange={(path) => onChange({ ...draft, path })}
         onClear={() => undefined}
       />

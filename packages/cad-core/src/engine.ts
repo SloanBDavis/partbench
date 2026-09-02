@@ -15758,7 +15758,7 @@ function resolveSweepCommandInputs(
       sketchId: resolution.sketchId,
       sketchEntityId: resolution.sketchEntityId,
       path: operationPath(opIndex, "path"),
-      expected: "feature-ready line, arc, or open ordered G1 line/arc chain",
+      expected: "feature-ready line, arc, spline, or open ordered G1 path",
       received: requested.path.kind
     });
   }
@@ -15806,39 +15806,31 @@ function validateLegacySweepInputs(
   if (!Array.isArray(pathEntityIds) || pathEntityIds.length === 0) {
     throwSweepValidationError(
       "SWEEP_PATH_UNSUPPORTED",
-      "Sweep requires one line or arc path entity.",
+      "Sweep requires at least one line, arc, or open spline path entity.",
       "pathEntityIds",
-      "array containing exactly one line or arc entity id",
+      "array containing line, arc, or open spline entity ids",
       pathEntityIds,
       opIndex
     );
   }
-  if (pathEntityIds.length !== 1) {
-    throwSweepValidationError(
-      "SWEEP_PATH_UNSUPPORTED",
-      "The single-arc tranche supports exactly one line or arc path entity.",
-      "pathEntityIds",
-      "one line or arc entity id",
-      pathEntityIds,
-      opIndex
-    );
-  }
-  const pathEntityId = pathEntityIds[0];
-  if (typeof pathEntityId !== "string" || !pathEntityId) {
-    throwSweepValidationError(
-      "SWEEP_ENTITY_UNRESOLVED",
-      "Sweep path entity id must be a non-empty string.",
-      "pathEntityIds",
-      "existing line or arc entity id",
-      pathEntityId,
-      opIndex
-    );
+  const pathIds: string[] = [];
+  for (const pathEntityId of pathEntityIds) {
+    if (typeof pathEntityId !== "string" || !pathEntityId) {
+      throwSweepValidationError(
+        "SWEEP_ENTITY_UNRESOLVED",
+        "Sweep path entity id must be a non-empty string.",
+        "pathEntityIds",
+        "existing line, arc, or open spline entity id",
+        pathEntityId,
+        opIndex
+      );
+    }
+    pathIds.push(pathEntityId);
   }
 
   const profileSketch = state.sketches.get(profileSketchId);
   const pathSketch = state.sketches.get(pathSketchId);
   const profile = profileSketch?.entities.get(profileEntityId);
-  const path = pathSketch?.entities.get(pathEntityId);
   if (!profileSketch || !profile) {
     throwSweepValidationError(
       "SWEEP_ENTITY_UNRESOLVED",
@@ -15869,38 +15861,52 @@ function validateLegacySweepInputs(
       opIndex
     );
   }
-  if (!pathSketch || !path) {
+  if (!pathSketch) {
     throwSweepValidationError(
       "SWEEP_ENTITY_UNRESOLVED",
       "Sweep path sketch or entity no longer resolves.",
       "pathEntityIds",
-      "existing line or arc path",
-      pathEntityId,
+      "existing line, arc, or open spline path",
+      pathIds[0],
       opIndex
     );
   }
-  if (path.kind !== "line" && path.kind !== "arc") {
-    throwSweepValidationError(
-      "SWEEP_PATH_UNSUPPORTED",
-      "Sweep path must be a line or arc entity.",
-      "pathEntityIds",
-      "line or arc entity",
-      path.kind,
-      opIndex
-    );
-  }
-  if (
-    path.kind === "line" &&
-    Math.hypot(path.end[0] - path.start[0], path.end[1] - path.start[1]) <= 1e-9
-  ) {
-    throwSweepValidationError(
-      "SWEEP_PATH_UNSUPPORTED",
-      "Sweep path line must have non-zero length.",
-      "pathEntityIds",
-      "non-degenerate line entity",
-      pathEntityId,
-      opIndex
-    );
+  for (const pathEntityId of pathIds) {
+    const path = pathSketch.entities.get(pathEntityId);
+    if (!path) {
+      throwSweepValidationError(
+        "SWEEP_ENTITY_UNRESOLVED",
+        "Sweep path sketch or entity no longer resolves.",
+        "pathEntityIds",
+        "existing line, arc, or open spline path",
+        pathEntityId,
+        opIndex
+      );
+    }
+    if (path.kind !== "line" && path.kind !== "arc" && path.kind !== "spline") {
+      throwSweepValidationError(
+        "SWEEP_PATH_UNSUPPORTED",
+        "Sweep path must be a line, arc, or open spline entity.",
+        "pathEntityIds",
+        "line, arc, or open spline entity",
+        path.kind,
+        opIndex
+      );
+    }
+    if (
+      path.kind === "line" &&
+      Math.hypot(path.end[0] - path.start[0], path.end[1] - path.start[1]) <=
+        1e-9
+    ) {
+      throwSweepValidationError(
+        "SWEEP_PATH_UNSUPPORTED",
+        "Sweep path line must have non-zero length.",
+        "pathEntityIds",
+        "non-degenerate line entity",
+        pathEntityId,
+        opIndex
+      );
+    }
   }
 
   return {
@@ -15909,12 +15915,22 @@ function validateLegacySweepInputs(
       sketchId: profileSketchId,
       entityId: profileEntityId
     },
-    path: {
-      kind: "entity",
-      sketchId: pathSketchId,
-      entityId: pathEntityId,
-      orientation: "forward"
-    }
+    path:
+      pathIds.length === 1
+        ? {
+            kind: "entity",
+            sketchId: pathSketchId,
+            entityId: pathIds[0]!,
+            orientation: "forward"
+          }
+        : {
+            kind: "chain",
+            sketchId: pathSketchId,
+            segments: pathIds.map((entityId) => ({
+              entityId,
+              orientation: "forward" as const
+            }))
+          }
   };
 }
 
@@ -38322,7 +38338,7 @@ function validateV21PathRef(
       value.entityId,
       `${path}.entityId`,
       sketchId,
-      ["line", "arc"],
+      ["line", "arc", "spline"],
       issues,
       sketchEntityRefs,
       true
@@ -38340,7 +38356,7 @@ function validateV21PathRef(
     value.segments,
     `${path}.segments`,
     sketchId,
-    ["line", "arc"],
+    ["line", "arc", "spline"],
     issues,
     sketchEntityRefs,
     true
@@ -42340,7 +42356,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       typeof value.profileEntityId === "string" &&
       typeof value.pathSketchId === "string" &&
       Array.isArray(value.pathEntityIds) &&
-      value.pathEntityIds.length === 1 &&
+      value.pathEntityIds.length >= 1 &&
       value.pathEntityIds.every((id) => typeof id === "string");
     const normalized =
       (isSketchRegionsProfileRef(value.profile) ||
