@@ -27,7 +27,8 @@ describe("computeAlignPose", () => {
 
     expect(pose.transform.rotationDegrees).toBe(0);
     expect(pose.transform.translation[0]).toBeCloseTo(-125);
-    expect(pose.transform.translation[1]).toBeCloseTo(0);
+    expect(Object.is(pose.transform.translation[1], 0)).toBe(true);
+    expect(Object.is(pose.transform.translation[2], 0)).toBe(true);
     expect(pose.alignedSourceFace.point[0]).toBeCloseTo(0);
     expect(pose.alignedSourceFace.normal[0]).toBeCloseTo(1);
   });

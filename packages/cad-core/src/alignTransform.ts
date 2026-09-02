@@ -56,11 +56,14 @@ function alignPlaneToPlane(
   const alignedPoint = add(rotatedPoint, translation);
   return {
     transform: {
-      translation,
-      rotationAxis: rotation.axis,
+      translation: canonicalVec3(translation),
+      rotationAxis: canonicalVec3(rotation.axis),
       rotationDegrees: rotation.degrees
     },
-    alignedSourceFace: { point: alignedPoint, normal: targetNormal }
+    alignedSourceFace: {
+      point: canonicalVec3(alignedPoint),
+      normal: canonicalVec3(targetNormal)
+    }
   };
 }
 
@@ -90,13 +93,13 @@ function alignPlaneToAxis(
   const translation = scale(rotatedNormal, -signedDistance);
   return {
     transform: {
-      translation,
-      rotationAxis: rotation.axis,
+      translation: canonicalVec3(translation),
+      rotationAxis: canonicalVec3(rotation.axis),
       rotationDegrees: rotation.degrees
     },
     alignedSourceFace: {
-      point: add(rotatedPoint, translation),
-      normal: rotatedNormal
+      point: canonicalVec3(add(rotatedPoint, translation)),
+      normal: canonicalVec3(rotatedNormal)
     }
   };
 }
@@ -184,4 +187,16 @@ function length(vector: Vec3): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function canonicalNumber(value: number): number {
+  return Object.is(value, -0) ? 0 : value;
+}
+
+function canonicalVec3(vector: Vec3): Vec3 {
+  return [
+    canonicalNumber(vector[0]),
+    canonicalNumber(vector[1]),
+    canonicalNumber(vector[2])
+  ];
 }

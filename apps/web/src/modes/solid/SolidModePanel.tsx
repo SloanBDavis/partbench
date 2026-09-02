@@ -2342,7 +2342,7 @@ function AlignFields({
   readonly faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[];
   readonly datumChoices: readonly SolidChoice<string>[];
   readonly lockedSeed: boolean;
-  readonly collecting: SolidCollectorRequest["collector"] | null;
+  readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
     acceptedKinds: readonly string[]

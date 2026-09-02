@@ -1224,6 +1224,7 @@ function getFeatureRefSketchEntityId(
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
     feature.kind === "offset" ||
+    feature.kind === "align" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
@@ -1244,6 +1245,7 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
     feature.kind === "offset" ||
+    feature.kind === "align" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

@@ -37019,7 +37019,8 @@ function validateFeatureSnapshot(
       value.kind !== "circularPattern" &&
       value.kind !== "mirror" &&
       value.kind !== "combine" &&
-      value.kind !== "offset") ||
+      value.kind !== "offset" &&
+      value.kind !== "align") ||
       !allowsPatternFeatures) &&
     (value.kind !== "shell" || !allowsPatternFeatures) &&
     (value.kind !== "sweep" || !isV20OrLaterSchema) &&
@@ -37031,9 +37032,9 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.kind`,
       allowsImportedBodyFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, offset, or shell."
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, offset, align, or shell."
         : allowsPatternFeatures
-          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, offset, or shell."
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, offset, align, or shell."
           : allowsEdgeFinishFeatures
             ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
             : allowsHoleFeatures

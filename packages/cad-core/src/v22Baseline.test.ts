@@ -250,6 +250,7 @@ const PREVIEW_GRIPS = {
   mirror: preview(MUST, MUST, ["planeOffset"]),
   combine: preview(MUST, NO),
   offset: preview(MUST, MUST, ["distance"]),
+  align: preview(MUST, NO),
   shell: preview(MUST, MUST, ["wallThickness"]),
   sweep: preview(MUST, MUST),
   loft: preview(MUST, MUST)
@@ -387,7 +388,7 @@ describe("V22 Gate A baseline fixtures", () => {
       )
     ).toBe(true);
     expect(new Set(COLLECTORS.flatMap(([, reference]) => reference)).size).toBe(
-      12
+      13
     );
     expect(HANDOFF.outcomes).toHaveLength(11);
     expect(HANDOFF.promotable.kinds).toEqual(["body", "face", "edge"]);

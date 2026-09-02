@@ -28,6 +28,7 @@ describe("V21.1 downstream body policy", () => {
       "mirrorFeature",
       "combineFeature",
       "offsetFeature",
+      "alignFeature",
       "shellFeature",
       "sweepFeature",
       "loftFeature",

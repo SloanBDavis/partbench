@@ -79,6 +79,7 @@ import type {
   MirrorFeature,
   CombineFeature,
   OffsetFeature,
+  AlignFeature,
   ShellFeature,
   SweepFeature,
   LoftFeature
@@ -148,6 +149,7 @@ export type ProjectHealthFeature =
   | MirrorFeature
   | CombineFeature
   | OffsetFeature
+  | AlignFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature;
@@ -2117,6 +2119,7 @@ function getProjectHealthFeaturePrimaryEntityRef(
     | MirrorFeature
     | CombineFeature
     | OffsetFeature
+    | AlignFeature
     | ShellFeature
     | SweepFeature
     | LoftFeature
@@ -2146,6 +2149,7 @@ function hasSketchEntitySource(
   | MirrorFeature
   | CombineFeature
   | OffsetFeature
+  | AlignFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature

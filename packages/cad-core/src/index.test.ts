@@ -3183,7 +3183,7 @@ describe("cad-core", () => {
       "circle_1"
     ]);
     expect(result.transaction.diff.sketches).toEqual({
-      created: [{ id: "sketch_1" }],
+      created: [{ id: "sketch_1", plane: "XY" }],
       modified: [],
       deleted: [],
       entitiesCreated: [

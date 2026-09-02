@@ -225,6 +225,8 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
       return "Combine bodies are not ready for STEP export yet.";
     case "authoredOffset":
       return "Offset bodies are not ready for STEP export yet.";
+    case "authoredAlign":
+      return "Align bodies are not ready for STEP export yet.";
     case "importedBody":
       return "Imported STEP bodies need checkpoint-backed export support.";
     case "primitiveCompatibility":
