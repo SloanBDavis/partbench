@@ -32,7 +32,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidRevolve: "Select a supported sketch profile and axis.",
   solidSweep: "Select a supported profile and path.",
   solidLoft:
-    "Select at least two profiles on parallel planes. Create a sketch on a parallel planar body face to add an offset section.",
+    "Select at least two closed sketch profiles. Sections may lie on non-parallel planes.",
   solidTransform: "Select an editable source object.",
   solidHole: "Select a supported circle and target body.",
   solidFillet: "Select a supported generated edge.",

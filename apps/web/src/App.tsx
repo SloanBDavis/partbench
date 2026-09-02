@@ -5246,7 +5246,7 @@ export function App() {
         blockedReason:
           sectionChoices.length >= 2
             ? undefined
-            : "Create at least two profiles on parallel planes."
+            : "Create at least two closed sketch profiles."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.hole") {
@@ -9917,7 +9917,7 @@ export function App() {
         return;
       case "solid.loft":
         navigateToMode("solid");
-        setCommandNotice("Choose ordered profiles on parallel planes.");
+        setCommandNotice("Choose ordered loft sections.");
         return;
       case "solid.transform":
         navigateToMode("solid");

@@ -16167,22 +16167,13 @@ function validateLoftSections(
     const frame = frames[index]!;
     const normal = loftFrameNormal(frame);
     const alignment = Math.abs(loftDot(firstNormal, normal));
-    if (alignment < parallelTolerance) {
-      throwLoftValidationError(
-        "LOFT_SECTION_FRAME_INVALID",
-        "Loft section frames must be roughly parallel.",
-        `sections.${index}.sketchId`,
-        "planar frame parallel to the first section",
-        validated[index]!.profile.sketchId,
-        opIndex
-      );
-    }
+    const parallel = alignment >= parallelTolerance;
     const delta: Vec3 = [
       frame.origin[0] - first.origin[0],
       frame.origin[1] - first.origin[1],
       frame.origin[2] - first.origin[2]
     ];
-    if (Math.abs(loftDot(delta, firstNormal)) <= 1e-6) {
+    if (parallel && Math.abs(loftDot(delta, firstNormal)) <= 1e-6) {
       throwLoftValidationError(
         "LOFT_SECTIONS_COPLANAR",
         "Loft section frames must have non-zero separation.",

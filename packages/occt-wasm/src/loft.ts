@@ -112,6 +112,12 @@ export function makeLoftShape(
       };
     }
     const shape = loft.Shape();
+    try {
+      assertLoftSolidResult(oc, shape);
+    } catch (error) {
+      shape.delete();
+      throw error;
+    }
     const handles = { loft, range, shape };
     let disposed = false;
     return {
@@ -130,5 +136,76 @@ export function makeLoftShape(
     range?.delete();
     profiles.forEach((profile) => profile.delete());
     throw error;
+  }
+}
+
+function assertLoftSolidResult(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape
+): void {
+  if (shape.IsNull()) {
+    throw {
+      code: "LOFT_GEOMETRY_FAILED",
+      message: "Open CASCADE loft returned a null shape."
+    };
+  }
+  const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
+  let isValid: boolean;
+  try {
+    isValid = analyzer.IsValid_2();
+  } finally {
+    analyzer.delete();
+  }
+  if (!isValid) {
+    throw {
+      code: "LOFT_GEOMETRY_FAILED",
+      message: "Open CASCADE loft returned an invalid shape."
+    };
+  }
+  const solidCount = countLoftSubshapes(
+    oc,
+    shape,
+    oc.TopAbs_ShapeEnum.TopAbs_SOLID
+  );
+  if (shape.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_SOLID || solidCount !== 1) {
+    throw {
+      code: "LOFT_GEOMETRY_FAILED",
+      message: `Open CASCADE loft must return exactly one solid; received ${solidCount}.`
+    };
+  }
+  const props = new oc.GProp_GProps_1();
+  let volume: number;
+  try {
+    oc.BRepGProp.VolumeProperties_1(shape, props, true, false, false);
+    volume = Math.abs(props.Mass());
+  } finally {
+    props.delete();
+  }
+  if (!Number.isFinite(volume) || volume <= 1e-9) {
+    throw {
+      code: "LOFT_GEOMETRY_FAILED",
+      message: "Open CASCADE loft returned a degenerate zero-volume solid."
+    };
+  }
+}
+
+function countLoftSubshapes(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  kind: unknown
+): number {
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    kind as ConstructorParameters<typeof oc.TopExp_Explorer_2>[1],
+    oc.TopAbs_ShapeEnum.TopAbs_SHAPE as ConstructorParameters<
+      typeof oc.TopExp_Explorer_2
+    >[2]
+  );
+  let count = 0;
+  try {
+    for (; explorer.More(); explorer.Next()) count += 1;
+    return count;
+  } finally {
+    explorer.delete();
   }
 }

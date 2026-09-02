@@ -120,6 +120,24 @@ describe("cad command builders", () => {
       name: "Transition",
       sections
     });
+    const nonParallelSections = [
+      { sketchId: "sketch_xy", entityId: "xy_circle" },
+      { sketchId: "sketch_xz", entityId: "xz_circle" }
+    ];
+    expect(
+      buildFeatureLoftOp({
+        id: " feat_loft_nonparallel ",
+        bodyId: " body_loft_nonparallel ",
+        name: " Non-parallel loft ",
+        sections: nonParallelSections
+      })
+    ).toEqual({
+      op: "feature.loft",
+      id: "feat_loft_nonparallel",
+      bodyId: "body_loft_nonparallel",
+      name: "Non-parallel loft",
+      sections: nonParallelSections
+    });
   });
 
   it("builds a normalized sweep feature operation", () => {

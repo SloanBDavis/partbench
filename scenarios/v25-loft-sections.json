@@ -1,0 +1,106 @@
+{
+  "id": "v25-loft-sections",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_xy",
+      "name": "XY section",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_xy",
+      "id": "xy_circle",
+      "center": [0, 0],
+      "radius": 1
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_xz",
+      "name": "XZ section",
+      "plane": "XZ"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_xz",
+      "id": "xz_circle",
+      "center": [0, 10],
+      "radius": 1
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_xy_coplanar",
+      "name": "XY coplanar",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_xy_coplanar",
+      "id": "xy_coplanar_circle",
+      "center": [4, 0],
+      "radius": 1
+    }
+  ],
+  "steps": [
+    {
+      "id": "illegal-coplanar-sections",
+      "ops": [
+        {
+          "op": "feature.loft",
+          "id": "feat_loft_coplanar",
+          "bodyId": "body_loft_coplanar",
+          "sections": [
+            { "sketchId": "sketch_xy", "entityId": "xy_circle" },
+            { "sketchId": "sketch_xy_coplanar", "entityId": "xy_coplanar_circle" }
+          ]
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "LOFT_SECTIONS_COPLANAR"
+        }
+      }
+    },
+    {
+      "id": "non-parallel-xy-xz-sections",
+      "ops": [
+        {
+          "op": "feature.loft",
+          "id": "feat_loft_nonparallel",
+          "bodyId": "body_loft_nonparallel",
+          "sections": [
+            { "sketchId": "sketch_xy", "entityId": "xy_circle" },
+            { "sketchId": "sketch_xz", "entityId": "xz_circle" }
+          ]
+        }
+      ],
+      "expect": {
+        "ops": ["feature.loft"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_loft_nonparallel",
+                "kind": "loft",
+                "bodyId": "body_loft_nonparallel"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_loft_nonparallel", "featureId": "feat_loft_nonparallel" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

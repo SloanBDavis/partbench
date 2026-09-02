@@ -1344,6 +1344,7 @@ export type GeometryKernelErrorCode =
   | "INVALID_PLACEMENT"
   | "SWEEP_CURVED_PATH_UNSUPPORTED"
   | "SWEEP_CURVED_GEOMETRY_FAILED"
+  | "LOFT_GEOMETRY_FAILED"
   | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
   | "KERNEL_FAILURE"
   | "EMPTY_RESULT"
@@ -3347,6 +3348,7 @@ function isGeometryKernelErrorCode(
     value === "INVALID_PLACEMENT" ||
     value === "SWEEP_CURVED_PATH_UNSUPPORTED" ||
     value === "SWEEP_CURVED_GEOMETRY_FAILED" ||
+    value === "LOFT_GEOMETRY_FAILED" ||
     value === "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID" ||
     value === "KERNEL_FAILURE" ||
     value === "EMPTY_RESULT" ||

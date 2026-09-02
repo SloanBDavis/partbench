@@ -299,7 +299,7 @@ describe("SolidModePanel", () => {
     expect(markup).toContain("Top profile");
     expect(markup).toContain("Bottom profile");
     expect(markup).toContain("numbered order shown");
-    expect(markup).toContain("parallel planar body face");
+    expect(markup).toContain("non-parallel planes");
     expect(markup).not.toContain("private-sketch-a");
     expect(markup).not.toContain("private-profile-b");
   });

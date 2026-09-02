@@ -4725,6 +4725,64 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
+  it("passes non-parallel loft sections to the injected factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let captured:
+      | Parameters<
+          NonNullable<GeometryKernelMeshFactories["createLoftMesh"]>
+        >[0]
+      | undefined;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createLoftMesh: async (input) => {
+        captured = input;
+        return {
+          primitive: "loft",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+    const sections = [
+      {
+        sketchPlane: "XY" as const,
+        profile: { kind: "circle" as const, center: [0, 0] as const, radius: 1 }
+      },
+      {
+        sketchPlane: "XZ" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 10] as const,
+          radius: 1
+        }
+      }
+    ];
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_nonparallel_loft",
+        version: "geometry-kernel.v1",
+        op: "geometry.loft",
+        sections
+      }
+    );
+    expect(response.ok).toBe(true);
+    expect(captured?.sections).toEqual(sections);
+    expect(captured?.sections[0]?.sketchPlane).not.toBe(
+      captured?.sections[1]?.sketchPlane
+    );
+  });
+
   it("rejects inconsistent arcs and non-G1 path chains", async () => {
     const profile = {
       sketchPlane: "XY" as const,

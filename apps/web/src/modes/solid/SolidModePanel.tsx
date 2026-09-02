@@ -1629,9 +1629,9 @@ function LoftFields({
         onChange={(sections) => onChange({ ...draft, sections })}
       />
       <p className="pb-solid-field-note">
-        Sections are lofted in the numbered order shown. Supported sections must
-        lie on parallel planes; create another sketch on a parallel planar body
-        face when only one section is available.
+        Sections are lofted in the numbered order shown. Sections may lie on
+        non-parallel planes. Illegal geometry fails structured instead of
+        keeping only a parallel face-attached leftover.
       </p>
     </>
   );
