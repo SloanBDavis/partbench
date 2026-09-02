@@ -2350,6 +2350,51 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "sweeps a circle along a composite line-plus-spline path instead of the first line only",
+    async () => {
+      const profile = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 1
+        }
+      };
+      const lineOnly = [{ start: [0, 0, 0], end: [0, 0, 10] }] as const;
+      const composite = [
+        { kind: "line" as const, start: [0, 0, 0], end: [0, 0, 10] },
+        {
+          kind: "spline" as const,
+          points: [
+            [0, 0, 10],
+            [0, 0, 16],
+            [0, 0, 22],
+            [8, 0, 28]
+          ]
+        }
+      ] as const;
+
+      const [lineMetadata, compositeMetadata] = await Promise.all([
+        createOcctExactBodyMetadata({
+          source: { kind: "sweep", profile, pathSegments: lineOnly }
+        }),
+        createOcctExactBodyMetadata({
+          source: { kind: "sweep", profile, pathSegments: composite }
+        })
+      ]);
+
+      expect(lineMetadata.topologyCounts.solidCount).toBe(1);
+      expect(lineMetadata.volume).toBeCloseTo(10 * Math.PI, 4);
+      expect(lineMetadata.bounds.max[2]).toBeLessThan(12);
+      expect(compositeMetadata.topologyCounts.solidCount).toBe(1);
+      expect(compositeMetadata.volume).toBeGreaterThan(lineMetadata.volume + 5);
+      expect(compositeMetadata.bounds.max[2]).toBeGreaterThan(20);
+      expect(compositeMetadata.bounds.max[0]).toBeGreaterThan(6);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "rebuilds an attached signed arc sweep across mesh, exact, topology, checkpoint, and STEP",
     async () => {
       const profile = {

@@ -410,10 +410,10 @@ describe("sweep feature", () => {
     }
   );
 
-  it("rejects unsupported, unresolved, and multi-line paths atomically", () => {
+  it("rejects unsupported, unresolved, and empty paths atomically", () => {
     const cases: readonly [unknown, string][] = [
       [[], "SWEEP_PATH_UNSUPPORTED"],
-      [["path", "path_2"], "SWEEP_PATH_UNSUPPORTED"],
+      [["path", "path_2"], "SWEEP_ENTITY_UNRESOLVED"],
       [["missing"], "SWEEP_ENTITY_UNRESOLVED"],
       [["profile"], "SWEEP_ENTITY_UNRESOLVED"]
     ];

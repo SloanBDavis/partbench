@@ -5989,6 +5989,15 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.addSpline") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isOptionalBoolean(value.construction) &&
+      isSketchSplineDefinition(value.definition)
+    );
+  }
+
   if (value.op === "sketch.updateEntity") {
     return typeof value.sketchId === "string" && isSketchEntity(value.entity);
   }
@@ -6633,6 +6642,33 @@ function isSketchArcDefinition(value: unknown): boolean {
   );
 }
 
+function isSketchSplineDefinition(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.points) ||
+    value.points.length === 0
+  ) {
+    return false;
+  }
+  if (!value.points.every((point) => isVec2(point))) {
+    return false;
+  }
+  if (value.closed !== undefined && typeof value.closed !== "boolean") {
+    return false;
+  }
+  if (value.kind === "interpolation") {
+    return value.degree === undefined;
+  }
+  return (
+    value.kind === "controlPoints" &&
+    (value.degree === undefined ||
+      (typeof value.degree === "number" &&
+        Number.isInteger(value.degree) &&
+        value.degree >= 1 &&
+        value.degree <= 7))
+  );
+}
+
 function isSketchProfileRef(value: unknown): value is SketchProfileRef {
   if (!isRecord(value) || typeof value.sketchId !== "string") {
     return false;
@@ -6738,6 +6774,18 @@ function isSketchEntity(value: unknown): boolean {
       typeof value.startAngleDegrees === "number" &&
       typeof value.sweepAngleDegrees === "number" &&
       typeof value.construction === "boolean"
+    );
+  }
+
+  if (value.kind === "spline") {
+    return (
+      (value.form === "interpolation" || value.form === "controlPoints") &&
+      Array.isArray(value.points) &&
+      value.points.every((point) => isVec2(point)) &&
+      typeof value.degree === "number" &&
+      Number.isInteger(value.degree) &&
+      typeof value.closed === "boolean" &&
+      isOptionalBoolean(value.construction)
     );
   }
 

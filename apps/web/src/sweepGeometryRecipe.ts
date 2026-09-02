@@ -1,4 +1,4 @@
-import type { CadExactExportResolvedWireSegment } from "@web-cad/cad-protocol";
+import type { CadExactExportResolvedSweepPathSegment } from "@web-cad/cad-protocol";
 
 import type { DerivedGeometrySweepPathSegment } from "./derivedGeometryRuntime";
 import {
@@ -8,7 +8,7 @@ import {
 } from "./sketchDisplayFrames";
 
 export function mapResolvedSweepPathSegmentToWorld(
-  segment: CadExactExportResolvedWireSegment,
+  segment: CadExactExportResolvedSweepPathSegment,
   frame: SketchDisplayFrame
 ): DerivedGeometrySweepPathSegment {
   if (segment.kind === "line") {
@@ -16,6 +16,15 @@ export function mapResolvedSweepPathSegmentToWorld(
       kind: "line",
       start: mapSketchPointToDisplayFrame(frame, segment.start),
       end: mapSketchPointToDisplayFrame(frame, segment.end)
+    };
+  }
+
+  if (segment.kind === "spline") {
+    return {
+      kind: "spline",
+      points: segment.points.map((point) =>
+        mapSketchPointToDisplayFrame(frame, point)
+      )
     };
   }
 

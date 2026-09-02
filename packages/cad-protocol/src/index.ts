@@ -8739,6 +8739,14 @@ export interface CadExactExportRevolveBodySource {
   readonly solidPolicy: "exactlyOne";
 }
 
+export type CadExactExportResolvedSweepPathSegment =
+  | CadExactExportResolvedWireSegment
+  | {
+      readonly kind: "spline";
+      readonly sourceEntityId: SketchEntityId;
+      readonly points: readonly Vec2[];
+    };
+
 export interface CadExactExportResolvedSweepPath {
   readonly frame: {
     readonly origin: Vec3;
@@ -8746,7 +8754,7 @@ export interface CadExactExportResolvedSweepPath {
     readonly vAxis: Vec3;
   };
   readonly closed: false;
-  readonly segments: readonly CadExactExportResolvedWireSegment[];
+  readonly segments: readonly CadExactExportResolvedSweepPathSegment[];
   readonly sourceIdentity: string;
 }
 

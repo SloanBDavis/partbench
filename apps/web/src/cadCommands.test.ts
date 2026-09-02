@@ -293,6 +293,38 @@ describe("cad command builders", () => {
       profile: sweepProfile,
       path
     });
+    const compositePath = {
+      kind: "chain" as const,
+      sketchId: "sketch_path",
+      segments: [
+        { entityId: "path_line", orientation: "forward" as const },
+        { entityId: "path_spline", orientation: "forward" as const }
+      ]
+    };
+    expect(
+      buildFeatureCompositeSweepOp({
+        id: " feat_sweep_composite ",
+        bodyId: " body_sweep_composite ",
+        name: " Composite path ",
+        profile: {
+          kind: "entity",
+          sketchId: "sketch_profile",
+          entityId: "profile_circle"
+        },
+        path: compositePath
+      })
+    ).toEqual({
+      op: "feature.sweep",
+      id: "feat_sweep_composite",
+      bodyId: "body_sweep_composite",
+      name: "Composite path",
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_profile",
+        entityId: "profile_circle"
+      },
+      path: compositePath
+    });
     expect(buildFeatureUpdateCompositeExtrudeOp("extrude", profile)).toEqual({
       op: "feature.updateExtrude",
       id: "extrude",

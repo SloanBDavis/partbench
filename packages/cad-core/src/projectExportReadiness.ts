@@ -1443,12 +1443,17 @@ function classifyLegacyBodySource(
 
   if (body.source.type === "sweepFeature") {
     const feature = document.features.get(body.featureId);
+    const pathEntityKind =
+      feature?.kind === "sweep" && feature.path.kind === "entity"
+        ? document.sketches
+            .get(feature.path.sketchId)
+            ?.entities.get(feature.path.entityId)?.kind
+        : undefined;
     const isCurvedV17Sweep =
       feature?.kind === "sweep" &&
       (feature.path.kind === "chain" ||
-        document.sketches
-          .get(feature.path.sketchId)
-          ?.entities.get(feature.path.entityId)?.kind === "arc");
+        pathEntityKind === "arc" ||
+        pathEntityKind === "spline");
     const resolved =
       feature?.kind === "sweep" && isCurvedV17Sweep
         ? createResolvedSweepSource(document, feature, body.partId, body.name)
@@ -1465,7 +1470,7 @@ function classifyLegacyBodySource(
             body,
             sourceKind,
             {
-              expected: "resolved V17 arc or G1 line/arc-chain sweep",
+              expected: "resolved arc, spline, or G1 line/arc/spline-chain sweep",
               received: "legacy or unresolved sweep"
             }
           )

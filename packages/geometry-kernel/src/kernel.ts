@@ -531,7 +531,15 @@ export interface SweepArcPathSegment {
   readonly sweepAngleDegrees: number;
 }
 
-export type SweepPathSegment = SweepLinePathSegment | SweepArcPathSegment;
+export interface SweepSplinePathSegment {
+  readonly kind: "spline";
+  readonly points: readonly GeometryKernelDirection[];
+}
+
+export type SweepPathSegment =
+  | SweepLinePathSegment
+  | SweepArcPathSegment
+  | SweepSplinePathSegment;
 
 export interface SweepRequest {
   readonly id: string;
@@ -2555,7 +2563,7 @@ function validateRequest(
       return {
         code: curved ? "SWEEP_CURVED_PATH_UNSUPPORTED" : "INVALID_DIMENSIONS",
         message: curved
-          ? "Curved sweep requests require a finite open connected G1 line/arc path."
+          ? "Curved sweep requests require a finite open connected G1 line/arc/spline path."
           : "Sweep requests require one finite non-degenerate line path."
       };
     }
@@ -4002,7 +4010,10 @@ function isValidSweepPathSegments(
   for (let index = 1; index < segments.length; index += 1) {
     const previous = segments[index - 1]!;
     const current = segments[index]!;
-    if (vectorDistance(previous.end, current.start) > joinTolerance) {
+    if (
+      vectorDistance(sweepSegmentEnd(previous), sweepSegmentStart(current)) >
+      joinTolerance
+    ) {
       return false;
     }
     const outgoing = getSweepPathTangent(previous, "end");
@@ -4010,19 +4021,44 @@ function isValidSweepPathSegments(
     if (dotVec3(outgoing, incoming) < minimumTangentCosine) return false;
   }
   return (
-    vectorDistance(segments[0]!.start, segments.at(-1)!.end) > joinTolerance
+    vectorDistance(
+      sweepSegmentStart(segments[0]!),
+      sweepSegmentEnd(segments.at(-1)!)
+    ) > joinTolerance
   );
 }
 
 function isCurvedSweepPath(segments: readonly SweepPathSegment[]): boolean {
   return (
     Array.isArray(segments) &&
-    (segments.length > 1 || segments.some((segment) => segment?.kind === "arc"))
+    (segments.length > 1 ||
+      segments.some(
+        (segment) => segment?.kind === "arc" || segment?.kind === "spline"
+      ))
   );
 }
 
 function isValidSweepPathSegment(segment: SweepPathSegment): boolean {
-  if (!segment || !isVec3(segment.start) || !isVec3(segment.end)) return false;
+  if (!segment) return false;
+  if (segment.kind === "spline") {
+    if (
+      !Array.isArray(segment.points) ||
+      segment.points.length < 2 ||
+      !segment.points.every(isVec3)
+    ) {
+      return false;
+    }
+    for (let index = 1; index < segment.points.length; index += 1) {
+      if (
+        vectorDistance(segment.points[index - 1]!, segment.points[index]!) <=
+        1e-12
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (!isVec3(segment.start) || !isVec3(segment.end)) return false;
   if (segment.kind !== "arc") {
     return (
       (segment.kind === undefined || segment.kind === "line") &&
@@ -4062,10 +4098,29 @@ function isValidSweepPathSegment(segment: SweepPathSegment): boolean {
   );
 }
 
+function sweepSegmentStart(segment: SweepPathSegment): GeometryKernelDirection {
+  if (segment.kind === "spline") return segment.points[0]!;
+  return segment.start;
+}
+
+function sweepSegmentEnd(segment: SweepPathSegment): GeometryKernelDirection {
+  if (segment.kind === "spline") return segment.points[segment.points.length - 1]!;
+  return segment.end;
+}
+
 function getSweepPathTangent(
   segment: SweepPathSegment,
   endpoint: "start" | "end"
 ): GeometryKernelDirection {
+  if (segment.kind === "spline") {
+    const points = segment.points;
+    if (endpoint === "start") {
+      return normalizeVec3(subtractVec3(points[1]!, points[0]!));
+    }
+    return normalizeVec3(
+      subtractVec3(points[points.length - 1]!, points[points.length - 2]!)
+    );
+  }
   if (segment.kind !== "arc") {
     return normalizeVec3(subtractVec3(segment.end, segment.start));
   }

@@ -1,5 +1,6 @@
 import type {
   CadBatchValidationErrorCode,
+  CadExactExportResolvedSweepPathSegment,
   CadExactExportSweepBodySource,
   FeatureId,
   FeatureInputReferenceSemanticDiffCurrent,
@@ -12,18 +13,21 @@ import type {
 
 import type { CadDocument } from "./index";
 import { createSketchPathReadinessResponse } from "./sketchProfilePathQueries";
+import { resolveOrientedSketchSegment } from "./sketchWireGeometry";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 import {
   mapRegionSourceIssueToBatchError,
   validateRegisteredV22RegionSource
 } from "./v19RegionPolicyRegistry";
 
+export type SweepPathEntityKind = "line" | "arc" | "spline";
+
 export type SweepResolution =
   | {
       readonly ok: true;
       readonly profile: SketchProfileRefV22;
       readonly path: SketchPathRef;
-      readonly pathKinds: readonly ("line" | "arc")[];
+      readonly pathKinds: readonly SweepPathEntityKind[];
     }
   | {
       readonly ok: false;
@@ -158,23 +162,28 @@ export function resolveSweep(
     };
   }
   const unsupportedIndex = pathEntities.findIndex(
-    (entity) => entity?.kind !== "line" && entity?.kind !== "arc"
+    (entity) =>
+      entity?.kind !== "line" &&
+      entity?.kind !== "arc" &&
+      entity?.kind !== "spline"
   );
   if (unsupportedIndex >= 0) {
     return {
       ok: false,
       code: "SKETCH_PATH_ENTITY_UNSUPPORTED",
-      message: "A single sweep path must be a line or circular arc entity.",
+      message:
+        "A sweep path must be a line, circular arc, or open spline entity.",
       sketchId: path.sketchId,
       sketchEntityId: pathEntityIds[unsupportedIndex]
     };
   }
 
   const pathKinds = pathEntities.map(
-    (entity) => entity!.kind as "line" | "arc"
+    (entity) => entity!.kind as SweepPathEntityKind
   );
   const needsV17FrameValidation =
-    path.kind === "chain" || pathKinds.some((kind) => kind === "arc");
+    path.kind === "chain" ||
+    pathKinds.some((kind) => kind === "arc" || kind === "spline");
 
   const readiness = createSketchPathReadinessResponse(
     document,
@@ -238,34 +247,52 @@ export function createResolvedSweepSource(
     resolution.path.kind === "entity"
       ? [resolution.path]
       : resolution.path.segments;
-  const segments: CadExactExportSweepBodySource["path"]["segments"] =
-    orientedRefs.map((reference) => {
-      const entity = pathSketch.entities.get(reference.entityId)!;
-      const forward = reference.orientation === "forward";
-      if (entity.kind === "line") {
-        return {
-          kind: "line" as const,
-          sourceEntityId: entity.id,
-          start: forward ? entity.start : entity.end,
-          end: forward ? entity.end : entity.start
-        };
+  const segments: CadExactExportResolvedSweepPathSegment[] = [];
+  for (const reference of orientedRefs) {
+    const entity = pathSketch.entities.get(reference.entityId)!;
+    const forward = reference.orientation === "forward";
+    if (entity.kind === "line") {
+      segments.push({
+        kind: "line",
+        sourceEntityId: entity.id,
+        start: forward ? entity.start : entity.end,
+        end: forward ? entity.end : entity.start
+      });
+      continue;
+    }
+    if (entity.kind === "spline") {
+      const resolved = resolveOrientedSketchSegment(
+        entity,
+        reference.orientation
+      );
+      if (!resolved.ok || resolved.segment.kind !== "spline") {
+        return undefined;
       }
-      const arc = entity as Extract<typeof entity, { kind: "arc" }>;
-      return {
-        kind: "arc" as const,
-        sourceEntityId: arc.id,
-        center: arc.center,
-        radius: arc.radius,
-        startAngleDegrees: normalizeDegrees(
-          forward
-            ? arc.startAngleDegrees
-            : arc.startAngleDegrees + arc.sweepAngleDegrees
-        ),
-        sweepAngleDegrees: forward
-          ? arc.sweepAngleDegrees
-          : -arc.sweepAngleDegrees
-      };
+      segments.push({
+        kind: "spline",
+        sourceEntityId: entity.id,
+        points: resolved.segment.samples
+      });
+      continue;
+    }
+    if (entity.kind !== "arc") {
+      return undefined;
+    }
+    segments.push({
+      kind: "arc",
+      sourceEntityId: entity.id,
+      center: entity.center,
+      radius: entity.radius,
+      startAngleDegrees: normalizeDegrees(
+        forward
+          ? entity.startAngleDegrees
+          : entity.startAngleDegrees + entity.sweepAngleDegrees
+      ),
+      sweepAngleDegrees: forward
+        ? entity.sweepAngleDegrees
+        : -entity.sweepAngleDegrees
     });
+  }
   const sourceIdentity = `partbench-sweep-path-v1:${JSON.stringify({
     profile: feature.profile,
     profileGeometry: profileEntity,

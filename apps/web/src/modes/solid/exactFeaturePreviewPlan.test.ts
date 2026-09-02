@@ -391,6 +391,51 @@ describe("V22 exact feature preview planner", () => {
     }
   );
 
+  it("submits the same composite line-plus-spline feature.sweep CADOps as MCP", () => {
+    const compositePath: SketchPathRef = {
+      kind: "chain",
+      sketchId: "sketch_path",
+      segments: [
+        { entityId: "path_line", orientation: "forward" },
+        { entityId: "path_spline", orientation: "forward" }
+      ]
+    };
+    const result = planExactFeaturePreview(
+      makeInput(
+        "compositeSweep",
+        {
+          id: "feat_sweep_composite",
+          bodyId: "body_sweep_composite",
+          name: "",
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_profile",
+            entityId: "profile_circle"
+          },
+          path: compositePath
+        } satisfies FeatureCompositeSweepForm,
+        "create"
+      )
+    );
+    expectSupported(result, "feature.sweep", "body_sweep_composite", false);
+    expect(result).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.sweep",
+          id: "feat_sweep_composite",
+          bodyId: "body_sweep_composite",
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_profile",
+            entityId: "profile_circle"
+          },
+          path: compositePath
+        }
+      ]
+    });
+  });
+
   it("submits the same feature.offset batch as the associative-offset CADOps case", () => {
     const profileDraft = {
       id: "feat_profile_offset",

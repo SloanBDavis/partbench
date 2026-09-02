@@ -278,6 +278,10 @@ export type DerivedGeometrySweepPathSegment =
       readonly center: readonly [number, number, number];
       readonly normal: readonly [number, number, number];
       readonly sweepAngleDegrees: number;
+    }
+  | {
+      readonly kind: "spline";
+      readonly points: readonly (readonly [number, number, number])[];
     };
 
 export interface DerivedGeometryLoftInput {
