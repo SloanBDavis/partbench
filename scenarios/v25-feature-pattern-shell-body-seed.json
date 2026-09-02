@@ -1,0 +1,103 @@
+{
+  "id": "v25-feature-pattern-shell-body-seed",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_block",
+      "name": "Block",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block",
+      "id": "rect_block",
+      "center": [0, 0],
+      "width": 20,
+      "height": 12
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block",
+      "bodyId": "body_block",
+      "sketchId": "sketch_block",
+      "entityId": "rect_block",
+      "depth": 8
+    },
+    {
+      "op": "feature.shell",
+      "id": "feat_shell",
+      "bodyId": "body_shell",
+      "targetBodyId": "body_block",
+      "wallThickness": 1,
+      "openFaceRefs": []
+    }
+  ],
+  "steps": [
+    {
+      "id": "linear-shell-body-seed-pattern",
+      "ops": [
+        {
+          "op": "feature.linearPattern",
+          "id": "feat_pattern",
+          "bodyId": "body_patterned",
+          "seedBodyId": "body_shell",
+          "direction": { "kind": "globalAxis", "axis": "x" },
+          "spacing": 30,
+          "instanceCount": 2
+        }
+      ],
+      "expect": {
+        "ops": ["feature.linearPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedBodyId": "body_shell",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_patterned", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "features": [
+              { "id": "feat_block", "kind": "extrude" },
+              {
+                "id": "feat_shell",
+                "kind": "shell",
+                "targetBodyId": "body_block"
+              },
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedBodyId": "body_shell",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodies": [
+              { "id": "body_block", "consumedByFeatureId": "feat_shell" },
+              { "id": "body_shell", "consumedByFeatureId": "feat_pattern" },
+              {
+                "id": "body_patterned",
+                "featureId": "feat_pattern",
+                "source": {
+                  "type": "linearPatternFeature",
+                  "seedBodyId": "body_shell"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

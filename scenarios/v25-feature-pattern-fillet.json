@@ -1,0 +1,103 @@
+{
+  "id": "v25-feature-pattern-fillet",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_block",
+      "name": "Block",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block",
+      "id": "rect_block",
+      "center": [0, 0],
+      "width": 20,
+      "height": 12
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block",
+      "bodyId": "body_block",
+      "sketchId": "sketch_block",
+      "entityId": "rect_block",
+      "depth": 8
+    },
+    {
+      "op": "feature.fillet",
+      "id": "feat_fillet",
+      "bodyId": "body_fillet",
+      "targetBodyId": "body_block",
+      "edgeStableId": "generated:edge:body_block:start:uMin",
+      "radius": 1
+    }
+  ],
+  "steps": [
+    {
+      "id": "linear-fillet-pattern",
+      "ops": [
+        {
+          "op": "feature.linearPattern",
+          "id": "feat_pattern",
+          "bodyId": "body_patterned",
+          "seedFeatureId": "feat_fillet",
+          "direction": { "kind": "globalAxis", "axis": "x" },
+          "spacing": 20,
+          "instanceCount": 2
+        }
+      ],
+      "expect": {
+        "ops": ["feature.linearPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_fillet",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_patterned", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "features": [
+              { "id": "feat_block", "kind": "extrude" },
+              {
+                "id": "feat_fillet",
+                "kind": "fillet",
+                "targetBodyId": "body_block"
+              },
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_fillet",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodies": [
+              { "id": "body_block", "consumedByFeatureId": "feat_fillet" },
+              { "id": "body_fillet", "consumedByFeatureId": "feat_pattern" },
+              {
+                "id": "body_patterned",
+                "featureId": "feat_pattern",
+                "source": {
+                  "type": "linearPatternFeature",
+                  "seedFeatureId": "feat_fillet"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

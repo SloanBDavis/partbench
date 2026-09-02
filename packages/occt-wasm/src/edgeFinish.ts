@@ -225,7 +225,7 @@ export function withOcctCheckpointEdgeFinishResultShape<T>(
   }
 }
 
-function withSelectedEdgeFinishResultShape<T>(
+export function withSelectedEdgeFinishResultShape<T>(
   oc: OpenCascadeInstance,
   target: TopoDS_Shape,
   edge: TopoDS_Edge,

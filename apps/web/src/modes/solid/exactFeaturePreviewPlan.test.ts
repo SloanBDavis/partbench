@@ -744,6 +744,99 @@ describe("V22 exact feature preview planner", () => {
     });
   });
 
+  it("submits the same feature.linearPattern batch as the fillet feature-pattern CADOps case", () => {
+    const draft = {
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedBodyId: "",
+      seedFeatureId: "feat_fillet",
+      name: "",
+      direction,
+      spacing: 20,
+      instanceCount: 2
+    } satisfies FeatureLinearPatternForm;
+    const result = planExactFeaturePreview(
+      makeInput("linearPattern", draft, "create")
+    );
+    expectSupported(result, "feature.linearPattern", "body_patterned", true);
+    expect(result).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.linearPattern",
+          id: "feat_pattern",
+          bodyId: "body_patterned",
+          seedFeatureId: "feat_fillet",
+          direction,
+          spacing: 20,
+          instanceCount: 2
+        }
+      ]
+    });
+  });
+
+  it("submits the same feature.linearPattern batch as the combine feature-pattern CADOps case", () => {
+    const draft = {
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedBodyId: "",
+      seedFeatureId: "feat_combine",
+      name: "",
+      direction,
+      spacing: 16,
+      instanceCount: 3
+    } satisfies FeatureLinearPatternForm;
+    const result = planExactFeaturePreview(
+      makeInput("linearPattern", draft, "create")
+    );
+    expectSupported(result, "feature.linearPattern", "body_patterned", true);
+    expect(result).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.linearPattern",
+          id: "feat_pattern",
+          bodyId: "body_patterned",
+          seedFeatureId: "feat_combine",
+          direction,
+          spacing: 16,
+          instanceCount: 3
+        }
+      ]
+    });
+  });
+
+  it("submits the same feature.linearPattern batch as the shell body-seed CADOps case", () => {
+    const draft = {
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedBodyId: "body_shell",
+      seedFeatureId: "",
+      name: "",
+      direction,
+      spacing: 30,
+      instanceCount: 2
+    } satisfies FeatureLinearPatternForm;
+    const result = planExactFeaturePreview(
+      makeInput("linearPattern", draft, "create")
+    );
+    expectSupported(result, "feature.linearPattern", "body_patterned", true);
+    expect(result).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.linearPattern",
+          id: "feat_pattern",
+          bodyId: "body_patterned",
+          seedBodyId: "body_shell",
+          direction,
+          spacing: 30,
+          instanceCount: 2
+        }
+      ]
+    });
+  });
+
   it.each([
     {
       kind: "extrude" as const,

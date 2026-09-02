@@ -601,7 +601,7 @@ describe("currentExactBodyResolver", () => {
     }
   });
 
-  it("blocks consuming feature seeds that have no reconstructable tool instead of copying the result solid", () => {
+  it("attaches an edge-finish tool that replays fillet on transformed edge anchors", () => {
     const engine = new CadEngine();
     engine.applyBatch([
       { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
@@ -622,20 +622,99 @@ describe("currentExactBodyResolver", () => {
         depth: 8
       },
       {
-        op: "feature.chamfer",
-        id: "feat_chamfer",
-        bodyId: "body_chamfer",
+        op: "feature.fillet",
+        id: "feat_fillet",
+        bodyId: "body_fillet",
         targetBodyId: "body_block",
         edgeStableId: "generated:edge:body_block:start:uMin",
-        distance: 2
+        radius: 1
       },
       {
         op: "feature.linearPattern",
         id: "feat_pattern",
         bodyId: "body_patterned",
-        seedFeatureId: "feat_chamfer",
+        seedFeatureId: "feat_fillet",
         direction: { kind: "globalAxis", axis: "x" },
-        spacing: 30,
+        spacing: 20,
+        instanceCount: 2
+      }
+    ]);
+    const resolution = createResolverContext(engine).resolutions.find(
+      (candidate) => candidate.bodyId === "body_patterned"
+    );
+    expect(resolution).toMatchObject({
+      status: "ready",
+      source: {
+        kind: "linearPattern",
+        spacing: 20,
+        instanceCount: 2,
+        edgeFinishTool: {
+          operation: "fillet",
+          amount: 1,
+          first: [-10, -6, 0],
+          last: [-10, 6, 0]
+        }
+      },
+      artifactDependency: { bodyId: "body_fillet" }
+    });
+    if (resolution?.status === "ready") {
+      expect(resolution.source).not.toHaveProperty("holeTool");
+      expect(resolution.source).not.toHaveProperty("booleanTool");
+    }
+  });
+
+  it("attaches a combine boolean tool that re-booleans the reconstructed tool body", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_plate",
+        id: "rect_plate",
+        center: [0, 0],
+        width: 60,
+        height: 24
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_plate",
+        bodyId: "body_plate",
+        sketchId: "sketch_plate",
+        entityId: "rect_plate",
+        depth: 6
+      },
+      { op: "sketch.create", id: "sketch_boss", name: "Boss", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_boss",
+        id: "rect_boss",
+        center: [-16, 0],
+        width: 8,
+        height: 8
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_boss",
+        bodyId: "body_boss",
+        sketchId: "sketch_boss",
+        entityId: "rect_boss",
+        depth: 10
+      },
+      {
+        op: "feature.combine",
+        id: "feat_combine",
+        bodyId: "body_combined",
+        mode: "union",
+        targetBodyId: "body_plate",
+        toolBodyId: "body_boss"
+      },
+      {
+        op: "feature.linearPattern",
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedFeatureId: "feat_combine",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 16,
         instanceCount: 3
       }
     ]);
@@ -643,13 +722,88 @@ describe("currentExactBodyResolver", () => {
       (candidate) => candidate.bodyId === "body_patterned"
     );
     expect(resolution).toMatchObject({
-      status: "blocked",
-      diagnostics: [
-        {
-          message: expect.stringMatching(/no current feature tool/)
+      status: "ready",
+      source: {
+        kind: "linearPattern",
+        spacing: 16,
+        instanceCount: 3,
+        booleanTool: {
+          operation: "add",
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [-16, 0],
+              width: 8,
+              height: 8
+            },
+            depth: 10
+          }
         }
-      ]
+      },
+      artifactDependency: { bodyId: "body_combined" }
     });
+    if (resolution?.status === "ready") {
+      expect(resolution.source).not.toHaveProperty("holeTool");
+      expect(resolution.source).not.toHaveProperty("edgeFinishTool");
+    }
+  });
+
+  it("patterns a shelled body through seedBodyId because shell already is the whole body", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_block",
+        id: "rect_block",
+        center: [0, 0],
+        width: 20,
+        height: 12
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_block",
+        bodyId: "body_block",
+        sketchId: "sketch_block",
+        entityId: "rect_block",
+        depth: 8
+      },
+      {
+        op: "feature.shell",
+        id: "feat_shell",
+        bodyId: "body_shell",
+        targetBodyId: "body_block",
+        wallThickness: 1,
+        openFaceRefs: []
+      },
+      {
+        op: "feature.linearPattern",
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedBodyId: "body_shell",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 30,
+        instanceCount: 2
+      }
+    ]);
+    const resolution = createResolverContext(engine).resolutions.find(
+      (candidate) => candidate.bodyId === "body_patterned"
+    );
+    expect(resolution).toMatchObject({
+      status: "ready",
+      source: {
+        kind: "linearPattern",
+        spacing: 30,
+        instanceCount: 2
+      },
+      artifactDependency: { bodyId: "body_shell" }
+    });
+    if (resolution?.status === "ready") {
+      expect(resolution.source).not.toHaveProperty("holeTool");
+      expect(resolution.source).not.toHaveProperty("booleanTool");
+      expect(resolution.source).not.toHaveProperty("edgeFinishTool");
+    }
   });
 
   it("projects imported and downstream checkpoint resolutions into one display and metadata source", () => {

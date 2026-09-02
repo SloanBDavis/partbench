@@ -52,8 +52,15 @@ export type CurrentExactBodySource =
   | CurrentExactCheckpointHoleSource
   | CurrentExactCheckpointEdgeFinishSource;
 
+type CurrentExactPatternEdgeFinishTool = {
+  readonly operation: "chamfer" | "fillet";
+  readonly amount: number;
+  readonly first: readonly [number, number, number];
+  readonly last: readonly [number, number, number];
+};
+
 type CurrentExactPatternBooleanTool = {
-  readonly operation: "add" | "cut";
+  readonly operation: "add" | "cut" | "intersect";
   readonly tool: {
     readonly sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"];
     readonly profile: Extract<
@@ -75,6 +82,7 @@ export type CurrentExactArtifactOperationSource =
       readonly instanceCount: number;
       readonly holeTool?: DerivedHoleGeometrySource["tool"];
       readonly booleanTool?: CurrentExactPatternBooleanTool;
+      readonly edgeFinishTool?: CurrentExactPatternEdgeFinishTool;
       readonly sourceIdentitySignature: string;
     }
   | {
@@ -88,6 +96,7 @@ export type CurrentExactArtifactOperationSource =
       readonly instanceCount: number;
       readonly holeTool?: DerivedHoleGeometrySource["tool"];
       readonly booleanTool?: CurrentExactPatternBooleanTool;
+      readonly edgeFinishTool?: CurrentExactPatternEdgeFinishTool;
       readonly sourceIdentitySignature: string;
     }
   | {
@@ -915,7 +924,8 @@ function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
         spacing: source.spacing,
         instanceCount: source.instanceCount,
         ...(source.holeTool ? { holeTool: source.holeTool } : {}),
-        ...(source.booleanTool ? { booleanTool: source.booleanTool } : {})
+        ...(source.booleanTool ? { booleanTool: source.booleanTool } : {}),
+        ...(source.edgeFinishTool ? { edgeFinishTool: source.edgeFinishTool } : {})
       } as const;
     case "circularPattern":
       return {
@@ -924,7 +934,8 @@ function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
         totalAngleDegrees: source.totalAngleDegrees,
         instanceCount: source.instanceCount,
         ...(source.holeTool ? { holeTool: source.holeTool } : {}),
-        ...(source.booleanTool ? { booleanTool: source.booleanTool } : {})
+        ...(source.booleanTool ? { booleanTool: source.booleanTool } : {}),
+        ...(source.edgeFinishTool ? { edgeFinishTool: source.edgeFinishTool } : {})
       } as const;
     case "mirror":
       return {
@@ -1086,15 +1097,15 @@ function getPatternHoleToolError(
     return undefined;
   }
   if (!feature.seedFeatureId) {
-    if (source.holeTool || source.booleanTool) {
+    if (source.holeTool || source.booleanTool || source.edgeFinishTool) {
       return `Pattern ${feature.id} cannot attach a feature tool to a body seed.`;
     }
     return undefined;
   }
   const seed = context.featuresById.get(feature.seedFeatureId);
   if (seed?.kind === "hole") {
-    if (source.booleanTool) {
-      return `Pattern ${feature.id} cannot attach a boolean tool to a hole seed.`;
+    if (source.booleanTool || source.edgeFinishTool) {
+      return `Pattern ${feature.id} cannot attach a non-hole tool to a hole seed.`;
     }
     if (!source.holeTool || !isValidHoleTool(source.holeTool)) {
       return `Pattern ${feature.id} has no current hole tool for seed feature ${feature.seedFeatureId}.`;
@@ -1104,11 +1115,24 @@ function getPatternHoleToolError(
   if (source.holeTool) {
     return `Pattern ${feature.id} cannot attach a hole tool to a ${seed?.kind ?? "non-hole"} feature seed.`;
   }
+  if (seed?.kind === "chamfer" || seed?.kind === "fillet") {
+    if (source.booleanTool) {
+      return `Pattern ${feature.id} cannot attach a boolean tool to a ${seed.kind} seed.`;
+    }
+    if (!source.edgeFinishTool || !isValidEdgeFinishTool(source.edgeFinishTool)) {
+      return `Pattern ${feature.id} has no current edge finish tool for seed feature ${feature.seedFeatureId}.`;
+    }
+    return undefined;
+  }
+  if (source.edgeFinishTool) {
+    return `Pattern ${feature.id} cannot attach an edge finish tool to a ${seed?.kind ?? "non-edge"} feature seed.`;
+  }
   if (isConsumingPatternSeedFeature(seed)) {
     if (
       !source.booleanTool ||
       (source.booleanTool.operation !== "add" &&
-        source.booleanTool.operation !== "cut") ||
+        source.booleanTool.operation !== "cut" &&
+        source.booleanTool.operation !== "intersect") ||
       !isPositiveFinite(source.booleanTool.tool.depth)
     ) {
       return `Pattern ${feature.id} has no current feature tool for seed feature ${feature.seedFeatureId}.`;
@@ -1124,23 +1148,26 @@ function getPatternHoleToolError(
   return undefined;
 }
 
+function isValidEdgeFinishTool(
+  tool: CurrentExactPatternEdgeFinishTool
+): boolean {
+  return (
+    (tool.operation === "chamfer" || tool.operation === "fillet") &&
+    isPositiveFinite(tool.amount) &&
+    isFiniteVector(tool.first) &&
+    isFiniteVector(tool.last)
+  );
+}
+
 function isConsumingPatternSeedFeature(
   seed: CadFeatureSummary | undefined
 ): boolean {
   if (!seed) return false;
-  if (
-    seed.kind === "hole" ||
-    seed.kind === "chamfer" ||
-    seed.kind === "fillet" ||
-    seed.kind === "combine" ||
-    seed.kind === "shell"
-  ) {
-    return true;
-  }
+  if (seed.kind === "combine") return true;
   if (seed.kind === "extrude") {
     return seed.operationMode === "add" || seed.operationMode === "cut";
   }
-  return seed.kind === "mirror" && seed.includeOriginal;
+  return false;
 }
 
 function createPatternHoleTool(
@@ -1194,9 +1221,39 @@ function createPatternBooleanTool(
     return undefined;
   }
   const seed = context.featuresById.get(feature.seedFeatureId);
+  if (seed?.kind === "combine") {
+    const toolBody = context.bodiesById.get(seed.toolBodyId);
+    const toolFeature = toolBody
+      ? context.featuresById.get(toolBody.featureId)
+      : undefined;
+    const tool = createExtrudePatternTool(toolFeature, context);
+    if (!tool) return undefined;
+    return {
+      operation:
+        seed.mode === "union"
+          ? "add"
+          : seed.mode === "intersect"
+            ? "intersect"
+            : "cut",
+      tool
+    };
+  }
   if (
     seed?.kind !== "extrude" ||
-    (seed.operationMode !== "add" && seed.operationMode !== "cut") ||
+    (seed.operationMode !== "add" && seed.operationMode !== "cut")
+  ) {
+    return undefined;
+  }
+  const tool = createExtrudePatternTool(seed, context);
+  return tool ? { operation: seed.operationMode, tool } : undefined;
+}
+
+function createExtrudePatternTool(
+  seed: CadFeatureSummary | undefined,
+  context: ResolverContext
+): CurrentExactPatternBooleanTool["tool"] | undefined {
+  if (
+    seed?.kind !== "extrude" ||
     !("entityId" in seed) ||
     !seed.entityId
   ) {
@@ -1237,15 +1294,174 @@ function createPatternBooleanTool(
         };
 
   return {
-    operation: seed.operationMode,
-    tool: {
-      sketchPlane: sketch.plane,
-      profile,
-      depth: seed.depth,
-      side: seed.side,
-      ...(placementFrame ? { placementFrame } : {})
-    }
+    sketchPlane: sketch.plane,
+    profile,
+    depth: seed.depth,
+    side: seed.side,
+    ...(placementFrame ? { placementFrame } : {})
   };
+}
+
+function createPatternEdgeFinishTool(
+  feature: CadFeatureSummary,
+  context: ResolverContext
+): CurrentExactPatternEdgeFinishTool | undefined {
+  if (
+    (feature.kind !== "linearPattern" && feature.kind !== "circularPattern") ||
+    !feature.seedFeatureId
+  ) {
+    return undefined;
+  }
+  const seed = context.featuresById.get(feature.seedFeatureId);
+  if (seed?.kind !== "chamfer" && seed?.kind !== "fillet") return undefined;
+  if (!seed.edgeStableId) return undefined;
+  const targetBody = context.bodiesById.get(seed.targetBodyId);
+  const targetFeature = targetBody
+    ? context.featuresById.get(targetBody.featureId)
+    : undefined;
+  const endpoints = createRectangleEdgeEndpoints(targetFeature, context, seed.edgeStableId);
+  if (!endpoints) return undefined;
+  return {
+    operation: seed.kind,
+    amount: seed.kind === "chamfer" ? seed.distance : seed.radius,
+    first: endpoints.first,
+    last: endpoints.last
+  };
+}
+
+function createRectangleEdgeEndpoints(
+  target: CadFeatureSummary | undefined,
+  context: ResolverContext,
+  edgeStableId: string
+):
+  | {
+      readonly first: readonly [number, number, number];
+      readonly last: readonly [number, number, number];
+    }
+  | undefined {
+  if (target?.kind !== "extrude" || !("entityId" in target) || !target.entityId) {
+    return undefined;
+  }
+  const sketch = context.document.sketches.get(target.sketchId);
+  const entity = sketch?.entities.get(target.entityId);
+  if (!sketch || entity?.kind !== "rectangle") return undefined;
+  const role = parseRectangleEdgeRole(edgeStableId);
+  if (!role) return undefined;
+
+  let origin: readonly [number, number, number] = [0, 0, 0];
+  let uAxis: readonly [number, number, number] = [1, 0, 0];
+  let vAxis: readonly [number, number, number] = [0, 1, 0];
+  let normalAxis: readonly [number, number, number] = [0, 0, 1];
+  if (!sketch.attachment && sketch.datumId) {
+    const datum = context.document.datums.get(sketch.datumId);
+    const frame = datum ? createDatumSketchDisplayFrame(datum) : undefined;
+    if (frame) {
+      origin = frame.origin;
+      uAxis = frame.uAxis;
+      vAxis = frame.vAxis;
+      normalAxis = normalizeCross(frame.uAxis, frame.vAxis);
+    }
+  } else if (sketch.attachment?.kind === "topologyAnchorFace") {
+    const frame = createTopologyAnchorFaceDisplayFrame(sketch.attachment);
+    origin = frame.origin;
+    uAxis = frame.uAxis;
+    vAxis = frame.vAxis;
+    normalAxis = normalizeCross(frame.uAxis, frame.vAxis);
+  } else {
+    switch (sketch.plane) {
+      case "XZ":
+        uAxis = [1, 0, 0];
+        vAxis = [0, 0, 1];
+        normalAxis = [0, 1, 0];
+        break;
+      case "YZ":
+        uAxis = [0, 1, 0];
+        vAxis = [0, 0, 1];
+        normalAxis = [1, 0, 0];
+        break;
+      default:
+        break;
+    }
+  }
+
+  const [normalMin, normalMax] =
+    target.side === "negative"
+      ? ([-target.depth, 0] as const)
+      : target.side === "symmetric"
+        ? ([-target.depth / 2, target.depth / 2] as const)
+        : ([0, target.depth] as const);
+  const uMin = entity.center[0] - entity.width / 2;
+  const uMax = entity.center[0] + entity.width / 2;
+  const vMin = entity.center[1] - entity.height / 2;
+  const vMax = entity.center[1] + entity.height / 2;
+  const mapPoint = (
+    u: number,
+    v: number,
+    n: number
+  ): readonly [number, number, number] => [
+    origin[0] + uAxis[0] * u + vAxis[0] * v + normalAxis[0] * n,
+    origin[1] + uAxis[1] * u + vAxis[1] * v + normalAxis[1] * n,
+    origin[2] + uAxis[2] * u + vAxis[2] * v + normalAxis[2] * n
+  ];
+
+  if (role.startsWith("longitudinal:")) {
+    const [, uRole, vRole] = role.split(":") as [
+      "longitudinal",
+      "uMin" | "uMax",
+      "vMin" | "vMax"
+    ];
+    const u = uRole === "uMin" ? uMin : uMax;
+    const v = vRole === "vMin" ? vMin : vMax;
+    return { first: mapPoint(u, v, normalMin), last: mapPoint(u, v, normalMax) };
+  }
+  const [capRole, profileRole] = role.split(":") as [
+    "start" | "end",
+    "uMin" | "uMax" | "vMin" | "vMax"
+  ];
+  const normal = capRole === "start" ? normalMin : normalMax;
+  if (profileRole === "uMin" || profileRole === "uMax") {
+    const u = profileRole === "uMin" ? uMin : uMax;
+    return {
+      first: mapPoint(u, vMin, normal),
+      last: mapPoint(u, vMax, normal)
+    };
+  }
+  const v = profileRole === "vMin" ? vMin : vMax;
+  return {
+    first: mapPoint(uMin, v, normal),
+    last: mapPoint(uMax, v, normal)
+  };
+}
+
+function parseRectangleEdgeRole(stableId: string): string | undefined {
+  if (!stableId.startsWith("generated:edge:")) return undefined;
+  const roles = [
+    "start:uMin",
+    "start:uMax",
+    "start:vMin",
+    "start:vMax",
+    "end:uMin",
+    "end:uMax",
+    "end:vMin",
+    "end:vMax",
+    "longitudinal:uMin:vMin",
+    "longitudinal:uMin:vMax",
+    "longitudinal:uMax:vMin",
+    "longitudinal:uMax:vMax"
+  ];
+  return roles.find((role) => stableId.endsWith(`:${role}`));
+}
+
+function normalizeCross(
+  uAxis: readonly [number, number, number],
+  vAxis: readonly [number, number, number]
+): readonly [number, number, number] {
+  const x = uAxis[1] * vAxis[2] - uAxis[2] * vAxis[1];
+  const y = uAxis[2] * vAxis[0] - uAxis[0] * vAxis[2];
+  const z = uAxis[0] * vAxis[1] - uAxis[1] * vAxis[0];
+  const length = Math.hypot(x, y, z);
+  if (length === 0) return [0, 0, 1];
+  return [x / length, y / length, z / length];
 }
 
 function getArtifactDependencyBodyId(
@@ -1353,6 +1569,7 @@ function resolveArtifactOperationSource(
       }
       const holeTool = createPatternHoleTool(feature, context);
       const booleanTool = createPatternBooleanTool(feature, context);
+      const edgeFinishTool = createPatternEdgeFinishTool(feature, context);
       return {
         id: body.id,
         kind: "linearPattern",
@@ -1361,6 +1578,7 @@ function resolveArtifactOperationSource(
         instanceCount: feature.instanceCount,
         ...(holeTool ? { holeTool } : {}),
         ...(booleanTool ? { booleanTool } : {}),
+        ...(edgeFinishTool ? { edgeFinishTool } : {}),
         sourceIdentitySignature
       };
     }
@@ -1379,6 +1597,7 @@ function resolveArtifactOperationSource(
       }
       const holeTool = createPatternHoleTool(feature, context);
       const booleanTool = createPatternBooleanTool(feature, context);
+      const edgeFinishTool = createPatternEdgeFinishTool(feature, context);
       return {
         id: body.id,
         kind: "circularPattern",
@@ -1387,6 +1606,7 @@ function resolveArtifactOperationSource(
         instanceCount: feature.instanceCount,
         ...(holeTool ? { holeTool } : {}),
         ...(booleanTool ? { booleanTool } : {}),
+        ...(edgeFinishTool ? { edgeFinishTool } : {}),
         sourceIdentitySignature
       };
     }

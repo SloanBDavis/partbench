@@ -878,6 +878,72 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildFeatureLinearPatternOp({
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedBodyId: "",
+        seedFeatureId: "feat_fillet",
+        name: "Fillet pattern",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 20,
+        instanceCount: 2
+      })
+    ).toEqual({
+      op: "feature.linearPattern",
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedFeatureId: "feat_fillet",
+      name: "Fillet pattern",
+      direction: { kind: "globalAxis", axis: "x" },
+      spacing: 20,
+      instanceCount: 2
+    });
+
+    expect(
+      buildFeatureLinearPatternOp({
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedBodyId: "",
+        seedFeatureId: "feat_combine",
+        name: "Combine pattern",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 16,
+        instanceCount: 3
+      })
+    ).toEqual({
+      op: "feature.linearPattern",
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedFeatureId: "feat_combine",
+      name: "Combine pattern",
+      direction: { kind: "globalAxis", axis: "x" },
+      spacing: 16,
+      instanceCount: 3
+    });
+
+    expect(
+      buildFeatureLinearPatternOp({
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedBodyId: "body_shell",
+        seedFeatureId: "",
+        name: "Shell body pattern",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 30,
+        instanceCount: 2
+      })
+    ).toEqual({
+      op: "feature.linearPattern",
+      id: "feat_pattern",
+      bodyId: "body_patterned",
+      seedBodyId: "body_shell",
+      name: "Shell body pattern",
+      direction: { kind: "globalAxis", axis: "x" },
+      spacing: 30,
+      instanceCount: 2
+    });
+
+    expect(
       buildFeatureUpdateLinearPatternOp("feat_linear", {
         direction: { kind: "globalAxis", axis: "y" },
         spacing: 40,

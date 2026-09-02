@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
+import type { OpenCascadeInstance, TopoDS_Edge, TopoDS_Shape, TopoDS_Vertex } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
   makeBooleanExtrudeToolShape,
@@ -23,7 +23,9 @@ import {
 } from "./hole";
 import {
   withOcctEdgeFinishResultShape,
+  withSelectedEdgeFinishResultShape,
   type OcctChamferEdgeFinishInput,
+  type OcctEdgeFinishOperation,
   type OcctFilletEdgeFinishInput
 } from "./edgeFinish";
 import {
@@ -86,6 +88,13 @@ export interface OcctPatternBooleanToolSource {
   readonly tool: OcctBooleanExtrudeToolSource;
 }
 
+export interface OcctPatternEdgeFinishToolSource {
+  readonly operation: OcctEdgeFinishOperation;
+  readonly amount: number;
+  readonly first: OcctDirection;
+  readonly last: OcctDirection;
+}
+
 export interface OcctLinearPatternInput {
   readonly seed: OcctPatternSeedSource;
   readonly direction: OcctDirection;
@@ -109,7 +118,8 @@ interface GeometryKernelLikeError {
     | "UNAVAILABLE_BINDING"
     | "INVALID_DIMENSIONS"
     | "PATTERN_GEOMETRY_FAILED"
-    | "EMPTY_RESULT";
+    | "EMPTY_RESULT"
+    | "PATTERN_EDGE_MISSING";
   readonly message: string;
 }
 
@@ -525,6 +535,53 @@ export function makeCircularBooleanPatternShape(
   );
 }
 
+
+export function makeLinearEdgeFinishPatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  input: Pick<OcctLinearPatternInput, "direction" | "spacing" | "instanceCount">,
+  edgeFinishTool: OcctPatternEdgeFinishToolSource
+): TopoDS_Shape {
+  const { direction, spacing } = input;
+  return makeTransformedEdgeFinishPatternShape(
+    oc,
+    seedShape,
+    input.instanceCount,
+    edgeFinishTool,
+    (point, instanceIndex) =>
+      translatePoint(point, [
+        direction[0] * spacing * instanceIndex,
+        direction[1] * spacing * instanceIndex,
+        direction[2] * spacing * instanceIndex
+      ])
+  );
+}
+
+export function makeCircularEdgeFinishPatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  input: Pick<
+    OcctCircularPatternInput,
+    "axis" | "totalAngleDegrees" | "instanceCount"
+  >,
+  edgeFinishTool: OcctPatternEdgeFinishToolSource
+): TopoDS_Shape {
+  const { axis, totalAngleDegrees, instanceCount } = input;
+  const isFullCircle = totalAngleDegrees === 360;
+  return makeTransformedEdgeFinishPatternShape(
+    oc,
+    seedShape,
+    instanceCount,
+    edgeFinishTool,
+    (point, instanceIndex) => {
+      const angleDeg = isFullCircle
+        ? (totalAngleDegrees / instanceCount) * instanceIndex
+        : (totalAngleDegrees / (instanceCount - 1)) * instanceIndex;
+      return rotatePoint(point, axis.origin, axis.direction, angleDeg);
+    }
+  );
+}
+
 function makeTransformedBooleanPatternShape(
   oc: OpenCascadeInstance,
   seedShape: TopoDS_Shape,
@@ -558,7 +615,14 @@ function makeTransformedBooleanPatternShape(
                 transformedTool,
                 `Open CASCADE boolean pattern fuse failed at instance ${i}.`
               )
-            : cutHoleToolFromTarget(oc, operand, transformedTool);
+            : booleanTool.operation === "intersect"
+              ? commonPatternShapes(
+                  oc,
+                  operand,
+                  transformedTool,
+                  `Open CASCADE boolean pattern common failed at instance ${i}.`
+                )
+              : cutHoleToolFromTarget(oc, operand, transformedTool);
         operand.delete();
         previousShape = nextShape;
       } finally {
@@ -626,6 +690,229 @@ function makeTransformedHolePatternShape(
     return finalShape;
   } finally {
     previousShape?.delete();
+  }
+}
+
+
+function makeTransformedEdgeFinishPatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  instanceCount: number,
+  edgeFinishTool: OcctPatternEdgeFinishToolSource,
+  transformPointAt: (
+    point: OcctDirection,
+    instanceIndex: number
+  ) => OcctDirection
+): TopoDS_Shape {
+  let previousShape: TopoDS_Shape | undefined = copyShape(oc, seedShape);
+
+  try {
+    for (let i = 1; i < instanceCount; i++) {
+      if (!previousShape) {
+        throw {
+          code: "EMPTY_RESULT",
+          message:
+            "Open CASCADE edge-finish feature pattern lost its accumulated result shape."
+        } satisfies GeometryKernelLikeError;
+      }
+      const first = transformPointAt(edgeFinishTool.first, i);
+      const last = transformPointAt(edgeFinishTool.last, i);
+      const edge = findEdgeByEndpoints(oc, previousShape, first, last);
+      try {
+        const nextShape: TopoDS_Shape = withSelectedEdgeFinishResultShape(
+          oc,
+          previousShape,
+          edge.edge,
+          edgeFinishTool.operation,
+          edgeFinishTool.amount,
+          (shape) => copyShape(oc, shape)
+        );
+        previousShape.delete();
+        previousShape = nextShape;
+      } finally {
+        edge.delete();
+      }
+    }
+
+    if (!previousShape) {
+      throw {
+        code: "EMPTY_RESULT",
+        message: "Open CASCADE edge-finish feature pattern produced no shapes."
+      } satisfies GeometryKernelLikeError;
+    }
+
+    const finalShape = previousShape;
+    previousShape = undefined;
+    return finalShape;
+  } finally {
+    previousShape?.delete();
+  }
+}
+
+function findEdgeByEndpoints(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  first: OcctDirection,
+  last: OcctDirection
+): { readonly edge: TopoDS_Edge; readonly delete: () => void } {
+  const tolerance = 1e-4;
+  const edgeShapeType = oc.TopAbs_ShapeEnum
+    .TopAbs_EDGE as unknown as ConstructorParameters<
+    typeof oc.TopExp_Explorer_2
+  >[1];
+  const avoidShapeType = oc.TopAbs_ShapeEnum
+    .TopAbs_SHAPE as unknown as ConstructorParameters<
+    typeof oc.TopExp_Explorer_2
+  >[2];
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    edgeShapeType,
+    avoidShapeType
+  );
+
+  try {
+    for (; explorer.More(); explorer.Next()) {
+      const current = explorer.Current();
+      let edge: TopoDS_Edge;
+      try {
+        edge = oc.TopoDS.Edge_1(current);
+      } finally {
+        current.delete();
+      }
+
+      const actual = readPatternEdgeEndpoints(oc, edge);
+      const matches =
+        (pointsAreClose(actual.first, first, tolerance) &&
+          pointsAreClose(actual.last, last, tolerance)) ||
+        (pointsAreClose(actual.first, last, tolerance) &&
+          pointsAreClose(actual.last, first, tolerance));
+      if (matches) {
+        let disposed = false;
+        return {
+          edge,
+          delete: () => {
+            if (disposed) return;
+            disposed = true;
+            edge.delete();
+          }
+        };
+      }
+
+      edge.delete();
+    }
+  } finally {
+    explorer.delete();
+  }
+
+  throw {
+    code: "PATTERN_EDGE_MISSING",
+    message:
+      "Patterned edge finish could not match a transformed seed edge on the parent solid."
+  } satisfies GeometryKernelLikeError;
+}
+
+function readPatternEdgeEndpoints(
+  oc: OpenCascadeInstance,
+  edge: TopoDS_Edge
+): { readonly first: OcctDirection; readonly last: OcctDirection } {
+  const firstVertex = oc.TopExp.FirstVertex(edge, true);
+  const lastVertex = oc.TopExp.LastVertex(edge, true);
+  try {
+    return {
+      first: readPatternVertexPoint(oc, firstVertex),
+      last: readPatternVertexPoint(oc, lastVertex)
+    };
+  } finally {
+    firstVertex.delete();
+    lastVertex.delete();
+  }
+}
+
+function readPatternVertexPoint(
+  oc: OpenCascadeInstance,
+  vertex: TopoDS_Vertex
+): OcctDirection {
+  const point = oc.BRep_Tool.Pnt(vertex);
+  try {
+    return [point.X(), point.Y(), point.Z()];
+  } finally {
+    point.delete();
+  }
+}
+
+function translatePoint(
+  point: OcctDirection,
+  translation: OcctDirection
+): OcctDirection {
+  return [
+    point[0] + translation[0],
+    point[1] + translation[1],
+    point[2] + translation[2]
+  ];
+}
+
+function rotatePoint(
+  point: OcctDirection,
+  origin: OcctDirection,
+  direction: OcctDirection,
+  angleDeg: number
+): OcctDirection {
+  if (angleDeg === 0) return point;
+  const angle = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const [ux, uy, uz] = direction;
+  const px = point[0] - origin[0];
+  const py = point[1] - origin[1];
+  const pz = point[2] - origin[2];
+  const dot = ux * px + uy * py + uz * pz;
+  const cx = uy * pz - uz * py;
+  const cy = uz * px - ux * pz;
+  const cz = ux * py - uy * px;
+  return [
+    origin[0] + px * cos + cx * sin + ux * dot * (1 - cos),
+    origin[1] + py * cos + cy * sin + uy * dot * (1 - cos),
+    origin[2] + pz * cos + cz * sin + uz * dot * (1 - cos)
+  ];
+}
+
+function pointsAreClose(
+  left: OcctDirection,
+  right: OcctDirection,
+  tolerance: number
+): boolean {
+  return (
+    Math.abs(left[0] - right[0]) <= tolerance &&
+    Math.abs(left[1] - right[1]) <= tolerance &&
+    Math.abs(left[2] - right[2]) <= tolerance
+  );
+}
+
+function commonPatternShapes(
+  oc: OpenCascadeInstance,
+  accumulatedShape: TopoDS_Shape,
+  instanceShape: TopoDS_Shape,
+  failureMessage: string
+): TopoDS_Shape {
+  const range = new oc.Message_ProgressRange_1();
+  let common: InstanceType<OpenCascadeInstance["BRepAlgoAPI_Common_3"]> | undefined;
+
+  try {
+    common = new oc.BRepAlgoAPI_Common_3(
+      accumulatedShape,
+      instanceShape,
+      range
+    );
+    if (common.HasErrors()) {
+      throw {
+        code: "PATTERN_GEOMETRY_FAILED",
+        message: failureMessage
+      } satisfies GeometryKernelLikeError;
+    }
+    return copyBuilderShape(oc, common);
+  } finally {
+    common?.delete();
+    range.delete();
   }
 }
 

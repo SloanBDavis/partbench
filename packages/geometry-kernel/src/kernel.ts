@@ -790,6 +790,13 @@ export interface PatternBooleanToolSource {
   readonly tool: BooleanExtrudeToolSource;
 }
 
+export interface PatternEdgeFinishToolSource {
+  readonly operation: "chamfer" | "fillet";
+  readonly amount: number;
+  readonly first: GeometryKernelDirection;
+  readonly last: GeometryKernelDirection;
+}
+
 export interface ExactArtifactLinearPatternSource {
   readonly kind: "artifactLinearPattern";
   readonly seed: ExactBodyArtifactLeaf;
@@ -798,6 +805,7 @@ export interface ExactArtifactLinearPatternSource {
   readonly instanceCount: number;
   readonly holeTool?: HoleToolSource;
   readonly booleanTool?: PatternBooleanToolSource;
+  readonly edgeFinishTool?: PatternEdgeFinishToolSource;
 }
 
 export interface ExactArtifactCircularPatternSource {
@@ -808,6 +816,7 @@ export interface ExactArtifactCircularPatternSource {
   readonly instanceCount: number;
   readonly holeTool?: HoleToolSource;
   readonly booleanTool?: PatternBooleanToolSource;
+  readonly edgeFinishTool?: PatternEdgeFinishToolSource;
 }
 
 export interface ExactArtifactMirrorSource {
@@ -4256,16 +4265,33 @@ function isValidOptionalBooleanToolSource(
   );
 }
 
+function isValidOptionalEdgeFinishToolSource(
+  source: PatternEdgeFinishToolSource | undefined
+): boolean {
+  return (
+    source === undefined ||
+    ((source.operation === "chamfer" || source.operation === "fillet") &&
+      isPositiveFiniteNumber(source.amount) &&
+      isVec3(source.first) &&
+      isVec3(source.last))
+  );
+}
+
 function isValidOptionalPatternFeatureTools(source: {
   readonly holeTool?: HoleToolSource;
   readonly booleanTool?: PatternBooleanToolSource;
+  readonly edgeFinishTool?: PatternEdgeFinishToolSource;
 }): boolean {
-  if (source.holeTool && source.booleanTool) {
+  const attached = [source.holeTool, source.booleanTool, source.edgeFinishTool].filter(
+    Boolean
+  ).length;
+  if (attached > 1) {
     return false;
   }
   return (
     isValidOptionalHoleToolSource(source.holeTool) &&
-    isValidOptionalBooleanToolSource(source.booleanTool)
+    isValidOptionalBooleanToolSource(source.booleanTool) &&
+    isValidOptionalEdgeFinishToolSource(source.edgeFinishTool)
   );
 }
 

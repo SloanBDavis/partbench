@@ -22,14 +22,17 @@ import {
 import { withOcctHoleResultOnShape, type OcctHoleToolSource } from "./hole";
 import {
   makeCircularBooleanPatternShape,
+  makeCircularEdgeFinishPatternShape,
   makeCircularHolePatternShape,
   makeCircularPatternShape,
   makeLinearBooleanPatternShape,
+  makeLinearEdgeFinishPatternShape,
   makeLinearHolePatternShape,
   makeLinearPatternShape,
   type OcctAxisFrame,
   type OcctDirection,
-  type OcctPatternBooleanToolSource
+  type OcctPatternBooleanToolSource,
+  type OcctPatternEdgeFinishToolSource
 } from "./pattern";
 import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
 import { makeArtifactShellShape, type OcctTopologyFaceRef } from "./shell";
@@ -153,6 +156,7 @@ export interface OcctArtifactLinearPatternSource {
   readonly instanceCount: number;
   readonly holeTool?: OcctHoleToolSource;
   readonly booleanTool?: OcctPatternBooleanToolSource;
+  readonly edgeFinishTool?: OcctPatternEdgeFinishToolSource;
 }
 
 export interface OcctArtifactCircularPatternSource {
@@ -163,6 +167,7 @@ export interface OcctArtifactCircularPatternSource {
   readonly instanceCount: number;
   readonly holeTool?: OcctHoleToolSource;
   readonly booleanTool?: OcctPatternBooleanToolSource;
+  readonly edgeFinishTool?: OcctPatternEdgeFinishToolSource;
 }
 
 export interface OcctArtifactMirrorSource {
@@ -450,7 +455,14 @@ function withArtifactBackedExactBodyShape<T>(
                 source,
                 source.booleanTool
               )
-            : makeLinearPatternShape(oc, operand, source);
+            : source.edgeFinishTool
+              ? makeLinearEdgeFinishPatternShape(
+                  oc,
+                  operand,
+                  source,
+                  source.edgeFinishTool
+                )
+              : makeLinearPatternShape(oc, operand, source);
         return readResult(result, "linearPattern");
       }
       if (source.kind === "artifactCircularPattern") {
@@ -464,7 +476,14 @@ function withArtifactBackedExactBodyShape<T>(
                 source,
                 source.booleanTool
               )
-            : makeCircularPatternShape(oc, operand, source);
+            : source.edgeFinishTool
+              ? makeCircularEdgeFinishPatternShape(
+                  oc,
+                  operand,
+                  source,
+                  source.edgeFinishTool
+                )
+              : makeCircularPatternShape(oc, operand, source);
         return readResult(result, "circularPattern");
       }
       if (source.kind === "artifactMirror") {

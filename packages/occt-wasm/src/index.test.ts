@@ -3940,6 +3940,119 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "replays fillet on transformed edge anchors instead of copying the result solid",
+    async () => {
+      const oc = await loadOcct();
+      const block = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 20,
+          height: 12
+        },
+        depth: 8,
+        side: "positive" as const
+      };
+      const filleted = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target: block,
+          edgeStableId: "generated:edge:body_block:start:uMin",
+          radius: 1
+        }
+      });
+      const edgeFinishTool = {
+        operation: "fillet" as const,
+        amount: 1,
+        first: [-10, -6, 0] as const,
+        last: [-10, 6, 0] as const
+      };
+      const featurePattern = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: createBodyArtifactTestLeaf(filleted),
+          direction: [1, 0, 0],
+          spacing: 20,
+          instanceCount: 2,
+          edgeFinishTool
+        }
+      });
+      const wholeBodyCopy = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: createBodyArtifactTestLeaf(filleted),
+          direction: [1, 0, 0],
+          spacing: 20,
+          instanceCount: 2
+        }
+      });
+      const blockVolume = 20 * 12 * 8;
+      const removedPerEdge = 1 * 12 * (1 - Math.PI / 4);
+      expect(filleted.metadata.volume).toBeCloseTo(blockVolume - removedPerEdge, 5);
+      expect(featurePattern.metadata.topologyCounts.solidCount).toBe(1);
+      expect(featurePattern.metadata.volume).toBeCloseTo(
+        blockVolume - 2 * removedPerEdge,
+        5
+      );
+      expect(wholeBodyCopy.metadata.volume).not.toBeCloseTo(
+        featurePattern.metadata.volume,
+        5
+      );
+      expect(wholeBodyCopy.metadata.volume).toBeGreaterThan(
+        featurePattern.metadata.volume
+      );
+      expect(wholeBodyCopy.metadata.volume).not.toBeCloseTo(14016, 5);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "fails structured when a patterned fillet edge is missing on the parent",
+    async () => {
+      const oc = await loadOcct();
+      const filleted = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 20,
+              height: 12
+            },
+            depth: 8,
+            side: "positive"
+          },
+          edgeStableId: "generated:edge:body_block:start:uMin",
+          radius: 1
+        }
+      });
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(oc, {
+          source: {
+            kind: "artifactLinearPattern",
+            seed: createBodyArtifactTestLeaf(filleted),
+            direction: [1, 0, 0],
+            spacing: 100,
+            instanceCount: 2,
+            edgeFinishTool: {
+              operation: "fillet",
+              amount: 1,
+              first: [-10, -6, 0],
+              last: [-10, 6, 0]
+            }
+          }
+        })
+      ).toThrow(/transformed seed edge/);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "cuts universal artifact-hole targets in every retained mode with multi-solid atomicity",
     async () => {
       const oc = await loadOcct();

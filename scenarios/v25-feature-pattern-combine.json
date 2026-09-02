@@ -1,0 +1,143 @@
+{
+  "id": "v25-feature-pattern-combine",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_plate",
+      "name": "Plate",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_plate",
+      "id": "rect_plate",
+      "center": [0, 0],
+      "width": 60,
+      "height": 24
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_plate",
+      "bodyId": "body_plate",
+      "sketchId": "sketch_plate",
+      "entityId": "rect_plate",
+      "depth": 6
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_boss",
+      "name": "Boss",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_boss",
+      "id": "rect_boss",
+      "center": [-16, 0],
+      "width": 8,
+      "height": 8
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_boss",
+      "bodyId": "body_boss",
+      "sketchId": "sketch_boss",
+      "entityId": "rect_boss",
+      "depth": 10
+    }
+  ],
+  "steps": [
+    {
+      "id": "linear-combine-pattern",
+      "ops": [
+        {
+          "op": "feature.combine",
+          "id": "feat_combine",
+          "bodyId": "body_combined",
+          "mode": "union",
+          "targetBodyId": "body_plate",
+          "toolBodyId": "body_boss"
+        },
+        {
+          "op": "feature.linearPattern",
+          "id": "feat_pattern",
+          "bodyId": "body_patterned",
+          "seedFeatureId": "feat_combine",
+          "direction": { "kind": "globalAxis", "axis": "x" },
+          "spacing": 16,
+          "instanceCount": 3
+        }
+      ],
+      "expect": {
+        "ops": ["feature.combine", "feature.linearPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_combine",
+                "kind": "combine",
+                "mode": "union",
+                "targetBodyId": "body_plate",
+                "toolBodyId": "body_boss",
+                "bodyId": "body_combined"
+              },
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_combine",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodiesCreated": [
+              { "id": "body_combined", "kind": "solid" },
+              { "id": "body_patterned", "kind": "solid" }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "features": [
+              { "id": "feat_plate", "kind": "extrude" },
+              { "id": "feat_boss", "kind": "extrude" },
+              {
+                "id": "feat_combine",
+                "kind": "combine",
+                "mode": "union",
+                "targetBodyId": "body_plate",
+                "toolBodyId": "body_boss"
+              },
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_combine",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodies": [
+              { "id": "body_plate", "consumedByFeatureId": "feat_combine" },
+              { "id": "body_boss", "consumedByFeatureId": "feat_combine" },
+              {
+                "id": "body_combined",
+                "consumedByFeatureId": "feat_pattern"
+              },
+              {
+                "id": "body_patterned",
+                "featureId": "feat_pattern",
+                "source": {
+                  "type": "linearPatternFeature",
+                  "seedFeatureId": "feat_combine"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
