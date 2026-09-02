@@ -196,5 +196,35 @@ describe("feature.draft", () => {
         })
       ])
     });
+
+    const undrafted = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_block" }
+    });
+    const drafted = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_draft_side" }
+    });
+    expect(undrafted).toMatchObject({
+      ok: true,
+      measurements: { bodyId: "body_block", volume: 800 }
+    });
+    expect(drafted).toMatchObject({
+      ok: true,
+      measurements: {
+        bodyId: "body_draft_side",
+        volume: 743.575366173291
+      }
+    });
+    if (
+      undrafted.ok &&
+      undrafted.query === "body.measurements" &&
+      drafted.ok &&
+      drafted.query === "body.measurements"
+    ) {
+      expect(drafted.measurements.volume).toBeLessThan(
+        undrafted.measurements.volume
+      );
+    }
   });
 });

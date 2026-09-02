@@ -40,6 +40,7 @@ export {
   createTorusTessellationWorkerRequest,
   createMirrorWorkerRequest,
   createShellWorkerRequest,
+  createDraftWorkerRequest,
   createSweepWorkerRequest,
   createLoftWorkerRequest,
   getGeometryWorkerExactExportCapabilities,

@@ -35,6 +35,7 @@ import {
 } from "./pattern";
 import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
 import { makeShellShape } from "./shell";
+import { makeDraftShape } from "./draft";
 import {
   makeWireExtrudeShape,
   makeWireExtrudeShapeWithReferences,
@@ -56,6 +57,7 @@ export type OcctExactBodyMetadataSource =
   | OcctExactCircularPatternMetadataSource
   | OcctExactMirrorMetadataSource
   | OcctExactShellMetadataSource
+  | OcctExactDraftMetadataSource
   | OcctExactImportedBodyMetadataSource
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
@@ -162,6 +164,21 @@ export interface OcctExactShellMetadataSource {
   readonly target: OcctPatternSeedSource;
   readonly wallThickness: number;
   readonly openFaceStableIds: readonly string[];
+}
+
+export interface OcctExactDraftPlane {
+  readonly point: readonly [number, number, number];
+  readonly normal: readonly [number, number, number];
+}
+
+export interface OcctExactDraftMetadataSource {
+  readonly kind: "draft";
+  readonly target: OcctPatternSeedSource;
+  readonly faceStableIds: readonly string[];
+  readonly angleDegrees: number;
+  readonly pullDirection: readonly [number, number, number];
+  readonly neutralPlane: OcctExactDraftPlane;
+  readonly draftedFaces: readonly OcctExactDraftPlane[];
 }
 
 export interface OcctExactImportedBodyMetadataSource {
@@ -572,6 +589,17 @@ export function withOcctExactBodyShape<T>(
   if (source.kind === "shell") {
     return withOcctPatternSeedShape(oc, source.target, (targetShape) => {
       const shape = makeShellShape(oc, targetShape, source);
+      try {
+        return readShape(shape, source.kind);
+      } finally {
+        shape.delete();
+      }
+    });
+  }
+
+  if (source.kind === "draft") {
+    return withOcctPatternSeedShape(oc, source.target, (targetShape) => {
+      const shape = makeDraftShape(oc, targetShape, source);
       try {
         return readShape(shape, source.kind);
       } finally {

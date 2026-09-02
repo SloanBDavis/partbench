@@ -24,6 +24,7 @@ import type {
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureId,
+  DraftFeatureSnapshot,
   ExtrudeFeatureV21,
   RevolveFeatureV21,
   SweepFeatureV21,
@@ -222,12 +223,7 @@ export interface GeneratedReferencesAlignFeature {
   readonly seedBodyId: BodyId;
 }
 
-export interface GeneratedReferencesDraftFeature {
-  readonly id: FeatureId;
-  readonly kind: "draft";
-  readonly bodyId: BodyId;
-  readonly targetBodyId: BodyId;
-}
+export type GeneratedReferencesDraftFeature = DraftFeatureSnapshot;
 
 export interface GeneratedReferencesShellFeature {
   readonly id: FeatureId;

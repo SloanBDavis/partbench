@@ -2366,6 +2366,9 @@ function createRuntime(
     shell() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
+    draft() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
     sweep() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },

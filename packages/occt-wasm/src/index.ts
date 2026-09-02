@@ -146,6 +146,13 @@ import {
   type OcctShellTargetSource
 } from "./shell";
 import {
+  createOcctDraftMeshWithInstance,
+  createOcctDraftMeshWithLoader,
+  type OcctDraftInput,
+  type OcctDraftTargetSource,
+  type OcctDraftPlane
+} from "./draft";
+import {
   createOcctSweepMeshWithInstance,
   createOcctSweepMeshWithLoader,
   type OcctSweepInput,
@@ -230,6 +237,9 @@ export type {
   OcctMirrorSeedSource,
   OcctShellInput,
   OcctShellTargetSource,
+  OcctDraftInput,
+  OcctDraftTargetSource,
+  OcctDraftPlane,
   OcctSweepInput,
   OcctSweepPathSegment,
   OcctSweepProfileSource,
@@ -298,6 +308,8 @@ export {
   createOcctMirrorMeshWithLoader,
   createOcctShellMeshWithInstance,
   createOcctShellMeshWithLoader,
+  createOcctDraftMeshWithInstance,
+  createOcctDraftMeshWithLoader,
   createOcctSweepMeshWithInstance,
   createOcctSweepMeshWithLoader,
   createOcctLoftMeshWithInstance,
@@ -437,6 +449,12 @@ export async function createOcctShellMesh(
   input: OcctShellInput
 ): Promise<OcctMeshData> {
   return createOcctShellMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctDraftMesh(
+  input: OcctDraftInput
+): Promise<OcctMeshData> {
+  return createOcctDraftMeshWithLoader(loadOcct, input);
 }
 
 export async function createOcctSweepMesh(

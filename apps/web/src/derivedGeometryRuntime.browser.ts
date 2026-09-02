@@ -14,6 +14,7 @@ import {
   type DerivedGeometryCircularPatternInput,
   type DerivedGeometryMirrorInput,
   type DerivedGeometryShellInput,
+  type DerivedGeometryDraftInput,
   type DerivedGeometrySweepInput,
   type DerivedGeometryLoftInput,
   type DerivedGeometryExtrudeInput,
@@ -69,6 +70,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryCircularPatternInput
       | DerivedGeometryMirrorInput
       | DerivedGeometryShellInput
+      | DerivedGeometryDraftInput
       | DerivedGeometrySweepInput
       | DerivedGeometryLoftInput
       | DerivedExactBodyGeometryInput,
@@ -108,7 +110,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.linearPattern" ||
         request.payload.op === "geometry.circularPattern" ||
         request.payload.op === "geometry.mirror" ||
-        request.payload.op === "geometry.shell"
+        request.payload.op === "geometry.shell" ||
+        request.payload.op === "geometry.draft"
           ? "source"
           : "boundsCenter",
       transform:
@@ -553,6 +556,28 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           target: input.target,
           wallThickness: input.wallThickness,
           openFaceStableIds: input.openFaceStableIds,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        }),
+        context
+      );
+    },
+    async draft(input: DerivedGeometryDraftInput, context) {
+      const { createDraftWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createDraftWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          target: input.target,
+          faceStableIds: input.faceStableIds,
+          angleDegrees: input.angleDegrees,
+          pullDirection: input.pullDirection,
+          neutralPlane: input.neutralPlane,
+          draftedFaces: input.draftedFaces,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         }),

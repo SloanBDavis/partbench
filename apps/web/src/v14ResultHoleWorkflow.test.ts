@@ -911,6 +911,7 @@ function createHolePreflightRuntime(
     circularPattern: unused,
     mirror: unused,
     shell: unused,
+    draft: unused,
     sweep: unused,
     loft: unused,
     exactBodyMetadata: unused,

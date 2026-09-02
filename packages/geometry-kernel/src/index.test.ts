@@ -4443,6 +4443,78 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("passes draft targets and face planes to injected draft factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let captured:
+      | Parameters<
+          NonNullable<GeometryKernelMeshFactories["createDraftMesh"]>
+        >[0]
+      | undefined;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createDraftMesh: async (input) => {
+        captured = input;
+        return {
+          primitive: "boolean",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_draft",
+        version: "geometry-kernel.v1",
+        op: "geometry.draft",
+        target: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 10,
+            height: 10
+          },
+          depth: 8
+        },
+        faceStableIds: ["generated:face:body_block:side:uMax"],
+        angleDegrees: 10,
+        pullDirection: [0, 0, 1],
+        neutralPlane: { point: [5, 0, 0], normal: [0, 0, 1] },
+        draftedFaces: [
+          {
+            point: [5, 0, 0],
+            normal: [0.984807753012, 0, 0.173648177667]
+          }
+        ],
+        tessellation: { linearDeflection: 0.25 }
+      }
+    );
+
+    expect(response.ok).toBe(true);
+    expect(captured).toMatchObject({
+      target: {
+        kind: "extrude",
+        profile: { kind: "rectangle", width: 10 }
+      },
+      angleDegrees: 10,
+      faceStableIds: ["generated:face:body_block:side:uMax"],
+      linearDeflection: 0.25
+    });
+  });
+
   it("passes sweep profiles and line paths to injected sweep factories", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");

@@ -128,6 +128,35 @@ function runCadopsScenario(name, scenario) {
   }
 
   for (const step of scenario.steps) {
+    if (step.expect?.error) {
+      let thrown;
+      try {
+        engine.applyBatch(step.ops);
+      } catch (error) {
+        thrown = error;
+      }
+      if (!thrown) {
+        fail(`${name} ${step.id} expected a structured error.`);
+      }
+      const message =
+        thrown instanceof Error ? thrown.message : String(thrown);
+      const validationError = thrown?.validationError;
+      if (step.expect.error.code && validationError?.code !== step.expect.error.code) {
+        fail(
+          `${name} ${step.id} error code mismatch.\nexpected ${step.expect.error.code}\nactual ${validationError?.code ?? message}`
+        );
+      }
+      if (
+        step.expect.error.messageIncludes &&
+        !message.includes(step.expect.error.messageIncludes)
+      ) {
+        fail(
+          `${name} ${step.id} error message mismatch.\nexpected to include ${step.expect.error.messageIncludes}\nactual ${message}`
+        );
+      }
+      continue;
+    }
+
     const result = engine.applyBatch(step.ops);
     const appliedOps = result.transaction.ops.map((op) => op.op);
     if (step.expect?.ops) {

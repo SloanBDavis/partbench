@@ -7,7 +7,10 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import type { SketchEntity } from "./index";
-import type { GeneratedReferencesDocument } from "./generatedReferences";
+import type {
+  GeneratedReferencesDocument,
+  GeneratedReferencesDraftFeature
+} from "./generatedReferences";
 import {
   cleanMeasurementNumber,
   createExtrudeMeasurementDepthRange,
@@ -32,6 +35,10 @@ export function createBodyMeasurements(
 
   if (!feature) {
     return undefined;
+  }
+
+  if (feature.kind === "draft") {
+    return createDraftBodyMeasurements(document, feature, units, ownerPartId);
   }
 
   if (feature.kind !== "extrude") {
@@ -90,6 +97,59 @@ export function createBodyMeasurements(
     volume: cleanMeasurementNumber(measurement.volume),
     surfaceArea: cleanMeasurementNumber(measurement.surfaceArea)
   };
+}
+
+function createDraftBodyMeasurements(
+  document: GeneratedReferencesDocument,
+  feature: GeneratedReferencesDraftFeature,
+  units: DocumentUnits,
+  ownerPartId: PartId
+): BodyMeasurementsSnapshot | undefined {
+  const parent = createBodyMeasurements(
+    document,
+    feature.targetBodyId,
+    units,
+    ownerPartId
+  );
+  if (!parent || parent.profileKind !== "rectangle") {
+    return undefined;
+  }
+
+  const tanAngle = Math.tan(Math.abs(feature.angleDegrees) * (Math.PI / 180));
+  const span = parent.depth;
+  let removed = 0;
+  for (const record of feature.draftedFaces) {
+    const role = parseGeneratedExtrudeFaceRole(record.face);
+    const faceWidth =
+      role === "side:uMin" || role === "side:uMax"
+        ? parent.localExtents[1]
+        : role === "side:vMin" || role === "side:vMax"
+          ? parent.localExtents[0]
+          : undefined;
+    if (faceWidth === undefined || !Number.isFinite(faceWidth) || faceWidth <= 0) {
+      return undefined;
+    }
+    removed += 0.5 * faceWidth * span * span * tanAngle;
+  }
+
+  const volume = parent.volume - removed;
+  if (!Number.isFinite(volume) || volume <= 0 || volume >= parent.volume) {
+    return undefined;
+  }
+
+  return {
+    ...parent,
+    bodyId: feature.bodyId,
+    sourceFeatureId: feature.id,
+    volume: cleanMeasurementNumber(volume)
+  };
+}
+
+function parseGeneratedExtrudeFaceRole(
+  face: GeneratedReferencesDraftFeature["faces"][number]
+): string | undefined {
+  if (face.kind !== "generatedFace") return undefined;
+  return face.stableId.split(":").slice(3).join(":");
 }
 
 type ExtrudeMeasurementEntity =

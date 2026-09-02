@@ -232,6 +232,24 @@ export interface DerivedGeometryShellInput {
   readonly openFaceStableIds: readonly string[];
 }
 
+export type DerivedGeometryDraftTargetSource = DerivedGeometryPatternSeedSource;
+
+export interface DerivedGeometryDraftInput {
+  readonly id: string;
+  readonly target: DerivedGeometryDraftTargetSource;
+  readonly faceStableIds: readonly string[];
+  readonly angleDegrees: number;
+  readonly pullDirection: readonly [number, number, number];
+  readonly neutralPlane: {
+    readonly point: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  };
+  readonly draftedFaces: readonly {
+    readonly point: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  }[];
+}
+
 export interface DerivedGeometrySweepInput {
   readonly id: string;
   readonly profile: {
@@ -542,6 +560,10 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedGeometryResult>;
   shell(
     input: DerivedGeometryShellInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
+  draft(
+    input: DerivedGeometryDraftInput,
     context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   sweep(

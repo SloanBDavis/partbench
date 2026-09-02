@@ -21,6 +21,7 @@ import {
   createOcctCircularPatternMesh,
   createOcctMirrorMesh,
   createOcctShellMesh,
+  createOcctDraftMesh,
   createOcctSweepMesh,
   createOcctLoftMesh,
   createOcctWireExtrudeMesh
@@ -166,6 +167,10 @@ import {
   type ShellRequest,
   type ShellTargetSource,
   type GeometryKernelShellMeshFactory,
+  type DraftRequest,
+  type DraftTargetSource,
+  type DraftPlane,
+  type GeometryKernelDraftMeshFactory,
   type SweepRequest,
   type SweepProfileSource,
   type SweepPathSegment,
@@ -178,6 +183,7 @@ import {
   type ExactCircularPatternMetadataSource,
   type ExactMirrorMetadataSource,
   type ExactShellMetadataSource,
+  type ExactDraftMetadataSource,
   type ExactImportedBodyMetadataSource,
   type GeometryKernelLoftMeshFactory
 } from "./kernel";
@@ -199,6 +205,7 @@ export type {
   ExactCircularPatternMetadataSource,
   ExactMirrorMetadataSource,
   ExactShellMetadataSource,
+  ExactDraftMetadataSource,
   ExactImportedBodyMetadataSource,
   GeometryKernelLoftMeshFactory,
   ConeGeometryDimensions,
@@ -324,6 +331,10 @@ export type {
   ShellRequest,
   ShellTargetSource,
   GeometryKernelShellMeshFactory,
+  DraftRequest,
+  DraftTargetSource,
+  DraftPlane,
+  GeometryKernelDraftMeshFactory,
   SweepRequest,
   SweepProfileSource,
   SweepPathSegment,
@@ -380,6 +391,7 @@ export async function executeGeometryKernelRequest<
       createCircularPatternMesh: createOcctCircularPatternMesh,
       createMirrorMesh: createOcctMirrorMesh,
       createShellMesh: createOcctShellMesh,
+      createDraftMesh: createOcctDraftMesh,
       createSweepMesh: createOcctSweepMesh,
       createLoftMesh: createOcctLoftMesh
     },

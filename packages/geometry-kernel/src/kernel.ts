@@ -95,6 +95,7 @@ export type GeometryKernelOp =
   | "geometry.circularPattern"
   | "geometry.mirror"
   | "geometry.shell"
+  | "geometry.draft"
   | "geometry.sweep"
   | "geometry.loft";
 export type GeometryKernelPrimitive =
@@ -489,6 +490,26 @@ export interface ShellRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type DraftTargetSource = PatternSeedSource;
+
+export interface DraftPlane {
+  readonly point: GeometryKernelDirection;
+  readonly normal: GeometryKernelDirection;
+}
+
+export interface DraftRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.draft";
+  readonly target: DraftTargetSource;
+  readonly faceStableIds: readonly string[];
+  readonly angleDegrees: number;
+  readonly pullDirection: GeometryKernelDirection;
+  readonly neutralPlane: DraftPlane;
+  readonly draftedFaces: readonly DraftPlane[];
+  readonly tessellation?: TessellationOptions;
+}
+
 export interface SweepProfileSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
   readonly profile: PrimitiveExtrudeGeometryProfile;
@@ -544,6 +565,7 @@ export type ExactBodyMetadataSource =
   | ExactCircularPatternMetadataSource
   | ExactMirrorMetadataSource
   | ExactShellMetadataSource
+  | ExactDraftMetadataSource
   | ExactImportedBodyMetadataSource;
 export type ExactTopologySourceKind =
   | ExactBodyMetadataSource["kind"]
@@ -675,6 +697,16 @@ export interface ExactShellMetadataSource {
   readonly target: ShellTargetSource;
   readonly wallThickness: number;
   readonly openFaceStableIds: readonly string[];
+}
+
+export interface ExactDraftMetadataSource {
+  readonly kind: "draft";
+  readonly target: DraftTargetSource;
+  readonly faceStableIds: readonly string[];
+  readonly angleDegrees: number;
+  readonly pullDirection: GeometryKernelDirection;
+  readonly neutralPlane: DraftPlane;
+  readonly draftedFaces: readonly DraftPlane[];
 }
 
 export interface ExactImportedBodyMetadataSource {
@@ -908,6 +940,7 @@ export type GeometryKernelRequest =
   | CircularPatternRequest
   | MirrorRequest
   | ShellRequest
+  | DraftRequest
   | SweepRequest
   | LoftRequest
   | TessellateExactBodyRequest
@@ -1591,6 +1624,10 @@ export type GeometryKernelShellMeshFactory = (
   input: Omit<ShellRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelDraftMeshFactory = (
+  input: Omit<DraftRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export type GeometryKernelSweepMeshFactory = (
   input: Omit<SweepRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
@@ -1622,6 +1659,7 @@ export interface GeometryKernelMeshFactories {
   readonly createCircularPatternMesh?: GeometryKernelCircularPatternMeshFactory;
   readonly createMirrorMesh?: GeometryKernelMirrorMeshFactory;
   readonly createShellMesh?: GeometryKernelShellMeshFactory;
+  readonly createDraftMesh?: GeometryKernelDraftMeshFactory;
   readonly createSweepMesh?: GeometryKernelSweepMeshFactory;
   readonly createLoftMesh?: GeometryKernelLoftMeshFactory;
 }
@@ -2477,6 +2515,34 @@ function validateRequest(
         message: "Shell requests require a finite positive wallThickness."
       };
     }
+  } else if (request.op === "geometry.draft") {
+    if (
+      !isFiniteVec3(request.pullDirection) ||
+      !isUnitVec3(request.pullDirection) ||
+      !isFiniteVec3(request.neutralPlane.point) ||
+      !isUnitVec3(request.neutralPlane.normal) ||
+      !Number.isFinite(request.angleDegrees) ||
+      request.angleDegrees === 0 ||
+      Math.abs(request.angleDegrees) >= 89 ||
+      !Array.isArray(request.faceStableIds) ||
+      request.faceStableIds.length === 0 ||
+      request.faceStableIds.some(
+        (id) => typeof id !== "string" || id.length === 0
+      ) ||
+      !Array.isArray(request.draftedFaces) ||
+      request.draftedFaces.length !== request.faceStableIds.length ||
+      request.draftedFaces.some(
+        (face) =>
+          !isFiniteVec3(face.point) ||
+          !isUnitVec3(face.normal)
+      )
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Draft requests require a non-zero angle under 89°, a unit pull direction, a finite neutral plane, and matching drafted face planes."
+      };
+    }
   } else if (request.op === "geometry.sweep") {
     if (!isValidSweepProfileSource(request.profile)) {
       return {
@@ -2594,6 +2660,8 @@ function createMesh(
       return createMirrorMesh(factories, request);
     case "geometry.shell":
       return createShellMesh(factories, request);
+    case "geometry.draft":
+      return createDraftMesh(factories, request);
     case "geometry.sweep":
       return createSweepMesh(factories, request);
     case "geometry.loft":
@@ -2734,6 +2802,29 @@ function createShellMesh(
     target: request.target,
     wallThickness: request.wallThickness,
     openFaceStableIds: request.openFaceStableIds,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
+}
+
+function createDraftMesh(
+  factories: GeometryKernelMeshFactories,
+  request: DraftRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createDraftMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Draft tessellation requires an OCCT draft mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createDraftMesh({
+    target: request.target,
+    faceStableIds: request.faceStableIds,
+    angleDegrees: request.angleDegrees,
+    pullDirection: request.pullDirection,
+    neutralPlane: request.neutralPlane,
+    draftedFaces: request.draftedFaces,
     linearDeflection: request.tessellation?.linearDeflection,
     angularDeflection: request.tessellation?.angularDeflection
   });
@@ -3162,6 +3253,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Mirror feature";
     case "geometry.shell":
       return "Shell feature";
+    case "geometry.draft":
+      return "Draft feature";
     case "geometry.sweep":
       return "Sweep feature";
     case "geometry.loft":
@@ -4404,6 +4497,20 @@ function validateExactBodyMetadataSource(
     });
   }
 
+  if (source.kind === "draft") {
+    return validateRequest({
+      id: "exact-metadata-validation",
+      version: "geometry-kernel.v1",
+      op: "geometry.draft",
+      target: source.target,
+      faceStableIds: source.faceStableIds,
+      angleDegrees: source.angleDegrees,
+      pullDirection: source.pullDirection,
+      neutralPlane: source.neutralPlane,
+      draftedFaces: source.draftedFaces
+    });
+  }
+
   if (source.kind === "importedBody") {
     return source.brepBytes instanceof Uint8Array &&
       source.brepBytes.byteLength > 0
@@ -4677,6 +4784,7 @@ function getExactBodyArtifactSourceChildren(source: object): readonly object[] {
     candidate.kind === "hole" ||
     candidate.kind === "edgeFinish" ||
     candidate.kind === "shell" ||
+    candidate.kind === "draft" ||
     candidate.kind === "checkpointHole" ||
     candidate.kind === "checkpointEdgeFinish" ||
     candidate.kind === "artifactHole" ||
@@ -5442,6 +5550,7 @@ function isExactTopologySourceKind(
     value === "circularPattern" ||
     value === "mirror" ||
     value === "shell" ||
+    value === "draft" ||
     value === "importedBody"
   );
 }
