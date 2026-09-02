@@ -391,6 +391,37 @@ describe("V22 exact feature preview planner", () => {
     }
   );
 
+  it("submits the same non-parallel feature.loft CADOps as MCP", () => {
+    const sections = [
+      { sketchId: "sketch_xy", entityId: "xy_circle" },
+      { sketchId: "sketch_xz", entityId: "xz_circle" }
+    ];
+    const result = planExactFeaturePreview(
+      makeInput(
+        "loft",
+        {
+          id: "feat_loft_nonparallel",
+          bodyId: "body_loft_nonparallel",
+          name: "",
+          sections
+        } satisfies FeatureLoftForm,
+        "create"
+      )
+    );
+    expectSupported(result, "feature.loft", "body_loft_nonparallel", false);
+    expect(result).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.loft",
+          id: "feat_loft_nonparallel",
+          bodyId: "body_loft_nonparallel",
+          sections
+        }
+      ]
+    });
+  });
+
   it("submits the same composite line-plus-spline feature.sweep CADOps as MCP", () => {
     const compositePath: SketchPathRef = {
       kind: "chain",

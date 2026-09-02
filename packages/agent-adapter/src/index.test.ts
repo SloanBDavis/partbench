@@ -1796,6 +1796,72 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews a non-parallel feature.loft batch from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_loft_sections",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_xy",
+              name: "XY section",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_xy",
+              id: "xy_circle",
+              center: [0, 0],
+              radius: 1
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_xz",
+              name: "XZ section",
+              plane: "XZ"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_xz",
+              id: "xz_circle",
+              center: [0, 10],
+              radius: 1
+            },
+            {
+              op: "feature.loft",
+              id: "feat_loft_nonparallel",
+              bodyId: "body_loft_nonparallel",
+              sections: [
+                { sketchId: "sketch_xy", entityId: "xy_circle" },
+                { sketchId: "sketch_xz", entityId: "xz_circle" }
+              ]
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.loft",
+          intent: "create",
+          featureId: "feat_loft_nonparallel",
+          bodyId: "body_loft_nonparallel",
+          label: expect.stringContaining("2 sections")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews feature.offset batches from external JSON callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

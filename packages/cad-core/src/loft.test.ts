@@ -464,7 +464,7 @@ describe("loft feature", () => {
     ).toEqual(engine.getDocument().features.get("feat_loft"));
   });
 
-  it("rejects unsupported, duplicate, coplanar, and non-parallel sections atomically", () => {
+  it("rejects unsupported, duplicate, and coplanar sections atomically", () => {
     const engine = createLoftEngine();
     engine.applyBatch([
       { op: "sketch.create", id: "sketch_free_xy", name: "XY", plane: "XY" },
@@ -472,14 +472,6 @@ describe("loft feature", () => {
         op: "sketch.addCircle",
         sketchId: "sketch_free_xy",
         id: "free_xy",
-        center: [0, 0],
-        radius: 1
-      },
-      { op: "sketch.create", id: "sketch_free_xz", name: "XZ", plane: "XZ" },
-      {
-        op: "sketch.addCircle",
-        sketchId: "sketch_free_xz",
-        id: "free_xz",
         center: [0, 0],
         radius: 1
       },
@@ -509,13 +501,6 @@ describe("loft feature", () => {
           { sketchId: "sketch_free_xy", entityId: "free_xy" }
         ],
         code: "LOFT_SECTIONS_COPLANAR"
-      },
-      {
-        sections: [
-          { sketchId: "sketch_base", entityId: "base_profile" },
-          { sketchId: "sketch_free_xz", entityId: "free_xz" }
-        ],
-        code: "LOFT_SECTION_FRAME_INVALID"
       },
       {
         sections: [

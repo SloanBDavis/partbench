@@ -2627,6 +2627,94 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "lofts non-parallel XY and XZ sections instead of only a parallel leftover",
+    async () => {
+      const xySection = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 1
+        }
+      };
+      const xzSection = {
+        sketchPlane: "XZ" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 10] as const,
+          radius: 1
+        }
+      };
+      const parallelLeftover = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 1
+        },
+        placementFrame: {
+          origin: [0, 0, 10] as const,
+          uAxis: [1, 0, 0] as const,
+          vAxis: [0, 1, 0] as const
+        }
+      };
+
+      const [nonParallel, parallel] = await Promise.all([
+        createOcctExactBodyMetadata({
+          source: { kind: "loft", sections: [xySection, xzSection] }
+        }),
+        createOcctExactBodyMetadata({
+          source: { kind: "loft", sections: [xySection, parallelLeftover] }
+        })
+      ]);
+
+      expect(parallel.topologyCounts.solidCount).toBe(1);
+      expect(parallel.bounds.max[2]).toBeCloseTo(10, 3);
+      expect(parallel.volume).toBeCloseTo(10 * Math.PI, 2);
+
+      expect(nonParallel.sourceKind).toBe("loft");
+      expect(nonParallel.topologyCounts.solidCount).toBe(1);
+      expect(nonParallel.volume).toBeGreaterThan(0);
+      expect(nonParallel.bounds.min[2]).toBeCloseTo(0, 3);
+      expect(nonParallel.bounds.max[2]).toBeGreaterThan(10.5);
+      expect(Math.abs(nonParallel.volume - parallel.volume)).toBeGreaterThan(1);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "fails illegal coplanar loft geometry structured instead of returning a solid",
+    async () => {
+      await expect(
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "loft",
+            sections: [
+              {
+                sketchPlane: "XY",
+                profile: {
+                  kind: "circle",
+                  center: [0, 0],
+                  radius: 2
+                }
+              },
+              {
+                sketchPlane: "XY",
+                profile: {
+                  kind: "circle",
+                  center: [0, 0],
+                  radius: 1
+                }
+              }
+            ]
+          }
+        })
+      ).rejects.toMatchObject({ code: "LOFT_GEOMETRY_FAILED" });
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "reports STEP writer bindings as available through the isolated boundary",
     async () => {
       const capability = await getOcctStepWriterCapability();

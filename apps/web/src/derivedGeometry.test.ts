@@ -1273,6 +1273,64 @@ describe("derivedGeometry", () => {
     );
   });
 
+  it("derives a loft source from non-parallel XY and XZ profile sketches", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_xy", name: "XY section", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_xy",
+        id: "xy_circle",
+        center: [0, 0],
+        radius: 1
+      },
+      { op: "sketch.create", id: "sketch_xz", name: "XZ section", plane: "XZ" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_xz",
+        id: "xz_circle",
+        center: [0, 10],
+        radius: 1
+      }
+    ]);
+    engine.apply({
+      op: "feature.loft",
+      id: "feat_loft_nonparallel",
+      bodyId: "body_loft_nonparallel",
+      sections: [
+        { sketchId: "sketch_xy", entityId: "xy_circle" },
+        { sketchId: "sketch_xz", entityId: "xz_circle" }
+      ]
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const loft = sources.find((source) => source.kind === "loft");
+    expect(loft).toMatchObject({
+      id: "body_loft_nonparallel",
+      kind: "loft",
+      sections: [
+        {
+          sketchPlane: "XY",
+          profile: { kind: "circle", center: [0, 0], radius: 1 }
+        },
+        {
+          sketchPlane: "XZ",
+          profile: { kind: "circle", center: [0, 10], radius: 1 }
+        }
+      ]
+    });
+    expect(
+      (loft as { sections: readonly { sketchPlane: string }[] } | undefined)
+        ?.sections[0]?.sketchPlane
+    ).not.toBe(
+      (loft as { sections: readonly { sketchPlane: string }[] } | undefined)
+        ?.sections[1]?.sketchPlane
+    );
+  });
+
   it("derives cut result sources from active rectangle target and tool extrudes", async () => {
     const engine = createExtrudedRectangleEngine();
 
