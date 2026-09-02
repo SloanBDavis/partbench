@@ -438,6 +438,34 @@ describe("V22 exact feature preview planner", () => {
     });
   });
 
+  it("submits the same feature.combine batch as the combine-intersect CADOps case", () => {
+    const draft = {
+      id: "feat_intersect",
+      bodyId: "body_overlap",
+      name: "",
+      mode: "intersect" as const,
+      targetBodyId: "body_block_a",
+      toolBodyId: "body_block_b"
+    } satisfies FeatureCombineForm;
+    const result = planExactFeaturePreview(
+      makeInput("combine", draft, "create")
+    );
+    expect(result).toMatchObject({
+      status: "supported",
+      requiresExactDownstreamCommitPreflight: false,
+      ops: [
+        {
+          op: "feature.combine",
+          id: "feat_intersect",
+          bodyId: "body_overlap",
+          mode: "intersect",
+          targetBodyId: "body_block_a",
+          toolBodyId: "body_block_b"
+        }
+      ]
+    });
+  });
+
   it.each([
     {
       kind: "extrude" as const,

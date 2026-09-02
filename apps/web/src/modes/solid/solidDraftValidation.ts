@@ -210,9 +210,11 @@ export function validateSolidDraft(
     if (form.targetBodyId === form.toolBodyId) {
       return blocked("Combine requires two distinct completed solids.");
     }
-    return form.mode === "union" || form.mode === "subtract"
+    return form.mode === "union" ||
+      form.mode === "subtract" ||
+      form.mode === "intersect"
       ? ready()
-      : blocked("Choose union or subtract.");
+      : blocked("Choose union, subtract, or intersect.");
   }
   if (kind === "offset") {
     const form = draft as FeatureOffsetForm;

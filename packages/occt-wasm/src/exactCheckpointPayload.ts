@@ -724,6 +724,7 @@ function withCheckpointBooleanResultShape<T>(
   let operation:
     | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
     | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
+    | InstanceType<typeof oc.BRepAlgoAPI_Common_3>
     | undefined;
   let result: TopoDS_Shape | undefined;
   try {
@@ -731,7 +732,9 @@ function withCheckpointBooleanResultShape<T>(
     operation =
       source.operation === "add"
         ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
-        : new oc.BRepAlgoAPI_Cut_3(target, tool, range);
+        : source.operation === "intersect"
+          ? new oc.BRepAlgoAPI_Common_3(target, tool, range)
+          : new oc.BRepAlgoAPI_Cut_3(target, tool, range);
     if (operation.HasErrors()) {
       throw new Error(`Open CASCADE checkpoint ${source.operation} failed.`);
     }

@@ -1,0 +1,106 @@
+{
+  "id": "v25-combine-intersect",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_block_a",
+      "name": "Block A",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block_a",
+      "id": "rect_a",
+      "center": [0, 0],
+      "width": 20,
+      "height": 20
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block_a",
+      "bodyId": "body_block_a",
+      "sketchId": "sketch_block_a",
+      "entityId": "rect_a",
+      "depth": 10
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_block_b",
+      "name": "Block B",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_block_b",
+      "id": "rect_b",
+      "center": [10, 0],
+      "width": 20,
+      "height": 20
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_block_b",
+      "bodyId": "body_block_b",
+      "sketchId": "sketch_block_b",
+      "entityId": "rect_b",
+      "depth": 10
+    }
+  ],
+  "steps": [
+    {
+      "id": "combine-intersect",
+      "ops": [
+        {
+          "op": "feature.combine",
+          "id": "feat_intersect",
+          "bodyId": "body_overlap",
+          "mode": "intersect",
+          "targetBodyId": "body_block_a",
+          "toolBodyId": "body_block_b"
+        }
+      ],
+      "expect": {
+        "ops": ["feature.combine"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_intersect",
+                "kind": "combine",
+                "mode": "intersect",
+                "targetBodyId": "body_block_a",
+                "toolBodyId": "body_block_b",
+                "bodyId": "body_overlap"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_overlap", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodies": [
+              { "id": "body_block_a", "consumedByFeatureId": "feat_intersect" },
+              { "id": "body_block_b", "consumedByFeatureId": "feat_intersect" },
+              {
+                "id": "body_overlap",
+                "featureId": "feat_intersect",
+                "source": {
+                  "type": "combineFeature",
+                  "mode": "intersect",
+                  "targetBodyId": "body_block_a",
+                  "toolBodyId": "body_block_b"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

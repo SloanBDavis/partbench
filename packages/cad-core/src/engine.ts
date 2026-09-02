@@ -3,6 +3,7 @@ import {
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   isSketchDimensionTargetV22,
   isSketchRegionsProfileRef,
+  isFeatureCombineMode,
   isPatternedSeedFeatureKind,
   patternSeedSourceFields,
   readExclusivePatternSeed,
@@ -17514,16 +17515,16 @@ function validateCombineMode(
   value: unknown,
   opIndex?: number
 ): FeatureCombineMode {
-  if (value === "union" || value === "subtract") {
+  if (isFeatureCombineMode(value)) {
     return value;
   }
 
   throwValidationError({
     code: "INVALID_FEATURE",
-    message: "feature.combine mode must be union or subtract.",
+    message: "feature.combine mode must be union, subtract, or intersect.",
     opIndex,
     path: operationPath(opIndex, "mode"),
-    expected: "union | subtract",
+    expected: "union | subtract | intersect",
     received: describeReceived(value)
   });
 }
@@ -35516,7 +35517,7 @@ function collectValidAuthoredFeatureByBodyId(
     value.kind === "combine" &&
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
-    (value.mode === "union" || value.mode === "subtract") &&
+    isFeatureCombineMode(value.mode) &&
     typeof value.targetBodyId === "string" &&
     typeof value.toolBodyId === "string" &&
     value.targetBodyId !== value.toolBodyId &&
@@ -38823,12 +38824,12 @@ function validateCombineFeatureSnapshotFields(
   issues: CadProjectImportIssue[],
   seenBodyIds: Set<string>
 ): void {
-  if (value.mode !== "union" && value.mode !== "subtract") {
+  if (!isFeatureCombineMode(value.mode)) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.mode`,
-      "Combine feature mode must be union or subtract."
+      "Combine feature mode must be union, subtract, or intersect."
     );
   }
 
@@ -40192,7 +40193,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      (value.mode === "union" || value.mode === "subtract") &&
+      isFeatureCombineMode(value.mode) &&
       typeof value.targetBodyId === "string" &&
       typeof value.toolBodyId === "string"
     );
@@ -41183,7 +41184,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
 
   if (value.kind === "combine") {
     return (
-      (value.mode === "union" || value.mode === "subtract") &&
+      isFeatureCombineMode(value.mode) &&
       typeof value.targetBodyId === "string" &&
       typeof value.toolBodyId === "string"
     );

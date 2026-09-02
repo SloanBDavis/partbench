@@ -479,7 +479,12 @@ function createSolidBooleanSourceForFeature(
           datums
         )
       : undefined;
-    const operation = feature.mode === "union" ? "add" : "cut";
+    const operation =
+      feature.mode === "union"
+        ? "add"
+        : feature.mode === "intersect"
+          ? "intersect"
+          : "cut";
     return {
       id: feature.bodyId,
       kind: "extrudeBoolean",

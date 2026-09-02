@@ -1461,6 +1461,90 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews feature.combine intersect batches from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_combine_intersect",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_block_a",
+              name: "Block A",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_block_a",
+              id: "rect_a",
+              center: [0, 0],
+              width: 20,
+              height: 20
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_block_a",
+              bodyId: "body_block_a",
+              sketchId: "sketch_block_a",
+              entityId: "rect_a",
+              depth: 10
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_block_b",
+              name: "Block B",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_block_b",
+              id: "rect_b",
+              center: [10, 0],
+              width: 20,
+              height: 20
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_block_b",
+              bodyId: "body_block_b",
+              sketchId: "sketch_block_b",
+              entityId: "rect_b",
+              depth: 10
+            },
+            {
+              op: "feature.combine",
+              id: "feat_intersect",
+              bodyId: "body_overlap",
+              mode: "intersect",
+              targetBodyId: "body_block_a",
+              toolBodyId: "body_block_b"
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.combine",
+          intent: "create",
+          featureId: "feat_intersect",
+          bodyId: "body_overlap",
+          targetBodyId: "body_block_a",
+          label: expect.stringContaining("intersect")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews feature.offset batches from external JSON callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(

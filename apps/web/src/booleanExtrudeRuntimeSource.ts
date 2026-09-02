@@ -39,6 +39,18 @@ export function createBooleanExtrudeResultRuntimeSource(
     };
   }
 
+  if (source.operation === "intersect") {
+    return {
+      kind: "booleanExtrudes",
+      operation: "intersect",
+      ...(source.materialPolicy
+        ? { materialPolicy: source.materialPolicy }
+        : {}),
+      target,
+      tool: createBooleanExtrudeToolRuntimeSource(source.tool)
+    };
+  }
+
   return {
     kind: "booleanExtrudes",
     operation: "add",
