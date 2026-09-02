@@ -1322,6 +1322,9 @@ function activeCurrentExactRequiredOperationFor(
   if (activeTool === "solid.align") {
     return "feature.align";
   }
+  if (activeTool === "solid.draft") {
+    return "feature.draft";
+  }
   if (activeTool === "sketch.create") {
     return "feature.attachSketchPlane";
   }
@@ -4179,7 +4182,8 @@ export function App() {
     }
     return pendingCurrentExactPromotion?.requiredOperation === "feature.shell" ||
       pendingCurrentExactPromotion?.requiredOperation === "feature.offset" ||
-      pendingCurrentExactPromotion?.requiredOperation === "feature.align"
+      pendingCurrentExactPromotion?.requiredOperation === "feature.align" ||
+      pendingCurrentExactPromotion?.requiredOperation === "feature.draft"
       ? includeCurrentSolidChoice(
           choices,
           createPendingFaceChoice(pendingCurrentExactPromotion)
@@ -5507,6 +5511,40 @@ export function App() {
         blockedReason: selectedSeedBodyId
           ? undefined
           : "Select a completed exact body to move."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.draft") {
+      return {
+        key,
+        kind: "draft",
+        title: "Draft Faces",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          targetBodyId: selectedShellTargetBodyId,
+          faces: selectedShellFaceChoice ? [selectedShellFaceChoice.value] : [],
+          angleDegrees: 10,
+          neutralKind: "planarFace" as const,
+          neutralFace: undefined,
+          neutralDatumId: ""
+        },
+        choices: {
+          targetBodies: solidShellTargetBodyChoices,
+          openFaces: solidShellFaceChoices,
+          datums: [...engine.getDocument().datums.values()]
+            .filter((datum) => datum.kind === "plane")
+            .map((datum) => ({
+              key: datum.id,
+              value: datum.id,
+              label: datum.name,
+              kind: "datum-plane"
+            }))
+        },
+        blockedReason: selectedShellTargetBodyId
+          ? undefined
+          : "Select a completed exact solid."
       } as SolidEditorRequest;
     }
     return undefined;
@@ -8234,6 +8272,8 @@ export function App() {
         return "offset";
       case "align":
         return "align";
+      case "draft":
+        return "draft";
       case "shell":
         return "shell";
       case "sweep":
@@ -9933,6 +9973,20 @@ export function App() {
           "Choose a sketch profile or a face, then apply the same feature.offset batch."
         );
         return;
+      case "solid.align":
+        navigateToMode("solid");
+        dispatchWorkbench({ type: "set-selection-filter", filter: "body" });
+        setCommandNotice(
+          "Choose a completed exact body and planar face, then apply the same feature.align batch."
+        );
+        return;
+      case "solid.draft":
+        navigateToMode("solid");
+        dispatchWorkbench({ type: "set-selection-filter", filter: "face" });
+        setCommandNotice(
+          "Choose a completed exact solid and planar faces, then apply the same feature.draft batch."
+        );
+        return;
       case "solid.measure":
       case "inspect.measure":
         navigateToMode("inspect");
@@ -10453,6 +10507,9 @@ export function App() {
       "solid.align": selectedSeedBodyId
         ? ready
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidAlign),
+      "solid.draft": selectedShellTargetBodyId
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDraft),
       "solid.datum-plane": ready,
       "solid.datum-axis": ready,
       "solid.edit":

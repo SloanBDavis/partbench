@@ -11,6 +11,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureAlignForm,
+  FeatureDraftForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -247,6 +248,24 @@ export function validateSolidDraft(
             ? "Select a datum plane to meet."
             : "Select a datum axis to lock remaining rotation."
         );
+  }
+  if (kind === "draft") {
+    const form = draft as FeatureDraftForm;
+    if (!form.targetBodyId) return collecting("Select a completed exact solid.");
+    if (form.faces.length === 0) {
+      return collecting("Select a planar or planar-adjacent face set.");
+    }
+    if (!Number.isFinite(form.angleDegrees) || form.angleDegrees === 0) {
+      return blocked("Draft angle must be a non-zero finite number.");
+    }
+    if (form.neutralKind === "planarFace") {
+      return form.neutralFace
+        ? ready()
+        : collecting("Select a planar face as the neutral plane.");
+    }
+    return form.neutralDatumId
+      ? ready()
+      : collecting("Select a datum plane as the neutral plane.");
   }
   const mirror = draft as FeatureMirrorForm;
   if (!mirror.seedBodyId) return collecting("Select an exact-ready seed body.");

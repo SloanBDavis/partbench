@@ -690,6 +690,8 @@ function actionIdFromOperation(
       return "solid.offset";
     case "feature.align":
       return "solid.align";
+    case "feature.draft":
+      return "solid.draft";
     case "feature.measureReference":
       return "feature.measureReference";
     case "feature.selectReference":

@@ -164,6 +164,10 @@ import type {
   FeatureAlignPlane,
   FeatureAlignTarget,
   FeatureAlignTransform,
+  FeatureDraftFaceRef,
+  FeatureDraftedFaceRecord,
+  FeatureDraftNeutralPlane,
+  FeatureDraftPlane,
   FeatureOffsetFaceRef,
   FeatureOffsetSide,
   FeatureOffsetSource,
@@ -510,6 +514,7 @@ import {
   type CadDownstreamBodyPolicyProjection
 } from "./downstreamBodyPolicy";
 import { computeAlignPose } from "./alignTransform";
+import { computeDraftGeometry } from "./draftGeometry";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import {
   resolveMirrorPlaneFrame,
@@ -986,6 +991,7 @@ export type Feature =
   | CombineFeature
   | OffsetFeature
   | AlignFeature
+  | DraftFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -1110,6 +1116,19 @@ export interface AlignFeature {
   readonly target: FeatureAlignTarget;
   readonly transform: FeatureAlignTransform;
   readonly alignedSourceFace: FeatureAlignPlane;
+  readonly bodyId: BodyId;
+}
+
+export interface DraftFeature {
+  readonly id: FeatureId;
+  readonly kind: "draft";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
   readonly bodyId: BodyId;
 }
 
@@ -1675,6 +1694,7 @@ function documentHasV20SourceRecords(
       feature.kind === "combine" ||
       feature.kind === "offset" ||
       feature.kind === "align" ||
+      feature.kind === "draft" ||
       feature.kind === "sweep" ||
       feature.kind === "loft"
   );
@@ -7603,6 +7623,25 @@ function applyOperation(
       return;
     }
 
+    case "feature.draft": {
+      const inputs = validateDraftInputs(state, op, opIndex);
+      const feature: DraftFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "draft",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        targetBodyId: inputs.targetBodyId,
+        faces: inputs.faces,
+        angleDegrees: inputs.angleDegrees,
+        neutralPlane: inputs.neutralPlane,
+        pullDirection: inputs.pullDirection,
+        draftedFaces: inputs.draftedFaces,
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.sweep": {
       const inputs = resolveSweepCommandInputs(state, op, undefined, opIndex);
       const feature: SweepFeature = {
@@ -8314,6 +8353,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.combine":
     case "feature.offset":
     case "feature.align":
+    case "feature.draft":
     case "feature.shell":
     case "feature.sweep":
     case "feature.loft":
@@ -9734,6 +9774,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.shell" ||
     value === "feature.offset" ||
     value === "feature.align" ||
+    value === "feature.draft" ||
     value === "feature.linearPatternDirection" ||
     value === "feature.circularPatternAxis" ||
     value === "feature.mirrorPlane" ||
@@ -14623,6 +14664,7 @@ type TargetConsumingFeature =
   | CombineFeature
   | OffsetFeature
   | AlignFeature
+  | DraftFeature
   | ShellFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
@@ -14778,6 +14820,10 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
   }
 
   if (feature.kind === "align") {
+    return;
+  }
+
+  if (feature.kind === "draft") {
     return;
   }
 
@@ -18043,6 +18089,226 @@ function resolveAlignAxis(
   return resolution.frame;
 }
 
+function validateDraftInputs(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.draft" }>,
+  opIndex?: number
+): {
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
+} {
+  const targetBodyId = validateCommandDownstreamBodyId(
+    state,
+    op.targetBodyId,
+    "shellTarget",
+    "feature.draft",
+    opIndex
+  );
+  if (!Array.isArray(op.faces) || op.faces.length === 0) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.draft requires a non-empty planar or planar-adjacent face set.",
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "faces"),
+      expected: "one or more generated, named, or topology faces",
+      received: describeReceived(op.faces)
+    });
+  }
+  const faces = op.faces.map((face, index) =>
+    validateDraftFaceRef(state, face, opIndex, `faces.${index}`, targetBodyId)
+  );
+  const neutralPlane = validateDraftNeutralPlane(
+    state,
+    op.neutralPlane,
+    opIndex,
+    targetBodyId
+  );
+  const faceInputs = faces.map((face, index) =>
+    createDraftFaceInput(state, face, opIndex, `faces.${index}`)
+  );
+  const geometry = computeDraftGeometry(
+    faceInputs,
+    resolveDraftNeutralPlane(state, neutralPlane, opIndex),
+    op.angleDegrees
+  );
+  if (!geometry.ok) {
+    throwValidationError({
+      code:
+        geometry.code === "INVALID_ANGLE"
+          ? "INVALID_OPERATION"
+          : "INVALID_FEATURE",
+      message: geometry.message,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(
+        opIndex,
+        geometry.code === "INVALID_ANGLE" ? "angleDegrees" : "faces"
+      ),
+      expected: "planar face set that tapers without inverting",
+      received: describeReceived({
+        angleDegrees: op.angleDegrees,
+        faceCount: faces.length
+      })
+    });
+  }
+  return {
+    targetBodyId,
+    faces,
+    angleDegrees: op.angleDegrees,
+    neutralPlane,
+    pullDirection: geometry.pullDirection,
+    draftedFaces: faces.map((face, index) => ({
+      face,
+      plane: geometry.draftedFaces[index]!.plane
+    }))
+  };
+}
+
+function validateDraftFaceRef(
+  state: MutableDocumentState,
+  value: unknown,
+  opIndex: number | undefined,
+  field: string,
+  expectedBodyId: BodyId
+): FeatureDraftFaceRef {
+  if (!isFeatureDraftFaceRefShape(value)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `feature.draft ${field} requires a generated, named, or topology face.`,
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected: "generatedFace, namedReference, or topologyAnchor",
+      received: describeReceived(value)
+    });
+  }
+  const bodyId = resolveAlignFaceBodyId(state, value, opIndex, field);
+  if (bodyId !== expectedBodyId) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `feature.draft ${field} must belong to target body ${expectedBodyId}.`,
+      opIndex,
+      bodyId,
+      path: operationPath(opIndex, field),
+      expected: expectedBodyId,
+      received: bodyId
+    });
+  }
+  return value;
+}
+
+function validateDraftNeutralPlane(
+  state: MutableDocumentState,
+  value: unknown,
+  opIndex: number | undefined,
+  targetBodyId: BodyId
+): FeatureDraftNeutralPlane {
+  if (!isFeatureDraftNeutralPlaneShape(value)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "feature.draft neutralPlane must be a planar face or datum plane.",
+      opIndex,
+      path: operationPath(opIndex, "neutralPlane"),
+      expected: "planarFace or datumPlane",
+      received: describeReceived(value)
+    });
+  }
+  if (value.kind === "planarFace") {
+    validateDraftFaceRef(
+      state,
+      value.face,
+      opIndex,
+      "neutralPlane.face",
+      targetBodyId
+    );
+    return { kind: "planarFace", face: value.face };
+  }
+  const datum = getDatumOrThrow(state.datums, value.datumId, opIndex);
+  if (datum.kind !== "plane") {
+    throwValidationError({
+      code: "INVALID_DATUM",
+      message: "feature.draft datumPlane must resolve to a datum plane.",
+      opIndex,
+      datumId: value.datumId,
+      path: operationPath(opIndex, "neutralPlane.datumId"),
+      expected: "datum plane",
+      received: datum.kind
+    });
+  }
+  return { kind: "datumPlane", datumId: value.datumId };
+}
+
+function resolveDraftNeutralPlane(
+  state: MutableDocumentState,
+  neutralPlane: FeatureDraftNeutralPlane,
+  opIndex?: number
+): FeatureDraftPlane {
+  const reference =
+    neutralPlane.kind === "planarFace"
+      ? neutralPlane.face
+      : { kind: "datumPlane" as const, datumId: neutralPlane.datumId };
+  const resolution = resolveMirrorPlaneFrame(state, reference);
+  if (!resolution.ok) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `feature.draft neutral plane does not resolve: ${resolution.message}`,
+      opIndex,
+      path: operationPath(opIndex, "neutralPlane"),
+      expected: "resolvable planar face or datum plane",
+      received: describeReceived(neutralPlane)
+    });
+  }
+  return resolution.frame;
+}
+
+function createDraftFaceInput(
+  state: MutableDocumentState,
+  face: FeatureDraftFaceRef,
+  opIndex: number | undefined,
+  field: string
+): {
+  readonly plane: FeatureDraftPlane;
+  readonly spanAlongPull: number;
+  readonly materialExtent: number;
+} {
+  const plane = resolveAlignFacePlane(state, face, opIndex, field);
+  const bodyId = resolveAlignFaceBodyId(state, face, opIndex, field);
+  const measurements = createGeneratedReferenceMeasurements({
+    document: state,
+    bodyId,
+    stableId:
+      face.kind === "generatedFace"
+        ? face.stableId
+        : face.kind === "namedReference"
+          ? (state.namedReferences.get(face.name)?.stableId ?? "")
+          : "",
+    units: state.units,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyExists: (candidateBodyId) => cadDocumentBodyExists(state, candidateBodyId)
+  });
+  const body = createBodyMeasurements(state, bodyId, state.units, DEFAULT_PART_ID);
+  const faceSize =
+    measurements.ok && measurements.measurements.kind === "face"
+      ? measurements.measurements.bounds.size
+      : undefined;
+  const spanAlongPull = faceSize
+    ? Math.max(faceSize[0], faceSize[1], faceSize[2])
+    : body?.depth ?? 0;
+  const centroid = body?.centroid;
+  const materialExtent = centroid
+    ? Math.abs(
+        (centroid[0] - plane.point[0]) * plane.normal[0] +
+          (centroid[1] - plane.point[1]) * plane.normal[1] +
+          (centroid[2] - plane.point[2]) * plane.normal[2]
+      ) * 2
+    : 0;
+  return { plane, spanAlongPull, materialExtent };
+}
+
 function validateOffsetSketchProfile(
   state: MutableDocumentState,
   value: unknown,
@@ -18979,6 +19245,7 @@ function isTargetConsumingFeature(
     feature.kind === "combine" ||
     (feature.kind === "offset" && feature.targetBodyId !== undefined) ||
     feature.kind === "align" ||
+    feature.kind === "draft" ||
     (feature.kind === "mirror" && feature.includeOriginal)
   );
 }
@@ -19022,6 +19289,9 @@ function getTargetConsumingFeatureBodyId(
   }
   if (feature.kind === "align") {
     return feature.seedBodyId;
+  }
+  if (feature.kind === "draft") {
+    return feature.targetBodyId;
   }
 
   return feature.targetBodyId;
@@ -19124,6 +19394,7 @@ function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
     feature.kind === "align" ||
+    feature.kind === "draft" ||
     feature.kind === "shell"
   ) {
     return false;
@@ -20304,7 +20575,7 @@ function createTopologyAnchorProofCommandOperations(
   }
 
   if (proof.kind === "axisAlignedPlanarFace") {
-    return ["feature.shell", "feature.offset", "feature.align"];
+    return ["feature.shell", "feature.offset", "feature.align", "feature.draft"];
   }
 
   if (proof.kind !== "axisAlignedLinearEdge") {
@@ -22400,6 +22671,7 @@ const CURRENT_EXACT_FACE_PROMOTABLE_OPERATIONS = [
   "feature.shell",
   "feature.offset",
   "feature.align",
+  "feature.draft",
   "feature.mirrorPlane"
 ] as const satisfies readonly CadSelectionReferenceOperation[];
 
@@ -24012,6 +24284,20 @@ function featureRef(
     };
   }
 
+  if (feature.kind === "draft") {
+    return {
+      id: feature.id,
+      kind: "draft",
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      faces: [...feature.faces],
+      angleDegrees: feature.angleDegrees,
+      neutralPlane: feature.neutralPlane,
+      pullDirection: feature.pullDirection,
+      draftedFaces: [...feature.draftedFaces]
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.id,
@@ -25585,6 +25871,21 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
     };
   }
 
+  if (snapshot.kind === "draft") {
+    return {
+      id: snapshot.id,
+      kind: "draft",
+      name: snapshot.name,
+      targetBodyId: snapshot.targetBodyId,
+      faces: [...snapshot.faces],
+      angleDegrees: snapshot.angleDegrees,
+      neutralPlane: snapshot.neutralPlane,
+      pullDirection: snapshot.pullDirection,
+      draftedFaces: [...snapshot.draftedFaces],
+      bodyId: snapshot.bodyId
+    };
+  }
+
   if (snapshot.kind === "shell") {
     return {
       id: snapshot.id,
@@ -25735,6 +26036,7 @@ const SUMMARY_REFERENCE_OPERATIONS = [
   "feature.shell",
   "feature.offset",
   "feature.align",
+  "feature.draft",
   "feature.linearPatternDirection",
   "feature.circularPatternAxis",
   "feature.mirrorPlane",
@@ -26511,6 +26813,31 @@ function createFeatureSummary(
     };
   }
 
+  if (feature.kind === "draft") {
+    return {
+      id: feature.id,
+      kind: "draft",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      faces: [...feature.faces],
+      angleDegrees: feature.angleDegrees,
+      neutralPlane: feature.neutralPlane,
+      pullDirection: feature.pullDirection,
+      draftedFaces: [...feature.draftedFaces],
+      name: feature.name,
+      source: {
+        type: "draftFeature",
+        targetBodyId: feature.targetBodyId,
+        faces: [...feature.faces],
+        angleDegrees: feature.angleDegrees,
+        neutralPlane: feature.neutralPlane,
+        pullDirection: feature.pullDirection,
+        draftedFaces: [...feature.draftedFaces]
+      }
+    };
+  }
+
   if (feature.kind === "shell") {
     return {
       id: feature.id,
@@ -26907,6 +27234,27 @@ function createFeatureBodySnapshot(
         target: feature.target,
         transform: feature.transform,
         alignedSourceFace: feature.alignedSourceFace
+      }
+    };
+  }
+
+  if (feature.kind === "draft") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "draftFeature",
+        featureId: feature.id,
+        targetBodyId: feature.targetBodyId,
+        faces: [...feature.faces],
+        angleDegrees: feature.angleDegrees,
+        neutralPlane: feature.neutralPlane,
+        pullDirection: feature.pullDirection,
+        draftedFaces: [...feature.draftedFaces]
       }
     };
   }
@@ -31169,6 +31517,20 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "draft" && right.kind === "draft") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.targetBodyId === right.targetBodyId &&
+      stableJsonEqual(left.faces, right.faces) &&
+      left.angleDegrees === right.angleDegrees &&
+      stableJsonEqual(left.neutralPlane, right.neutralPlane) &&
+      stableJsonEqual(left.pullDirection, right.pullDirection) &&
+      stableJsonEqual(left.draftedFaces, right.draftedFaces) &&
+      left.bodyId === right.bodyId
+    );
+  }
+
   if (left.kind === "shell" && right.kind === "shell") {
     return (
       left.id === right.id &&
@@ -31250,7 +31612,8 @@ function normalizeCadProject(value: CadProject): CadProject {
           feature.kind === "mirror" ||
           feature.kind === "combine" ||
           feature.kind === "offset" ||
-          feature.kind === "align"
+          feature.kind === "align" ||
+          feature.kind === "draft"
       )
         ? CAD_PROJECT_FORMAT_VERSION_V20
         : value.schemaVersion;
@@ -31697,7 +32060,8 @@ function normalizeFeatureSnapshot(
     feature.kind === "shell" ||
     feature.kind === "combine" ||
     feature.kind === "offset" ||
-    feature.kind === "align"
+    feature.kind === "align" ||
+    feature.kind === "draft"
   ) {
     return { ...feature };
   }
@@ -31998,6 +32362,7 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     ref.kind === "combine" ||
     ref.kind === "offset" ||
     ref.kind === "align" ||
+    ref.kind === "draft" ||
     ref.kind === "shell" ||
     ref.kind === "sweep" ||
     ref.kind === "loft"
@@ -36014,6 +36379,39 @@ function collectValidAuthoredFeatureByBodyId(
 
   if (
     isRecord(value) &&
+    value.kind === "draft" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    typeof value.targetBodyId === "string" &&
+    Array.isArray(value.faces) &&
+    value.faces.length > 0 &&
+    value.faces.every(isFeatureDraftFaceRefShape) &&
+    typeof value.angleDegrees === "number" &&
+    Number.isFinite(value.angleDegrees) &&
+    value.angleDegrees !== 0 &&
+    isFeatureDraftNeutralPlaneShape(value.neutralPlane) &&
+    isVec3Shape(value.pullDirection) &&
+    Array.isArray(value.draftedFaces) &&
+    value.draftedFaces.every(isFeatureDraftedFaceRecordShape) &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "draft",
+      name: typeof value.name === "string" ? value.name : undefined,
+      targetBodyId: value.targetBodyId,
+      faces: [...value.faces],
+      angleDegrees: value.angleDegrees,
+      neutralPlane: value.neutralPlane,
+      pullDirection: value.pullDirection,
+      draftedFaces: [...value.draftedFaces],
+      bodyId: value.bodyId,
+      path
+    });
+  }
+
+  if (
+    isRecord(value) &&
     value.kind === "shell" &&
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
@@ -36220,7 +36618,8 @@ function isImportTargetConsumingFeature(
     feature.kind === "shell" ||
     feature.kind === "combine" ||
     (feature.kind === "offset" && typeof feature.targetBodyId === "string") ||
-    feature.kind === "align"
+    feature.kind === "align" ||
+    feature.kind === "draft"
   );
 }
 
@@ -36242,6 +36641,10 @@ function getImportFeatureTargetBodyId(
 
   if (feature.kind === "align") {
     return feature.seedBodyId;
+  }
+
+  if (feature.kind === "draft") {
+    return feature.targetBodyId;
   }
 
   return undefined;
@@ -36401,6 +36804,10 @@ function formatTargetConsumingFeatureForIssue(
 
   if (feature.kind === "align") {
     return "Align feature";
+  }
+
+  if (feature.kind === "draft") {
+    return "Draft feature";
   }
 
   if (
@@ -37020,7 +37427,8 @@ function validateFeatureSnapshot(
       value.kind !== "mirror" &&
       value.kind !== "combine" &&
       value.kind !== "offset" &&
-      value.kind !== "align") ||
+      value.kind !== "align" &&
+      value.kind !== "draft") ||
       !allowsPatternFeatures) &&
     (value.kind !== "shell" || !allowsPatternFeatures) &&
     (value.kind !== "sweep" || !isV20OrLaterSchema) &&
@@ -37032,9 +37440,9 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.kind`,
       allowsImportedBodyFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, offset, align, or shell."
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, combine, offset, align, draft, or shell."
         : allowsPatternFeatures
-          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, offset, align, or shell."
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, combine, offset, align, draft, or shell."
           : allowsEdgeFinishFeatures
             ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
             : allowsHoleFeatures
@@ -37236,6 +37644,25 @@ function validateFeatureSnapshot(
     }
 
     validateAlignFeatureSnapshotFields(value, path, issues, seenBodyIds);
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "draft") {
+    if (!allowsPatternFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Draft features require web-cad.project.v19."
+      );
+    }
+
+    validateDraftFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -39496,6 +39923,99 @@ function validateAlignFeatureSnapshotFields(
   }
 }
 
+function validateDraftFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  if (
+    typeof value.targetBodyId !== "string" ||
+    value.targetBodyId.length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      "Draft feature targetBodyId must be a non-empty string."
+    );
+  }
+
+  if (
+    !Array.isArray(value.faces) ||
+    value.faces.length === 0 ||
+    !value.faces.every(isFeatureDraftFaceRefShape)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.faces`,
+      "Draft feature faces must be a non-empty generated, named, or topology face set."
+    );
+  }
+
+  if (
+    typeof value.angleDegrees !== "number" ||
+    !Number.isFinite(value.angleDegrees) ||
+    value.angleDegrees === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.angleDegrees`,
+      "Draft feature angleDegrees must be a non-zero finite number."
+    );
+  }
+
+  if (!isFeatureDraftNeutralPlaneShape(value.neutralPlane)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.neutralPlane`,
+      "Draft feature neutralPlane must be a planar face or datum plane."
+    );
+  }
+
+  if (!isVec3Shape(value.pullDirection)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.pullDirection`,
+      "Draft feature pullDirection must be a finite vec3."
+    );
+  }
+
+  if (
+    !Array.isArray(value.draftedFaces) ||
+    !value.draftedFaces.every(isFeatureDraftedFaceRecordShape)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.draftedFaces`,
+      "Draft feature draftedFaces must record each face plane."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Draft feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
 function validateShellFeatureSnapshotFields(
   value: Record<string, unknown>,
   path: string,
@@ -40151,6 +40671,7 @@ function materializeGeneratedObjectIds(
       op.op === "feature.shell" ||
       op.op === "feature.offset" ||
       op.op === "feature.align" ||
+      op.op === "feature.draft" ||
       op.op === "feature.sweep" ||
       op.op === "feature.loft"
     ) {
@@ -40769,6 +41290,22 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.seedBodyId === "string" &&
       isFeatureAlignFaceRefShape(value.sourceFace) &&
       isFeatureAlignTargetShape(value.target)
+    );
+  }
+
+  if (value.op === "feature.draft") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      Array.isArray(value.faces) &&
+      value.faces.length > 0 &&
+      value.faces.every(isFeatureDraftFaceRefShape) &&
+      typeof value.angleDegrees === "number" &&
+      Number.isFinite(value.angleDegrees) &&
+      value.angleDegrees !== 0 &&
+      isFeatureDraftNeutralPlaneShape(value.neutralPlane)
     );
   }
 
@@ -41771,6 +42308,22 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     );
   }
 
+  if (value.kind === "draft") {
+    return (
+      typeof value.targetBodyId === "string" &&
+      Array.isArray(value.faces) &&
+      value.faces.length > 0 &&
+      value.faces.every(isFeatureDraftFaceRefShape) &&
+      typeof value.angleDegrees === "number" &&
+      Number.isFinite(value.angleDegrees) &&
+      value.angleDegrees !== 0 &&
+      isFeatureDraftNeutralPlaneShape(value.neutralPlane) &&
+      isVec3Shape(value.pullDirection) &&
+      Array.isArray(value.draftedFaces) &&
+      value.draftedFaces.every(isFeatureDraftedFaceRecordShape)
+    );
+  }
+
   if (value.kind === "shell") {
     return (
       typeof value.targetBodyId === "string" &&
@@ -42691,6 +43244,34 @@ function isFeatureAlignFaceRefShape(
   value: unknown
 ): value is FeatureAlignFaceRef {
   return isFeatureShellOpenFaceRefShape(value);
+}
+
+function isFeatureDraftFaceRefShape(
+  value: unknown
+): value is FeatureDraftFaceRef {
+  return isFeatureShellOpenFaceRefShape(value);
+}
+
+function isFeatureDraftNeutralPlaneShape(
+  value: unknown
+): value is FeatureDraftNeutralPlane {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  if (value.kind === "planarFace") {
+    return isFeatureDraftFaceRefShape(value.face);
+  }
+  return value.kind === "datumPlane" && typeof value.datumId === "string" && value.datumId.length > 0;
+}
+
+function isFeatureDraftedFaceRecordShape(
+  value: unknown
+): value is FeatureDraftedFaceRecord {
+  return (
+    isRecord(value) &&
+    isFeatureDraftFaceRefShape(value.face) &&
+    isFeatureAlignPlaneShape(value.plane)
+  );
 }
 
 function isFeatureAlignTargetShape(

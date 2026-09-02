@@ -77,6 +77,7 @@ const PLANAR_FACE_OPERATIONS = [
   "feature.shell",
   "feature.offset",
   "feature.align",
+  "feature.draft",
   "feature.mirrorPlane",
   "feature.measureReference",
   "feature.selectReference"
@@ -130,6 +131,7 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesCombineFeature
   | GeneratedReferencesOffsetFeature
   | GeneratedReferencesAlignFeature
+  | GeneratedReferencesDraftFeature
   | GeneratedReferencesShellFeature
   | GeneratedReferencesSweepFeature
   | GeneratedReferencesLoftFeature;
@@ -218,6 +220,13 @@ export interface GeneratedReferencesAlignFeature {
   readonly kind: "align";
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
+}
+
+export interface GeneratedReferencesDraftFeature {
+  readonly id: FeatureId;
+  readonly kind: "draft";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
 }
 
 export interface GeneratedReferencesShellFeature {

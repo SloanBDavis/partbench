@@ -44,6 +44,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidCombine: "Select two completed exact solids.",
   solidOffset: "Select a sketch profile or a face.",
   solidAlign: "Select a completed exact body and a planar face to move.",
+  solidDraft: "Select a completed exact solid and a planar face set.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -468,6 +469,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidAlign)
+  ),
+  action(
+    "solid.draft",
+    "Draft",
+    "Modify",
+    ["solid"],
+    ["draft face", "taper", "draft angle"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDraft)
   ),
   action(
     "solid.datum-plane",

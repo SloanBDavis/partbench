@@ -379,6 +379,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildFeatureAlignOp",
     "cadCommands.test.ts"
   ),
+  "solid.draft": featureAudit(
+    "Draft",
+    "createDraft",
+    "body/face/datum selection",
+    "buildFeatureDraftOp",
+    "cadCommands.test.ts"
+  ),
   "solid.datum-plane": featureAudit(
     "Datum plane",
     "createDatumPlane",

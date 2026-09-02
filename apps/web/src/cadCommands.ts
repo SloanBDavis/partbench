@@ -28,6 +28,9 @@ import type {
   FeatureAlignFaceRef,
   FeatureAlignOp,
   FeatureAlignTarget,
+  FeatureDraftFaceRef,
+  FeatureDraftNeutralPlane,
+  FeatureDraftOp,
   FeatureOffsetFaceRef,
   FeatureOffsetOp,
   FeatureOffsetSide,
@@ -391,6 +394,18 @@ export interface FeatureAlignForm {
   readonly targetKind: FeatureAlignTarget["kind"];
   readonly targetFace?: FeatureAlignFaceRef;
   readonly targetDatumId: string;
+}
+
+export interface FeatureDraftForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly targetBodyId: string;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralKind: FeatureDraftNeutralPlane["kind"];
+  readonly neutralFace?: FeatureDraftFaceRef;
+  readonly neutralDatumId: string;
 }
 
 export interface FeatureShellForm {
@@ -1662,6 +1677,34 @@ function buildFeatureAlignTarget(form: FeatureAlignForm): FeatureAlignTarget {
   return form.targetKind === "datumPlane"
     ? { kind: "datumPlane", datumId: form.targetDatumId }
     : { kind: "datumAxis", datumId: form.targetDatumId };
+}
+
+export function buildFeatureDraftOp(form: FeatureDraftForm): FeatureDraftOp {
+  return {
+    op: "feature.draft",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    targetBodyId: form.targetBodyId,
+    faces: form.faces,
+    angleDegrees: form.angleDegrees,
+    neutralPlane: buildFeatureDraftNeutralPlane(form)
+  };
+}
+
+function buildFeatureDraftNeutralPlane(
+  form: FeatureDraftForm
+): FeatureDraftNeutralPlane {
+  if (form.neutralKind === "planarFace") {
+    if (!form.neutralFace) {
+      throw new Error("feature.draft planarFace neutralPlane requires a face.");
+    }
+    return { kind: "planarFace", face: form.neutralFace };
+  }
+  if (!form.neutralDatumId.trim()) {
+    throw new Error("feature.draft datumPlane requires a datum id.");
+  }
+  return { kind: "datumPlane", datumId: form.neutralDatumId };
 }
 
 function requireAlignFace(

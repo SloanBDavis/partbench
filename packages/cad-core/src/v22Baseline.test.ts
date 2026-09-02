@@ -90,6 +90,7 @@ const SELECTION = {
   combineFeature: selection(S.combineFeature.cases),
   offsetFeature: selection(S.offsetFeature.cases),
   alignFeature: selection(S.alignFeature.cases),
+  draftFeature: selection(S.draftFeature.cases),
   shellFeature: selection(S.shellFeature.cases),
   sweepFeature: selection(S.sweepFeature.cases),
   loftFeature: selection(S.loftFeature.cases),
@@ -157,6 +158,9 @@ const COLLECTORS = [
   ]),
   collector(F, ["feature.align"], [], [ACTIVE_ANCHOR], "align readiness", [
     "feature.align"
+  ]),
+  collector(F, ["feature.draft"], [], [ACTIVE_ANCHOR], "draft readiness", [
+    "feature.draft"
   ]),
   collector(
     F,
@@ -251,6 +255,7 @@ const PREVIEW_GRIPS = {
   combine: preview(MUST, NO),
   offset: preview(MUST, MUST, ["distance"]),
   align: preview(MUST, NO),
+  draft: preview(MUST, NO),
   shell: preview(MUST, MUST, ["wallThickness"]),
   sweep: preview(MUST, MUST),
   loft: preview(MUST, MUST)
@@ -388,7 +393,7 @@ describe("V22 Gate A baseline fixtures", () => {
       )
     ).toBe(true);
     expect(new Set(COLLECTORS.flatMap(([, reference]) => reference)).size).toBe(
-      13
+      14
     );
     expect(HANDOFF.outcomes).toHaveLength(11);
     expect(HANDOFF.promotable.kinds).toEqual(["body", "face", "edge"]);

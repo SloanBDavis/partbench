@@ -219,6 +219,8 @@ function getDirectBodyDependency(
       return source.targetBodyId;
     case "alignFeature":
       return source.seedBodyId;
+    case "draftFeature":
+      return source.targetBodyId;
     default: {
       const exhaustive: never = source;
       return exhaustive;

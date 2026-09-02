@@ -19,6 +19,7 @@ import type {
   FeatureMirrorForm,
   FeatureCombineForm,
   FeatureAlignForm,
+  FeatureDraftForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
   FeatureShellForm,
@@ -307,6 +308,31 @@ describe("V22 exact feature preview planner", () => {
       op: "feature.align"
     },
     {
+      kind: "draft" as const,
+      draft: {
+        id: "feature-created",
+        bodyId: "body-created",
+        name: "",
+        targetBodyId: "body-target",
+        faces: [
+          {
+            kind: "generatedFace",
+            bodyId: "body-target",
+            stableId: "generated:face:body-target:side:uMax"
+          }
+        ],
+        angleDegrees: 10,
+        neutralKind: "planarFace" as const,
+        neutralFace: {
+          kind: "generatedFace",
+          bodyId: "body-target",
+          stableId: "generated:face:body-target:startCap"
+        },
+        neutralDatumId: ""
+      } satisfies FeatureDraftForm,
+      op: "feature.draft"
+    },
+    {
       kind: "shell" as const,
       draft: {
         id: "feature-created",
@@ -557,6 +583,58 @@ describe("V22 exact feature preview planner", () => {
             stableId: "generated:face:body_source_axis:side:uMax"
           },
           target: { kind: "datumAxis", datumId: "datum_axis_z" }
+        }
+      ]
+    });
+  });
+
+  it("submits the same feature.draft batch as the drafted-face CADOps case", () => {
+    const form = {
+      id: "feat_draft_side",
+      bodyId: "body_draft_side",
+      name: "",
+      targetBodyId: "body_block",
+      faces: [
+        {
+          kind: "generatedFace" as const,
+          bodyId: "body_block",
+          stableId: "generated:face:body_block:side:uMax"
+        }
+      ],
+      angleDegrees: 10,
+      neutralKind: "planarFace" as const,
+      neutralFace: {
+        kind: "generatedFace" as const,
+        bodyId: "body_block",
+        stableId: "generated:face:body_block:startCap"
+      },
+      neutralDatumId: ""
+    } satisfies FeatureDraftForm;
+    expect(planExactFeaturePreview(makeInput("draft", form, "create"))).toMatchObject({
+      status: "supported",
+      requiresExactDownstreamCommitPreflight: false,
+      ops: [
+        {
+          op: "feature.draft",
+          id: "feat_draft_side",
+          bodyId: "body_draft_side",
+          targetBodyId: "body_block",
+          faces: [
+            {
+              kind: "generatedFace",
+              bodyId: "body_block",
+              stableId: "generated:face:body_block:side:uMax"
+            }
+          ],
+          angleDegrees: 10,
+          neutralPlane: {
+            kind: "planarFace",
+            face: {
+              kind: "generatedFace",
+              bodyId: "body_block",
+              stableId: "generated:face:body_block:startCap"
+            }
+          }
         }
       ]
     });

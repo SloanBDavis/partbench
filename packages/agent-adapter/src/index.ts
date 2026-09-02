@@ -3096,6 +3096,19 @@ function createOperationReview(
         targetBodyId: op.seedBodyId
       };
 
+    case "feature.draft":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create draft feature ${op.id ?? "with generated ID"} on ${op.faces.length} face${op.faces.length === 1 ? "" : "s"} of ${op.targetBodyId} at ${op.angleDegrees}°`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId
+      };
+
     case "feature.shell":
       return {
         ...operationReviewBase(
@@ -5517,6 +5530,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.shell" ||
     value === "feature.offset" ||
     value === "feature.align" ||
+    value === "feature.draft" ||
     value === "feature.mirrorPlane" ||
     value === "feature.linearPatternDirection" ||
     value === "feature.circularPatternAxis" ||
@@ -6237,6 +6251,22 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.seedBodyId === "string" &&
       isFeatureShellOpenFaceRefShape(value.sourceFace) &&
       isFeatureAlignTargetShape(value.target)
+    );
+  }
+
+  if (value.op === "feature.draft") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      Array.isArray(value.faces) &&
+      value.faces.length > 0 &&
+      value.faces.every(isFeatureShellOpenFaceRefShape) &&
+      typeof value.angleDegrees === "number" &&
+      Number.isFinite(value.angleDegrees) &&
+      value.angleDegrees !== 0 &&
+      isFeatureDraftNeutralPlaneShape(value.neutralPlane)
     );
   }
 
@@ -7166,6 +7196,20 @@ function isFeatureAlignTargetShape(value: unknown): boolean {
   }
   return (
     (value.kind === "datumPlane" || value.kind === "datumAxis") &&
+    typeof value.datumId === "string" &&
+    value.datumId !== ""
+  );
+}
+
+function isFeatureDraftNeutralPlaneShape(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  if (value.kind === "planarFace") {
+    return isFeatureShellOpenFaceRefShape(value.face);
+  }
+  return (
+    value.kind === "datumPlane" &&
     typeof value.datumId === "string" &&
     value.datumId !== ""
   );

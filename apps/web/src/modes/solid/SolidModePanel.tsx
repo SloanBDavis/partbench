@@ -19,6 +19,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureAlignForm,
+  FeatureDraftForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -778,6 +779,19 @@ function SolidDraftFields({
           faceChoices={request.choices?.openFaces ?? []}
           datumChoices={request.choices?.datums ?? []}
           lockedSeed={request.mode === "edit"}
+          collecting={collecting}
+          onCollect={onCollect}
+          onChange={onChange}
+        />
+      );
+    case "draft":
+      return (
+        <DraftFields
+          draft={draft as FeatureDraftForm}
+          bodyChoices={request.choices?.targetBodies ?? []}
+          faceChoices={request.choices?.openFaces ?? []}
+          datumChoices={request.choices?.datums ?? []}
+          lockedTarget={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -2441,6 +2455,127 @@ function AlignFields({
           onCollect={() => onCollect("rotationAxis", ["datum"])}
           onChange={(targetDatumId) => onChange({ ...draft, targetDatumId })}
           onClear={() => onChange({ ...draft, targetDatumId: "" })}
+        />
+      )}
+    </>
+  );
+}
+
+function DraftFields({
+  draft,
+  bodyChoices,
+  faceChoices,
+  datumChoices,
+  lockedTarget,
+  collecting,
+  onCollect,
+  onChange
+}: {
+  readonly draft: FeatureDraftForm;
+  readonly bodyChoices: readonly SolidChoice<string>[];
+  readonly faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[];
+  readonly datumChoices: readonly SolidChoice<string>[];
+  readonly lockedTarget: boolean;
+  readonly collecting?: string;
+  readonly onCollect: (
+    collector: SolidCollectorRequest["collector"],
+    acceptedKinds: readonly string[]
+  ) => void;
+  readonly onChange: (draft: FeatureDraftForm) => void;
+}) {
+  const targetFaceChoices = faceChoices.filter(
+    (choice) =>
+      choice.targetBodyId === undefined ||
+      choice.targetBodyId === draft.targetBodyId
+  );
+  const selectedFaceKeys = draft.faces
+    .map((face) => findChoiceKey(targetFaceChoices, face))
+    .filter((key): key is string => Boolean(key));
+  const planeDatums = datumChoices.filter((choice) => choice.kind === "datum-plane");
+  return (
+    <>
+      <FeatureIdentityFields
+        draft={draft}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <ChoiceCollector
+        label="Target body"
+        acceptedKinds={["body"]}
+        choices={bodyChoices}
+        selectedKey={findChoiceKey(bodyChoices, draft.targetBodyId)}
+        collecting={collecting === "targetBody"}
+        disabled={lockedTarget}
+        required
+        onCollect={() => onCollect("targetBody", ["body"])}
+        onChange={(targetBodyId) =>
+          onChange({ ...draft, targetBodyId, faces: [] })
+        }
+        onClear={() => onChange({ ...draft, targetBodyId: "", faces: [] })}
+      />
+      <MultiChoiceCollector
+        label="Faces to draft"
+        acceptedKinds={["face", "named face"]}
+        choices={targetFaceChoices}
+        selectedKeys={selectedFaceKeys}
+        collecting={collecting === "openFaces"}
+        onCollect={() => onCollect("openFaces", ["face", "named face"])}
+        onChange={(faces) => onChange({ ...draft, faces })}
+      />
+      <NumberField
+        label="Angle"
+        name="draft-angle"
+        value={draft.angleDegrees}
+        unit="deg"
+        onChange={(angleDegrees) => onChange({ ...draft, angleDegrees })}
+      />
+      <SelectField
+        label="Neutral plane"
+        name="draft-neutral-kind"
+        value={draft.neutralKind}
+        options={[
+          { value: "planarFace", label: "Planar face" },
+          { value: "datumPlane", label: "Datum plane" }
+        ]}
+        onChange={(neutralKind) =>
+          onChange({
+            ...draft,
+            neutralKind: neutralKind as FeatureDraftForm["neutralKind"],
+            neutralFace: undefined,
+            neutralDatumId: ""
+          })
+        }
+      />
+      {draft.neutralKind === "planarFace" ? (
+        <ChoiceCollector
+          label="Neutral planar face"
+          acceptedKinds={["face", "named face"]}
+          choices={targetFaceChoices}
+          selectedKey={
+            draft.neutralFace
+              ? targetFaceChoices.find(
+                  (choice) =>
+                    JSON.stringify(choice.value) ===
+                    JSON.stringify(draft.neutralFace)
+                )?.key
+              : undefined
+          }
+          collecting={collecting === "mirrorPlane"}
+          required
+          onCollect={() => onCollect("mirrorPlane", ["face", "named face"])}
+          onChange={(neutralFace) => onChange({ ...draft, neutralFace })}
+          onClear={() => onChange({ ...draft, neutralFace: undefined })}
+        />
+      ) : (
+        <ChoiceCollector
+          label="Neutral datum plane"
+          acceptedKinds={["datum"]}
+          choices={planeDatums}
+          selectedKey={findChoiceKey(planeDatums, draft.neutralDatumId)}
+          collecting={collecting === "rotationAxis"}
+          required
+          onCollect={() => onCollect("rotationAxis", ["datum"])}
+          onChange={(neutralDatumId) => onChange({ ...draft, neutralDatumId })}
+          onClear={() => onChange({ ...draft, neutralDatumId: "" })}
         />
       )}
     </>

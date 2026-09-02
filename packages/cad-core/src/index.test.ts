@@ -5709,6 +5709,7 @@ describe("cad-core", () => {
         "feature.shell": 6,
         "feature.offset": 6,
         "feature.align": 6,
+        "feature.draft": 6,
         "feature.measureReference": 27,
         "feature.selectReference": 27
       }
@@ -6238,6 +6239,7 @@ describe("cad-core", () => {
         "feature.shell",
         "feature.offset",
         "feature.align",
+        "feature.draft",
         "feature.mirrorPlane",
         "feature.measureReference",
         "feature.selectReference"
@@ -6257,6 +6259,7 @@ describe("cad-core", () => {
         "feature.shell",
         "feature.offset",
         "feature.align",
+        "feature.draft",
         "feature.mirrorPlane",
         "feature.measureReference",
         "feature.selectReference"
@@ -6414,6 +6417,7 @@ describe("cad-core", () => {
           "feature.shell",
           "feature.offset",
           "feature.align",
+          "feature.draft",
           "feature.mirrorPlane",
           "feature.measureReference",
           "feature.selectReference"
@@ -6769,6 +6773,7 @@ describe("cad-core", () => {
       "feature.shell",
       "feature.offset",
       "feature.align",
+      "feature.draft",
       "feature.linearPatternDirection",
       "feature.circularPatternAxis",
       "feature.mirrorPlane",
@@ -7131,6 +7136,7 @@ describe("cad-core", () => {
           "feature.shell",
           "feature.offset",
           "feature.align",
+          "feature.draft",
           "feature.mirrorPlane",
           "feature.measureReference",
           "feature.selectReference"
@@ -8501,6 +8507,7 @@ describe("cad-core", () => {
       "feature.shell",
       "feature.offset",
       "feature.align",
+      "feature.draft",
       "feature.mirrorPlane",
       "feature.measureReference",
       "feature.selectReference"
@@ -35740,7 +35747,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         "feature.selectReference",
         "feature.shell",
         "feature.offset",
-        "feature.align"
+        "feature.align",
+        "feature.draft"
       ],
       proof: {
         kind: "axisAlignedPlanarFace",
@@ -35815,7 +35823,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         "feature.attachSketchPlane",
         "feature.shell",
         "feature.offset",
-        "feature.align"
+        "feature.align",
+        "feature.draft"
       ],
       proof: {
         kind: "axisAlignedPlanarFace",
@@ -36077,7 +36086,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         "feature.selectReference",
         "feature.shell",
         "feature.offset",
-        "feature.align"
+        "feature.align",
+        "feature.draft"
       ],
       operationSummaries: [
         expect.objectContaining({
@@ -36108,6 +36118,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           operation: "feature.align",
+          status: "ready",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.draft",
           status: "ready",
           commandable: true
         })

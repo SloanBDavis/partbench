@@ -593,6 +593,7 @@ export type CadOp =
   | FeatureCombineOp
   | FeatureOffsetOp
   | FeatureAlignOp
+  | FeatureDraftOp
   | FeatureShellOp
   | FeatureSweepCommandInput
   | FeatureLoftCommandInput
@@ -2044,6 +2045,40 @@ export interface FeatureAlignOp {
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
+export type FeatureDraftFaceRef = FeatureShellOpenFaceRef;
+
+export type FeatureDraftNeutralPlane =
+  | {
+      readonly kind: "planarFace";
+      readonly face: FeatureDraftFaceRef;
+    }
+  | {
+      readonly kind: "datumPlane";
+      readonly datumId: DatumId;
+    };
+
+export interface FeatureDraftPlane {
+  readonly point: Vec3;
+  readonly normal: Vec3;
+}
+
+export interface FeatureDraftedFaceRecord {
+  readonly face: FeatureDraftFaceRef;
+  readonly plane: FeatureDraftPlane;
+}
+
+export interface FeatureDraftOp {
+  readonly op: "feature.draft";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
+}
+
 export interface FeatureUpdateMirrorOp {
   readonly op: "feature.updateMirror";
   readonly id: FeatureId;
@@ -2269,6 +2304,7 @@ export type CadFeatureRef =
   | CadCombineFeatureRef
   | CadOffsetFeatureRef
   | CadAlignFeatureRef
+  | CadDraftFeatureRef
   | CadShellFeatureRef
   | CadImportedBodyFeatureRef
   | CadSweepFeatureRef
@@ -2421,6 +2457,18 @@ export interface CadAlignFeatureRef {
   readonly target: FeatureAlignTarget;
   readonly transform: FeatureAlignTransform;
   readonly alignedSourceFace: FeatureAlignPlane;
+}
+
+export interface CadDraftFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "draft";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
 }
 
 export type CadSweepFeatureRef =
@@ -4204,6 +4252,19 @@ export interface AlignFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface DraftFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "draft";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
+  readonly bodyId: BodyId;
+}
+
 export interface SweepFeatureSnapshot {
   readonly id: FeatureId;
   readonly kind: "sweep";
@@ -4313,6 +4374,7 @@ export type FeatureSnapshotV21 =
   | CombineFeatureSnapshot
   | OffsetFeatureSnapshot
   | AlignFeatureSnapshot
+  | DraftFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureV21
   | LoftFeatureV21;
@@ -4330,6 +4392,7 @@ export type FeatureSnapshotV22 =
   | CombineFeatureSnapshot
   | OffsetFeatureSnapshot
   | AlignFeatureSnapshot
+  | DraftFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureV22
   | LoftFeatureV22;
@@ -4357,6 +4420,7 @@ export type FeatureSnapshot =
   | CombineFeatureSnapshot
   | OffsetFeatureSnapshot
   | AlignFeatureSnapshot
+  | DraftFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureSnapshot
   | LoftFeatureSnapshot;
@@ -4905,6 +4969,31 @@ export interface CadAlignFeatureSummary {
   readonly source: CadAlignFeatureSource;
 }
 
+export interface CadDraftFeatureSource {
+  readonly type: "draftFeature";
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
+}
+
+export interface CadDraftFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "draft";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
+  readonly name?: string;
+  readonly source: CadDraftFeatureSource;
+}
+
 export interface CadShellFeatureSource {
   readonly type: "shellFeature";
   readonly targetBodyId: BodyId;
@@ -4965,6 +5054,7 @@ export type CadFeatureSummary =
   | CadCombineFeatureSummary
   | CadOffsetFeatureSummary
   | CadAlignFeatureSummary
+  | CadDraftFeatureSummary
   | CadShellFeatureSummary
   | CadSweepFeatureSummary
   | CadLoftFeatureSummary;
@@ -6081,6 +6171,17 @@ export interface CadAlignBodySource {
   readonly alignedSourceFace: FeatureAlignPlane;
 }
 
+export interface CadDraftBodySource {
+  readonly type: "draftFeature";
+  readonly featureId: FeatureId;
+  readonly targetBodyId: BodyId;
+  readonly faces: readonly FeatureDraftFaceRef[];
+  readonly angleDegrees: number;
+  readonly neutralPlane: FeatureDraftNeutralPlane;
+  readonly pullDirection: Vec3;
+  readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
+}
+
 export interface CadShellBodySource {
   readonly type: "shellFeature";
   readonly featureId: FeatureId;
@@ -6119,6 +6220,7 @@ export type CadBodySource =
   | CadCombineBodySource
   | CadOffsetBodySource
   | CadAlignBodySource
+  | CadDraftBodySource
   | CadShellBodySource
   | CadSweepBodySource
   | CadLoftBodySource
@@ -6567,6 +6669,7 @@ export type CadGeneratedReferenceEligibleOperation =
   | "feature.shell"
   | "feature.offset"
   | "feature.align"
+  | "feature.draft"
   | "feature.linearPatternDirection"
   | "feature.circularPatternAxis"
   | "feature.mirrorPlane"
@@ -7855,6 +7958,7 @@ export type CadBodyTopologySourceKind =
   | "authoredCombine"
   | "authoredOffset"
   | "authoredAlign"
+  | "authoredDraft"
   | "authoredSweep"
   | "authoredLoft"
   | "importedBody"
@@ -8213,6 +8317,7 @@ export type CadExportBodySourceKind =
   | "authoredCombine"
   | "authoredOffset"
   | "authoredAlign"
+  | "authoredDraft"
   | "authoredShell"
   | "importedBody"
   | "primitiveCompatibility"
@@ -8231,6 +8336,7 @@ export const CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE = {
   combineFeature: "authoredCombine",
   offsetFeature: "authoredOffset",
   alignFeature: "authoredAlign",
+  draftFeature: "authoredDraft",
   shellFeature: "authoredShell",
   sweepFeature: "authoredSweep",
   loftFeature: "authoredLoft",

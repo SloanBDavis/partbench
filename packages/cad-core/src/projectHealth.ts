@@ -80,6 +80,7 @@ import type {
   CombineFeature,
   OffsetFeature,
   AlignFeature,
+  DraftFeature,
   ShellFeature,
   SweepFeature,
   LoftFeature
@@ -150,6 +151,7 @@ export type ProjectHealthFeature =
   | CombineFeature
   | OffsetFeature
   | AlignFeature
+  | DraftFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature;
@@ -2120,6 +2122,7 @@ function getProjectHealthFeaturePrimaryEntityRef(
     | CombineFeature
     | OffsetFeature
     | AlignFeature
+    | DraftFeature
     | ShellFeature
     | SweepFeature
     | LoftFeature
@@ -2150,6 +2153,7 @@ function hasSketchEntitySource(
   | CombineFeature
   | OffsetFeature
   | AlignFeature
+  | DraftFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -2163,6 +2167,7 @@ function hasSketchEntitySource(
     feature.kind !== "combine" &&
     feature.kind !== "offset" &&
     feature.kind !== "align" &&
+    feature.kind !== "draft" &&
     feature.kind !== "shell" &&
     feature.kind !== "sweep" &&
     feature.kind !== "loft" &&
@@ -2182,7 +2187,8 @@ function isTargetConsumingProjectHealthFeature(
     feature.kind === "fillet" ||
     feature.kind === "shell" ||
     feature.kind === "combine" ||
-    feature.kind === "offset"
+    feature.kind === "offset" ||
+    feature.kind === "draft"
   );
 }
 
@@ -2656,6 +2662,10 @@ function describeFeatureForHealth(
 
   if (feature.kind === "align") {
     return "align result";
+  }
+
+  if (feature.kind === "draft") {
+    return "draft result";
   }
 
   if (feature.kind === "shell") {

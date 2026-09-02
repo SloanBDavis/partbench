@@ -1381,6 +1381,10 @@ function createConsumedBodyIds(
           return [feature.seedBodyId];
         }
 
+        if (feature.kind === "draft") {
+          return [feature.targetBodyId];
+        }
+
         return [];
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))

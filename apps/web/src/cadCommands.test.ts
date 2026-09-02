@@ -33,6 +33,7 @@ import {
   buildFeatureLinearPatternOp,
   buildFeatureMirrorOp,
   buildFeatureAlignOp,
+  buildFeatureDraftOp,
   buildFeatureCombineOp,
   buildFeatureOffsetOp,
   buildFeatureUpdateOffsetOp,
@@ -1024,6 +1025,52 @@ describe("cad command builders", () => {
         stableId: "generated:face:body_source_axis:side:uMax"
       },
       target: { kind: "datumAxis", datumId: "datum_axis_z" }
+    });
+
+    expect(
+      buildFeatureDraftOp({
+        id: " feat_draft_side ",
+        bodyId: " body_draft_side ",
+        name: " Draft side ",
+        targetBodyId: "body_block",
+        faces: [
+          {
+            kind: "generatedFace",
+            bodyId: "body_block",
+            stableId: "generated:face:body_block:side:uMax"
+          }
+        ],
+        angleDegrees: 10,
+        neutralKind: "planarFace",
+        neutralFace: {
+          kind: "generatedFace",
+          bodyId: "body_block",
+          stableId: "generated:face:body_block:startCap"
+        },
+        neutralDatumId: ""
+      })
+    ).toEqual({
+      op: "feature.draft",
+      id: "feat_draft_side",
+      bodyId: "body_draft_side",
+      name: "Draft side",
+      targetBodyId: "body_block",
+      faces: [
+        {
+          kind: "generatedFace",
+          bodyId: "body_block",
+          stableId: "generated:face:body_block:side:uMax"
+        }
+      ],
+      angleDegrees: 10,
+      neutralPlane: {
+        kind: "planarFace",
+        face: {
+          kind: "generatedFace",
+          bodyId: "body_block",
+          stableId: "generated:face:body_block:startCap"
+        }
+      }
     });
 
     expect(

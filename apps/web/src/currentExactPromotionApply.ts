@@ -283,6 +283,17 @@ function rewriteConsumingOps(
             : op.target;
         return { ...op, sourceFace, target };
       }
+      case "feature.draft": {
+        const faces = op.faces.map((face) =>
+          alignFaceBelongsToBody(face, bodyId) ? topologyAnchor : face
+        );
+        const neutralPlane =
+          op.neutralPlane.kind === "planarFace" &&
+          alignFaceBelongsToBody(op.neutralPlane.face, bodyId)
+            ? { kind: "planarFace" as const, face: topologyAnchor }
+            : op.neutralPlane;
+        return { ...op, faces, neutralPlane, topologyAnchorProof: proof };
+      }
       case "feature.linearPattern":
       case "feature.updateLinearPattern":
         return {
