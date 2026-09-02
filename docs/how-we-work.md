@@ -30,6 +30,7 @@ slice does not make the user goal more true, delete it.
 
 Proof is a `scenarios/` CADOps scenario and its semantic diffs, not
 Playwright. `pnpm verify` runs typecheck plus the scenarios runner.
+Intense verification includes Chromium on the real workbench (smoke:ui). CADOps scenarios are supporting evidence, not a substitute.
 
 Historical named smokes live under the `legacy:` prefix. They are
 compatibility history. They are not the daily loop. Never rerun V7–V24
@@ -37,9 +38,7 @@ gauntlets.
 
 Per-save: focused tests and typecheck of the packages you touched.
 
-Close a slice when the named closer is green and the user-goal increment
-is visible via a scenarios/ CADOps scenario (and `pnpm dev` if the slice
-is UI).
+Close a slice when the named closer is green and, if the slice has UI, smoke:ui is green on the new scenarios. If you cannot demonstrate it in the running app via smoke:ui, you are not done.
 
 ## Question, delete, then build
 

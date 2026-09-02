@@ -65,6 +65,7 @@ export function SelectionCollectorRow<Value>({
         <Button
           density="dense"
           onClick={collecting ? onStopCollecting : onStartCollecting}
+          data-ui-smoke="pick"
           aria-pressed={collecting}
         >
           {collecting ? "Stop selecting" : "Add selection"}

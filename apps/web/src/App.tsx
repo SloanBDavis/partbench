@@ -186,6 +186,13 @@ import {
   tryApplyFeatureDraft
 } from "./editors/featureApplyBridge";
 import {
+  installUiSmokeHook,
+  isUiSmokeEnabled,
+  readUiSmokeDomSnapshot,
+  uninstallUiSmokeHook,
+  type UiSmokeHost
+} from "./uiSmokeHook";
+import {
   markPartbenchPerformance,
   PARTBENCH_PERFORMANCE_MARKS
 } from "./workbench/performanceMarks";
@@ -2509,6 +2516,7 @@ export function App() {
   const crashRecoveryStorage = () =>
     typeof window !== "undefined" ? window.localStorage : undefined;
   useEffect(() => {
+    if (isUiSmokeEnabled()) return;
     let cancelled = false;
     const marker = peekCrashRecoveryMarker(crashRecoveryStorage());
     if (!marker.indicated) {
@@ -2540,6 +2548,7 @@ export function App() {
     };
   }, []);
   useEffect(() => {
+    if (isUiSmokeEnabled()) return;
     if (!projectFile.dirty) {
       crashRecoverySchedulerRef.current?.cancel();
       crashRecoveryLiveIdentityRef.current = undefined;
@@ -7086,6 +7095,7 @@ export function App() {
     ) => string | null | undefined,
     expectedSourceAuthorityEpoch?: number
   ): Promise<CadAsyncBatchResponse | undefined> {
+    await ensureCadV19RegionSourceValidationPolicy();
     setCommandPending(true);
     setCommandError(undefined);
     setCommandNotice(undefined);
@@ -9231,7 +9241,7 @@ export function App() {
     setSelectedSketchContext(undefined);
     setProjectMessage("Created a new project.");
     setProjectMessageTone("info");
-    void syncDocument(undefined);
+    return syncDocument(undefined);
   }
 
   function loadProjectJsonDraft(projectJsonText: string, fileName: string) {
@@ -10765,6 +10775,102 @@ export function App() {
     return () => window.removeEventListener("keydown", handleShortcut, true);
   }, []);
 
+  const uiSmokeHostRef = useRef({} as UiSmokeHost);
+  uiSmokeHostRef.current = {
+    applyOps: async (ops: readonly CadOp[]) => {
+      const response = await commitOps(ops, () => null);
+      if (!response) {
+        return {
+          ok: false as const,
+          error: {
+            message:
+              "The project changed after exact preflight. Retry the operation."
+          }
+        };
+      }
+      if (!response.ok) {
+        return {
+          ok: false as const,
+          error: {
+            code: response.error.code,
+            message: response.error.message
+          }
+        };
+      }
+      return {
+        ok: true as const,
+        createdIds: response.createdIds,
+        createdBodyIds: response.createdBodyIds,
+        createdFeatureIds: response.createdFeatureIds
+      };
+    },
+    reset: async () => {
+      await createNewProject();
+    },
+    getState: () => {
+      const structure = readProjectStructure();
+      const dom = readUiSmokeDomSnapshot();
+      return {
+        ready: true as const,
+        commandPending,
+        commandError,
+        commandNotice,
+        rebuildState: modelingResultState,
+        alerts: dom.alerts,
+        applyButton: dom.applyButton,
+        pickButton: dom.pickButton,
+        promotionControl: dom.promotionControl,
+        structureQuery: JSON.parse(
+          JSON.stringify(
+            engine.executeQuery({
+              version: "cadops.v1",
+              query: { query: "project.structure" }
+            })
+          )
+        ) as Record<string, unknown>,
+        features: JSON.parse(JSON.stringify(structure.features)) as Record<
+          string,
+          unknown
+        >[],
+        bodies: JSON.parse(JSON.stringify(structure.bodies)) as Record<
+          string,
+          unknown
+        >[],
+        exactStatuses: currentExactResultProjections.map(
+          (projection) => projection.status
+        ),
+        exactResults: currentExactResultProjections.map((projection) => ({
+          bodyId: projection.bodyId,
+          status: projection.status
+        })),
+        displayStatuses: derivedGeometry.entries.map((entry) => entry.status),
+        diagnostic: [
+          commandError,
+          commandNotice,
+          modelingResultState,
+          ...dom.alerts,
+          "exact=" +
+            currentExactResultProjections
+              .map((p) => p.bodyId + ":" + p.status)
+              .join(","),
+          "display=" + derivedGeometry.entries.map((e) => e.status).join(",")
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        userAgent: dom.userAgent
+      };
+    }
+  };
+  useEffect(() => {
+    if (!isUiSmokeEnabled()) return;
+    // host methods read .current so Apply stays the live commitOps
+    installUiSmokeHook({
+      applyOps: (ops) => uiSmokeHostRef.current.applyOps(ops),
+      reset: () => uiSmokeHostRef.current.reset(),
+      getState: () => uiSmokeHostRef.current.getState()
+    });
+    return () => uninstallUiSmokeHook();
+  }, []);
   return (
     <ProgressiveSketchAnalysisProvider
       active={progressiveSketchAnalysis}

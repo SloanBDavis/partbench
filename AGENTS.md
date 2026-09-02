@@ -36,17 +36,19 @@ pnpm dev
 - pnpm smoke:v24-finished-parts — completed V24 closer
 - pnpm smoke:v23-promotion-workflow — completed V23 closer
 - pnpm verify — typecheck plus CADOps scenarios
+- smoke:ui — Chromium workbench loop (filtered on slice close)
 
 Per-save: focused tests and typecheck of the packages you touched. pnpm verify
 is typecheck plus the scenarios/ CADOps runner. It does not rerun V7-V24 smokes.
 Never rerun V7-V24 gauntlets.
 
-The V25 named closer is `pnpm smoke:v25-part-toolkit`.
+The V25 named closer is `pnpm smoke:v25-part-toolkit` (in-process scenarios, vitest pair, and smoke:ui on V25-added scenarios).
 
 ## Slice close
 
-A slice is done when the named closer is green and the user-goal increment is
-visible via a scenarios/ CADOps scenario (and pnpm dev if the slice is UI).
+A slice is done when the named closer is green and, when the slice has UI, smoke:ui is green on the new scenarios.
+CADOps scenarios are supporting evidence, not a substitute. If you cannot demonstrate it in the running app via smoke:ui, you are not done.
+See docs/skills/close-a-slice.md and docs/skills/ui-smoke.md.
 
 ## Packages
 

@@ -1,3 +1,4 @@
+import "@web-cad/cad-core/region-source-validation-policy";
 import { CadEngine, type CadWorkerRequest } from "@web-cad/cad-core/full";
 import type { CadQueryWorkerRequest } from "./browserCadQueryWorker";
 

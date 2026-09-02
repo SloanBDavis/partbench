@@ -114,6 +114,7 @@ export function FeatureEditorShell({
             pending={applying}
             disabled={applyDisabled}
             title="Apply (Ctrl/Cmd+Enter)"
+            data-ui-smoke="apply"
             onClick={onApply}
           >
             {applying ? "Applying…" : "Apply"}

@@ -27,6 +27,7 @@ export function ViewportCandidateList({
       {capped ? <p role="status">64 max; filter/move view.</p> : null}
       <select
         aria-label="Candidates"
+        data-ui-smoke="promotion"
         aria-keyshortcuts="N"
         size={Math.min(rows.length, 6)}
         value={index}
