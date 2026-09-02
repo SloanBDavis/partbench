@@ -521,6 +521,137 @@ describe("currentExactBodyResolver", () => {
     }
   });
 
+  it("attaches an add boolean tool for an extrude-add seed instead of copying the result solid", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_plate",
+        id: "rect_plate",
+        center: [0, 0],
+        width: 60,
+        height: 24
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_plate",
+        bodyId: "body_plate",
+        sketchId: "sketch_plate",
+        entityId: "rect_plate",
+        depth: 6
+      },
+      { op: "sketch.create", id: "sketch_boss", name: "Boss", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_boss",
+        id: "rect_boss",
+        center: [-16, 0],
+        width: 8,
+        height: 8
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_boss",
+        bodyId: "body_boss",
+        sketchId: "sketch_boss",
+        entityId: "rect_boss",
+        depth: 10,
+        operationMode: "add",
+        targetBodyId: "body_plate"
+      },
+      {
+        op: "feature.linearPattern",
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedFeatureId: "feat_boss",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 16,
+        instanceCount: 3
+      }
+    ]);
+    const resolution = createResolverContext(engine).resolutions.find(
+      (candidate) => candidate.bodyId === "body_patterned"
+    );
+    expect(resolution).toMatchObject({
+      status: "ready",
+      source: {
+        kind: "linearPattern",
+        spacing: 16,
+        instanceCount: 3,
+        booleanTool: {
+          operation: "add",
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [-16, 0],
+              width: 8,
+              height: 8
+            },
+            depth: 10
+          }
+        }
+      },
+      artifactDependency: { bodyId: "body_boss" }
+    });
+    if (resolution?.status === "ready") {
+      expect(resolution.source).not.toHaveProperty("holeTool");
+      expect(resolution.source).not.toHaveProperty("seed");
+    }
+  });
+
+  it("blocks consuming feature seeds that have no reconstructable tool instead of copying the result solid", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_block",
+        id: "rect_block",
+        center: [0, 0],
+        width: 20,
+        height: 12
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_block",
+        bodyId: "body_block",
+        sketchId: "sketch_block",
+        entityId: "rect_block",
+        depth: 8
+      },
+      {
+        op: "feature.chamfer",
+        id: "feat_chamfer",
+        bodyId: "body_chamfer",
+        targetBodyId: "body_block",
+        edgeStableId: "generated:edge:body_block:start:uMin",
+        distance: 2
+      },
+      {
+        op: "feature.linearPattern",
+        id: "feat_pattern",
+        bodyId: "body_patterned",
+        seedFeatureId: "feat_chamfer",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 30,
+        instanceCount: 3
+      }
+    ]);
+    const resolution = createResolverContext(engine).resolutions.find(
+      (candidate) => candidate.bodyId === "body_patterned"
+    );
+    expect(resolution).toMatchObject({
+      status: "blocked",
+      diagnostics: [
+        {
+          message: expect.stringMatching(/no current feature tool/)
+        }
+      ]
+    });
+  });
+
   it("projects imported and downstream checkpoint resolutions into one display and metadata source", () => {
     const resolutions = [
       resolveImportedDownstream({ kind: "boolean", operation: "cut" }),

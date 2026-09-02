@@ -1680,6 +1680,28 @@ export type PatternSeedFields =
   | { readonly seedBodyId: BodyId; readonly seedFeatureId?: never }
   | { readonly seedFeatureId: FeatureId; readonly seedBodyId?: never };
 
+export const PATTERNED_SEED_FEATURE_KINDS = [
+  "extrude",
+  "revolve",
+  "hole",
+  "chamfer",
+  "fillet",
+  "combine",
+  "shell",
+  "sweep",
+  "loft",
+  "mirror"
+] as const;
+
+export type PatternedSeedFeatureKind =
+  (typeof PATTERNED_SEED_FEATURE_KINDS)[number];
+
+export function isPatternedSeedFeatureKind(
+  kind: string
+): kind is PatternedSeedFeatureKind {
+  return (PATTERNED_SEED_FEATURE_KINDS as readonly string[]).includes(kind);
+}
+
 export function readExclusivePatternSeed(value: {
   readonly seedBodyId?: unknown;
   readonly seedFeatureId?: unknown;

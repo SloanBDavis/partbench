@@ -3,6 +3,7 @@ import {
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   isSketchDimensionTargetV22,
   isSketchRegionsProfileRef,
+  isPatternedSeedFeatureKind,
   patternSeedSourceFields,
   readExclusivePatternSeed,
   validateV19CadOp,
@@ -16762,18 +16763,33 @@ function validatePatternSeedFeatureId(
       opIndex,
       featureId: seedFeatureId,
       path: operationPath(opIndex, "seedFeatureId"),
-      expected: "completed feature.hole id",
+      expected: "completed patterned solid feature id",
       received: seedFeatureId
     });
   }
-  if (seedFeature.kind !== "hole") {
+  if (
+    seedFeature.kind === "linearPattern" ||
+    seedFeature.kind === "circularPattern"
+  ) {
     throwValidationError({
       code: "INVALID_FEATURE",
-      message: `${operation} seedFeatureId must name a completed feature.hole.`,
+      message: `${operation} seedFeatureId cannot name a nested pattern-of-pattern.`,
       opIndex,
       featureId: seedFeatureId,
       path: operationPath(opIndex, "seedFeatureId"),
-      expected: "feature.hole",
+      expected: "completed patterned solid feature, not a pattern",
+      received: seedFeature.kind
+    });
+  }
+  if (!isPatternedSeedFeatureKind(seedFeature.kind)) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} seedFeatureId must name a completed patterned solid feature.`,
+      opIndex,
+      featureId: seedFeatureId,
+      path: operationPath(opIndex, "seedFeatureId"),
+      expected:
+        "extrude, revolve, hole, chamfer, fillet, combine, shell, sweep, loft, or mirror",
       received: seedFeature.kind
     });
   }
@@ -18644,11 +18660,11 @@ function getPatternConsumedBodyId(
   const seedFeature = feature.seedFeatureId
     ? features.get(feature.seedFeatureId)
     : undefined;
-  if (seedFeature?.kind === "hole") {
+  if (seedFeature && isPatternedSeedFeatureKind(seedFeature.kind)) {
     return seedFeature.bodyId;
   }
   throw new Error(
-    `Pattern feature ${feature.id} is missing an exclusive body or hole seed.`
+    `Pattern feature ${feature.id} is missing an exclusive body or patterned solid feature seed.`
   );
 }
 

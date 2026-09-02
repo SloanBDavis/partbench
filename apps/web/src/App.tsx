@@ -25,7 +25,10 @@ import type {
   CadAgentExactExportRequest,
   CadAgentExactExportResult
 } from "@web-cad/agent-adapter";
-import { isCadExactDownstreamGeometryOp } from "@web-cad/cad-protocol";
+import {
+  isCadExactDownstreamGeometryOp,
+  isPatternedSeedFeatureKind
+} from "@web-cad/cad-protocol";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadBodyDerivedExactMetadataSnapshot,
@@ -3873,12 +3876,14 @@ export function App() {
   );
   const solidSeedBodyChoices =
     exactDownstreamModelingState?.patternSeedBodyChoices ?? EMPTY_SOLID_CHOICES;
-  const solidHolePatternChoices = useMemo<readonly SolidChoice<string>[]>(() => {
+  const solidPatternSeedFeatureChoices = useMemo<
+    readonly SolidChoice<string>[]
+  >(() => {
     const bodiesById = new Map(
       projectStructure.bodies.map((body) => [body.id, body])
     );
     return projectStructure.features.flatMap((feature) => {
-      if (feature.kind !== "hole") return [];
+      if (!isPatternedSeedFeatureKind(feature.kind)) return [];
       const body = bodiesById.get(feature.bodyId);
       if (!body || body.consumedByFeatureId) return [];
       const seedChoice = solidSeedBodyChoices.find(
@@ -3890,8 +3895,8 @@ export function App() {
           key: feature.id,
           value: feature.id,
           label: feature.name ?? body.name ?? feature.id,
-          kind: "hole feature",
-          detail: "Completed hole on the current exact body"
+          kind: "solid feature",
+          detail: `Completed ${feature.kind} on the current exact body`
         }
       ];
     });
@@ -4424,8 +4429,9 @@ export function App() {
       (choice) => choice.value === selectedBody?.id && !choice.disabled
     )?.value ?? "";
   const selectedSeedFeatureId =
-    selectedFeature?.kind === "hole" &&
-    solidHolePatternChoices.some(
+    selectedFeature &&
+    isPatternedSeedFeatureKind(selectedFeature.kind) &&
+    solidPatternSeedFeatureChoices.some(
       (choice) => choice.value === selectedFeature.id
     )
       ? selectedFeature.id
@@ -4992,7 +4998,7 @@ export function App() {
           },
           choices: {
             seedBodies: allSolidBodyChoices,
-            seedFeatures: solidHolePatternChoices,
+            seedFeatures: solidPatternSeedFeatureChoices,
             directions: includeCurrentSolidChoice(solidLinearDirectionChoices, {
               key: `current:${selectedFeature.id}`,
               value: selectedFeature.direction,
@@ -5021,7 +5027,7 @@ export function App() {
           },
           choices: {
             seedBodies: allSolidBodyChoices,
-            seedFeatures: solidHolePatternChoices,
+            seedFeatures: solidPatternSeedFeatureChoices,
             rotationAxes: includeCurrentSolidChoice(solidRotationAxisChoices, {
               key: `current:${selectedFeature.id}`,
               value: selectedFeature.rotationAxis,
@@ -5350,15 +5356,15 @@ export function App() {
         },
         choices: {
           seedBodies: solidSeedBodyChoices,
-          seedFeatures: solidHolePatternChoices,
+          seedFeatures: solidPatternSeedFeatureChoices,
           directions: solidLinearDirectionChoices
         },
         blockedReason:
           selectedSeedBodyId ||
           selectedSeedFeatureId ||
-          solidHolePatternChoices.length > 0
+          solidPatternSeedFeatureChoices.length > 0
             ? undefined
-            : "Select a supported seed body or hole feature."
+            : "Select a supported seed body or completed solid feature."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.circular-pattern") {
@@ -5381,15 +5387,15 @@ export function App() {
         },
         choices: {
           seedBodies: solidSeedBodyChoices,
-          seedFeatures: solidHolePatternChoices,
+          seedFeatures: solidPatternSeedFeatureChoices,
           rotationAxes: solidRotationAxisChoices
         },
         blockedReason:
           selectedSeedBodyId ||
           selectedSeedFeatureId ||
-          solidHolePatternChoices.length > 0
+          solidPatternSeedFeatureChoices.length > 0
             ? undefined
-            : "Select a supported seed body or hole feature."
+            : "Select a supported seed body or completed solid feature."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.mirror") {
@@ -5501,7 +5507,7 @@ export function App() {
     solidLinearDirectionChoices,
     solidRotationAxisChoices,
     solidSeedBodyChoices,
-    solidHolePatternChoices,
+    solidPatternSeedFeatureChoices,
     solidCombineBodyChoices,
     solidShellTargetBodyChoices,
     solidShellFaceChoices,
@@ -10386,13 +10392,13 @@ export function App() {
       "solid.linear-pattern":
         selectedSeedBodyId ||
         selectedSeedFeatureId ||
-        solidHolePatternChoices.length > 0
+        solidPatternSeedFeatureChoices.length > 0
           ? ready
           : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLinearPattern),
       "solid.circular-pattern":
         selectedSeedBodyId ||
         selectedSeedFeatureId ||
-        solidHolePatternChoices.length > 0
+        solidPatternSeedFeatureChoices.length > 0
           ? ready
           : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCircularPattern),
       "solid.mirror": selectedSeedBodyId
@@ -10525,7 +10531,7 @@ export function App() {
     sketches,
     solidAxisChoices.length,
     solidCombineBodyChoices.length,
-    solidHolePatternChoices.length,
+    solidPatternSeedFeatureChoices.length,
     solidHoleTargetChoices.length,
     solidPathChoices.length,
     solidProfileChoices,

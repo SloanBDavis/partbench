@@ -712,7 +712,7 @@ function SolidDraftFields({
         <LinearPatternFields
           draft={draft as FeatureLinearPatternForm}
           seedChoices={request.choices?.seedBodies ?? []}
-          holeChoices={request.choices?.seedFeatures ?? []}
+          seedFeatureChoices={request.choices?.seedFeatures ?? []}
           directionChoices={request.choices?.directions ?? []}
           lockedSeed={request.mode === "edit"}
           collecting={collecting}
@@ -725,7 +725,7 @@ function SolidDraftFields({
         <CircularPatternFields
           draft={draft as FeatureCircularPatternForm}
           seedChoices={request.choices?.seedBodies ?? []}
-          holeChoices={request.choices?.seedFeatures ?? []}
+          seedFeatureChoices={request.choices?.seedFeatures ?? []}
           axisChoices={request.choices?.rotationAxes ?? []}
           lockedSeed={request.mode === "edit"}
           collecting={collecting}
@@ -1843,7 +1843,7 @@ function ShellFields({
 function LinearPatternFields({
   draft,
   seedChoices,
-  holeChoices,
+  seedFeatureChoices,
   directionChoices,
   lockedSeed,
   collecting,
@@ -1852,7 +1852,7 @@ function LinearPatternFields({
 }: {
   readonly draft: FeatureLinearPatternForm;
   readonly seedChoices: readonly SolidChoice<string>[];
-  readonly holeChoices: readonly SolidChoice<string>[];
+  readonly seedFeatureChoices: readonly SolidChoice<string>[];
   readonly directionChoices: readonly SolidChoice<PatternDirectionRef>[];
   readonly lockedSeed: boolean;
   readonly collecting?: string;
@@ -1883,14 +1883,14 @@ function LinearPatternFields({
         onClear={() => onChange({ ...draft, seedBodyId: "" })}
       />
       <ChoiceCollector
-        label="Seed hole"
-        acceptedKinds={["hole feature"]}
-        choices={holeChoices}
-        selectedKey={findChoiceKey(holeChoices, draft.seedFeatureId)}
+        label="Seed feature"
+        acceptedKinds={["solid feature"]}
+        choices={seedFeatureChoices}
+        selectedKey={findChoiceKey(seedFeatureChoices, draft.seedFeatureId)}
         collecting={collecting === "seedFeature"}
         disabled={lockedSeed || Boolean(draft.seedBodyId)}
         required={!draft.seedBodyId}
-        onCollect={() => onCollect("seedFeature", ["hole feature"])}
+        onCollect={() => onCollect("seedFeature", ["solid feature"])}
         onChange={(seedFeatureId) =>
           onChange({ ...draft, seedFeatureId, seedBodyId: "" })
         }
@@ -1931,7 +1931,7 @@ function LinearPatternFields({
 function CircularPatternFields({
   draft,
   seedChoices,
-  holeChoices,
+  seedFeatureChoices,
   axisChoices,
   lockedSeed,
   collecting,
@@ -1940,7 +1940,7 @@ function CircularPatternFields({
 }: {
   readonly draft: FeatureCircularPatternForm;
   readonly seedChoices: readonly SolidChoice<string>[];
-  readonly holeChoices: readonly SolidChoice<string>[];
+  readonly seedFeatureChoices: readonly SolidChoice<string>[];
   readonly axisChoices: readonly SolidChoice<PatternRotationAxisRef>[];
   readonly lockedSeed: boolean;
   readonly collecting?: string;
@@ -1971,14 +1971,14 @@ function CircularPatternFields({
         onClear={() => onChange({ ...draft, seedBodyId: "" })}
       />
       <ChoiceCollector
-        label="Seed hole"
-        acceptedKinds={["hole feature"]}
-        choices={holeChoices}
-        selectedKey={findChoiceKey(holeChoices, draft.seedFeatureId)}
+        label="Seed feature"
+        acceptedKinds={["solid feature"]}
+        choices={seedFeatureChoices}
+        selectedKey={findChoiceKey(seedFeatureChoices, draft.seedFeatureId)}
         collecting={collecting === "seedFeature"}
         disabled={lockedSeed || Boolean(draft.seedBodyId)}
         required={!draft.seedBodyId}
-        onCollect={() => onCollect("seedFeature", ["hole feature"])}
+        onCollect={() => onCollect("seedFeature", ["solid feature"])}
         onChange={(seedFeatureId) =>
           onChange({ ...draft, seedFeatureId, seedBodyId: "" })
         }

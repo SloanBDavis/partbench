@@ -741,6 +741,11 @@ export interface ExactArtifactHoleSource {
   readonly tool: HoleToolSource;
 }
 
+export interface PatternBooleanToolSource {
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly tool: BooleanExtrudeToolSource;
+}
+
 export interface ExactArtifactLinearPatternSource {
   readonly kind: "artifactLinearPattern";
   readonly seed: ExactBodyArtifactLeaf;
@@ -748,6 +753,7 @@ export interface ExactArtifactLinearPatternSource {
   readonly spacing: number;
   readonly instanceCount: number;
   readonly holeTool?: HoleToolSource;
+  readonly booleanTool?: PatternBooleanToolSource;
 }
 
 export interface ExactArtifactCircularPatternSource {
@@ -757,6 +763,7 @@ export interface ExactArtifactCircularPatternSource {
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly holeTool?: HoleToolSource;
+  readonly booleanTool?: PatternBooleanToolSource;
 }
 
 export interface ExactArtifactMirrorSource {
@@ -4097,6 +4104,28 @@ function isValidOptionalHoleToolSource(
   return source === undefined || isValidHoleToolSource(source);
 }
 
+function isValidOptionalBooleanToolSource(
+  source: PatternBooleanToolSource | undefined
+): boolean {
+  return (
+    source === undefined ||
+    isValidBooleanExtrudeToolSource(source.operation, source.tool)
+  );
+}
+
+function isValidOptionalPatternFeatureTools(source: {
+  readonly holeTool?: HoleToolSource;
+  readonly booleanTool?: PatternBooleanToolSource;
+}): boolean {
+  if (source.holeTool && source.booleanTool) {
+    return false;
+  }
+  return (
+    isValidOptionalHoleToolSource(source.holeTool) &&
+    isValidOptionalBooleanToolSource(source.booleanTool)
+  );
+}
+
 function isValidEdgeFinishAmount(request: EdgeFinishRequest): boolean {
   if (
     typeof request.edgeStableId !== "string" ||
@@ -4452,7 +4481,7 @@ function validateExactBodyArtifactSource(
       (isUnitVec3(source.direction) &&
       isPositiveFiniteNumber(source.spacing) &&
       isValidArtifactPatternInstanceCount(source.instanceCount) &&
-      isValidOptionalHoleToolSource(source.holeTool)
+      isValidOptionalPatternFeatureTools(source)
         ? undefined
         : createInvalidExactBodyMetadataSourceError())
     );
@@ -4465,7 +4494,7 @@ function validateExactBodyArtifactSource(
       isPositiveFiniteNumber(source.totalAngleDegrees) &&
       source.totalAngleDegrees <= 360 &&
       isValidArtifactPatternInstanceCount(source.instanceCount) &&
-      isValidOptionalHoleToolSource(source.holeTool)
+      isValidOptionalPatternFeatureTools(source)
         ? undefined
         : createInvalidExactBodyMetadataSourceError())
     );

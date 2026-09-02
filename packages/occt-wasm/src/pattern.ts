@@ -1,9 +1,12 @@
 import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
+  makeBooleanExtrudeToolShape,
   type OcctBooleanExtrudeSource,
   type OcctBooleanExtrudePrimitiveSource,
-  type OcctBooleanExtrudeResultSource
+  type OcctBooleanExtrudeResultSource,
+  type OcctBooleanExtrudeToolSource,
+  type OcctBooleanOperation
 } from "./booleanExtrudes";
 import {
   makeRevolveProfileShape,
@@ -77,6 +80,11 @@ export type OcctPatternSeedEdgeFinishSource =
       OcctFilletEdgeFinishInput,
       "linearDeflection" | "angularDeflection"
     >);
+
+export interface OcctPatternBooleanToolSource {
+  readonly operation: OcctBooleanOperation;
+  readonly tool: OcctBooleanExtrudeToolSource;
+}
 
 export interface OcctLinearPatternInput {
   readonly seed: OcctPatternSeedSource;
@@ -463,6 +471,116 @@ export function makeCircularHolePatternShape(
       );
     }
   );
+}
+
+export function makeLinearBooleanPatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  input: Pick<OcctLinearPatternInput, "direction" | "spacing" | "instanceCount">,
+  booleanTool: OcctPatternBooleanToolSource
+): TopoDS_Shape {
+  const { direction, spacing } = input;
+  return makeTransformedBooleanPatternShape(
+    oc,
+    seedShape,
+    input.instanceCount,
+    booleanTool,
+    (toolShape, instanceIndex) =>
+      applyTranslation(oc, toolShape, [
+        direction[0] * spacing * instanceIndex,
+        direction[1] * spacing * instanceIndex,
+        direction[2] * spacing * instanceIndex
+      ])
+  );
+}
+
+export function makeCircularBooleanPatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  input: Pick<
+    OcctCircularPatternInput,
+    "axis" | "totalAngleDegrees" | "instanceCount"
+  >,
+  booleanTool: OcctPatternBooleanToolSource
+): TopoDS_Shape {
+  const { axis, totalAngleDegrees, instanceCount } = input;
+  const isFullCircle = totalAngleDegrees === 360;
+  return makeTransformedBooleanPatternShape(
+    oc,
+    seedShape,
+    instanceCount,
+    booleanTool,
+    (toolShape, instanceIndex) => {
+      const angleDeg = isFullCircle
+        ? (totalAngleDegrees / instanceCount) * instanceIndex
+        : (totalAngleDegrees / (instanceCount - 1)) * instanceIndex;
+      return applyRotation(
+        oc,
+        toolShape,
+        axis.origin,
+        axis.direction,
+        angleDeg
+      );
+    }
+  );
+}
+
+function makeTransformedBooleanPatternShape(
+  oc: OpenCascadeInstance,
+  seedShape: TopoDS_Shape,
+  instanceCount: number,
+  booleanTool: OcctPatternBooleanToolSource,
+  transformTool: (toolShape: TopoDS_Shape, instanceIndex: number) => TopoDS_Shape
+): TopoDS_Shape {
+  let previousShape: TopoDS_Shape | undefined = copyShape(oc, seedShape);
+
+  try {
+    for (let i = 1; i < instanceCount; i++) {
+      const toolHandle = makeBooleanExtrudeToolShape(oc, booleanTool.tool);
+      let toolShape: TopoDS_Shape | undefined;
+      let transformedTool: TopoDS_Shape | undefined;
+      try {
+        if (!previousShape) {
+          throw {
+            code: "EMPTY_RESULT",
+            message:
+              "Open CASCADE boolean feature pattern lost its accumulated result shape."
+          } satisfies GeometryKernelLikeError;
+        }
+        toolShape = toolHandle.Shape();
+        transformedTool = transformTool(toolShape, i);
+        const operand = previousShape;
+        const nextShape: TopoDS_Shape =
+          booleanTool.operation === "add"
+            ? fusePatternShapes(
+                oc,
+                operand,
+                transformedTool,
+                `Open CASCADE boolean pattern fuse failed at instance ${i}.`
+              )
+            : cutHoleToolFromTarget(oc, operand, transformedTool);
+        operand.delete();
+        previousShape = nextShape;
+      } finally {
+        transformedTool?.delete();
+        toolShape?.delete();
+        toolHandle.delete();
+      }
+    }
+
+    if (!previousShape) {
+      throw {
+        code: "EMPTY_RESULT",
+        message: "Open CASCADE boolean feature pattern produced no shapes."
+      } satisfies GeometryKernelLikeError;
+    }
+
+    const finalShape = previousShape;
+    previousShape = undefined;
+    return finalShape;
+  } finally {
+    previousShape?.delete();
+  }
 }
 
 function makeTransformedHolePatternShape(

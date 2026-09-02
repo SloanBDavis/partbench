@@ -167,10 +167,12 @@ export function validateSolidDraft(
   if (kind === "linearPattern") {
     const form = draft as FeatureLinearPatternForm;
     if (!form.seedBodyId && !form.seedFeatureId) {
-      return collecting("Select an exact-ready seed body or a completed hole.");
+      return collecting(
+        "Select an exact-ready seed body or a completed solid feature."
+      );
     }
     if (form.seedBodyId && form.seedFeatureId) {
-      return blocked("Pattern seed is a body or a hole feature, not both.");
+      return blocked("Pattern seed is a body or a solid feature, not both.");
     }
     return positive(form.spacing) &&
       Number.isInteger(form.instanceCount) &&
@@ -184,10 +186,12 @@ export function validateSolidDraft(
   if (kind === "circularPattern") {
     const form = draft as FeatureCircularPatternForm;
     if (!form.seedBodyId && !form.seedFeatureId) {
-      return collecting("Select an exact-ready seed body or a completed hole.");
+      return collecting(
+        "Select an exact-ready seed body or a completed solid feature."
+      );
     }
     if (form.seedBodyId && form.seedFeatureId) {
-      return blocked("Pattern seed is a body or a hole feature, not both.");
+      return blocked("Pattern seed is a body or a solid feature, not both.");
     }
     return positive(form.totalAngleDegrees) &&
       form.totalAngleDegrees <= 360 &&

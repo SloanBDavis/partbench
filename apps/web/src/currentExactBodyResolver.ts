@@ -10,6 +10,7 @@ import {
 } from "@web-cad/cad-core";
 import {
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
+  isPatternedSeedFeatureKind,
   type CadBodySnapshot,
   type CadBodySource,
   type CadCurrentExactResultStatus,
@@ -51,6 +52,20 @@ export type CurrentExactBodySource =
   | CurrentExactCheckpointHoleSource
   | CurrentExactCheckpointEdgeFinishSource;
 
+type CurrentExactPatternBooleanTool = {
+  readonly operation: "add" | "cut";
+  readonly tool: {
+    readonly sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"];
+    readonly profile: Extract<
+      DerivedExtrudeGeometrySource["profile"],
+      { readonly kind: "rectangle" | "circle" }
+    >;
+    readonly depth: number;
+    readonly side: DerivedExtrudeGeometrySource["side"];
+    readonly placementFrame?: DerivedExtrudeGeometrySource["placementFrame"];
+  };
+};
+
 export type CurrentExactArtifactOperationSource =
   | {
       readonly id: string;
@@ -59,6 +74,7 @@ export type CurrentExactArtifactOperationSource =
       readonly spacing: number;
       readonly instanceCount: number;
       readonly holeTool?: DerivedHoleGeometrySource["tool"];
+      readonly booleanTool?: CurrentExactPatternBooleanTool;
       readonly sourceIdentitySignature: string;
     }
   | {
@@ -71,6 +87,7 @@ export type CurrentExactArtifactOperationSource =
       readonly totalAngleDegrees: number;
       readonly instanceCount: number;
       readonly holeTool?: DerivedHoleGeometrySource["tool"];
+      readonly booleanTool?: CurrentExactPatternBooleanTool;
       readonly sourceIdentitySignature: string;
     }
   | {
@@ -889,7 +906,8 @@ function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
         direction: source.direction,
         spacing: source.spacing,
         instanceCount: source.instanceCount,
-        ...(source.holeTool ? { holeTool: source.holeTool } : {})
+        ...(source.holeTool ? { holeTool: source.holeTool } : {}),
+        ...(source.booleanTool ? { booleanTool: source.booleanTool } : {})
       } as const;
     case "circularPattern":
       return {
@@ -897,7 +915,8 @@ function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
         axis: source.axis,
         totalAngleDegrees: source.totalAngleDegrees,
         instanceCount: source.instanceCount,
-        ...(source.holeTool ? { holeTool: source.holeTool } : {})
+        ...(source.holeTool ? { holeTool: source.holeTool } : {}),
+        ...(source.booleanTool ? { booleanTool: source.booleanTool } : {})
       } as const;
     case "mirror":
       return {
@@ -949,7 +968,7 @@ function getArtifactOperationError(
       if (source.kind !== "linearPattern") {
         return `Linear pattern ${feature.id} has no current artifact operation source.`;
       }
-      const holeToolError = getPatternHoleToolError(feature, source);
+      const holeToolError = getPatternHoleToolError(feature, source, context);
       if (holeToolError) return holeToolError;
       const frame = resolvePatternDirectionFrame(
         context.document,
@@ -961,7 +980,7 @@ function getArtifactOperationError(
       if (source.kind !== "circularPattern") {
         return `Circular pattern ${feature.id} has no current artifact operation source.`;
       }
-      const holeToolError = getPatternHoleToolError(feature, source);
+      const holeToolError = getPatternHoleToolError(feature, source, context);
       if (holeToolError) return holeToolError;
       const frame = resolvePatternRotationAxisFrame(
         context.document,
@@ -1049,7 +1068,8 @@ function getPatternHoleToolError(
   source: Extract<
     CurrentExactArtifactOperationSource,
     { readonly kind: "linearPattern" | "circularPattern" }
-  >
+  >,
+  context: ResolverContext
 ): string | undefined {
   if (
     feature.kind !== "linearPattern" &&
@@ -1058,14 +1078,61 @@ function getPatternHoleToolError(
     return undefined;
   }
   if (!feature.seedFeatureId) {
-    return source.holeTool
-      ? `Pattern ${feature.id} cannot attach a hole tool to a body seed.`
-      : undefined;
+    if (source.holeTool || source.booleanTool) {
+      return `Pattern ${feature.id} cannot attach a feature tool to a body seed.`;
+    }
+    return undefined;
   }
-  if (!source.holeTool || !isValidHoleTool(source.holeTool)) {
-    return `Pattern ${feature.id} has no current hole tool for seed feature ${feature.seedFeatureId}.`;
+  const seed = context.featuresById.get(feature.seedFeatureId);
+  if (seed?.kind === "hole") {
+    if (source.booleanTool) {
+      return `Pattern ${feature.id} cannot attach a boolean tool to a hole seed.`;
+    }
+    if (!source.holeTool || !isValidHoleTool(source.holeTool)) {
+      return `Pattern ${feature.id} has no current hole tool for seed feature ${feature.seedFeatureId}.`;
+    }
+    return undefined;
+  }
+  if (source.holeTool) {
+    return `Pattern ${feature.id} cannot attach a hole tool to a ${seed?.kind ?? "non-hole"} feature seed.`;
+  }
+  if (isConsumingPatternSeedFeature(seed)) {
+    if (
+      !source.booleanTool ||
+      (source.booleanTool.operation !== "add" &&
+        source.booleanTool.operation !== "cut") ||
+      !isPositiveFinite(source.booleanTool.tool.depth)
+    ) {
+      return `Pattern ${feature.id} has no current feature tool for seed feature ${feature.seedFeatureId}.`;
+    }
+    return undefined;
+  }
+  if (source.booleanTool) {
+    return `Pattern ${feature.id} cannot attach a boolean tool to a whole-solid feature seed.`;
+  }
+  if (seed && !isPatternedSeedFeatureKind(seed.kind)) {
+    return `Pattern ${feature.id} seed feature ${feature.seedFeatureId} is not a patterned solid feature.`;
   }
   return undefined;
+}
+
+function isConsumingPatternSeedFeature(
+  seed: CadFeatureSummary | undefined
+): boolean {
+  if (!seed) return false;
+  if (
+    seed.kind === "hole" ||
+    seed.kind === "chamfer" ||
+    seed.kind === "fillet" ||
+    seed.kind === "combine" ||
+    seed.kind === "shell"
+  ) {
+    return true;
+  }
+  if (seed.kind === "extrude") {
+    return seed.operationMode === "add" || seed.operationMode === "cut";
+  }
+  return seed.kind === "mirror" && seed.includeOriginal;
 }
 
 function createPatternHoleTool(
@@ -1105,6 +1172,71 @@ function createPatternHoleTool(
     depth: seed.depth,
     direction: seed.direction,
     ...(placementFrame ? { placementFrame } : {})
+  };
+}
+
+function createPatternBooleanTool(
+  feature: CadFeatureSummary,
+  context: ResolverContext
+): CurrentExactPatternBooleanTool | undefined {
+  if (
+    (feature.kind !== "linearPattern" && feature.kind !== "circularPattern") ||
+    !feature.seedFeatureId
+  ) {
+    return undefined;
+  }
+  const seed = context.featuresById.get(feature.seedFeatureId);
+  if (
+    seed?.kind !== "extrude" ||
+    (seed.operationMode !== "add" && seed.operationMode !== "cut") ||
+    !("entityId" in seed) ||
+    !seed.entityId
+  ) {
+    return undefined;
+  }
+  const sketch = context.document.sketches.get(seed.sketchId);
+  const entity = sketch?.entities.get(seed.entityId);
+  if (
+    !sketch ||
+    !entity ||
+    (entity.kind !== "rectangle" && entity.kind !== "circle")
+  ) {
+    return undefined;
+  }
+
+  let placementFrame: DerivedExtrudeGeometrySource["placementFrame"];
+  if (!sketch.attachment && sketch.datumId) {
+    const datum = context.document.datums.get(sketch.datumId);
+    placementFrame = datum
+      ? createDatumSketchDisplayFrame(datum)
+      : undefined;
+  } else if (sketch.attachment?.kind === "topologyAnchorFace") {
+    placementFrame = createTopologyAnchorFaceDisplayFrame(sketch.attachment);
+  }
+
+  const profile =
+    entity.kind === "rectangle"
+      ? {
+          kind: "rectangle" as const,
+          center: entity.center,
+          width: entity.width,
+          height: entity.height
+        }
+      : {
+          kind: "circle" as const,
+          center: entity.center,
+          radius: entity.radius
+        };
+
+  return {
+    operation: seed.operationMode,
+    tool: {
+      sketchPlane: sketch.plane,
+      profile,
+      depth: seed.depth,
+      side: seed.side,
+      ...(placementFrame ? { placementFrame } : {})
+    }
   };
 }
 
@@ -1212,6 +1344,7 @@ function resolveArtifactOperationSource(
         );
       }
       const holeTool = createPatternHoleTool(feature, context);
+      const booleanTool = createPatternBooleanTool(feature, context);
       return {
         id: body.id,
         kind: "linearPattern",
@@ -1219,6 +1352,7 @@ function resolveArtifactOperationSource(
         spacing: feature.spacing,
         instanceCount: feature.instanceCount,
         ...(holeTool ? { holeTool } : {}),
+        ...(booleanTool ? { booleanTool } : {}),
         sourceIdentitySignature
       };
     }
@@ -1236,6 +1370,7 @@ function resolveArtifactOperationSource(
         );
       }
       const holeTool = createPatternHoleTool(feature, context);
+      const booleanTool = createPatternBooleanTool(feature, context);
       return {
         id: body.id,
         kind: "circularPattern",
@@ -1243,6 +1378,7 @@ function resolveArtifactOperationSource(
         totalAngleDegrees: feature.totalAngleDegrees,
         instanceCount: feature.instanceCount,
         ...(holeTool ? { holeTool } : {}),
+        ...(booleanTool ? { booleanTool } : {}),
         sourceIdentitySignature
       };
     }

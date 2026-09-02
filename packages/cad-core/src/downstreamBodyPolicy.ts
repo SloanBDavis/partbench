@@ -1,6 +1,7 @@
 import {
   CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE,
-  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS
+  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
+  isPatternedSeedFeatureKind
 } from "@web-cad/cad-protocol";
 import type {
   BodyId,
@@ -205,7 +206,9 @@ function getDirectBodyDependency(
       if (source.seedBodyId) return source.seedBodyId;
       if (source.seedFeatureId) {
         const seed = document.features.get(source.seedFeatureId);
-        return seed?.kind === "hole" ? seed.bodyId : undefined;
+        return seed && isPatternedSeedFeatureKind(seed.kind)
+          ? seed.bodyId
+          : undefined;
       }
       return undefined;
     case "mirrorFeature":

@@ -805,7 +805,7 @@ function createOperationSummaries(
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create linear pattern feature ${featureId ?? "with generated ID"} from ${op.seedFeatureId ? `hole ${op.seedFeatureId}` : `body ${op.seedBodyId}`}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          label: `Create linear pattern feature ${featureId ?? "with generated ID"} from ${op.seedFeatureId ? `feature ${op.seedFeatureId}` : `body ${op.seedBodyId}`}${bodyId ? ` -> body ${bodyId}` : ""}`,
           featureId,
           bodyId
         });
@@ -817,7 +817,7 @@ function createOperationSummaries(
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create circular pattern feature ${featureId ?? "with generated ID"} from ${op.seedFeatureId ? `hole ${op.seedFeatureId}` : `body ${op.seedBodyId}`}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          label: `Create circular pattern feature ${featureId ?? "with generated ID"} from ${op.seedFeatureId ? `feature ${op.seedFeatureId}` : `body ${op.seedBodyId}`}${bodyId ? ` -> body ${bodyId}` : ""}`,
           featureId,
           bodyId
         });

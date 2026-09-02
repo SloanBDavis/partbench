@@ -1,0 +1,120 @@
+{
+  "id": "v25-feature-pattern",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_plate",
+      "name": "Plate",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_plate",
+      "id": "rect_plate",
+      "center": [0, 0],
+      "width": 60,
+      "height": 24
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_plate",
+      "bodyId": "body_plate",
+      "sketchId": "sketch_plate",
+      "entityId": "rect_plate",
+      "depth": 6
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_boss",
+      "name": "Boss",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_boss",
+      "id": "rect_boss",
+      "center": [-16, 0],
+      "width": 8,
+      "height": 8
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_boss",
+      "bodyId": "body_boss",
+      "sketchId": "sketch_boss",
+      "entityId": "rect_boss",
+      "depth": 10,
+      "operationMode": "add",
+      "targetBodyId": "body_plate"
+    }
+  ],
+  "steps": [
+    {
+      "id": "linear-extrude-add-pattern",
+      "ops": [
+        {
+          "op": "feature.linearPattern",
+          "id": "feat_pattern",
+          "bodyId": "body_patterned",
+          "seedFeatureId": "feat_boss",
+          "direction": { "kind": "globalAxis", "axis": "x" },
+          "spacing": 16,
+          "instanceCount": 3
+        }
+      ],
+      "expect": {
+        "ops": ["feature.linearPattern"],
+        "diff": {
+          "features": {
+            "created": [
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_boss",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodiesCreated": [{ "id": "body_patterned", "kind": "solid" }]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "features": [
+              { "id": "feat_plate", "kind": "extrude" },
+              {
+                "id": "feat_boss",
+                "kind": "extrude",
+                "operationMode": "add",
+                "targetBodyId": "body_plate"
+              },
+              {
+                "id": "feat_pattern",
+                "kind": "linearPattern",
+                "seedFeatureId": "feat_boss",
+                "bodyId": "body_patterned"
+              }
+            ],
+            "bodies": [
+              { "id": "body_plate", "consumedByFeatureId": "feat_boss" },
+              { "id": "body_boss", "consumedByFeatureId": "feat_pattern" },
+              {
+                "id": "body_patterned",
+                "featureId": "feat_pattern",
+                "source": {
+                  "type": "linearPatternFeature",
+                  "seedFeatureId": "feat_boss"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
