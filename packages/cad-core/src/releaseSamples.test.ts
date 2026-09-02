@@ -864,6 +864,7 @@ describe("V21 exact body source matrix", () => {
     "mirrorFeature",
     "combineFeature",
     "offsetFeature",
+    "alignFeature",
     "shellFeature",
     "sweepFeature",
     "loftFeature",
@@ -882,6 +883,7 @@ describe("V21 exact body source matrix", () => {
     "mirror",
     "combine",
     "offset",
+    "align",
     "shell",
     "sweep",
     "loft"
@@ -896,9 +898,9 @@ describe("V21 exact body source matrix", () => {
     for (const policy of Object.values(V21_EXACT_BODY_SOURCE_POLICY)) {
       expect(policy.cases.length).toBeGreaterThan(0);
     }
-    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(23);
+    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(24);
     expect(new Set(V21_EXACT_BODY_MATRIX_ROWS.map(({ id }) => id)).size).toBe(
-      23
+      24
     );
     const activeRows = V21_EXACT_BODY_MATRIX_ROWS.filter(
       ({ expectedArtifact }) => expectedArtifact === "required"
@@ -1042,6 +1044,69 @@ describe("V21 exact body source matrix", () => {
       }
     ]);
     record(offsetEngine);
+
+    const alignEngine = new CadEngine();
+    alignEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_target", name: "Target", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_target",
+        id: "rect_target",
+        center: [0, 0],
+        width: 20,
+        height: 20
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_target",
+        bodyId: "body_target",
+        sketchId: "sketch_target",
+        entityId: "rect_target",
+        depth: 10
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_source",
+        name: "Source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_source",
+        id: "rect_source",
+        center: [40, 0],
+        width: 10,
+        height: 10
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_source",
+        bodyId: "body_source",
+        sketchId: "sketch_source",
+        entityId: "rect_source",
+        depth: 8
+      },
+      {
+        op: "feature.align",
+        id: "feat_align",
+        bodyId: "body_align",
+        seedBodyId: "body_source",
+        sourceFace: {
+          kind: "generatedFace",
+          bodyId: "body_source",
+          stableId: "generated:face:body_source:endCap"
+        },
+        target: {
+          kind: "planarFace",
+          face: {
+            kind: "generatedFace",
+            bodyId: "body_target",
+            stableId: "generated:face:body_target:endCap"
+          }
+        }
+      }
+    ]);
+    record(alignEngine);
 
     expect(covered).toEqual(new Set(sourceTypes));
   });

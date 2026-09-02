@@ -32,6 +32,7 @@ import {
   buildFeatureHoleOp,
   buildFeatureLinearPatternOp,
   buildFeatureMirrorOp,
+  buildFeatureAlignOp,
   buildFeatureCombineOp,
   buildFeatureOffsetOp,
   buildFeatureUpdateOffsetOp,
@@ -929,6 +930,100 @@ describe("cad command builders", () => {
       mode: "intersect",
       targetBodyId: "body_block_a",
       toolBodyId: "body_block_b"
+    });
+
+    expect(
+      buildFeatureAlignOp({
+        id: " feat_align_face ",
+        bodyId: " body_align_face ",
+        name: " Align face ",
+        seedBodyId: "body_source_face",
+        sourceFace: {
+          kind: "generatedFace",
+          bodyId: "body_source_face",
+          stableId: "generated:face:body_source_face:endCap"
+        },
+        targetKind: "planarFace",
+        targetFace: {
+          kind: "generatedFace",
+          bodyId: "body_target",
+          stableId: "generated:face:body_target:endCap"
+        },
+        targetDatumId: ""
+      })
+    ).toEqual({
+      op: "feature.align",
+      id: "feat_align_face",
+      bodyId: "body_align_face",
+      name: "Align face",
+      seedBodyId: "body_source_face",
+      sourceFace: {
+        kind: "generatedFace",
+        bodyId: "body_source_face",
+        stableId: "generated:face:body_source_face:endCap"
+      },
+      target: {
+        kind: "planarFace",
+        face: {
+          kind: "generatedFace",
+          bodyId: "body_target",
+          stableId: "generated:face:body_target:endCap"
+        }
+      }
+    });
+
+    expect(
+      buildFeatureAlignOp({
+        id: "feat_align_plane",
+        bodyId: "body_align_plane",
+        name: "",
+        seedBodyId: "body_source_plane",
+        sourceFace: {
+          kind: "generatedFace",
+          bodyId: "body_source_plane",
+          stableId: "generated:face:body_source_plane:endCap"
+        },
+        targetKind: "datumPlane",
+        targetDatumId: "datum_xy_20"
+      })
+    ).toEqual({
+      op: "feature.align",
+      id: "feat_align_plane",
+      bodyId: "body_align_plane",
+      seedBodyId: "body_source_plane",
+      sourceFace: {
+        kind: "generatedFace",
+        bodyId: "body_source_plane",
+        stableId: "generated:face:body_source_plane:endCap"
+      },
+      target: { kind: "datumPlane", datumId: "datum_xy_20" }
+    });
+
+    expect(
+      buildFeatureAlignOp({
+        id: "feat_align_axis",
+        bodyId: "body_align_axis",
+        name: "",
+        seedBodyId: "body_source_axis",
+        sourceFace: {
+          kind: "generatedFace",
+          bodyId: "body_source_axis",
+          stableId: "generated:face:body_source_axis:side:uMax"
+        },
+        targetKind: "datumAxis",
+        targetDatumId: "datum_axis_z"
+      })
+    ).toEqual({
+      op: "feature.align",
+      id: "feat_align_axis",
+      bodyId: "body_align_axis",
+      seedBodyId: "body_source_axis",
+      sourceFace: {
+        kind: "generatedFace",
+        bodyId: "body_source_axis",
+        stableId: "generated:face:body_source_axis:side:uMax"
+      },
+      target: { kind: "datumAxis", datumId: "datum_axis_z" }
     });
 
     expect(

@@ -79,6 +79,7 @@ import type {
   MirrorFeature,
   CombineFeature,
   OffsetFeature,
+  AlignFeature,
   ShellFeature,
   SweepFeature,
   LoftFeature
@@ -148,6 +149,7 @@ export type ProjectHealthFeature =
   | MirrorFeature
   | CombineFeature
   | OffsetFeature
+  | AlignFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature;
@@ -2117,6 +2119,7 @@ function getProjectHealthFeaturePrimaryEntityRef(
     | MirrorFeature
     | CombineFeature
     | OffsetFeature
+    | AlignFeature
     | ShellFeature
     | SweepFeature
     | LoftFeature
@@ -2146,6 +2149,7 @@ function hasSketchEntitySource(
   | MirrorFeature
   | CombineFeature
   | OffsetFeature
+  | AlignFeature
   | ShellFeature
   | SweepFeature
   | LoftFeature
@@ -2158,6 +2162,7 @@ function hasSketchEntitySource(
     feature.kind !== "mirror" &&
     feature.kind !== "combine" &&
     feature.kind !== "offset" &&
+    feature.kind !== "align" &&
     feature.kind !== "shell" &&
     feature.kind !== "sweep" &&
     feature.kind !== "loft" &&
@@ -2647,6 +2652,10 @@ function describeFeatureForHealth(
 
   if (feature.kind === "offset") {
     return "offset result";
+  }
+
+  if (feature.kind === "align") {
+    return "align result";
   }
 
   if (feature.kind === "shell") {

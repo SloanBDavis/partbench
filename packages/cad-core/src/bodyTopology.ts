@@ -1399,6 +1399,8 @@ function createAuthoredFeatureTopologySourceKind(
       return "authoredCombine";
     case "offset":
       return "authoredOffset";
+    case "align":
+      return "authoredAlign";
     case "shell":
       return "authoredShell";
     case "sweep":

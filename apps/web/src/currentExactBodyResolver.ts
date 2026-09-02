@@ -250,6 +250,10 @@ const BODY_SOURCE_RESOLVERS = {
     featureKind: "offset",
     resolve: resolveLegacyRuntimeSource
   },
+  alignFeature: {
+    featureKind: "align",
+    resolve: resolveLegacyRuntimeSource
+  },
   shellFeature: {
     featureKind: "shell",
     resolve: resolveArtifactOperationSource

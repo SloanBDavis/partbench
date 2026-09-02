@@ -1377,6 +1377,10 @@ function createConsumedBodyIds(
           return feature.targetBodyId ? [feature.targetBodyId] : [];
         }
 
+        if (feature.kind === "align") {
+          return [feature.seedBodyId];
+        }
+
         return [];
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))

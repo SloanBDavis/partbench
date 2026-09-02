@@ -265,6 +265,8 @@ export function formatSelectionReferenceOperationLabel(
       return "Shell";
     case "feature.offset":
       return "Offset face";
+    case "feature.align":
+      return "Align face";
     case "feature.measureReference":
       return "Measure reference";
     case "feature.selectReference":

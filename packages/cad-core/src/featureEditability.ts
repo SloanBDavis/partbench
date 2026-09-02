@@ -1520,6 +1520,7 @@ function createDeferredFields(
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
     feature.kind === "offset" ||
+    feature.kind === "align" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"

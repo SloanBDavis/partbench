@@ -3183,7 +3183,7 @@ describe("cad-core", () => {
       "circle_1"
     ]);
     expect(result.transaction.diff.sketches).toEqual({
-      created: [{ id: "sketch_1" }],
+      created: [{ id: "sketch_1", plane: "XY" }],
       modified: [],
       deleted: [],
       entitiesCreated: [
@@ -5708,6 +5708,7 @@ describe("cad-core", () => {
         "feature.fillet": 12,
         "feature.shell": 6,
         "feature.offset": 6,
+        "feature.align": 6,
         "feature.measureReference": 27,
         "feature.selectReference": 27
       }
@@ -6236,6 +6237,7 @@ describe("cad-core", () => {
         "feature.attachSketchPlane",
         "feature.shell",
         "feature.offset",
+        "feature.align",
         "feature.mirrorPlane",
         "feature.measureReference",
         "feature.selectReference"
@@ -6254,6 +6256,7 @@ describe("cad-core", () => {
         "feature.attachSketchPlane",
         "feature.shell",
         "feature.offset",
+        "feature.align",
         "feature.mirrorPlane",
         "feature.measureReference",
         "feature.selectReference"
@@ -6410,6 +6413,7 @@ describe("cad-core", () => {
           "feature.attachSketchPlane",
           "feature.shell",
           "feature.offset",
+          "feature.align",
           "feature.mirrorPlane",
           "feature.measureReference",
           "feature.selectReference"
@@ -6764,6 +6768,7 @@ describe("cad-core", () => {
       "feature.fillet",
       "feature.shell",
       "feature.offset",
+      "feature.align",
       "feature.linearPatternDirection",
       "feature.circularPatternAxis",
       "feature.mirrorPlane",
@@ -7125,6 +7130,7 @@ describe("cad-core", () => {
           "feature.attachSketchPlane",
           "feature.shell",
           "feature.offset",
+          "feature.align",
           "feature.mirrorPlane",
           "feature.measureReference",
           "feature.selectReference"
@@ -8494,6 +8500,7 @@ describe("cad-core", () => {
       "feature.attachSketchPlane",
       "feature.shell",
       "feature.offset",
+      "feature.align",
       "feature.mirrorPlane",
       "feature.measureReference",
       "feature.selectReference"
@@ -35732,7 +35739,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         "feature.measureReference",
         "feature.selectReference",
         "feature.shell",
-        "feature.offset"
+        "feature.offset",
+        "feature.align"
       ],
       proof: {
         kind: "axisAlignedPlanarFace",
@@ -35806,7 +35814,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       commandOperations: [
         "feature.attachSketchPlane",
         "feature.shell",
-        "feature.offset"
+        "feature.offset",
+        "feature.align"
       ],
       proof: {
         kind: "axisAlignedPlanarFace",
@@ -36067,7 +36076,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         "feature.measureReference",
         "feature.selectReference",
         "feature.shell",
-        "feature.offset"
+        "feature.offset",
+        "feature.align"
       ],
       operationSummaries: [
         expect.objectContaining({
@@ -36093,6 +36103,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           operation: "feature.offset",
+          status: "ready",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.align",
           status: "ready",
           commandable: true
         })

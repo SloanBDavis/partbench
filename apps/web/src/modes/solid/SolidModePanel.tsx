@@ -18,6 +18,7 @@ import type {
   FeatureLinearPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureAlignForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -764,6 +765,19 @@ function SolidDraftFields({
           profileChoices={request.choices?.profiles ?? []}
           faceChoices={request.choices?.openFaces ?? []}
           lockedSource={request.mode === "edit"}
+          collecting={collecting}
+          onCollect={onCollect}
+          onChange={onChange}
+        />
+      );
+    case "align":
+      return (
+        <AlignFields
+          draft={draft as FeatureAlignForm}
+          seedChoices={request.choices?.seedBodies ?? []}
+          faceChoices={request.choices?.openFaces ?? []}
+          datumChoices={request.choices?.datums ?? []}
+          lockedSeed={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -2309,6 +2323,126 @@ function OffsetFields({
           })
         }
       />
+    </>
+  );
+}
+
+function AlignFields({
+  draft,
+  seedChoices,
+  faceChoices,
+  datumChoices,
+  lockedSeed,
+  collecting,
+  onCollect,
+  onChange
+}: {
+  readonly draft: FeatureAlignForm;
+  readonly seedChoices: readonly SolidChoice<string>[];
+  readonly faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[];
+  readonly datumChoices: readonly SolidChoice<string>[];
+  readonly lockedSeed: boolean;
+  readonly collecting?: string;
+  readonly onCollect: (
+    collector: SolidCollectorRequest["collector"],
+    acceptedKinds: readonly string[]
+  ) => void;
+  readonly onChange: (draft: FeatureAlignForm) => void;
+}) {
+  const targetDatums = datumChoices.filter((choice) =>
+    draft.targetKind === "datumPlane"
+      ? choice.kind === "datum-plane"
+      : choice.kind === "datum-axis"
+  );
+  return (
+    <>
+      <FeatureIdentityFields
+        draft={draft}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <ChoiceCollector
+        label="Body to move"
+        acceptedKinds={["body"]}
+        choices={seedChoices}
+        selectedKey={findChoiceKey(seedChoices, draft.seedBodyId)}
+        collecting={collecting === "seedBody"}
+        disabled={lockedSeed}
+        required
+        onCollect={() => onCollect("seedBody", ["body"])}
+        onChange={(seedBodyId) => onChange({ ...draft, seedBodyId })}
+        onClear={() => onChange({ ...draft, seedBodyId: "" })}
+      />
+      <ChoiceCollector
+        label="Planar face on that body"
+        acceptedKinds={["face", "named face"]}
+        choices={faceChoices}
+        selectedKey={
+          draft.sourceFace
+            ? faceChoices.find(
+                (choice) =>
+                  JSON.stringify(choice.value) === JSON.stringify(draft.sourceFace)
+              )?.key
+            : undefined
+        }
+        collecting={collecting === "openFaces"}
+        required
+        onCollect={() => onCollect("openFaces", ["face", "named face"])}
+        onChange={(sourceFace) => onChange({ ...draft, sourceFace })}
+        onClear={() => onChange({ ...draft, sourceFace: undefined })}
+      />
+      <SelectField
+        label="Meet"
+        name="align-target-kind"
+        value={draft.targetKind}
+        options={[
+          { value: "planarFace", label: "Planar face" },
+          { value: "datumPlane", label: "Datum plane" },
+          { value: "datumAxis", label: "Datum axis (rotation lock)" }
+        ]}
+        onChange={(targetKind) =>
+          onChange({
+            ...draft,
+            targetKind: targetKind as FeatureAlignForm["targetKind"],
+            targetFace: undefined,
+            targetDatumId: ""
+          })
+        }
+      />
+      {draft.targetKind === "planarFace" ? (
+        <ChoiceCollector
+          label="Target planar face"
+          acceptedKinds={["face", "named face"]}
+          choices={faceChoices}
+          selectedKey={
+            draft.targetFace
+              ? faceChoices.find(
+                  (choice) =>
+                    JSON.stringify(choice.value) ===
+                    JSON.stringify(draft.targetFace)
+                )?.key
+              : undefined
+          }
+          collecting={collecting === "mirrorPlane"}
+          required
+          onCollect={() => onCollect("mirrorPlane", ["face", "named face"])}
+          onChange={(targetFace) => onChange({ ...draft, targetFace })}
+          onClear={() => onChange({ ...draft, targetFace: undefined })}
+        />
+      ) : (
+        <ChoiceCollector
+          label={
+            draft.targetKind === "datumPlane" ? "Datum plane" : "Datum axis"
+          }
+          acceptedKinds={["datum"]}
+          choices={targetDatums}
+          selectedKey={findChoiceKey(targetDatums, draft.targetDatumId)}
+          collecting={collecting === "rotationAxis"}
+          required
+          onCollect={() => onCollect("rotationAxis", ["datum"])}
+          onChange={(targetDatumId) => onChange({ ...draft, targetDatumId })}
+          onClear={() => onChange({ ...draft, targetDatumId: "" })}
+        />
+      )}
     </>
   );
 }

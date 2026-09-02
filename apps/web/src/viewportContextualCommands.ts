@@ -688,6 +688,8 @@ function actionIdFromOperation(
       return "feature.shell";
     case "feature.offset":
       return "solid.offset";
+    case "feature.align":
+      return "solid.align";
     case "feature.measureReference":
       return "feature.measureReference";
     case "feature.selectReference":

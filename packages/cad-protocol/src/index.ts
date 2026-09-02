@@ -592,6 +592,7 @@ export type CadOp =
   | FeatureMirrorOp
   | FeatureCombineOp
   | FeatureOffsetOp
+  | FeatureAlignOp
   | FeatureShellOp
   | FeatureSweepCommandInput
   | FeatureLoftCommandInput
@@ -2005,6 +2006,44 @@ export interface FeatureUpdateOffsetOp {
   readonly side?: FeatureOffsetSide;
 }
 
+export type FeatureAlignFaceRef = FeatureShellOpenFaceRef;
+
+export type FeatureAlignTarget =
+  | {
+      readonly kind: "planarFace";
+      readonly face: FeatureAlignFaceRef;
+    }
+  | {
+      readonly kind: "datumPlane";
+      readonly datumId: DatumId;
+    }
+  | {
+      readonly kind: "datumAxis";
+      readonly datumId: DatumId;
+    };
+
+export interface FeatureAlignTransform {
+  readonly translation: Vec3;
+  readonly rotationAxis: Vec3;
+  readonly rotationDegrees: number;
+}
+
+export interface FeatureAlignPlane {
+  readonly point: Vec3;
+  readonly normal: Vec3;
+}
+
+export interface FeatureAlignOp {
+  readonly op: "feature.align";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly sourceFace: FeatureAlignFaceRef;
+  readonly target: FeatureAlignTarget;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
+}
+
 export interface FeatureUpdateMirrorOp {
   readonly op: "feature.updateMirror";
   readonly id: FeatureId;
@@ -2229,6 +2268,7 @@ export type CadFeatureRef =
   | CadMirrorFeatureRef
   | CadCombineFeatureRef
   | CadOffsetFeatureRef
+  | CadAlignFeatureRef
   | CadShellFeatureRef
   | CadImportedBodyFeatureRef
   | CadSweepFeatureRef
@@ -2370,6 +2410,17 @@ export interface CadOffsetFeatureRef {
   readonly distance: number;
   readonly side: FeatureOffsetSide;
   readonly targetBodyId?: BodyId;
+}
+
+export interface CadAlignFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "align";
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly sourceFace: FeatureAlignFaceRef;
+  readonly target: FeatureAlignTarget;
+  readonly transform: FeatureAlignTransform;
+  readonly alignedSourceFace: FeatureAlignPlane;
 }
 
 export type CadSweepFeatureRef =
@@ -4141,6 +4192,18 @@ export interface OffsetFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface AlignFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "align";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly sourceFace: FeatureAlignFaceRef;
+  readonly target: FeatureAlignTarget;
+  readonly transform: FeatureAlignTransform;
+  readonly alignedSourceFace: FeatureAlignPlane;
+  readonly bodyId: BodyId;
+}
+
 export interface SweepFeatureSnapshot {
   readonly id: FeatureId;
   readonly kind: "sweep";
@@ -4249,6 +4312,7 @@ export type FeatureSnapshotV21 =
   | MirrorFeatureSnapshot
   | CombineFeatureSnapshot
   | OffsetFeatureSnapshot
+  | AlignFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureV21
   | LoftFeatureV21;
@@ -4265,6 +4329,7 @@ export type FeatureSnapshotV22 =
   | MirrorFeatureSnapshot
   | CombineFeatureSnapshot
   | OffsetFeatureSnapshot
+  | AlignFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureV22
   | LoftFeatureV22;
@@ -4291,6 +4356,7 @@ export type FeatureSnapshot =
   | MirrorFeatureSnapshot
   | CombineFeatureSnapshot
   | OffsetFeatureSnapshot
+  | AlignFeatureSnapshot
   | ShellFeatureSnapshot
   | SweepFeatureSnapshot
   | LoftFeatureSnapshot;
@@ -4816,6 +4882,29 @@ export interface CadOffsetFeatureSummary {
   readonly source: CadOffsetFeatureSource;
 }
 
+export interface CadAlignFeatureSource {
+  readonly type: "alignFeature";
+  readonly seedBodyId: BodyId;
+  readonly sourceFace: FeatureAlignFaceRef;
+  readonly target: FeatureAlignTarget;
+  readonly transform: FeatureAlignTransform;
+  readonly alignedSourceFace: FeatureAlignPlane;
+}
+
+export interface CadAlignFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "align";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly sourceFace: FeatureAlignFaceRef;
+  readonly target: FeatureAlignTarget;
+  readonly transform: FeatureAlignTransform;
+  readonly alignedSourceFace: FeatureAlignPlane;
+  readonly name?: string;
+  readonly source: CadAlignFeatureSource;
+}
+
 export interface CadShellFeatureSource {
   readonly type: "shellFeature";
   readonly targetBodyId: BodyId;
@@ -4875,6 +4964,7 @@ export type CadFeatureSummary =
   | CadMirrorFeatureSummary
   | CadCombineFeatureSummary
   | CadOffsetFeatureSummary
+  | CadAlignFeatureSummary
   | CadShellFeatureSummary
   | CadSweepFeatureSummary
   | CadLoftFeatureSummary;
@@ -5981,6 +6071,16 @@ export interface CadOffsetBodySource {
   readonly targetBodyId?: BodyId;
 }
 
+export interface CadAlignBodySource {
+  readonly type: "alignFeature";
+  readonly featureId: FeatureId;
+  readonly seedBodyId: BodyId;
+  readonly sourceFace: FeatureAlignFaceRef;
+  readonly target: FeatureAlignTarget;
+  readonly transform: FeatureAlignTransform;
+  readonly alignedSourceFace: FeatureAlignPlane;
+}
+
 export interface CadShellBodySource {
   readonly type: "shellFeature";
   readonly featureId: FeatureId;
@@ -6018,6 +6118,7 @@ export type CadBodySource =
   | CadMirrorBodySource
   | CadCombineBodySource
   | CadOffsetBodySource
+  | CadAlignBodySource
   | CadShellBodySource
   | CadSweepBodySource
   | CadLoftBodySource
@@ -6465,6 +6566,7 @@ export type CadGeneratedReferenceEligibleOperation =
   | "feature.fillet"
   | "feature.shell"
   | "feature.offset"
+  | "feature.align"
   | "feature.linearPatternDirection"
   | "feature.circularPatternAxis"
   | "feature.mirrorPlane"
@@ -7752,6 +7854,7 @@ export type CadBodyTopologySourceKind =
   | "authoredMirror"
   | "authoredCombine"
   | "authoredOffset"
+  | "authoredAlign"
   | "authoredSweep"
   | "authoredLoft"
   | "importedBody"
@@ -8109,6 +8212,7 @@ export type CadExportBodySourceKind =
   | "authoredMirror"
   | "authoredCombine"
   | "authoredOffset"
+  | "authoredAlign"
   | "authoredShell"
   | "importedBody"
   | "primitiveCompatibility"
@@ -8126,6 +8230,7 @@ export const CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE = {
   mirrorFeature: "authoredMirror",
   combineFeature: "authoredCombine",
   offsetFeature: "authoredOffset",
+  alignFeature: "authoredAlign",
   shellFeature: "authoredShell",
   sweepFeature: "authoredSweep",
   loftFeature: "authoredLoft",

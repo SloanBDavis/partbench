@@ -481,7 +481,8 @@ function addFeatureSourceEdges(
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
-    feature.kind === "combine"
+    feature.kind === "combine" ||
+    feature.kind === "align"
   ) {
     return;
   }

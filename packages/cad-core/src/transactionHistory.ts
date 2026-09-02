@@ -129,6 +129,7 @@ function createOperationSummaries(
       op.op === "feature.mirror" ||
       op.op === "feature.combine" ||
       op.op === "feature.offset" ||
+      op.op === "feature.align" ||
       op.op === "feature.shell"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
@@ -864,6 +865,24 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.align": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const targetLabel =
+          op.target.kind === "planarFace"
+            ? "planar face"
+            : op.target.kind === "datumPlane"
+              ? `datum plane ${op.target.datumId}`
+              : `datum axis ${op.target.datumId}`;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create align feature ${featureId ?? "with generated ID"} of body ${op.seedBodyId} onto ${targetLabel}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId
+        });
+      }
+
       case "feature.shell": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -1205,6 +1224,7 @@ function getFeatureRefSketchEntityId(
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
     feature.kind === "offset" ||
+    feature.kind === "align" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
@@ -1225,6 +1245,7 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "mirror" ||
     feature.kind === "combine" ||
     feature.kind === "offset" ||
+    feature.kind === "align" ||
     feature.kind === "shell" ||
     feature.kind === "sweep" ||
     feature.kind === "loft"
