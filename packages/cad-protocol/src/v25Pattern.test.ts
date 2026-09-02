@@ -11,16 +11,16 @@ import {
 
 describe("feature pattern seed protocol", () => {
   it("reuses linear/circular pattern seedFeatureId for every frozen solid kind without a schema bump", () => {
-    const chamferSeed: FeatureLinearPatternOp = {
+    const addSeed: FeatureLinearPatternOp = {
       op: "feature.linearPattern",
       id: "feat_pattern",
       bodyId: "body_patterned",
-      seedFeatureId: "feat_chamfer",
+      seedFeatureId: "feat_boss",
       direction: { kind: "globalAxis", axis: "x" },
-      spacing: 30,
+      spacing: 16,
       instanceCount: 3
     };
-    const ops: readonly CadOp[] = [chamferSeed];
+    const ops: readonly CadOp[] = [addSeed];
 
     expect(ops.map((op) => op.op)).toEqual(["feature.linearPattern"]);
     expect(PATTERNED_SEED_FEATURE_KINDS).toEqual([
@@ -42,14 +42,14 @@ describe("feature pattern seed protocol", () => {
     expect(isPatternedSeedFeatureKind("linearPattern")).toBe(false);
     expect(isPatternedSeedFeatureKind("circularPattern")).toBe(false);
     expect(isPatternedSeedFeatureKind("offset")).toBe(false);
-    expect(readExclusivePatternSeed(chamferSeed)).toEqual({
+    expect(readExclusivePatternSeed(addSeed)).toEqual({
       ok: true,
-      seed: { seedFeatureId: "feat_chamfer" }
+      seed: { seedFeatureId: "feat_boss" }
     });
-    expect(patternSeedSourceFields({ seedFeatureId: "feat_chamfer" })).toEqual({
-      seedFeatureId: "feat_chamfer"
+    expect(patternSeedSourceFields({ seedFeatureId: "feat_boss" })).toEqual({
+      seedFeatureId: "feat_boss"
     });
-    expect(chamferSeed.seedBodyId).toBeUndefined();
+    expect(addSeed.seedBodyId).toBeUndefined();
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).not.toBe("web-cad.project.v23");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).not.toBe("web-cad.project.v25");

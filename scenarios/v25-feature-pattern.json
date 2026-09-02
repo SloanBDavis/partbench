@@ -4,46 +4,62 @@
   "seed": [
     {
       "op": "sketch.create",
-      "id": "sketch_block",
-      "name": "Block",
+      "id": "sketch_plate",
+      "name": "Plate",
       "plane": "XY"
     },
     {
       "op": "sketch.addRectangle",
-      "sketchId": "sketch_block",
-      "id": "rect_block",
+      "sketchId": "sketch_plate",
+      "id": "rect_plate",
       "center": [0, 0],
-      "width": 20,
-      "height": 12
+      "width": 60,
+      "height": 24
     },
     {
       "op": "feature.extrude",
-      "id": "feat_block",
-      "bodyId": "body_block",
-      "sketchId": "sketch_block",
-      "entityId": "rect_block",
-      "depth": 8
+      "id": "feat_plate",
+      "bodyId": "body_plate",
+      "sketchId": "sketch_plate",
+      "entityId": "rect_plate",
+      "depth": 6
     },
     {
-      "op": "feature.chamfer",
-      "id": "feat_chamfer",
-      "bodyId": "body_chamfer",
-      "targetBodyId": "body_block",
-      "edgeStableId": "generated:edge:body_block:start:uMin",
-      "distance": 2
+      "op": "sketch.create",
+      "id": "sketch_boss",
+      "name": "Boss",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_boss",
+      "id": "rect_boss",
+      "center": [-16, 0],
+      "width": 8,
+      "height": 8
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_boss",
+      "bodyId": "body_boss",
+      "sketchId": "sketch_boss",
+      "entityId": "rect_boss",
+      "depth": 10,
+      "operationMode": "add",
+      "targetBodyId": "body_plate"
     }
   ],
   "steps": [
     {
-      "id": "linear-chamfer-pattern",
+      "id": "linear-extrude-add-pattern",
       "ops": [
         {
           "op": "feature.linearPattern",
           "id": "feat_pattern",
           "bodyId": "body_patterned",
-          "seedFeatureId": "feat_chamfer",
+          "seedFeatureId": "feat_boss",
           "direction": { "kind": "globalAxis", "axis": "x" },
-          "spacing": 30,
+          "spacing": 16,
           "instanceCount": 3
         }
       ],
@@ -55,7 +71,7 @@
               {
                 "id": "feat_pattern",
                 "kind": "linearPattern",
-                "seedFeatureId": "feat_chamfer",
+                "seedFeatureId": "feat_boss",
                 "bodyId": "body_patterned"
               }
             ],
@@ -70,24 +86,29 @@
             "ok": true,
             "query": "project.structure",
             "features": [
-              { "id": "feat_block", "kind": "extrude" },
-              { "id": "feat_chamfer", "kind": "chamfer" },
+              { "id": "feat_plate", "kind": "extrude" },
+              {
+                "id": "feat_boss",
+                "kind": "extrude",
+                "operationMode": "add",
+                "targetBodyId": "body_plate"
+              },
               {
                 "id": "feat_pattern",
                 "kind": "linearPattern",
-                "seedFeatureId": "feat_chamfer",
+                "seedFeatureId": "feat_boss",
                 "bodyId": "body_patterned"
               }
             ],
             "bodies": [
-              { "id": "body_block", "consumedByFeatureId": "feat_chamfer" },
-              { "id": "body_chamfer", "consumedByFeatureId": "feat_pattern" },
+              { "id": "body_plate", "consumedByFeatureId": "feat_boss" },
+              { "id": "body_boss", "consumedByFeatureId": "feat_pattern" },
               {
                 "id": "body_patterned",
                 "featureId": "feat_pattern",
                 "source": {
                   "type": "linearPatternFeature",
-                  "seedFeatureId": "feat_chamfer"
+                  "seedFeatureId": "feat_boss"
                 }
               }
             ]

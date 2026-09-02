@@ -1592,48 +1592,59 @@ describe("agent-adapter", () => {
     );
   });
 
-  it("accepts and reviews a grown chamfer feature-pattern batch", () => {
+  it("accepts and reviews a grown extrude-add feature-pattern batch", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(
       JSON.stringify({
-        requestId: "agent_req_chamfer_pattern",
+        requestId: "agent_req_extrude_add_pattern",
         adapterVersion: "web-cad.agent-adapter.v1",
         batch: {
           version: "cadops.v1",
           mode: "dryRun",
           ops: [
-            { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+            { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
             {
               op: "sketch.addRectangle",
-              sketchId: "sketch_block",
-              id: "rect_block",
+              sketchId: "sketch_plate",
+              id: "rect_plate",
               center: [0, 0],
-              width: 20,
-              height: 12
+              width: 60,
+              height: 24
             },
             {
               op: "feature.extrude",
-              id: "feat_block",
-              bodyId: "body_block",
-              sketchId: "sketch_block",
-              entityId: "rect_block",
-              depth: 8
+              id: "feat_plate",
+              bodyId: "body_plate",
+              sketchId: "sketch_plate",
+              entityId: "rect_plate",
+              depth: 6
+            },
+            { op: "sketch.create", id: "sketch_boss", name: "Boss", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_boss",
+              id: "rect_boss",
+              center: [-16, 0],
+              width: 8,
+              height: 8
             },
             {
-              op: "feature.chamfer",
-              id: "feat_chamfer",
-              bodyId: "body_chamfer",
-              targetBodyId: "body_block",
-              edgeStableId: "generated:edge:body_block:start:uMin",
-              distance: 2
+              op: "feature.extrude",
+              id: "feat_boss",
+              bodyId: "body_boss",
+              sketchId: "sketch_boss",
+              entityId: "rect_boss",
+              depth: 10,
+              operationMode: "add",
+              targetBodyId: "body_plate"
             },
             {
               op: "feature.linearPattern",
               id: "feat_pattern",
               bodyId: "body_patterned",
-              seedFeatureId: "feat_chamfer",
+              seedFeatureId: "feat_boss",
               direction: { kind: "globalAxis", axis: "x" },
-              spacing: 30,
+              spacing: 16,
               instanceCount: 3
             }
           ]
@@ -1646,15 +1657,16 @@ describe("agent-adapter", () => {
     expect(response.ok && response.review.operations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op: "feature.chamfer",
+          op: "feature.extrude",
           intent: "create",
-          featureId: "feat_chamfer"
+          featureId: "feat_boss",
+          operationMode: "add"
         }),
         expect.objectContaining({
           op: "feature.linearPattern",
           intent: "create",
           featureId: "feat_pattern",
-          label: expect.stringContaining("feat_chamfer")
+          label: expect.stringContaining("feat_boss")
         })
       ])
     );

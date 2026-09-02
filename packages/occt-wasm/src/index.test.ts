@@ -3717,6 +3717,94 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "fuses transformed extrude-add tools onto the parent instead of copying the result solid",
+    async () => {
+      const oc = await loadOcct();
+      const plateAndBoss = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "booleanExtrudes",
+          operation: "add",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 60,
+              height: 24
+            },
+            depth: 6,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [-16, 0],
+              width: 8,
+              height: 8
+            },
+            depth: 10,
+            side: "positive"
+          }
+        }
+      });
+      const bossTool = {
+        operation: "add" as const,
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [-16, 0] as const,
+            width: 8,
+            height: 8
+          },
+          depth: 10,
+          side: "positive" as const
+        }
+      };
+      const featurePattern = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: createBodyArtifactTestLeaf(plateAndBoss),
+          direction: [1, 0, 0],
+          spacing: 16,
+          instanceCount: 3,
+          booleanTool: bossTool
+        }
+      });
+      const wholeBodyCopy = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: createBodyArtifactTestLeaf(plateAndBoss),
+          direction: [1, 0, 0],
+          spacing: 16,
+          instanceCount: 3
+        }
+      });
+
+      const plateVolume = 60 * 24 * 6;
+      const protrudingBossVolume = 8 * 8 * 4;
+      expect(plateAndBoss.metadata.volume).toBeCloseTo(
+        plateVolume + protrudingBossVolume,
+        5
+      );
+      expect(featurePattern.metadata.topologyCounts.solidCount).toBe(1);
+      expect(featurePattern.metadata.volume).toBeCloseTo(
+        plateVolume + 3 * protrudingBossVolume,
+        5
+      );
+      expect(wholeBodyCopy.metadata.volume).not.toBeCloseTo(
+        featurePattern.metadata.volume,
+        5
+      );
+      expect(wholeBodyCopy.metadata.volume).toBeGreaterThan(
+        featurePattern.metadata.volume + plateVolume
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "cuts universal artifact-hole targets in every retained mode with multi-solid atomicity",
     async () => {
       const oc = await loadOcct();

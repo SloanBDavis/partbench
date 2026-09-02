@@ -3,45 +3,56 @@ import { CadMcpServer } from "./index";
 
 const PRIVATE_ID_PATTERN = /snapshot-local|raw-occt|entitySignature|localId/i;
 
-const CHAMFER_PATTERN_CADOPS = [
-  { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+const EXTRUDE_ADD_PATTERN_CADOPS = [
+  { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
   {
     op: "sketch.addRectangle",
-    sketchId: "sketch_block",
-    id: "rect_block",
+    sketchId: "sketch_plate",
+    id: "rect_plate",
     center: [0, 0],
-    width: 20,
-    height: 12
+    width: 60,
+    height: 24
   },
   {
     op: "feature.extrude",
-    id: "feat_block",
-    bodyId: "body_block",
-    sketchId: "sketch_block",
-    entityId: "rect_block",
-    depth: 8
+    id: "feat_plate",
+    bodyId: "body_plate",
+    sketchId: "sketch_plate",
+    entityId: "rect_plate",
+    depth: 6
+  },
+  { op: "sketch.create", id: "sketch_boss", name: "Boss", plane: "XY" },
+  {
+    op: "sketch.addRectangle",
+    sketchId: "sketch_boss",
+    id: "rect_boss",
+    center: [-16, 0],
+    width: 8,
+    height: 8
   },
   {
-    op: "feature.chamfer",
-    id: "feat_chamfer",
-    bodyId: "body_chamfer",
-    targetBodyId: "body_block",
-    edgeStableId: "generated:edge:body_block:start:uMin",
-    distance: 2
+    op: "feature.extrude",
+    id: "feat_boss",
+    bodyId: "body_boss",
+    sketchId: "sketch_boss",
+    entityId: "rect_boss",
+    depth: 10,
+    operationMode: "add",
+    targetBodyId: "body_plate"
   },
   {
     op: "feature.linearPattern",
     id: "feat_pattern",
     bodyId: "body_patterned",
-    seedFeatureId: "feat_chamfer",
+    seedFeatureId: "feat_boss",
     direction: { kind: "globalAxis", axis: "x" },
-    spacing: 30,
+    spacing: 16,
     instanceCount: 3
   }
 ] as const;
 
 describe("feature pattern grown solid seed MCP pass-through", () => {
-  it("submits the same grown chamfer-pattern CADOps as UI Apply without a new tool", () => {
+  it("submits the same grown extrude-add pattern CADOps as UI Apply without a new tool", () => {
     const server = new CadMcpServer();
     expect(server.listTools().tools.map((tool) => tool.name)).toContain(
       "cad.batch"
@@ -52,12 +63,12 @@ describe("feature pattern grown solid seed MCP pass-through", () => {
 
     const dryRun = server.callTool({
       name: "cad.batch",
-      requestId: "mcp_chamfer_pattern",
+      requestId: "mcp_extrude_add_pattern",
       arguments: {
         batch: {
           version: "cadops.v1",
           mode: "dryRun",
-          ops: [...CHAMFER_PATTERN_CADOPS]
+          ops: [...EXTRUDE_ADD_PATTERN_CADOPS]
         }
       }
     });
@@ -70,7 +81,7 @@ describe("feature pattern grown solid seed MCP pass-through", () => {
         ok: true,
         mode: "dryRun",
         createdFeatureIds: expect.arrayContaining([
-          "feat_chamfer",
+          "feat_boss",
           "feat_pattern"
         ]),
         createdBodyIds: expect.arrayContaining(["body_patterned"]),
@@ -79,7 +90,7 @@ describe("feature pattern grown solid seed MCP pass-through", () => {
             expect.objectContaining({
               op: "feature.linearPattern",
               featureId: "feat_pattern",
-              label: expect.stringContaining("feat_chamfer")
+              label: expect.stringContaining("feat_boss")
             })
           ])
         }

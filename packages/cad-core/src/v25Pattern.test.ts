@@ -8,48 +8,59 @@ import {
 
 const PRIVATE_ID_PATTERN = /snapshot-local|raw-occt|entitySignature|localId/i;
 
-function seedBlockAndChamfer(engine: CadEngine): void {
+function seedPlateAndBoss(engine: CadEngine): void {
   engine.applyBatch([
-    { op: "sketch.create", id: "sketch_block", name: "Block", plane: "XY" },
+    { op: "sketch.create", id: "sketch_plate", name: "Plate", plane: "XY" },
     {
       op: "sketch.addRectangle",
-      sketchId: "sketch_block",
-      id: "rect_block",
+      sketchId: "sketch_plate",
+      id: "rect_plate",
       center: [0, 0],
-      width: 20,
-      height: 12
+      width: 60,
+      height: 24
     },
     {
       op: "feature.extrude",
-      id: "feat_block",
-      bodyId: "body_block",
-      sketchId: "sketch_block",
-      entityId: "rect_block",
-      depth: 8
+      id: "feat_plate",
+      bodyId: "body_plate",
+      sketchId: "sketch_plate",
+      entityId: "rect_plate",
+      depth: 6
+    },
+    { op: "sketch.create", id: "sketch_boss", name: "Boss", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_boss",
+      id: "rect_boss",
+      center: [-16, 0],
+      width: 8,
+      height: 8
     },
     {
-      op: "feature.chamfer",
-      id: "feat_chamfer",
-      bodyId: "body_chamfer",
-      targetBodyId: "body_block",
-      edgeStableId: "generated:edge:body_block:start:uMin",
-      distance: 2
+      op: "feature.extrude",
+      id: "feat_boss",
+      bodyId: "body_boss",
+      sketchId: "sketch_boss",
+      entityId: "rect_boss",
+      depth: 10,
+      operationMode: "add",
+      targetBodyId: "body_plate"
     }
   ]);
 }
 
 describe("feature pattern grown solid seed", () => {
-  it("linear-patterns a completed chamfer, not a hole and not a whole body, without a schema bump", () => {
+  it("linear-patterns a completed extrude-add on the parent, not a hole and not a whole-body copy, without a schema bump", () => {
     const engine = new CadEngine();
-    seedBlockAndChamfer(engine);
+    seedPlateAndBoss(engine);
 
     const result = engine.apply({
       op: "feature.linearPattern",
       id: "feat_pattern",
       bodyId: "body_patterned",
-      seedFeatureId: "feat_chamfer",
+      seedFeatureId: "feat_boss",
       direction: { kind: "globalAxis", axis: "x" },
-      spacing: 30,
+      spacing: 16,
       instanceCount: 3
     });
 
@@ -59,7 +70,7 @@ describe("feature pattern grown solid seed", () => {
           {
             id: "feat_pattern",
             kind: "linearPattern",
-            seedFeatureId: "feat_chamfer",
+            seedFeatureId: "feat_boss",
             bodyId: "body_patterned"
           }
         ],
@@ -79,23 +90,25 @@ describe("feature pattern grown solid seed", () => {
       query: "project.structure",
       features: expect.arrayContaining([
         expect.objectContaining({
-          id: "feat_chamfer",
-          kind: "chamfer"
+          id: "feat_boss",
+          kind: "extrude",
+          operationMode: "add",
+          targetBodyId: "body_plate"
         }),
         expect.objectContaining({
           id: "feat_pattern",
           kind: "linearPattern",
-          seedFeatureId: "feat_chamfer",
+          seedFeatureId: "feat_boss",
           bodyId: "body_patterned"
         })
       ]),
       bodies: expect.arrayContaining([
         expect.objectContaining({
-          id: "body_block",
-          consumedByFeatureId: "feat_chamfer"
+          id: "body_plate",
+          consumedByFeatureId: "feat_boss"
         }),
         expect.objectContaining({
-          id: "body_chamfer",
+          id: "body_boss",
           consumedByFeatureId: "feat_pattern"
         }),
         expect.objectContaining({
@@ -103,7 +116,7 @@ describe("feature pattern grown solid seed", () => {
           featureId: "feat_pattern",
           source: expect.objectContaining({
             type: "linearPatternFeature",
-            seedFeatureId: "feat_chamfer"
+            seedFeatureId: "feat_boss"
           })
         })
       ])
@@ -119,7 +132,7 @@ describe("feature pattern grown solid seed", () => {
         (feature) =>
           feature.kind === "linearPattern" &&
           feature.id === "feat_pattern" &&
-          feature.seedFeatureId === "feat_chamfer" &&
+          feature.seedFeatureId === "feat_boss" &&
           feature.seedBodyId === undefined
       )
     ).toBe(true);
@@ -136,54 +149,20 @@ describe("feature pattern grown solid seed", () => {
         expect.objectContaining({
           id: "feat_pattern",
           kind: "linearPattern",
-          seedFeatureId: "feat_chamfer"
+          seedFeatureId: "feat_boss"
+        }),
+        expect.objectContaining({
+          id: "feat_boss",
+          kind: "extrude",
+          operationMode: "add"
         })
       ])
     });
   });
 
-  it("accepts a completed extrude seedFeatureId and still rejects exclusive-seed violations", () => {
+  it("still rejects exclusive-seed violations on an extrude-add pattern", () => {
     const engine = new CadEngine();
-    engine.applyBatch([
-      { op: "sketch.create", id: "sketch_boss", name: "Boss", plane: "XY" },
-      {
-        op: "sketch.addRectangle",
-        sketchId: "sketch_boss",
-        id: "rect_boss",
-        center: [0, 0],
-        width: 8,
-        height: 8
-      },
-      {
-        op: "feature.extrude",
-        id: "feat_boss",
-        bodyId: "body_boss",
-        sketchId: "sketch_boss",
-        entityId: "rect_boss",
-        depth: 6
-      }
-    ]);
-
-    const created = engine.apply({
-      op: "feature.linearPattern",
-      id: "feat_boss_pattern",
-      bodyId: "body_boss_patterned",
-      seedFeatureId: "feat_boss",
-      direction: { kind: "globalAxis", axis: "y" },
-      spacing: 24,
-      instanceCount: 2
-    });
-    expect(created.transaction.diff).toMatchObject({
-      features: {
-        created: [
-          expect.objectContaining({
-            id: "feat_boss_pattern",
-            kind: "linearPattern",
-            seedFeatureId: "feat_boss"
-          })
-        ]
-      }
-    });
+    seedPlateAndBoss(engine);
 
     expect(() =>
       engine.apply({
@@ -191,7 +170,7 @@ describe("feature pattern grown solid seed", () => {
         seedBodyId: "body_boss",
         seedFeatureId: "feat_boss",
         direction: { kind: "globalAxis", axis: "x" },
-        spacing: 30,
+        spacing: 16,
         instanceCount: 3
       } as never)
     ).toThrow(/seedBodyId or seedFeatureId/);

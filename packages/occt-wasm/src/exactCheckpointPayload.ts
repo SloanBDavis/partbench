@@ -21,12 +21,15 @@ import {
 } from "./booleanExtrudes";
 import { withOcctHoleResultOnShape, type OcctHoleToolSource } from "./hole";
 import {
+  makeCircularBooleanPatternShape,
   makeCircularHolePatternShape,
   makeCircularPatternShape,
+  makeLinearBooleanPatternShape,
   makeLinearHolePatternShape,
   makeLinearPatternShape,
   type OcctAxisFrame,
-  type OcctDirection
+  type OcctDirection,
+  type OcctPatternBooleanToolSource
 } from "./pattern";
 import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
 import { makeArtifactShellShape, type OcctTopologyFaceRef } from "./shell";
@@ -149,6 +152,7 @@ export interface OcctArtifactLinearPatternSource {
   readonly spacing: number;
   readonly instanceCount: number;
   readonly holeTool?: OcctHoleToolSource;
+  readonly booleanTool?: OcctPatternBooleanToolSource;
 }
 
 export interface OcctArtifactCircularPatternSource {
@@ -158,6 +162,7 @@ export interface OcctArtifactCircularPatternSource {
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly holeTool?: OcctHoleToolSource;
+  readonly booleanTool?: OcctPatternBooleanToolSource;
 }
 
 export interface OcctArtifactMirrorSource {
@@ -438,14 +443,28 @@ function withArtifactBackedExactBodyShape<T>(
         assertArtifactPatternInput(source);
         result = source.holeTool
           ? makeLinearHolePatternShape(oc, operand, source, source.holeTool)
-          : makeLinearPatternShape(oc, operand, source);
+          : source.booleanTool
+            ? makeLinearBooleanPatternShape(
+                oc,
+                operand,
+                source,
+                source.booleanTool
+              )
+            : makeLinearPatternShape(oc, operand, source);
         return readResult(result, "linearPattern");
       }
       if (source.kind === "artifactCircularPattern") {
         assertArtifactPatternInput(source);
         result = source.holeTool
           ? makeCircularHolePatternShape(oc, operand, source, source.holeTool)
-          : makeCircularPatternShape(oc, operand, source);
+          : source.booleanTool
+            ? makeCircularBooleanPatternShape(
+                oc,
+                operand,
+                source,
+                source.booleanTool
+              )
+            : makeCircularPatternShape(oc, operand, source);
         return readResult(result, "circularPattern");
       }
       if (source.kind === "artifactMirror") {
