@@ -102,5 +102,5 @@ boundaries separate. Do not couple the React UI to geometry internals.
 
 Do not implement the whole architecture at once.
 
-V22, V23, and V24 are complete. This document names sticky constraints only.
+V22, V23, V24, and V25 are complete. This document names sticky constraints only.
 It is not a source for inventing a next release.
