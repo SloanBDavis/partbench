@@ -18,6 +18,7 @@ import type {
   FeatureCircularPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureAlignForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -135,6 +136,8 @@ export function applySolidCollectorSelection(
       };
     if (kind === "mirror")
       return { ...(draft as FeatureMirrorForm), seedBodyId: value };
+    if (kind === "align")
+      return { ...(draft as FeatureAlignForm), seedBodyId: value };
     return draft;
   }
 
@@ -226,6 +229,12 @@ export function applySolidCollectorSelection(
       : draft;
   }
 
+  if (collector === "openFaces" && kind === "align") {
+    const choice = findChoice(choices?.openFaces, choiceKey);
+    if (!choice) return draft;
+    return { ...(draft as FeatureAlignForm), sourceFace: choice.value };
+  }
+
   if (collector === "openFaces" && kind === "offset") {
     const choice = findChoice(choices?.openFaces, choiceKey);
     if (!choice) return draft;
@@ -266,6 +275,20 @@ export function applySolidCollectorSelection(
     const value = findChoice(choices?.rotationAxes, choiceKey)?.value;
     return value
       ? { ...(draft as FeatureCircularPatternForm), rotationAxis: value }
+      : draft;
+  }
+
+  if (collector === "rotationAxis" && kind === "align") {
+    const value = findChoice(choices?.datums, choiceKey)?.value;
+    return value
+      ? { ...(draft as FeatureAlignForm), targetDatumId: value }
+      : draft;
+  }
+
+  if (collector === "mirrorPlane" && kind === "align") {
+    const choice = findChoice(choices?.openFaces, choiceKey);
+    return choice
+      ? { ...(draft as FeatureAlignForm), targetFace: choice.value }
       : draft;
   }
 

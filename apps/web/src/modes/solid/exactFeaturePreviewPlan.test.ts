@@ -18,6 +18,7 @@ import type {
   FeatureLoftForm,
   FeatureMirrorForm,
   FeatureCombineForm,
+  FeatureAlignForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
   FeatureShellForm,
@@ -284,6 +285,28 @@ describe("V22 exact feature preview planner", () => {
       op: "feature.offset"
     },
     {
+      kind: "align" as const,
+      draft: {
+        id: "feature-created",
+        bodyId: "body-created",
+        name: "",
+        seedBodyId: "body-seed",
+        sourceFace: {
+          kind: "generatedFace",
+          bodyId: "body-seed",
+          stableId: "generated:face:body-seed:endCap"
+        },
+        targetKind: "planarFace" as const,
+        targetFace: {
+          kind: "generatedFace",
+          bodyId: "body-target",
+          stableId: "generated:face:body-target:endCap"
+        },
+        targetDatumId: ""
+      } satisfies FeatureAlignForm,
+      op: "feature.align"
+    },
+    {
       kind: "shell" as const,
       draft: {
         id: "feature-created",
@@ -433,6 +456,107 @@ describe("V22 exact feature preview planner", () => {
           mode: "union",
           targetBodyId: "body_hub",
           toolBodyId: "body_step"
+        }
+      ]
+    });
+  });
+
+  it("submits the same feature.align batch as the align CADOps case", () => {
+    const ontoFace = {
+      id: "feat_align_face",
+      bodyId: "body_align_face",
+      name: "",
+      seedBodyId: "body_source_face",
+      sourceFace: {
+        kind: "generatedFace" as const,
+        bodyId: "body_source_face",
+        stableId: "generated:face:body_source_face:endCap"
+      },
+      targetKind: "planarFace" as const,
+      targetFace: {
+        kind: "generatedFace" as const,
+        bodyId: "body_target",
+        stableId: "generated:face:body_target:endCap"
+      },
+      targetDatumId: ""
+    } satisfies FeatureAlignForm;
+    const ontoPlane = {
+      id: "feat_align_plane",
+      bodyId: "body_align_plane",
+      name: "",
+      seedBodyId: "body_source_plane",
+      sourceFace: {
+        kind: "generatedFace" as const,
+        bodyId: "body_source_plane",
+        stableId: "generated:face:body_source_plane:endCap"
+      },
+      targetKind: "datumPlane" as const,
+      targetFace: undefined,
+      targetDatumId: "datum_xy_20"
+    } satisfies FeatureAlignForm;
+    const ontoAxis = {
+      id: "feat_align_axis",
+      bodyId: "body_align_axis",
+      name: "",
+      seedBodyId: "body_source_axis",
+      sourceFace: {
+        kind: "generatedFace" as const,
+        bodyId: "body_source_axis",
+        stableId: "generated:face:body_source_axis:side:uMax"
+      },
+      targetKind: "datumAxis" as const,
+      targetFace: undefined,
+      targetDatumId: "datum_axis_z"
+    } satisfies FeatureAlignForm;
+    expect(planExactFeaturePreview(makeInput("align", ontoFace, "create"))).toMatchObject({
+      status: "supported",
+      requiresExactDownstreamCommitPreflight: false,
+      ops: [
+        {
+          op: "feature.align",
+          id: "feat_align_face",
+          bodyId: "body_align_face",
+          seedBodyId: "body_source_face",
+          sourceFace: {
+            kind: "generatedFace",
+            bodyId: "body_source_face",
+            stableId: "generated:face:body_source_face:endCap"
+          },
+          target: {
+            kind: "planarFace",
+            face: {
+              kind: "generatedFace",
+              bodyId: "body_target",
+              stableId: "generated:face:body_target:endCap"
+            }
+          }
+        }
+      ]
+    });
+    expect(planExactFeaturePreview(makeInput("align", ontoPlane, "create"))).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.align",
+          id: "feat_align_plane",
+          seedBodyId: "body_source_plane",
+          target: { kind: "datumPlane", datumId: "datum_xy_20" }
+        }
+      ]
+    });
+    expect(planExactFeaturePreview(makeInput("align", ontoAxis, "create"))).toMatchObject({
+      status: "supported",
+      ops: [
+        {
+          op: "feature.align",
+          id: "feat_align_axis",
+          seedBodyId: "body_source_axis",
+          sourceFace: {
+            kind: "generatedFace",
+            bodyId: "body_source_axis",
+            stableId: "generated:face:body_source_axis:side:uMax"
+          },
+          target: { kind: "datumAxis", datumId: "datum_axis_z" }
         }
       ]
     });

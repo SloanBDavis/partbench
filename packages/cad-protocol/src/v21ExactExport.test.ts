@@ -218,6 +218,7 @@ describe("V21 exact export protocol", () => {
       mirrorFeature: "authoredMirror",
       combineFeature: "authoredCombine",
       offsetFeature: "authoredOffset",
+      alignFeature: "authoredAlign",
       shellFeature: "authoredShell",
       sweepFeature: "authoredSweep",
       loftFeature: "authoredLoft",

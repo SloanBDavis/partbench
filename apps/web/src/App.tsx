@@ -1319,6 +1319,9 @@ function activeCurrentExactRequiredOperationFor(
   if (activeTool === "solid.offset") {
     return "feature.offset";
   }
+  if (activeTool === "solid.align") {
+    return "feature.align";
+  }
   if (activeTool === "sketch.create") {
     return "feature.attachSketchPlane";
   }
@@ -4175,7 +4178,8 @@ export function App() {
       );
     }
     return pendingCurrentExactPromotion?.requiredOperation === "feature.shell" ||
-      pendingCurrentExactPromotion?.requiredOperation === "feature.offset"
+      pendingCurrentExactPromotion?.requiredOperation === "feature.offset" ||
+      pendingCurrentExactPromotion?.requiredOperation === "feature.align"
       ? includeCurrentSolidChoice(
           choices,
           createPendingFaceChoice(pendingCurrentExactPromotion)
@@ -5471,6 +5475,38 @@ export function App() {
           solidCombineBodyChoices.length >= 2
             ? undefined
             : "Select two completed exact solids."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.align") {
+      const face = selectedShellFaceChoice?.value;
+      return {
+        key,
+        kind: "align",
+        title: "Align Body",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          seedBodyId: selectedSeedBodyId,
+          sourceFace: face,
+          targetKind: "planarFace" as const,
+          targetFace: undefined,
+          targetDatumId: ""
+        },
+        choices: {
+          seedBodies: solidSeedBodyChoices,
+          openFaces: solidShellFaceChoices,
+          datums: [...engine.getDocument().datums.values()].map((datum) => ({
+            key: datum.id,
+            value: datum.id,
+            label: datum.name,
+            kind: datum.kind === "axis" ? "datum-axis" : "datum-plane"
+          }))
+        },
+        blockedReason: selectedSeedBodyId
+          ? undefined
+          : "Select a completed exact body to move."
       } as SolidEditorRequest;
     }
     return undefined;
@@ -8196,6 +8232,8 @@ export function App() {
         return "combine";
       case "offset":
         return "offset";
+      case "align":
+        return "align";
       case "shell":
         return "shell";
       case "sweep":
@@ -10412,6 +10450,9 @@ export function App() {
         selectedEntityProfile || selectedShellFaceChoice
           ? ready
           : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidOffset),
+      "solid.align": selectedSeedBodyId
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidAlign),
       "solid.datum-plane": ready,
       "solid.datum-axis": ready,
       "solid.edit":

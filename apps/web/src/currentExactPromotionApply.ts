@@ -211,6 +211,16 @@ export function createCurrentExactTopologyAnchorCommandProof(
   return undefined;
 }
 
+function alignFaceBelongsToBody(
+  face: { readonly kind: string; readonly bodyId?: string },
+  bodyId: string
+): boolean {
+  return (
+    (face.kind === "generatedFace" || face.kind === "topologyAnchor") &&
+    face.bodyId === bodyId
+  );
+}
+
 function omitFields<T extends object>(
   value: T,
   ...keys: readonly (keyof T)[]
@@ -262,6 +272,17 @@ function rewriteConsumingOps(
               source: { kind: "face", face: topologyAnchor }
             }
           : op;
+      case "feature.align": {
+        const sourceFace = alignFaceBelongsToBody(op.sourceFace, bodyId)
+          ? topologyAnchor
+          : op.sourceFace;
+        const target =
+          op.target.kind === "planarFace" &&
+          alignFaceBelongsToBody(op.target.face, bodyId)
+            ? { kind: "planarFace" as const, face: topologyAnchor }
+            : op.target;
+        return { ...op, sourceFace, target };
+      }
       case "feature.linearPattern":
       case "feature.updateLinearPattern":
         return {

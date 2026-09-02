@@ -10,6 +10,7 @@ import type {
   FeatureLinearPatternForm,
   FeatureLoftForm,
   FeatureMirrorForm,
+  FeatureAlignForm,
   FeatureCombineForm,
   FeatureOffsetForm,
   FeatureRevolveForm,
@@ -229,6 +230,23 @@ export function validateSolidDraft(
       (form.side === "inward" || form.side === "outward")
       ? ready()
       : blocked("Distance must be greater than zero and side must be inward or outward.");
+  }
+  if (kind === "align") {
+    const form = draft as FeatureAlignForm;
+    if (!form.seedBodyId) return collecting("Select a completed exact body to move.");
+    if (!form.sourceFace) return collecting("Select a planar face on the moving body.");
+    if (form.targetKind === "planarFace") {
+      return form.targetFace
+        ? ready()
+        : collecting("Select a planar face to meet.");
+    }
+    return form.targetDatumId
+      ? ready()
+      : collecting(
+          form.targetKind === "datumPlane"
+            ? "Select a datum plane to meet."
+            : "Select a datum axis to lock remaining rotation."
+        );
   }
   const mirror = draft as FeatureMirrorForm;
   if (!mirror.seedBodyId) return collecting("Select an exact-ready seed body.");

@@ -3077,6 +3077,25 @@ function createOperationReview(
         ...(op.bodyId ? { bodyId: op.bodyId } : {})
       };
 
+    case "feature.align":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create align feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} onto ${
+            op.target.kind === "planarFace"
+              ? "planar face"
+              : op.target.kind === "datumPlane"
+                ? `datum plane ${op.target.datumId}`
+                : `datum axis ${op.target.datumId}`
+          }`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.seedBodyId
+      };
+
     case "feature.shell":
       return {
         ...operationReviewBase(
@@ -5497,6 +5516,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.fillet" ||
     value === "feature.shell" ||
     value === "feature.offset" ||
+    value === "feature.align" ||
     value === "feature.mirrorPlane" ||
     value === "feature.linearPatternDirection" ||
     value === "feature.circularPatternAxis" ||
@@ -6206,6 +6226,17 @@ function isCadOp(value: unknown): value is CadOp {
       isFeatureOffsetSourceShape(value.source) &&
       typeof value.distance === "number" &&
       (value.side === "inward" || value.side === "outward")
+    );
+  }
+
+  if (value.op === "feature.align") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isFeatureShellOpenFaceRefShape(value.sourceFace) &&
+      isFeatureAlignTargetShape(value.target)
     );
   }
 
@@ -7124,6 +7155,20 @@ function isFeatureShellOpenFaceRefShape(value: unknown): boolean {
   }
 
   return false;
+}
+
+function isFeatureAlignTargetShape(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  if (value.kind === "planarFace") {
+    return isFeatureShellOpenFaceRefShape(value.face);
+  }
+  return (
+    (value.kind === "datumPlane" || value.kind === "datumAxis") &&
+    typeof value.datumId === "string" &&
+    value.datumId !== ""
+  );
 }
 
 function isFeatureOffsetSourceShape(value: unknown): boolean {

@@ -29,6 +29,7 @@ export type FeatureEditorKind =
   | "mirror"
   | "combine"
   | "offset"
+  | "align"
   | "datum-plane"
   | "datum-axis"
   | "named-reference"

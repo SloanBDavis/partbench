@@ -89,6 +89,7 @@ const SELECTION = {
   mirrorFeature: selection(S.mirrorFeature.cases, V.mirrorFeature),
   combineFeature: selection(S.combineFeature.cases),
   offsetFeature: selection(S.offsetFeature.cases),
+  alignFeature: selection(S.alignFeature.cases),
   shellFeature: selection(S.shellFeature.cases),
   sweepFeature: selection(S.sweepFeature.cases),
   loftFeature: selection(S.loftFeature.cases),
@@ -153,6 +154,9 @@ const COLLECTORS = [
   collector(F, ["feature.offset"], [], [ACTIVE_ANCHOR], "offset readiness", [
     "feature.offset",
     "feature.updateOffset"
+  ]),
+  collector(F, ["feature.align"], [], [ACTIVE_ANCHOR], "align readiness", [
+    "feature.align"
   ]),
   collector(
     F,

@@ -2158,6 +2158,7 @@ function hasSketchEntitySource(
     feature.kind !== "mirror" &&
     feature.kind !== "combine" &&
     feature.kind !== "offset" &&
+    feature.kind !== "align" &&
     feature.kind !== "shell" &&
     feature.kind !== "sweep" &&
     feature.kind !== "loft" &&
@@ -2647,6 +2648,10 @@ function describeFeatureForHealth(
 
   if (feature.kind === "offset") {
     return "offset result";
+  }
+
+  if (feature.kind === "align") {
+    return "align result";
   }
 
   if (feature.kind === "shell") {

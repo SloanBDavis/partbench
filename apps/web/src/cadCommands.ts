@@ -25,6 +25,9 @@ import type {
   FeatureMirrorOp,
   FeatureCombineOp,
   FeatureCombineMode,
+  FeatureAlignFaceRef,
+  FeatureAlignOp,
+  FeatureAlignTarget,
   FeatureOffsetFaceRef,
   FeatureOffsetOp,
   FeatureOffsetSide,
@@ -377,6 +380,17 @@ export interface FeatureOffsetForm {
 export interface FeatureOffsetEdit {
   readonly distance?: number;
   readonly side?: FeatureOffsetSide;
+}
+
+export interface FeatureAlignForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly seedBodyId: string;
+  readonly sourceFace?: FeatureAlignFaceRef;
+  readonly targetKind: FeatureAlignTarget["kind"];
+  readonly targetFace?: FeatureAlignFaceRef;
+  readonly targetDatumId: string;
 }
 
 export interface FeatureShellForm {
@@ -1621,6 +1635,43 @@ export function buildFeatureCombineOp(
     targetBodyId: form.targetBodyId,
     toolBodyId: form.toolBodyId
   };
+}
+
+export function buildFeatureAlignOp(form: FeatureAlignForm): FeatureAlignOp {
+  return {
+    op: "feature.align",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    seedBodyId: form.seedBodyId,
+    sourceFace: requireAlignFace(form.sourceFace, "sourceFace"),
+    target: buildFeatureAlignTarget(form)
+  };
+}
+
+function buildFeatureAlignTarget(form: FeatureAlignForm): FeatureAlignTarget {
+  if (form.targetKind === "planarFace") {
+    return {
+      kind: "planarFace",
+      face: requireAlignFace(form.targetFace, "targetFace")
+    };
+  }
+  if (!form.targetDatumId.trim()) {
+    throw new Error(`feature.align ${form.targetKind} requires a datum id.`);
+  }
+  return form.targetKind === "datumPlane"
+    ? { kind: "datumPlane", datumId: form.targetDatumId }
+    : { kind: "datumAxis", datumId: form.targetDatumId };
+}
+
+function requireAlignFace(
+  face: FeatureAlignFaceRef | undefined,
+  field: "sourceFace" | "targetFace"
+): FeatureAlignFaceRef {
+  if (!face) {
+    throw new Error(`feature.align ${field} requires a face reference.`);
+  }
+  return face;
 }
 
 export function buildFeatureOffsetOp(form: FeatureOffsetForm): FeatureOffsetOp {

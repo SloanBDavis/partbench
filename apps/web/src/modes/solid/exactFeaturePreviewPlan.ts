@@ -12,6 +12,7 @@ import {
   buildFeatureLinearPatternOp,
   buildFeatureLoftOp,
   buildFeatureMirrorOp,
+  buildFeatureAlignOp,
   buildFeatureCombineOp,
   buildFeatureOffsetOp,
   buildFeatureUpdateOffsetOp,
@@ -101,7 +102,8 @@ const EXPECTED_FEATURE_KIND: Partial<
   circularPattern: "circularPattern",
   mirror: "mirror",
   combine: "combine",
-  offset: "offset"
+  offset: "offset",
+  align: "align"
 };
 
 function unsupported(reason: string): ExactFeaturePreviewUnsupportedPlan {
@@ -383,6 +385,10 @@ export function planExactFeaturePreview(
         return unsupported(
           "Combine features are create-only; delete and recreate to change inputs."
         );
+      case "align":
+        return unsupported(
+          "Align features are create-only; delete and recreate to change inputs."
+        );
       case "offset": {
         const feature = current as Feature<"offset">;
         return supported(
@@ -440,6 +446,8 @@ export function planExactFeaturePreview(
       return supported(buildFeatureCombineOp(draft));
     case "offset":
       return supported(buildFeatureOffsetOp(draft));
+    case "align":
+      return supported(buildFeatureAlignOp(draft));
     case "shell":
       return supported(buildFeatureShellOp(draft));
     case "sweep": {

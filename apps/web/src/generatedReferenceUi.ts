@@ -512,6 +512,8 @@ function formatOperationLabel(operation: string): string {
       return "Shell";
     case "feature.offset":
       return "Offset";
+    case "feature.align":
+      return "Align";
     case "feature.measureReference":
       return "Measure";
     case "feature.selectReference":

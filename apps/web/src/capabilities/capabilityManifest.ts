@@ -372,6 +372,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildFeatureOffsetOp",
     "cadCommands.test.ts"
   ),
+  "solid.align": featureAudit(
+    "Align",
+    "createAlign",
+    "body/face/datum selection",
+    "buildFeatureAlignOp",
+    "cadCommands.test.ts"
+  ),
   "solid.datum-plane": featureAudit(
     "Datum plane",
     "createDatumPlane",

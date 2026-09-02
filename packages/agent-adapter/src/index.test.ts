@@ -1545,6 +1545,96 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews feature.align batches from external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_align",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            { op: "sketch.create", id: "sketch_target", name: "Target", plane: "XY" },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_target",
+              id: "rect_target",
+              center: [0, 0],
+              width: 20,
+              height: 20
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_target",
+              bodyId: "body_target",
+              sketchId: "sketch_target",
+              entityId: "rect_target",
+              depth: 10
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_source_face",
+              name: "Face source",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_source_face",
+              id: "rect_source_face",
+              center: [40, 0],
+              width: 10,
+              height: 10
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_source_face",
+              bodyId: "body_source_face",
+              sketchId: "sketch_source_face",
+              entityId: "rect_source_face",
+              depth: 8
+            },
+            {
+              op: "feature.align",
+              id: "feat_align_face",
+              bodyId: "body_align_face",
+              seedBodyId: "body_source_face",
+              sourceFace: {
+                kind: "generatedFace",
+                bodyId: "body_source_face",
+                stableId: "generated:face:body_source_face:endCap"
+              },
+              target: {
+                kind: "planarFace",
+                face: {
+                  kind: "generatedFace",
+                  bodyId: "body_target",
+                  stableId: "generated:face:body_target:endCap"
+                }
+              }
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.align",
+          intent: "create",
+          featureId: "feat_align_face",
+          bodyId: "body_align_face",
+          targetBodyId: "body_source_face",
+          label: expect.stringContaining("planar face")
+        })
+      ])
+    );
+  });
+
   it("accepts and reviews feature.offset batches from external JSON callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = parseCadOpsAgentRequestJson(
@@ -7009,6 +7099,7 @@ describe("agent-adapter", () => {
             "feature.attachSketchPlane",
             "feature.shell",
             "feature.offset",
+            "feature.align",
             "feature.mirrorPlane",
             "feature.measureReference",
             "feature.selectReference"
