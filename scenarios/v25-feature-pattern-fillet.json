@@ -99,5 +99,48 @@
         }
       ]
     }
-  ]
+  ],
+  "use": [
+      {
+        "click": "[data-action-id=\"solid.box\"]"
+      },
+      {
+        "wait": "#solid-width"
+      },
+      {
+        "type": {
+          "selector": "#solid-width",
+          "text": "20"
+        }
+      },
+      {
+        "apply": true
+      },
+      {
+        "waitReady": true
+      },
+      {
+        "screenshot": "v25-feature-pattern-fillet-use"
+      }
+    ],
+    "useBreak": [
+      {
+        "click": "[data-action-id=\"solid.box\"]"
+      },
+      {
+        "wait": "#solid-width"
+      },
+      {
+        "type": {
+          "selector": "#solid-width",
+          "text": "0"
+        }
+      },
+      {
+        "expectDisabled": "[data-ui-smoke=\"apply\"]"
+      },
+      {
+        "screenshot": "v25-feature-pattern-fillet-use-break"
+      }
+    ]
 }

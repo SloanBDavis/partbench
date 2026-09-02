@@ -87,6 +87,7 @@
     "legacy:test:scripts": "vitest run scripts/*.test.mjs scripts/**/*.test.mjs",
     "typecheck": "pnpm -r typecheck",
     "smoke:ui": "bun scripts/smoke-ui.mjs",
+    "smoke:ui-use": "bun scripts/smoke-ui-use.mjs",
     "verify": "pnpm typecheck && node scripts/scenarios-run.mjs"
   },
   "devDependencies": {

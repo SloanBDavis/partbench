@@ -2,7 +2,7 @@
 
 This is the development loop. Architecture stays in
 [`docs/architecture.md`](./architecture.md). The current user goal is linked
-from [`AGENTS.md`](../AGENTS.md).
+from [`AGENTS.md`](../AGENTS.md). Proof is [`docs/verification.md`](./verification.md).
 
 ## One architecture
 
@@ -18,7 +18,7 @@ the release is done. That paragraph is the user goal.
 The last completed user goal is the Product Goal in [`docs/v25.md`](./v25.md).
 V22, V23, V24, and V25 are complete. Do not reopen them. Do not invent V26. Next product work is a new user goal.
 
-Do not replay V24 gates or V7–V23 gauntlets. Do not paste a changelog into
+Do not replay V24 gates or V7-V23 gauntlets. Do not paste a changelog into
 `AGENTS.md`.
 
 ## A slice is a step toward the user goal
@@ -28,17 +28,11 @@ slice does not make the user goal more true, delete it.
 
 ## Proof
 
-Proof is a `scenarios/` CADOps scenario and its semantic diffs, not
-Playwright. `pnpm verify` runs typecheck plus the scenarios runner.
-Intense verification includes Chromium on the real workbench (smoke:ui). CADOps scenarios are supporting evidence, not a substitute.
-
-Historical named smokes live under the `legacy:` prefix. They are
-compatibility history. They are not the daily loop. Never rerun V7–V24
-gauntlets.
+See [`docs/verification.md`](./verification.md). CADOps scenarios are command truth.
+Chromium `applyOps` is the engine gate. Use is clicks in the workbench. All three for a UI slice.
+Never Playwright. Never a second bot. Never the historical gauntlet.
 
 Per-save: focused tests and typecheck of the packages you touched.
-
-Close a slice when the named closer is green and, if the slice has UI, smoke:ui is green on the new scenarios. If you cannot demonstrate it in the running app via smoke:ui, you are not done.
 
 ## Question, delete, then build
 

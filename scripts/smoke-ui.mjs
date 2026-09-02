@@ -65,8 +65,22 @@ function createChromeWebView(chromePath) {
     }
   });
 }
-function parseFilterArgs(argv) {
-  return argv.filter((arg) => arg !== "--");
+function parseCli(argv) {
+  const raw = argv.filter((arg) => arg !== "--");
+  const useOnly =
+    raw.includes("--use") || process.env.PARTBENCH_SMOKE_UI_USE === "1";
+  const requireUse =
+    raw.includes("--require-use") ||
+    process.env.PARTBENCH_SMOKE_UI_REQUIRE_USE === "1";
+  const filters = raw.filter(
+    (arg) => arg !== "--use" && arg !== "--require-use"
+  );
+  return {
+    useOnly,
+    requireUse: requireUse || (useOnly && filters.length > 0),
+    filtered: filters.length > 0,
+    filters
+  };
 }
 
 function delay(milliseconds) {
@@ -74,6 +88,38 @@ function delay(milliseconds) {
     setTimeout(resolvePromise, milliseconds);
   });
 }
+function hasUse(scenario) {
+  return Array.isArray(scenario.use) && scenario.use.length > 0;
+}
+
+function hasUseBreak(scenario) {
+  return Array.isArray(scenario.useBreak) && scenario.useBreak.length > 0;
+}
+
+function selectScenarios(loaded, options) {
+  const { useOnly, requireUse } = options;
+  if (useOnly && !requireUse) {
+    const withUse = loaded.filter((item) => hasUse(item.scenario));
+    if (withUse.length === 0) {
+      throw new Error(
+        "smoke:ui-use found no scenarios with a use block. Write clicks from the workbench before close."
+      );
+    }
+    return withUse;
+  }
+  if (requireUse) {
+    for (const item of loaded) {
+      if (!hasUse(item.scenario)) {
+        throw new Error(
+          item.name +
+            " missing use block. Write clicks from the workbench before close. applyOps is not Use."
+        );
+      }
+    }
+  }
+  return loaded;
+}
+
 function loadScenarios(filters) {
   if (filters.length === 0 && process.env.PARTBENCH_SMOKE_UI_PREFIX) {
     filters = ["scenarios/" + process.env.PARTBENCH_SMOKE_UI_PREFIX + "-*.json"];
@@ -509,8 +555,195 @@ async function runPromotionScenario(view, name, scenario) {
   await clickPickCollector(view);
 }
 
-async function runScenario(view, appUrl, loaded) {
+async function typeField(view, selector, text) {
+  await view.click(selector);
+  await view.press("End");
+  for (let i = 0; i < 16; i++) {
+    await view.press("Backspace");
+  }
+  const value = String(text ?? "");
+  if (value.length > 0) {
+    await view.type(value);
+  }
+  await delay(200);
+  const actual = await evaluate(
+    view,
+    "document.querySelector(" + JSON.stringify(selector) + ")?.value"
+  );
+  if (String(actual ?? "") !== value) {
+    throw new Error(
+      "typed " +
+        JSON.stringify(value) +
+        " into " +
+        selector +
+        " but value is " +
+        JSON.stringify(actual)
+    );
+  }
+}
+
+async function waitForControlState(view, selector, disabled, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await evaluate(
+      view,
+      "(() => { const el = document.querySelector(" +
+        JSON.stringify(selector) +
+        "); return el ? { present: true, disabled: Boolean(el.disabled) } : { present: false, disabled: false }; })()"
+    );
+    if (last.present && Boolean(last.disabled) === disabled) return last;
+    await delay(100);
+  }
+  throw new Error(
+    "expected " +
+      selector +
+      " disabled=" +
+      disabled +
+      " (present=" +
+      (last && last.present) +
+      " disabled=" +
+      (last && last.disabled) +
+      ")"
+  );
+}
+
+async function assertNotFrozen(view, label) {
+  const ready = await evaluate(
+    view,
+    "Boolean(window.__PARTBENCH_UI_SMOKE__ && window.__PARTBENCH_UI_SMOKE__.ready)"
+  );
+  if (!ready) {
+    throw new Error(label + " froze: smoke hook is gone");
+  }
+  const state = await getState(view);
+  if (isTerminalFailure(state)) {
+    throw new Error(
+      label +
+        " froze: rebuild=" +
+        state.rebuildState +
+        " " +
+        (state.diagnostic ?? "")
+    );
+  }
+}
+
+async function writeUseScreenshot(view, name) {
+  const screenshotPath = join(screenshotDir, sanitizeFileToken(name) + ".png");
+  const png = await view.screenshot({ encoding: "buffer" });
+  writeFileSync(screenshotPath, png);
+  console.log("screenshot " + screenshotPath);
+  return screenshotPath;
+}
+
+async function runUseSteps(view, name, steps, label) {
+  let sawScreenshot = false;
+  let sawBreak = false;
+  for (const step of steps) {
+    if (step.click) {
+      await view.click(step.click);
+      continue;
+    }
+    if (step.wait) {
+      await waitForSelector(view, step.wait, 15_000);
+      continue;
+    }
+    if (step.type) {
+      const selector =
+        typeof step.type === "string" ? step.type : step.type.selector;
+      const text = typeof step.type === "string" ? "" : (step.type.text ?? "");
+      await waitForSelector(view, selector, 15_000);
+      await typeField(view, selector, text);
+      continue;
+    }
+    if (step.apply) {
+      const selector =
+        typeof step.apply === "string"
+          ? step.apply
+          : '[data-ui-smoke="apply"]';
+      await waitForSelector(view, selector + ":not([disabled])", 15_000);
+      await view.click(selector);
+      continue;
+    }
+    if (step.waitReady) {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: step.waitReady === "empty"
+      });
+      if (step.waitReady !== "empty") {
+        const state = await getState(view);
+        if (!state.bodies || state.bodies.length === 0) {
+          throw new Error(name + " " + label + " did not create a visible solid.");
+        }
+      }
+      continue;
+    }
+    if (step.screenshot) {
+      await writeUseScreenshot(view, step.screenshot);
+      sawScreenshot = true;
+      continue;
+    }
+    if (step.expectDisabled) {
+      await waitForControlState(view, step.expectDisabled, true, 8_000);
+      await assertNotFrozen(view, name + " " + label);
+      sawBreak = true;
+      console.log(
+        name + " " + label + " blocked control " + step.expectDisabled
+      );
+      continue;
+    }
+    if (step.expectBlocked) {
+      const selector =
+        typeof step.expectBlocked === "string"
+          ? step.expectBlocked
+          : '[data-ui-smoke="apply"]';
+      await waitForControlState(view, selector, true, 8_000);
+      await assertNotFrozen(view, name + " " + label);
+      sawBreak = true;
+      console.log(name + " " + label + " blocked control " + selector);
+      continue;
+    }
+    throw new Error(
+      name + " " + label + " unknown use step " + JSON.stringify(step)
+    );
+  }
+  return { sawScreenshot, sawBreak };
+}
+
+async function runUsePath(view, name, scenario) {
+  if (!hasUse(scenario)) {
+    throw new Error(
+      name +
+        " missing use block. Write clicks from the workbench before close. applyOps is not Use."
+    );
+  }
+  if (!hasUseBreak(scenario)) {
+    throw new Error(
+      name +
+        " missing useBreak. Close needs a break case (blocked control or structured fail, not a freeze)."
+    );
+  }
+  await resetWorkbench(view);
+  const success = await runUseSteps(view, name, scenario.use, "use");
+  if (!success.sawScreenshot) {
+    throw new Error(name + " use path needs a success screenshot.");
+  }
+  await resetWorkbench(view);
+  const broken = await runUseSteps(view, name, scenario.useBreak, "useBreak");
+  if (!broken.sawBreak) {
+    throw new Error(
+      name +
+        " useBreak must assert a blocked control or structured fail, not a freeze."
+    );
+  }
+}
+
+async function runScenario(view, loaded, useOnly) {
   const { scenario, name } = loaded;
+  if (useOnly) {
+    await runUsePath(view, name, scenario);
+    return;
+  }
   await resetWorkbench(view);
   if (Array.isArray(scenario.steps)) {
     await runCadopsScenario(view, name, scenario);
@@ -521,7 +754,8 @@ async function runScenario(view, appUrl, loaded) {
 async function main() {
   assertBunWebView();
   const chromePath = requireChrome();
-  const scenarios = loadScenarios(parseFilterArgs(process.argv.slice(2)));
+  const cli = parseCli(process.argv.slice(2));
+  const scenarios = selectScenarios(loadScenarios(cli.filters), cli);
   if (scenarios.length === 0) {
     throw new Error("No scenarios matched the smoke:ui filter.");
   }
@@ -541,14 +775,17 @@ async function main() {
     console.log("chrome " + chromePath);
     console.log("backend chrome (" + userAgent + ")");
     console.log("app " + appUrl);
+    console.log("mode " + (cli.useOnly ? "use" : "engine"));
     console.log("scenarios " + scenarios.length);
 
-    await clickApplyCollector(view);
+    if (!cli.useOnly) {
+      await clickApplyCollector(view);
+    }
 
     for (const loaded of scenarios) {
       const id = loaded.scenario.id ?? loaded.name;
       try {
-        await runScenario(view, appUrl, loaded);
+        await runScenario(view, loaded, cli.useOnly);
         console.log("pass " + loaded.name + " " + id);
         passed += 1;
       } catch (error) {
@@ -576,6 +813,11 @@ async function main() {
   }
 
   console.log(
-    "ui-smoke passed " + passed + "/" + scenarios.length + " Chromium (not WebKit)"
+    (cli.useOnly ? "ui-use" : "ui-smoke") +
+      " passed " +
+      passed +
+      "/" +
+      scenarios.length +
+      " Chromium (not WebKit)"
   );
 }

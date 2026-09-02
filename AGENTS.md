@@ -2,18 +2,15 @@
 
 Partbench is an open-source, browser-native, AI-native CAD application.
 
-CADOps is the center. cad-core is the document authority (transactions,
-undo/redo, semantic diffs). OCCT/WASM is the geometry authority. Meshes,
-picks, and previews are derived display.
+CADOps is the center. cad-core is the document authority (transactions, undo/redo, semantic diffs). OCCT/WASM is the geometry authority. Meshes, picks, and previews are derived display.
 
 - How we work: [docs/how-we-work.md](docs/how-we-work.md)
+- Proof / close loop: [docs/verification.md](docs/verification.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Last completed user goal: [docs/v25.md](docs/v25.md). V22, V23, V24, and V25 are complete.
-  Do not reopen them. Do not invent V26. Next product work is a new user goal.
+- Last completed user goal: [docs/v25.md](docs/v25.md). V22, V23, V24, and V25 are complete. Do not reopen them. Do not invent V26. Next product work is a new user goal.
 
-Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md,
-or per-gate markdown unless the current user-goal doc names them.
+Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md, or per-gate markdown unless the current user-goal doc names them.
 
 Land on main as Sloan Davis <sloanbdavis@gmail.com>. Never open pull requests.
 
@@ -21,34 +18,20 @@ Land on main as Sloan Davis <sloanbdavis@gmail.com>. Never open pull requests.
 
 Node.js 22 and pnpm 10.
 
-```sh
-pnpm install
-pnpm dev
-```
-
 ## Daily scripts
 
-- pnpm dev
-- pnpm test
-- pnpm typecheck
-- pnpm lint
-- pnpm smoke:v25-part-toolkit — completed V25 closer
-- pnpm smoke:v24-finished-parts — completed V24 closer
-- pnpm smoke:v23-promotion-workflow — completed V23 closer
-- pnpm verify — typecheck plus CADOps scenarios
-- smoke:ui — Chromium workbench loop (filtered on slice close)
+- pnpm dev / test / typecheck / lint / verify
+- pnpm smoke:ui — Chromium engine gate (applyOps)
+- pnpm smoke:ui-use — Chromium Use path (clicks)
 
-Per-save: focused tests and typecheck of the packages you touched. pnpm verify
-is typecheck plus the scenarios/ CADOps runner. It does not rerun V7-V24 smokes.
-Never rerun V7-V24 gauntlets.
+Per-save: focused tests and typecheck of the packages you touched. No Chromium on every save.
+Never rerun V7-V24 gauntlets. Proof: [docs/verification.md](docs/verification.md).
 
-The V25 named closer is `pnpm smoke:v25-part-toolkit` (in-process scenarios, vitest pair, and smoke:ui on V25-added scenarios).
+Completed closers: smoke:v25-part-toolkit, smoke:v24-finished-parts, smoke:v23-promotion-workflow.
 
 ## Slice close
 
-A slice is done when the named closer is green and, when the slice has UI, smoke:ui is green on the new scenarios.
-CADOps scenarios are supporting evidence, not a substitute. If you cannot demonstrate it in the running app via smoke:ui, you are not done.
-See docs/skills/close-a-slice.md and docs/skills/ui-smoke.md.
+Named closer + (if UI) `smoke:ui` engine and Use path green. CADOps scenarios are command truth. `applyOps` is not Use. See [docs/verification.md](docs/verification.md).
 
 ## Packages
 
