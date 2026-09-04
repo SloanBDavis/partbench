@@ -839,4 +839,58 @@ describe("Solid editor session", () => {
       offset: 4
     });
   });
+
+  it("marks linear pattern collectors for Use smoke", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: {
+          key: "linear-create",
+          kind: "linearPattern",
+          mode: "create",
+          title: "Linear Pattern",
+          initialDraft: {
+            id: "",
+            bodyId: "",
+            seedBodyId: "",
+            seedFeatureId: "",
+            name: "",
+            direction: { kind: "globalAxis", axis: "x" },
+            spacing: 10,
+            instanceCount: 3
+          },
+          choices: {
+            seedBodies: [
+              {
+                key: "body_fillet",
+                value: "body_fillet",
+                label: "Fillet body",
+                kind: "authored body"
+              }
+            ],
+            seedFeatures: [
+              {
+                key: "feat_fillet",
+                value: "feat_fillet",
+                label: "Fillet",
+                kind: "solid feature"
+              }
+            ],
+            directions: [
+              {
+                key: "x",
+                value: { kind: "globalAxis", axis: "x" },
+                label: "X",
+                kind: "axis"
+              }
+            ]
+          }
+        },
+        onApply: () => undefined
+      })
+    );
+    expect(markup).toContain('data-ui-smoke="seed-feature"');
+    expect(markup).toContain('data-ui-smoke="seed-body"');
+    expect(markup).toContain('data-ui-smoke="direction"');
+    expect(markup).toContain("feat_fillet");
+  });
 });

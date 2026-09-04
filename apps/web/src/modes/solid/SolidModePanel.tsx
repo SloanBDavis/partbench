@@ -1753,6 +1753,7 @@ function EdgeFinishFields({
       />
       <ChoiceCollector
         label="Edge"
+        smokeId="edge"
         acceptedKinds={["edge", "named edge"]}
         choices={choices}
         selectedKey={selected?.key}
@@ -1898,6 +1899,7 @@ function LinearPatternFields({
       />
       <ChoiceCollector
         label="Seed body"
+        smokeId="seed-body"
         acceptedKinds={["authored body"]}
         choices={seedChoices}
         selectedKey={findChoiceKey(seedChoices, draft.seedBodyId)}
@@ -1912,6 +1914,7 @@ function LinearPatternFields({
       />
       <ChoiceCollector
         label="Seed feature"
+        smokeId="seed-feature"
         acceptedKinds={["solid feature"]}
         choices={seedFeatureChoices}
         selectedKey={findChoiceKey(seedFeatureChoices, draft.seedFeatureId)}
@@ -1926,6 +1929,7 @@ function LinearPatternFields({
       />
       <ChoiceCollector
         label="Direction"
+        smokeId="direction"
         acceptedKinds={["axis", "edge", "named reference"]}
         choices={directionChoices}
         selectedKey={findChoiceKey(directionChoices, draft.direction)}
@@ -2584,6 +2588,7 @@ function DraftFields({
 
 function ChoiceCollector<Value>({
   label,
+  smokeId,
   acceptedKinds,
   choices,
   selectedKey,
@@ -2595,6 +2600,7 @@ function ChoiceCollector<Value>({
   onClear
 }: {
   readonly label: string;
+  readonly smokeId?: string;
   readonly acceptedKinds: readonly string[];
   readonly choices: readonly SolidChoice<Value>[];
   readonly selectedKey?: string;
@@ -2628,6 +2634,7 @@ function ChoiceCollector<Value>({
         <select
           className="pb-field"
           disabled={disabled}
+          data-ui-smoke={smokeId}
           value={selectedKey ?? ""}
           onChange={(event) => {
             const choice = choices.find(

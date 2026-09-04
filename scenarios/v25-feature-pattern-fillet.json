@@ -12,7 +12,10 @@
       "op": "sketch.addRectangle",
       "sketchId": "sketch_block",
       "id": "rect_block",
-      "center": [0, 0],
+      "center": [
+        0,
+        0
+      ],
       "width": 20,
       "height": 12
     },
@@ -42,13 +45,18 @@
           "id": "feat_pattern",
           "bodyId": "body_patterned",
           "seedFeatureId": "feat_fillet",
-          "direction": { "kind": "globalAxis", "axis": "x" },
+          "direction": {
+            "kind": "globalAxis",
+            "axis": "x"
+          },
           "spacing": 20,
           "instanceCount": 2
         }
       ],
       "expect": {
-        "ops": ["feature.linearPattern"],
+        "ops": [
+          "feature.linearPattern"
+        ],
         "diff": {
           "features": {
             "created": [
@@ -59,18 +67,28 @@
                 "bodyId": "body_patterned"
               }
             ],
-            "bodiesCreated": [{ "id": "body_patterned", "kind": "solid" }]
+            "bodiesCreated": [
+              {
+                "id": "body_patterned",
+                "kind": "solid"
+              }
+            ]
           }
         }
       },
       "queries": [
         {
-          "query": { "query": "project.structure" },
+          "query": {
+            "query": "project.structure"
+          },
           "expect": {
             "ok": true,
             "query": "project.structure",
             "features": [
-              { "id": "feat_block", "kind": "extrude" },
+              {
+                "id": "feat_block",
+                "kind": "extrude"
+              },
               {
                 "id": "feat_fillet",
                 "kind": "fillet",
@@ -84,8 +102,14 @@
               }
             ],
             "bodies": [
-              { "id": "body_block", "consumedByFeatureId": "feat_fillet" },
-              { "id": "body_fillet", "consumedByFeatureId": "feat_pattern" },
+              {
+                "id": "body_block",
+                "consumedByFeatureId": "feat_fillet"
+              },
+              {
+                "id": "body_fillet",
+                "consumedByFeatureId": "feat_pattern"
+              },
               {
                 "id": "body_patterned",
                 "featureId": "feat_pattern",
@@ -101,46 +125,81 @@
     }
   ],
   "use": [
-      {
-        "click": "[data-action-id=\"solid.box\"]"
-      },
-      {
-        "wait": "#solid-width"
-      },
-      {
-        "type": {
-          "selector": "#solid-width",
-          "text": "20"
-        }
-      },
-      {
-        "apply": true
-      },
-      {
-        "waitReady": true
-      },
-      {
-        "screenshot": "v25-feature-pattern-fillet-use"
+    {
+      "wait": "[data-action-id=\"solid.linear-pattern\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.linear-pattern\"]"
+    },
+    {
+      "wait": "#solid-linear-count"
+    },
+    {
+      "select": {
+        "selector": "[data-ui-smoke=\"seed-feature\"]",
+        "option": "feat_fillet"
       }
+    },
+    {
+      "type": {
+        "selector": "#solid-linear-spacing",
+        "text": "20"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-linear-count",
+        "text": "2"
+      }
+    },
+    {
+      "apply": true
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "screenshot": "v25-feature-pattern-fillet-use"
+    }
+  ],
+  "useBreak": [
+    {
+      "wait": "[data-action-id=\"solid.linear-pattern\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.linear-pattern\"]"
+    },
+    {
+      "wait": "#solid-linear-count"
+    },
+    {
+      "select": {
+        "selector": "[data-ui-smoke=\"seed-feature\"]",
+        "option": "feat_fillet"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-linear-count",
+        "text": "1"
+      }
+    },
+    {
+      "expectDisabled": "[data-ui-smoke=\"apply\"]"
+    },
+    {
+      "screenshot": "v25-feature-pattern-fillet-use-break"
+    }
+  ],
+  "useExpect": {
+    "forbidClicks": [
+      "solid.box"
     ],
-    "useBreak": [
+    "features": [
       {
-        "click": "[data-action-id=\"solid.box\"]"
-      },
-      {
-        "wait": "#solid-width"
-      },
-      {
-        "type": {
-          "selector": "#solid-width",
-          "text": "0"
-        }
-      },
-      {
-        "expectDisabled": "[data-ui-smoke=\"apply\"]"
-      },
-      {
-        "screenshot": "v25-feature-pattern-fillet-use-break"
+        "kind": "linearPattern",
+        "seedFeatureId": "feat_fillet"
       }
     ]
+  }
 }

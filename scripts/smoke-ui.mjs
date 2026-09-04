@@ -262,12 +262,15 @@ function matches(actual, expected) {
 function isExactDisplayReady(state, allowEmpty) {
   if (!state || state.commandPending) return false;
   if (state.commandError) return false;
+  const applyText = String(state.applyButton?.text ?? "");
+  if (/Applying/i.test(applyText)) return false;
   const rebuild = state.rebuildState ?? "";
   if (
     rebuild === "Updating" ||
     rebuild === "Building results" ||
     rebuild === "Building exact results" ||
-    rebuild === "Display ready · Building exact results"
+    rebuild === "Display ready · Building exact results" ||
+    /Updating/i.test(rebuild)
   ) {
     return false;
   }
@@ -294,13 +297,20 @@ function isExactDisplayReady(state, allowEmpty) {
   );
   if (exactResults.length > 0) {
     for (const result of exactResults) {
-      if (result.status === "pending" || result.status === "stale") {
+      if (
+        result.status === "pending" ||
+        result.status === "stale" ||
+        result.status === "failed"
+      ) {
         return false;
       }
     }
   } else {
     if (
-      exact.some((status) => status === "pending" || status === "stale")
+      exact.some(
+        (status) =>
+          status === "pending" || status === "stale" || status === "failed"
+      )
     ) {
       return false;
     }
@@ -314,7 +324,22 @@ function isExactDisplayReady(state, allowEmpty) {
 
 function isTerminalFailure(state) {
   const rebuild = state?.rebuildState ?? "";
-  return rebuild === "Update failed" || rebuild === "Fallback display only";
+  if (rebuild === "Update failed" || rebuild === "Fallback display only") {
+    return true;
+  }
+  // Seed/use setup must not proceed on failed exact bodies.
+  if (/exact result failed/i.test(rebuild)) {
+    return true;
+  }
+  const exactResults = state?.exactResults ?? [];
+  if (
+    exactResults.some(
+      (result) => result && result.status === "failed" && !result.consumed
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 async function waitForReady(view, options = {}) {
@@ -556,14 +581,22 @@ async function runPromotionScenario(view, name, scenario) {
 }
 
 async function typeField(view, selector, text) {
-  await view.click(selector);
-  await view.press("End");
-  for (let i = 0; i < 16; i++) {
-    await view.press("Backspace");
-  }
   const value = String(text ?? "");
-  if (value.length > 0) {
-    await view.type(value);
+  // Prefer a native value write: grip overlays and scrolled inspector fields
+  // often make Bun WebView click() report "not actionable" even when the input
+  // exists and React will accept a synthetic input/change.
+  const result = await evaluate(
+    view,
+    "(() => { const el = document.querySelector(" +
+      JSON.stringify(selector) +
+      "); if (!el) return { ok: false, error: 'missing' }; el.scrollIntoView({ block: 'center', inline: 'nearest' }); const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; setter.call(el, " +
+      JSON.stringify(value) +
+      "); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, value: el.value, disabled: Boolean(el.disabled) }; })()"
+  );
+  if (!result || !result.ok) {
+    throw new Error(
+      "type " + selector + " failed: " + JSON.stringify(result)
+    );
   }
   await delay(200);
   const actual = await evaluate(
@@ -636,16 +669,227 @@ async function writeUseScreenshot(view, name) {
   return screenshotPath;
 }
 
+function collectorSelectSelector(spec) {
+  if (spec.selector) return spec.selector;
+  if (spec.smoke) return "[data-ui-smoke=" + JSON.stringify(spec.smoke) + "]";
+  if (spec.label) {
+    const smokeId = String(spec.label)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    return "[data-ui-smoke=" + JSON.stringify(smokeId) + "]";
+  }
+  throw new Error("select step needs selector, smoke, or label");
+}
+
+async function clickVisibleControl(view, selector) {
+  await waitForSelector(view, selector, 15_000);
+  const result = await evaluate(
+    view,
+    "(() => { const nodes = Array.from(document.querySelectorAll(" +
+      JSON.stringify(selector) +
+      ")); const live = nodes.filter((el) => !el.closest('.pb-mode-ribbon__measure')); const hidden = (el) => el.hidden || el.closest('[hidden]') || getComputedStyle(el).display === 'none' || getComputedStyle(el).visibility === 'hidden'; const shown = live.find((el) => !hidden(el)); if (shown) { shown.click(); return { ok: true, via: 'visible' }; } const overflow = live.find((el) => el.closest('details.pb-ribbon-overflow')); if (overflow) { const details = overflow.closest('details'); if (details) details.open = true; overflow.click(); return { ok: true, via: 'overflow' }; } if (live[0]) { live[0].click(); return { ok: true, via: 'first-live' }; } return { ok: false, count: nodes.length }; })()"
+  );
+  if (!result || !result.ok) {
+    throw new Error(
+      "Could not click visible " + selector + " (" + JSON.stringify(result) + ")"
+    );
+  }
+  return result;
+}
+
+async function selectCollectorOption(view, spec) {
+  const selector = collectorSelectSelector(spec);
+  const option = String(spec.option ?? spec.value ?? "");
+  if (!option) {
+    throw new Error("select step needs option");
+  }
+  const deadline = Date.now() + 15_000;
+  let last;
+  while (Date.now() < deadline) {
+    last = await evaluate(
+      view,
+      "(() => { const el = document.querySelector(" +
+        JSON.stringify(selector) +
+        "); if (!el || el.tagName !== 'SELECT') { return { ok: false, error: el ? 'not-select' : 'missing', options: [] }; } const options = Array.from(el.options).map((item) => ({ value: item.value, text: item.textContent.replace(/\\s+/g, ' ').trim() })); const needle = " +
+        JSON.stringify(option) +
+        "; const match = Array.from(el.options).find((item) => item.value === needle || item.textContent.replace(/\\s+/g, ' ').trim().toLowerCase().includes(needle.toLowerCase())); if (!match) return { ok: false, error: 'no-option', options }; const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set; setter.call(el, match.value); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, value: el.value, options }; })()"
+    );
+    if (last && last.ok) return last;
+    await delay(150);
+  }
+  throw new Error(
+    "select " +
+      selector +
+      " option " +
+      JSON.stringify(option) +
+      " failed: " +
+      JSON.stringify(last)
+  );
+}
+
+function someMatches(actualList, expectedItem) {
+  return Array.isArray(actualList) && actualList.some((item) => matches(item, expectedItem));
+}
+
+async function applyUseSeedSetup(view, name, scenario) {
+  if (!Array.isArray(scenario.seed) || scenario.seed.length === 0) {
+    return;
+  }
+  // applyOps(seed) is workbench SETUP so Use can operate the claimed feature.
+  // It is not Use. Use is the clicks/typed fields/Apply that follow.
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    console.log(
+      name,
+      "use setup seed (engine applyOps, not Use) attempt",
+      attempt
+    );
+    try {
+      if (attempt > 1) {
+        await resetWorkbench(view);
+      }
+      const seedResult = await applyOps(view, scenario.seed);
+      console.log(name, "seed", JSON.stringify(seedResult));
+      if (!seedResult.ok) {
+        throw new Error(
+          name + " use setup seed failed: " + formatApplyError(seedResult.error)
+        );
+      }
+      const seedBodies = seedResult.createdBodyIds ?? [];
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: seedBodies.length === 0
+      });
+      const state = await getState(view);
+      const exactResults = state.exactResults ?? [];
+      const failed = exactResults.filter((result) => result?.status === "failed");
+      if (failed.length > 0) {
+        throw new Error(
+          name + " use setup seed exact failed: " + JSON.stringify(failed)
+        );
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      console.log(
+        name,
+        "use setup seed attempt",
+        attempt,
+        "failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(name + " use setup seed failed");
+}
+
+async function assertUseOutcome(view, name, scenario, clicks) {
+  const expectSpec = scenario.useExpect;
+  if (!expectSpec) return;
+  for (const needle of expectSpec.forbidClicks ?? []) {
+    const hit = clicks.find((click) => String(click).includes(needle));
+    if (hit) {
+      throw new Error(
+        name +
+          " use clicked " +
+          needle +
+          " (" +
+          hit +
+          "). That is not this feature. Box Apply belongs on a box scenario."
+      );
+    }
+  }
+  const state = await getState(view);
+  const features =
+    (state.structureQuery && state.structureQuery.features) ||
+    state.features ||
+    [];
+  const bodies =
+    (state.structureQuery && state.structureQuery.bodies) ||
+    state.bodies ||
+    [];
+  for (const expectedFeature of expectSpec.features ?? []) {
+    if (!someMatches(features, expectedFeature)) {
+      throw new Error(
+        name +
+          " use did not produce " +
+          JSON.stringify(expectedFeature) +
+          ". actual features " +
+          JSON.stringify(features) +
+          " bodies " +
+          JSON.stringify(bodies)
+      );
+    }
+  }
+  const justBox =
+    features.some((feature) => feature && (feature.kind === "primitive" || feature.kind === "box")) &&
+    !features.some((feature) => feature && feature.kind === "linearPattern");
+  if (justBox) {
+    throw new Error(
+      name + " use state is a box, not a fillet pattern. " + JSON.stringify(features)
+    );
+  }
+  console.log(name, "use structure", JSON.stringify({ features, bodies }));
+}
+
+
+async function waitForApplyStarted(view, timeoutMs = 8_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await evaluate(
+      view,
+      `(() => {
+        const state = window.__PARTBENCH_UI_SMOKE__.getState();
+        const apply = document.querySelector('[data-ui-smoke="apply"]');
+        const applyText = ((apply && apply.textContent) || '').replace(/\\s+/g, ' ').trim();
+        return {
+          commandPending: Boolean(state.commandPending),
+          rebuildState: state.rebuildState || '',
+          applyText,
+          applyDisabled: Boolean(apply && apply.disabled)
+        };
+      })()`
+    );
+    if (
+      last &&
+      (last.commandPending ||
+        String(last.rebuildState).includes("Updating") ||
+        /Applying/i.test(String(last.applyText || "")))
+    ) {
+      return last;
+    }
+    await delay(50);
+  }
+  // Soft: Apply can finish so fast that we never observe pending. Continue.
+  return last;
+}
+
 async function runUseSteps(view, name, steps, label) {
   let sawScreenshot = false;
   let sawBreak = false;
+  const clicks = [];
   for (const step of steps) {
     if (step.click) {
-      await view.click(step.click);
+      clicks.push(step.click);
+      await clickVisibleControl(view, step.click);
       continue;
     }
     if (step.wait) {
       await waitForSelector(view, step.wait, 15_000);
+      continue;
+    }
+    if (step.select) {
+      const spec =
+        typeof step.select === "string"
+          ? { selector: step.select }
+          : step.select;
+      const result = await selectCollectorOption(view, spec);
+      console.log(name + " " + label + " select", JSON.stringify(result));
       continue;
     }
     if (step.type) {
@@ -662,7 +906,9 @@ async function runUseSteps(view, name, steps, label) {
           ? step.apply
           : '[data-ui-smoke="apply"]';
       await waitForSelector(view, selector + ":not([disabled])", 15_000);
-      await view.click(selector);
+      await clickVisibleControl(view, selector);
+      const started = await waitForApplyStarted(view);
+      console.log(name + " " + label + " apply started", JSON.stringify(started));
       continue;
     }
     if (step.waitReady) {
@@ -707,7 +953,7 @@ async function runUseSteps(view, name, steps, label) {
       name + " " + label + " unknown use step " + JSON.stringify(step)
     );
   }
-  return { sawScreenshot, sawBreak };
+  return { sawScreenshot, sawBreak, clicks };
 }
 
 async function runUsePath(view, name, scenario) {
@@ -724,11 +970,14 @@ async function runUsePath(view, name, scenario) {
     );
   }
   await resetWorkbench(view);
+  await applyUseSeedSetup(view, name, scenario);
   const success = await runUseSteps(view, name, scenario.use, "use");
   if (!success.sawScreenshot) {
     throw new Error(name + " use path needs a success screenshot.");
   }
+  await assertUseOutcome(view, name, scenario, success.clicks);
   await resetWorkbench(view);
+  await applyUseSeedSetup(view, name, scenario);
   const broken = await runUseSteps(view, name, scenario.useBreak, "useBreak");
   if (!broken.sawBreak) {
     throw new Error(

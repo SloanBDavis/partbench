@@ -9,6 +9,6 @@ Close-time recipe. Do not skip. `applyOps` is the engine gate, not Use.
 5. First landing: write `use` and `useBreak` on the scenario from what worked. Forever after, the script is the hill-climb. Missing `use` on a new UI scenario fails close. Do not skip.
 6. If Use fails: fix code, return to Believe, Use again. Do not close.
 
-Template: `scenarios/v25-feature-pattern-fillet.json` (`use` + `useBreak`). Box Apply is the smallest honest path.
+Template: `scenarios/v25-feature-pattern-fillet.json` (`use` + `useBreak`). Seed `applyOps` is setup, not Use. Use opens Linear Pattern, selects the fillet as seed feature, sets instances/spacing, Apply. Break: instance count 1 -> Apply disabled.
 
 Never Playwright. Never a second bot. Never the V7 gauntlet.

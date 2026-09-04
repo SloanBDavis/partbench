@@ -40,7 +40,7 @@ Crash-recovery dialogs are skipped under the ui-smoke query flag.
 
 A scenario may include `use` and `useBreak`: selectors + click/type/apply + wait-for-ready + screenshot name, then a break case.
 First landing: drive the UI once and write that block from what worked. After that, the script is the hill-climb.
-Template: `scenarios/v25-feature-pattern-fillet.json`.
+Template: `scenarios/v25-feature-pattern-fillet.json`. Seed `applyOps` is setup so Use can operate the claimed feature; Use is the clicks that follow.
 
 ## Failures
 
