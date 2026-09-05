@@ -512,4 +512,52 @@ describe("document tree assembly projection", () => {
       "Concentric · inst_bore/Z ~ inst_pin/Z"
     );
   });
+
+  it("labels distance mates with plane refs and separation", () => {
+    const projection = createDocumentTreeProjection({
+      ...createProjectionInput(),
+      assemblies: [
+        {
+          id: "asm_gap",
+          name: "Gap assembly",
+          instances: [
+            {
+              id: "inst_base",
+              name: "Base",
+              definition: { kind: "body", bodyId: "body_plate" },
+              transform: {
+                translation: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            },
+            {
+              id: "inst_top",
+              name: "Top",
+              definition: { kind: "body", bodyId: "body_plate" },
+              transform: {
+                translation: [0, 0, 30],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            }
+          ],
+          mates: [
+            {
+              id: "mate_gap",
+              name: "Gap",
+              kind: "distance",
+              primary: { instanceId: "inst_base", plane: "XY" },
+              secondary: { instanceId: "inst_top", plane: "XY" },
+              distance: 30
+            }
+          ]
+        }
+      ]
+    });
+    const mateRow = projection.rowsById.get("assembly-mate:asm_gap:mate_gap");
+    expect(mateRow?.detail).toBe(
+      "Distance · inst_base/XY ~ inst_top/XY @ 30"
+    );
+  });
 });

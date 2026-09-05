@@ -421,6 +421,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildAssemblyConcentricMateOp",
     "cadCommands.test.ts"
   ),
+  "solid.distance-mate": featureAudit(
+    "Distance mate",
+    "createDistanceMate",
+    "assembly/instance/plane selection",
+    "buildAssemblyDistanceMateOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

@@ -30,6 +30,7 @@ import type {
   AssemblyFixedMateForm,
   AssemblyCoincidentMateForm,
   AssemblyConcentricMateForm,
+  AssemblyDistanceMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -617,6 +618,15 @@ function SolidDraftFields({
       return (
         <ConcentricMateFields
           draft={draft as AssemblyConcentricMateForm}
+          assemblyChoices={request.choices?.assemblies ?? []}
+          instanceChoices={request.choices?.assemblyInstances ?? []}
+          onChange={onChange}
+        />
+      );
+    case "distanceMate":
+      return (
+        <DistanceMateFields
+          draft={draft as AssemblyDistanceMateForm}
           assemblyChoices={request.choices?.assemblies ?? []}
           instanceChoices={request.choices?.assemblyInstances ?? []}
           onChange={onChange}
@@ -1486,6 +1496,194 @@ function ConcentricMateFields({
             secondary: { ...draft.secondary, originZ }
           })
         }
+      />
+    </>
+  );
+}
+
+function DistanceMateFields({
+  draft,
+  assemblyChoices,
+  instanceChoices,
+  onChange
+}: {
+  readonly draft: AssemblyDistanceMateForm;
+  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly instanceChoices: readonly {
+    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly label: string;
+  }[];
+  readonly onChange: (draft: AssemblyDistanceMateForm) => void;
+}) {
+  const instancesForAssembly = instanceChoices.filter(
+    (choice) => choice.value.assemblyId === draft.assemblyId
+  );
+  const planeOptions = [
+    { value: "XY", label: "XY" },
+    { value: "XZ", label: "XZ" },
+    { value: "YZ", label: "YZ" }
+  ];
+  return (
+    <>
+      <TextField
+        label="Name"
+        name="distance-mate-name"
+        value={draft.name}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Assembly"
+        name="distance-mate-assembly"
+        value={draft.assemblyId}
+        options={[
+          { value: "", label: "Select assembly" },
+          ...assemblyChoices.map((choice) => ({
+            value: choice.value,
+            label: choice.label
+          }))
+        ]}
+        onChange={(assemblyId) =>
+          onChange({
+            ...draft,
+            assemblyId,
+            primary: {
+              ...draft.primary,
+              instanceId:
+                draft.assemblyId === assemblyId ? draft.primary.instanceId : ""
+            },
+            secondary: {
+              ...draft.secondary,
+              instanceId:
+                draft.assemblyId === assemblyId
+                  ? draft.secondary.instanceId
+                  : ""
+            }
+          })
+        }
+      />
+      <SelectField
+        label="Primary instance"
+        name="distance-mate-primary-instance"
+        value={draft.primary.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, instanceId }
+          })
+        }
+      />
+      <SelectField
+        label="Primary plane"
+        name="distance-mate-primary-plane"
+        value={draft.primary.plane}
+        options={planeOptions}
+        onChange={(plane) =>
+          onChange({
+            ...draft,
+            primary: {
+              ...draft.primary,
+              plane: plane as "XY" | "XZ" | "YZ"
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Primary offset"
+        name="distance-mate-primary-offset"
+        value={draft.primary.offset}
+        onChange={(offset) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, offset }
+          })
+        }
+      />
+      <SelectField
+        label="Primary flip"
+        name="distance-mate-primary-flip"
+        value={draft.primary.flip ? "yes" : "no"}
+        options={[
+          { value: "no", label: "No" },
+          { value: "yes", label: "Yes" }
+        ]}
+        onChange={(value) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, flip: value === "yes" }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary instance"
+        name="distance-mate-secondary-instance"
+        value={draft.secondary.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, instanceId }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary plane"
+        name="distance-mate-secondary-plane"
+        value={draft.secondary.plane}
+        options={planeOptions}
+        onChange={(plane) =>
+          onChange({
+            ...draft,
+            secondary: {
+              ...draft.secondary,
+              plane: plane as "XY" | "XZ" | "YZ"
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Secondary offset"
+        name="distance-mate-secondary-offset"
+        value={draft.secondary.offset}
+        onChange={(offset) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, offset }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary flip"
+        name="distance-mate-secondary-flip"
+        value={draft.secondary.flip ? "yes" : "no"}
+        options={[
+          { value: "no", label: "No" },
+          { value: "yes", label: "Yes" }
+        ]}
+        onChange={(value) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, flip: value === "yes" }
+          })
+        }
+      />
+      <NumberField
+        label="Distance"
+        name="distance-mate-distance"
+        value={draft.distance}
+        onChange={(distance) => onChange({ ...draft, distance })}
       />
     </>
   );

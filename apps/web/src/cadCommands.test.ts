@@ -14,6 +14,7 @@ import {
   buildAssemblyFixedMateOp,
   buildAssemblyCoincidentMateOp,
   buildAssemblyConcentricMateOp,
+  buildAssemblyDistanceMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateTorusOp,
@@ -2354,3 +2355,38 @@ describe("assembly concentric mate Apply parity", () => {
     });
   });
 });
+
+describe("assembly distance mate Apply parity", () => {
+  it("builds assembly.mate.create kind distance from the form", () => {
+    expect(
+      buildAssemblyDistanceMateOp({
+        id: "mate_gap",
+        name: "Gap",
+        assemblyId: "asm_gap",
+        primary: {
+          instanceId: "inst_base",
+          plane: "XY",
+          offset: 0,
+          flip: false
+        },
+        secondary: {
+          instanceId: "inst_top",
+          plane: "XY",
+          offset: 0,
+          flip: false
+        },
+        distance: 30
+      })
+    ).toEqual({
+      op: "assembly.mate.create",
+      id: "mate_gap",
+      assemblyId: "asm_gap",
+      name: "Gap",
+      kind: "distance",
+      primary: { instanceId: "inst_base", plane: "XY" },
+      secondary: { instanceId: "inst_top", plane: "XY" },
+      distance: 30
+    });
+  });
+});
+

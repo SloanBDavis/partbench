@@ -220,6 +220,15 @@ export interface AssemblyConcentricMateForm {
   readonly secondary: AssemblyConcentricMateAxisForm;
 }
 
+export interface AssemblyDistanceMateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly assemblyId: string;
+  readonly primary: AssemblyCoincidentMatePlaneForm;
+  readonly secondary: AssemblyCoincidentMatePlaneForm;
+  readonly distance: number;
+}
+
 export interface SketchCreateOnFaceForm {
   readonly id: string;
   readonly name: string;
@@ -792,6 +801,31 @@ export function buildAssemblyConcentricMateOp(
       axis: form.secondary.axis,
       ...(secondaryOrigin !== undefined ? { origin: secondaryOrigin } : {})
     }
+  };
+}
+
+export function buildAssemblyDistanceMateOp(
+  form: AssemblyDistanceMateForm
+): AssemblyMateCreateOp {
+  return {
+    op: "assembly.mate.create",
+    id: normalizeOptionalId(form.id),
+    assemblyId: form.assemblyId.trim(),
+    name: form.name.trim() || undefined,
+    kind: "distance",
+    primary: {
+      instanceId: form.primary.instanceId.trim(),
+      plane: form.primary.plane,
+      ...(form.primary.offset !== 0 ? { offset: form.primary.offset } : {}),
+      ...(form.primary.flip ? { flip: true } : {})
+    },
+    secondary: {
+      instanceId: form.secondary.instanceId.trim(),
+      plane: form.secondary.plane,
+      ...(form.secondary.offset !== 0 ? { offset: form.secondary.offset } : {}),
+      ...(form.secondary.flip ? { flip: true } : {})
+    },
+    distance: form.distance
   };
 }
 

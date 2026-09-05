@@ -36,6 +36,7 @@ export type FeatureEditorKind =
   | "fixed-mate"
   | "coincident-mate"
   | "concentric-mate"
+  | "distance-mate"
   | "named-reference"
   | "named-reference-repair";
 

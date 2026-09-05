@@ -257,7 +257,7 @@ describe("V26 slice B fixed/ground mate and assembly tree", () => {
     );
   });
 
-  it("rejects unimplemented mate kinds and duplicate fixed mates on the same instance", () => {
+  it("rejects duplicate fixed mates on the same instance", () => {
     const engine = new CadEngine();
     seedCompletedBolt(engine);
     engine.applyBatch([
@@ -268,24 +268,15 @@ describe("V26 slice B fixed/ground mate and assembly tree", () => {
         assemblyId: "asm_root",
         name: "Root",
         definition: { kind: "body", bodyId: "body_bolt" }
+      },
+      {
+        op: "assembly.mate.create",
+        id: "mate_ground",
+        assemblyId: "asm_root",
+        kind: "fixed",
+        instanceId: "inst_root"
       }
     ]);
-
-    expect(() =>
-      engine.apply({
-        op: "assembly.mate.create",
-        assemblyId: "asm_root",
-        kind: "distance"
-      })
-    ).toThrow(/fixed, coincident, or concentric/);
-
-    engine.apply({
-      op: "assembly.mate.create",
-      id: "mate_ground",
-      assemblyId: "asm_root",
-      kind: "fixed",
-      instanceId: "inst_root"
-    });
 
     expect(() =>
       engine.apply({
@@ -436,7 +427,7 @@ describe("V26 slice C coincident plane mate", () => {
       }
     ]);
 
-    expect(() =>
+    try {
       engine.apply({
         op: "assembly.mate.create",
         id: "mate_stack",
@@ -444,8 +435,16 @@ describe("V26 slice C coincident plane mate", () => {
         kind: "coincident",
         primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
         secondary: { instanceId: "inst_top", plane: "XY" }
-      })
-    ).toThrow(/underconstrained/);
+      });
+      expect.unreachable("expected underconstrained fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        validationError: {
+          code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
+          message: expect.stringMatching(/underconstrained/)
+        }
+      });
+    }
 
     engine.apply({
       op: "assembly.mate.create",
@@ -462,7 +461,7 @@ describe("V26 slice C coincident plane mate", () => {
       instanceId: "inst_top"
     });
 
-    expect(() =>
+    try {
       engine.apply({
         op: "assembly.mate.create",
         id: "mate_stack",
@@ -470,8 +469,16 @@ describe("V26 slice C coincident plane mate", () => {
         kind: "coincident",
         primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
         secondary: { instanceId: "inst_top", plane: "XY" }
-      })
-    ).toThrow(/conflicts/);
+      });
+      expect.unreachable("expected conflicting fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        validationError: {
+          code: "ASSEMBLY_MATE_CONFLICTING",
+          message: expect.stringMatching(/conflicts/)
+        }
+      });
+    }
   });
 });
 
@@ -612,7 +619,7 @@ describe("V26 slice D concentric axes mate", () => {
       }
     ]);
 
-    expect(() =>
+    try {
       engine.apply({
         op: "assembly.mate.create",
         id: "mate_concentric",
@@ -620,8 +627,16 @@ describe("V26 slice D concentric axes mate", () => {
         kind: "concentric",
         primary: { instanceId: "inst_bore", axis: "Z" },
         secondary: { instanceId: "inst_pin", axis: "Z" }
-      })
-    ).toThrow(/underconstrained/);
+      });
+      expect.unreachable("expected underconstrained fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        validationError: {
+          code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
+          message: expect.stringMatching(/underconstrained/)
+        }
+      });
+    }
 
     engine.apply({
       op: "assembly.mate.create",
@@ -638,7 +653,7 @@ describe("V26 slice D concentric axes mate", () => {
       instanceId: "inst_pin"
     });
 
-    expect(() =>
+    try {
       engine.apply({
         op: "assembly.mate.create",
         id: "mate_concentric",
@@ -646,7 +661,213 @@ describe("V26 slice D concentric axes mate", () => {
         kind: "concentric",
         primary: { instanceId: "inst_bore", axis: "Z" },
         secondary: { instanceId: "inst_pin", axis: "Z" }
-      })
-    ).toThrow(/conflicts/);
+      });
+      expect.unreachable("expected conflicting fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        validationError: {
+          code: "ASSEMBLY_MATE_CONFLICTING",
+          message: expect.stringMatching(/conflicts/)
+        }
+      });
+    }
+  });
+});
+
+describe("V26 slice E distance offset mate", () => {
+  it("spaces two instances with a distance XY mate and persists pose", () => {
+    const engine = new CadEngine();
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_gap", name: "Gap assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_base",
+        assemblyId: "asm_gap",
+        name: "Base",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 0] }
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_top",
+        assemblyId: "asm_gap",
+        name: "Top",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 50] }
+      },
+      {
+        op: "assembly.mate.create",
+        id: "mate_ground",
+        assemblyId: "asm_gap",
+        name: "Ground",
+        kind: "fixed",
+        instanceId: "inst_base"
+      }
+    ]);
+
+    const spaced = engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_gap",
+      assemblyId: "asm_gap",
+      name: "Gap",
+      kind: "distance",
+      primary: { instanceId: "inst_base", plane: "XY" },
+      secondary: { instanceId: "inst_top", plane: "XY" },
+      distance: 30
+    });
+    expect(spaced.transaction.diff).toMatchObject({
+      assemblies: {
+        matesCreated: [
+          {
+            id: "mate_gap",
+            kind: "distance",
+            primary: { instanceId: "inst_base", plane: "XY" },
+            secondary: { instanceId: "inst_top", plane: "XY" },
+            distance: 30
+          }
+        ],
+        instancesModified: [
+          {
+            id: "inst_top",
+            transform: { translation: [0, 0, 30] }
+          }
+        ]
+      }
+    });
+
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      assemblies: [
+        {
+          id: "asm_gap",
+          instances: [
+            { id: "inst_base", transform: { translation: [0, 0, 0] } },
+            { id: "inst_top", transform: { translation: [0, 0, 30] } }
+          ],
+          mates: [
+            { id: "mate_ground", kind: "fixed", instanceId: "inst_base" },
+            {
+              id: "mate_gap",
+              kind: "distance",
+              primary: { instanceId: "inst_base", plane: "XY" },
+              secondary: { instanceId: "inst_top", plane: "XY" },
+              distance: 30
+            }
+          ]
+        }
+      ]
+    });
+    expect(JSON.stringify(structure)).not.toMatch(PRIVATE_ID_PATTERN);
+
+    const exported = exportCadProject(engine);
+    expect(exported.schemaVersion).not.toBe("web-cad.project.v23");
+    expect(exported.schemaVersion).not.toBe("web-cad.project.v26");
+    expect(exported.document.assemblies?.[0]?.mates).toEqual([
+      {
+        id: "mate_ground",
+        name: "Ground",
+        kind: "fixed",
+        instanceId: "inst_base"
+      },
+      {
+        id: "mate_gap",
+        name: "Gap",
+        kind: "distance",
+        primary: { instanceId: "inst_base", plane: "XY" },
+        secondary: { instanceId: "inst_top", plane: "XY" },
+        distance: 30
+      }
+    ]);
+    expect(exported.document.assemblies?.[0]?.instances[1]?.transform.translation).toEqual([
+      0, 0, 30
+    ]);
+
+    const restored = importCadProject(exported);
+    expect(exportCadProject(restored).document.assemblies).toEqual(
+      exported.document.assemblies
+    );
+  });
+
+  it("fails structured when underconstrained or conflicting", () => {
+    const engine = new CadEngine();
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_gap", name: "Gap assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_base",
+        assemblyId: "asm_gap",
+        name: "Base",
+        definition: { kind: "body", bodyId: "body_bolt" }
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_top",
+        assemblyId: "asm_gap",
+        name: "Top",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 50] }
+      }
+    ]);
+
+    try {
+      engine.apply({
+        op: "assembly.mate.create",
+        id: "mate_gap",
+        assemblyId: "asm_gap",
+        kind: "distance",
+        primary: { instanceId: "inst_base", plane: "XY" },
+        secondary: { instanceId: "inst_top", plane: "XY" },
+        distance: 30
+      });
+      expect.unreachable("expected underconstrained fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        validationError: {
+          code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
+          message: expect.stringMatching(/underconstrained/)
+        }
+      });
+    }
+
+    engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_ground_base",
+      assemblyId: "asm_gap",
+      kind: "fixed",
+      instanceId: "inst_base"
+    });
+    engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_ground_top",
+      assemblyId: "asm_gap",
+      kind: "fixed",
+      instanceId: "inst_top"
+    });
+
+    try {
+      engine.apply({
+        op: "assembly.mate.create",
+        id: "mate_gap",
+        assemblyId: "asm_gap",
+        kind: "distance",
+        primary: { instanceId: "inst_base", plane: "XY" },
+        secondary: { instanceId: "inst_top", plane: "XY" },
+        distance: 30
+      });
+      expect.unreachable("expected conflicting fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        validationError: {
+          code: "ASSEMBLY_MATE_CONFLICTING",
+          message: expect.stringMatching(/conflicts/)
+        }
+      });
+    }
   });
 });

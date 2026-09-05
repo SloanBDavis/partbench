@@ -69,6 +69,36 @@ export function computeConcentricAxisPose(
   };
 }
 
+/**
+ * Plane–plane distance: shortest rotation that matches source normal to target
+ * normal, then translation along the target normal so the signed separation
+ * equals `distance`. In-plane slide stays locked at identity (same as align).
+ */
+export function computeDistancePlanePose(
+  source: FeatureAlignPlane,
+  target: FeatureAlignPlane,
+  distance: number
+): { readonly transform: FeatureAlignTransform } {
+  const sourceNormal = unitOrThrow(source.normal, "source face normal");
+  const targetNormal = unitOrThrow(target.normal, "target plane normal");
+  const rotation = shortestRotation(sourceNormal, targetNormal);
+  const rotatedPoint = rotatePoint(
+    source.point,
+    source.point,
+    rotation.axis,
+    rotation.degrees
+  );
+  const signedDistance = dot(sub(rotatedPoint, target.point), targetNormal);
+  const translation = scale(targetNormal, distance - signedDistance);
+  return {
+    transform: {
+      translation: canonicalVec3(translation),
+      rotationAxis: canonicalVec3(rotation.axis),
+      rotationDegrees: rotation.degrees
+    }
+  };
+}
+
 function alignPlaneToPlane(
   source: FeatureAlignPlane,
   target: FeatureAlignPlane

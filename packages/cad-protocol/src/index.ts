@@ -1707,7 +1707,7 @@ export interface AssemblyInstanceInsertOp {
   readonly transform?: Partial<Transform>;
 }
 
-/** V26 mate kinds. Slices B–D: fixed + coincident planes + concentric axes. */
+/** V26 mate kinds. Slices B–E: fixed + coincident + concentric + distance. */
 export type AssemblyMateKind =
   | "coincident"
   | "concentric"
@@ -1741,22 +1741,13 @@ export interface AssemblyMateAxisRef {
  * Slice B: kind fixed grounds one instance (root).
  * Slice C: kind coincident constrains two instance planes.
  * Slice D: kind concentric constrains two instance axes.
- * Distance lands in a later V26 slice.
+ * Slice E: kind distance constrains two instance planes to a separation.
  */
 export type AssemblyMateCreateOp =
   | AssemblyFixedMateCreateOp
   | AssemblyCoincidentMateCreateOp
   | AssemblyConcentricMateCreateOp
-  | AssemblyUnimplementedMateCreateOp;
-
-/** Stub shape for mate kinds that land in later V26 slices. */
-export interface AssemblyUnimplementedMateCreateOp {
-  readonly op: "assembly.mate.create";
-  readonly id?: MateId;
-  readonly assemblyId: AssemblyId;
-  readonly name?: string;
-  readonly kind: "distance";
-}
+  | AssemblyDistanceMateCreateOp;
 
 export interface AssemblyFixedMateCreateOp {
   readonly op: "assembly.mate.create";
@@ -1786,6 +1777,18 @@ export interface AssemblyConcentricMateCreateOp {
   readonly kind: "concentric";
   readonly primary: AssemblyMateAxisRef;
   readonly secondary: AssemblyMateAxisRef;
+}
+
+export interface AssemblyDistanceMateCreateOp {
+  readonly op: "assembly.mate.create";
+  readonly id?: MateId;
+  readonly assemblyId: AssemblyId;
+  readonly name?: string;
+  readonly kind: "distance";
+  readonly primary: AssemblyMatePlaneRef;
+  readonly secondary: AssemblyMatePlaneRef;
+  /** Signed separation along the stationary plane normal after pose solve. */
+  readonly distance: number;
 }
 
 export type PatternSeedFields =
@@ -2432,6 +2435,15 @@ export type CadAssemblyMateRef =
       readonly kind: "concentric";
       readonly primary: AssemblyMateAxisRef;
       readonly secondary: AssemblyMateAxisRef;
+    }
+  | {
+      readonly id: MateId;
+      readonly assemblyId: AssemblyId;
+      readonly name: string;
+      readonly kind: "distance";
+      readonly primary: AssemblyMatePlaneRef;
+      readonly secondary: AssemblyMatePlaneRef;
+      readonly distance: number;
     };
 
 export interface CadSketchEntityRef {
@@ -3153,7 +3165,9 @@ export type CadBatchValidationErrorCode =
   | "UNSUPPORTED_FEATURE_OPERATION"
   | "UNSUPPORTED_SKETCH_PROFILE"
   | "INVALID_ACTOR"
-  | "INVALID_AUDIT";
+  | "INVALID_AUDIT"
+  | "ASSEMBLY_MATE_UNDERCONSTRAINED"
+  | "ASSEMBLY_MATE_CONFLICTING";
 
 export interface CadBatchValidationError {
   readonly code: CadBatchValidationErrorCode;
@@ -4297,10 +4311,21 @@ export interface AssemblyConcentricMateSnapshot {
   readonly secondary: AssemblyMateAxisRef;
 }
 
+/** Distance plane–plane mate snapshot (slice E). */
+export interface AssemblyDistanceMateSnapshot {
+  readonly id: MateId;
+  readonly name: string;
+  readonly kind: "distance";
+  readonly primary: AssemblyMatePlaneRef;
+  readonly secondary: AssemblyMatePlaneRef;
+  readonly distance: number;
+}
+
 export type AssemblyMateSnapshot =
   | AssemblyFixedMateSnapshot
   | AssemblyCoincidentMateSnapshot
-  | AssemblyConcentricMateSnapshot;
+  | AssemblyConcentricMateSnapshot
+  | AssemblyDistanceMateSnapshot;
 
 export interface AssemblySnapshot {
   readonly id: AssemblyId;

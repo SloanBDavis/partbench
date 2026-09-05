@@ -48,6 +48,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidFixedMate: "Create an assembly with at least one instance to ground.",
   solidCoincidentMate: "Create an assembly with at least two instances to mate.",
   solidConcentricMate: "Create an assembly with at least two instances to mate.",
+  solidDistanceMate: "Create an assembly with at least two instances to mate.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -528,6 +529,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidConcentricMate)
+  ),
+  action(
+    "solid.distance-mate",
+    "Distance mate",
+    "Assemble",
+    ["solid"],
+    ["distance", "offset mate", "gap", "assembly mate"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDistanceMate)
   ),
   action(
     "solid.edit",

@@ -224,4 +224,58 @@ describe("assembly definition/instance protocol", () => {
     expect(snapshot.mates?.[0]?.kind).toBe("concentric");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
   });
+
+  it("names assembly.mate.create kind distance for plane-plane separation", () => {
+    const distance: AssemblyMateCreateOp = {
+      op: "assembly.mate.create",
+      id: "mate_gap",
+      assemblyId: "asm_gap",
+      name: "Gap",
+      kind: "distance",
+      primary: { instanceId: "inst_base", plane: "XY" },
+      secondary: { instanceId: "inst_top", plane: "XY" },
+      distance: 30
+    };
+    const snapshot: AssemblySnapshot = {
+      id: "asm_gap",
+      name: "Gap assembly",
+      instances: [
+        {
+          id: "inst_base",
+          name: "Base",
+          definition: { kind: "body", bodyId: "body_plate" },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        {
+          id: "inst_top",
+          name: "Top",
+          definition: { kind: "body", bodyId: "body_plate" },
+          transform: {
+            translation: [0, 0, 30],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      mates: [
+        {
+          id: "mate_gap",
+          name: "Gap",
+          kind: "distance",
+          primary: { instanceId: "inst_base", plane: "XY" },
+          secondary: { instanceId: "inst_top", plane: "XY" },
+          distance: 30
+        }
+      ]
+    };
+    const ops: readonly CadOp[] = [distance];
+    expect(ops.map((op) => op.op)).toEqual(["assembly.mate.create"]);
+    expect(distance.kind).toBe("distance");
+    expect(snapshot.mates?.[0]?.kind).toBe("distance");
+    expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
+  });
 });

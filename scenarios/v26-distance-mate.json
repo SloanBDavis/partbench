@@ -1,0 +1,191 @@
+{
+  "id": "v26-distance-mate",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_plate",
+      "name": "Plate",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_plate",
+      "id": "circle_plate",
+      "center": [0, 0],
+      "radius": 10
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_plate",
+      "bodyId": "body_plate",
+      "sketchId": "sketch_plate",
+      "entityId": "circle_plate",
+      "depth": 20
+    }
+  ],
+  "steps": [
+    {
+      "id": "create-gap-assembly",
+      "ops": [
+        {
+          "op": "assembly.create",
+          "id": "asm_gap",
+          "name": "Gap assembly"
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_base",
+          "assemblyId": "asm_gap",
+          "name": "Base",
+          "definition": { "kind": "body", "bodyId": "body_plate" },
+          "transform": { "translation": [0, 0, 0] }
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_top",
+          "assemblyId": "asm_gap",
+          "name": "Top",
+          "definition": { "kind": "body", "bodyId": "body_plate" },
+          "transform": { "translation": [0, 0, 50] }
+        },
+        {
+          "op": "assembly.mate.create",
+          "id": "mate_ground",
+          "assemblyId": "asm_gap",
+          "name": "Ground",
+          "kind": "fixed",
+          "instanceId": "inst_base"
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.create",
+          "assembly.instance.insert",
+          "assembly.instance.insert",
+          "assembly.mate.create"
+        ]
+      }
+    },
+    {
+      "id": "distance-plane-gap",
+      "ops": [
+        {
+          "op": "assembly.mate.create",
+          "id": "mate_gap",
+          "assemblyId": "asm_gap",
+          "name": "Gap",
+          "kind": "distance",
+          "primary": {
+            "instanceId": "inst_base",
+            "plane": "XY"
+          },
+          "secondary": {
+            "instanceId": "inst_top",
+            "plane": "XY"
+          },
+          "distance": 30
+        }
+      ],
+      "expect": {
+        "ops": ["assembly.mate.create"],
+        "diff": {
+          "assemblies": {
+            "matesCreated": [
+              {
+                "id": "mate_gap",
+                "assemblyId": "asm_gap",
+                "name": "Gap",
+                "kind": "distance",
+                "primary": {
+                  "instanceId": "inst_base",
+                  "plane": "XY"
+                },
+                "secondary": {
+                  "instanceId": "inst_top",
+                  "plane": "XY"
+                },
+                "distance": 30
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodyCount": 1,
+            "assemblies": [
+              {
+                "id": "asm_gap",
+                "instances": [
+                  {
+                    "id": "inst_base",
+                    "definition": { "kind": "body", "bodyId": "body_plate" },
+                    "transform": { "translation": [0, 0, 0] }
+                  },
+                  {
+                    "id": "inst_top",
+                    "definition": { "kind": "body", "bodyId": "body_plate" },
+                    "transform": { "translation": [0, 0, 30] }
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed",
+                    "instanceId": "inst_base"
+                  },
+                  {
+                    "id": "mate_gap",
+                    "kind": "distance",
+                    "primary": {
+                      "instanceId": "inst_base",
+                      "plane": "XY"
+                    },
+                    "secondary": {
+                      "instanceId": "inst_top",
+                      "plane": "XY"
+                    },
+                    "distance": 30
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "persist-distance-mate",
+      "persistRoundTrip": true,
+      "expect": {
+        "schemaVersionNot": ["web-cad.project.v23", "web-cad.project.v26"]
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "assemblies": [
+              {
+                "id": "asm_gap",
+                "instances": [
+                  { "id": "inst_base", "transform": { "translation": [0, 0, 0] } },
+                  { "id": "inst_top", "transform": { "translation": [0, 0, 30] } }
+                ],
+                "mates": [
+                  { "id": "mate_ground", "kind": "fixed" },
+                  { "id": "mate_gap", "kind": "distance", "distance": 30 }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

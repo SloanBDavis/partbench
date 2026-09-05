@@ -523,7 +523,7 @@ import {
   evaluateCadBodyDependencies,
   type CadDownstreamBodyPolicyProjection
 } from "./downstreamBodyPolicy";
-import { computeAlignPose, computeConcentricAxisPose } from "./alignTransform";
+import { computeAlignPose, computeConcentricAxisPose, computeDistancePlanePose } from "./alignTransform";
 import { computeDraftGeometry } from "./draftGeometry";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import {
@@ -14174,14 +14174,25 @@ function applyAssemblyMateCreate(
         opIndex
       );
       return;
+    case "distance":
+      applyAssemblyDistanceMateCreate(
+        state,
+        assembly,
+        existingMates,
+        mateId,
+        op,
+        diff,
+        opIndex
+      );
+      return;
     default:
       throwValidationError({
         code: "INVALID_OPERATION",
-        message: `assembly.mate.create kind ${op.kind} is not available yet; use fixed, coincident, or concentric.`,
+        message: `assembly.mate.create kind ${(op as { kind: string }).kind} is not available; use fixed, coincident, concentric, or distance.`,
         opIndex,
         path: operationPath(opIndex, "kind"),
-        expected: "fixed | coincident | concentric",
-        received: op.kind
+        expected: "fixed | coincident | concentric | distance",
+        received: (op as { kind: string }).kind
       });
   }
 }
@@ -14350,7 +14361,7 @@ function applyAssemblyCoincidentMateCreate(
   const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
   if (primaryFixed && secondaryFixed) {
     throwValidationError({
-      code: "INVALID_OPERATION",
+      code: "ASSEMBLY_MATE_CONFLICTING",
       message:
         "Coincident mate conflicts: both instances are fixed/grounded and cannot move.",
       opIndex,
@@ -14361,7 +14372,7 @@ function applyAssemblyCoincidentMateCreate(
   }
   if (!primaryFixed && !secondaryFixed) {
     throwValidationError({
-      code: "INVALID_OPERATION",
+      code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
       message:
         "Coincident mate is underconstrained: ground one instance with a fixed mate before solving pose.",
       opIndex,
@@ -14509,7 +14520,7 @@ function applyAssemblyConcentricMateCreate(
   const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
   if (primaryFixed && secondaryFixed) {
     throwValidationError({
-      code: "INVALID_OPERATION",
+      code: "ASSEMBLY_MATE_CONFLICTING",
       message:
         "Concentric mate conflicts: both instances are fixed/grounded and cannot move.",
       opIndex,
@@ -14520,7 +14531,7 @@ function applyAssemblyConcentricMateCreate(
   }
   if (!primaryFixed && !secondaryFixed) {
     throwValidationError({
-      code: "INVALID_OPERATION",
+      code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
       message:
         "Concentric mate is underconstrained: ground one instance with a fixed mate before solving pose.",
       opIndex,
@@ -14560,6 +14571,180 @@ function applyAssemblyConcentricMateCreate(
     kind: "concentric",
     primary: cloneAssemblyMateAxisRef(primaryRef),
     secondary: cloneAssemblyMateAxisRef(secondaryRef)
+  };
+
+  const nextInstances = assembly.instances.map((instance) =>
+    instance.id === movingInstance.id
+      ? { ...instance, transform: nextMovingTransform }
+      : instance
+  );
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    instances: nextInstances,
+    mates: [...existingMates, mate]
+  };
+  state.assemblies.set(assembly.id, updated);
+  pushAssemblyModified(diff, assemblyRef(updated));
+  const updatedMoving = nextInstances.find(
+    (instance) => instance.id === movingInstance.id
+  )!;
+  pushAssemblyInstanceModified(
+    diff,
+    assemblyInstanceRef(assembly.id, updatedMoving)
+  );
+  pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
+}
+
+function applyAssemblyDistanceMateCreate(
+  state: MutableDocumentState,
+  assembly: AssemblySnapshot,
+  existingMates: readonly AssemblyMateSnapshot[],
+  mateId: MateId,
+  op: Extract<
+    CadOp,
+    { readonly op: "assembly.mate.create"; readonly kind: "distance" }
+  >,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const primaryRef = op.primary;
+  const secondaryRef = op.secondary;
+  if (!isAssemblyMatePlaneRefShape(primaryRef)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.mate.create distance requires primary plane ref.",
+      opIndex,
+      path: operationPath(opIndex, "primary"),
+      expected: "instanceId + plane (XY|XZ|YZ) with optional offset/flip",
+      received: describeReceived(primaryRef)
+    });
+  }
+  if (!isAssemblyMatePlaneRefShape(secondaryRef)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.mate.create distance requires secondary plane ref.",
+      opIndex,
+      path: operationPath(opIndex, "secondary"),
+      expected: "instanceId + plane (XY|XZ|YZ) with optional offset/flip",
+      received: describeReceived(secondaryRef)
+    });
+  }
+  if (typeof op.distance !== "number" || !Number.isFinite(op.distance)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.mate.create distance requires a finite distance.",
+      opIndex,
+      path: operationPath(opIndex, "distance"),
+      expected: "finite number",
+      received: describeReceived(op.distance)
+    });
+  }
+
+  const primaryInstance = assembly.instances.find(
+    (candidate) => candidate.id === primaryRef.instanceId
+  );
+  if (!primaryInstance) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${primaryRef.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "primary.instanceId"),
+      expected: "existing instance id in assembly",
+      received: primaryRef.instanceId
+    });
+  }
+  const secondaryInstance = assembly.instances.find(
+    (candidate) => candidate.id === secondaryRef.instanceId
+  );
+  if (!secondaryInstance) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${secondaryRef.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "secondary.instanceId"),
+      expected: "existing instance id in assembly",
+      received: secondaryRef.instanceId
+    });
+  }
+  if (primaryRef.instanceId === secondaryRef.instanceId) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "Distance mate requires two different instances.",
+      opIndex,
+      path: operationPath(opIndex, "secondary.instanceId"),
+      expected: "instance id different from primary",
+      received: secondaryRef.instanceId
+    });
+  }
+
+  const fixedInstanceIds = new Set(
+    existingMates
+      .filter((mate) => mate.kind === "fixed")
+      .map((mate) => mate.instanceId)
+  );
+  const primaryFixed = fixedInstanceIds.has(primaryRef.instanceId);
+  const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
+  if (primaryFixed && secondaryFixed) {
+    throwValidationError({
+      code: "ASSEMBLY_MATE_CONFLICTING",
+      message:
+        "Distance mate conflicts: both instances are fixed/grounded and cannot move.",
+      opIndex,
+      path: operationPath(opIndex, "kind"),
+      expected: "at most one fixed instance in the mate pair",
+      received: `${primaryRef.instanceId}, ${secondaryRef.instanceId}`
+    });
+  }
+  if (!primaryFixed && !secondaryFixed) {
+    throwValidationError({
+      code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
+      message:
+        "Distance mate is underconstrained: ground one instance with a fixed mate before solving pose.",
+      opIndex,
+      path: operationPath(opIndex, "kind"),
+      expected: "one fixed/grounded instance in the mate pair",
+      received: "neither instance fixed"
+    });
+  }
+
+  const movingIsSecondary = !secondaryFixed;
+  const stationaryInstance = movingIsSecondary
+    ? primaryInstance
+    : secondaryInstance;
+  const movingInstance = movingIsSecondary
+    ? secondaryInstance
+    : primaryInstance;
+  const stationaryPlaneRef = movingIsSecondary ? primaryRef : secondaryRef;
+  const movingPlaneRef = movingIsSecondary ? secondaryRef : primaryRef;
+  // When the secondary is grounded, invert the signed separation so the
+  // stored distance still measures primary→secondary along primary's normal.
+  const signedDistance = movingIsSecondary ? op.distance : -op.distance;
+
+  const stationaryPlane = resolveAssemblyMatePlaneWorld(
+    stationaryInstance,
+    stationaryPlaneRef
+  );
+  const movingPlane = resolveAssemblyMatePlaneWorld(
+    movingInstance,
+    movingPlaneRef
+  );
+  const aligned = computeDistancePlanePose(
+    movingPlane,
+    stationaryPlane,
+    signedDistance
+  );
+  const nextMovingTransform = applyAlignPoseToInstanceTransform(
+    movingInstance.transform,
+    aligned.transform
+  );
+
+  const mate: AssemblyMateSnapshot = {
+    id: mateId,
+    name: normalizeAssemblyName(op.name, opIndex, mateId),
+    kind: "distance",
+    primary: cloneAssemblyMatePlaneRef(primaryRef),
+    secondary: cloneAssemblyMatePlaneRef(secondaryRef),
+    distance: op.distance
   };
 
   const nextInstances = assembly.instances.map((instance) =>
@@ -14866,13 +15051,24 @@ function assemblyMateRef(
       secondary: cloneAssemblyMatePlaneRef(mate.secondary)
     };
   }
+  if (mate.kind === "concentric") {
+    return {
+      id: mate.id,
+      assemblyId,
+      name: mate.name,
+      kind: "concentric",
+      primary: cloneAssemblyMateAxisRef(mate.primary),
+      secondary: cloneAssemblyMateAxisRef(mate.secondary)
+    };
+  }
   return {
     id: mate.id,
     assemblyId,
     name: mate.name,
-    kind: "concentric",
-    primary: cloneAssemblyMateAxisRef(mate.primary),
-    secondary: cloneAssemblyMateAxisRef(mate.secondary)
+    kind: "distance",
+    primary: cloneAssemblyMatePlaneRef(mate.primary),
+    secondary: cloneAssemblyMatePlaneRef(mate.secondary),
+    distance: mate.distance
   };
 }
 
@@ -26754,12 +26950,22 @@ function cloneAssemblyMate(mate: AssemblyMateSnapshot): AssemblyMateSnapshot {
       secondary: cloneAssemblyMatePlaneRef(mate.secondary)
     };
   }
+  if (mate.kind === "concentric") {
+    return {
+      id: mate.id,
+      name: mate.name,
+      kind: "concentric",
+      primary: cloneAssemblyMateAxisRef(mate.primary),
+      secondary: cloneAssemblyMateAxisRef(mate.secondary)
+    };
+  }
   return {
     id: mate.id,
     name: mate.name,
-    kind: "concentric",
-    primary: cloneAssemblyMateAxisRef(mate.primary),
-    secondary: cloneAssemblyMateAxisRef(mate.secondary)
+    kind: "distance",
+    primary: cloneAssemblyMatePlaneRef(mate.primary),
+    secondary: cloneAssemblyMatePlaneRef(mate.secondary),
+    distance: mate.distance
   };
 }
 
@@ -34770,13 +34976,14 @@ function validateAssemblySnapshots(
           if (
             mate.kind !== "fixed" &&
             mate.kind !== "coincident" &&
-            mate.kind !== "concentric"
+            mate.kind !== "concentric" &&
+            mate.kind !== "distance"
           ) {
             addProjectIssue(
               issues,
               "INVALID_DOCUMENT",
               `${matePath}.kind`,
-              'Assembly mate kind must be "fixed", "coincident", or "concentric" in the current schema.'
+              'Assembly mate kind must be "fixed", "coincident", "concentric", or "distance" in the current schema.'
             );
           }
           if (mate.kind === "fixed") {
@@ -34911,6 +35118,81 @@ function validateAssemblySnapshots(
                   "INVALID_DOCUMENT",
                   `${sidePath}.origin`,
                   `Assembly concentric mate ${side}.origin must be a Vec3 when present.`
+                );
+              }
+            }
+          } else if (mate.kind === "distance") {
+            if (typeof mate.distance !== "number" || !Number.isFinite(mate.distance)) {
+              addProjectIssue(
+                issues,
+                "INVALID_DOCUMENT",
+                `${matePath}.distance`,
+                "Assembly distance mate distance must be a finite number."
+              );
+            }
+            for (const side of ["primary", "secondary"] as const) {
+              const planeRef = mate[side];
+              const sidePath = `${matePath}.${side}`;
+              if (!isRecord(planeRef)) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  sidePath,
+                  `Assembly distance mate ${side} must be an object.`
+                );
+                continue;
+              }
+              if (
+                typeof planeRef.instanceId !== "string" ||
+                planeRef.instanceId.length === 0
+              ) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.instanceId`,
+                  `Assembly distance mate ${side}.instanceId must be a non-empty string.`
+                );
+              } else if (!instanceIds.has(planeRef.instanceId)) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.instanceId`,
+                  `Assembly distance mate ${side}.instanceId must reference an instance in the same assembly: ${planeRef.instanceId}`
+                );
+              }
+              if (
+                planeRef.plane !== "XY" &&
+                planeRef.plane !== "XZ" &&
+                planeRef.plane !== "YZ"
+              ) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.plane`,
+                  `Assembly distance mate ${side}.plane must be XY, XZ, or YZ.`
+                );
+              }
+              if (
+                planeRef.offset !== undefined &&
+                (typeof planeRef.offset !== "number" ||
+                  !Number.isFinite(planeRef.offset))
+              ) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.offset`,
+                  `Assembly distance mate ${side}.offset must be a finite number when present.`
+                );
+              }
+              if (
+                planeRef.flip !== undefined &&
+                typeof planeRef.flip !== "boolean"
+              ) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.flip`,
+                  `Assembly distance mate ${side}.flip must be a boolean when present.`
                 );
               }
             }
@@ -42483,6 +42765,14 @@ function isCadOp(value: unknown): value is CadOp {
       return (
         isAssemblyMateAxisRefShape(value.primary) &&
         isAssemblyMateAxisRefShape(value.secondary)
+      );
+    }
+    if (value.kind === "distance") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary) &&
+        typeof value.distance === "number" &&
+        Number.isFinite(value.distance)
       );
     }
     return false;

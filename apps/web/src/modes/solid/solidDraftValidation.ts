@@ -22,6 +22,7 @@ import type {
   AssemblyFixedMateForm,
   AssemblyCoincidentMateForm,
   AssemblyConcentricMateForm,
+  AssemblyDistanceMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -141,6 +142,27 @@ export function validateSolidDraft(
       ].every(Number.isFinite)
     ) {
       return blocked("Axis origins must be finite numbers.");
+    }
+    return ready();
+  }
+  if (kind === "distanceMate") {
+    const form = draft as AssemblyDistanceMateForm;
+    if (!form.assemblyId.trim()) {
+      return blocked("Choose an assembly.");
+    }
+    if (!form.primary.instanceId.trim() || !form.secondary.instanceId.trim()) {
+      return blocked("Choose primary and secondary instances.");
+    }
+    if (form.primary.instanceId === form.secondary.instanceId) {
+      return blocked("Distance mate needs two different instances.");
+    }
+    if (![form.primary.plane, form.secondary.plane].every((plane) =>
+      plane === "XY" || plane === "XZ" || plane === "YZ"
+    )) {
+      return blocked("Choose XY, XZ, or YZ planes.");
+    }
+    if (![form.primary.offset, form.secondary.offset, form.distance].every(Number.isFinite)) {
+      return blocked("Plane offsets and distance must be finite numbers.");
     }
     return ready();
   }

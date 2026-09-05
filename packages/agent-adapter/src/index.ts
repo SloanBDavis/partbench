@@ -2414,14 +2414,16 @@ function createOperationReview(
       );
 
     case "assembly.mate.create": {
-      const target =
-        op.kind === "fixed"
-          ? `on ${op.instanceId}`
-          : op.kind === "coincident"
-            ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
-            : op.kind === "concentric"
-              ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
-              : `kind ${String(op.kind)}`;
+      let target: string;
+      if (op.kind === "fixed") {
+        target = `on ${op.instanceId}`;
+      } else if (op.kind === "coincident") {
+        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`;
+      } else if (op.kind === "concentric") {
+        target = `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`;
+      } else {
+        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`;
+      }
       return operationReviewBase(
         index,
         op,
@@ -6023,7 +6025,14 @@ function isCadOp(value: unknown): value is CadOp {
         isAssemblyMateAxisRefShape(value.secondary)
       );
     }
-    // Distance shape lands in a later V26 slice.
+    if (value.kind === "distance") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary) &&
+        typeof value.distance === "number" &&
+        Number.isFinite(value.distance)
+      );
+    }
     return false;
   }
 
