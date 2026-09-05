@@ -28,6 +28,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  AssemblyFixedMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -63,7 +64,8 @@ export type SolidEditorKind =
   | "combine"
   | "offset"
   | "align"
-  | "draft";
+  | "draft"
+  | "fixedMate";
 
 export interface SolidDraftByKind {
   readonly box: PrimitiveCommandForm;
@@ -93,6 +95,7 @@ export interface SolidDraftByKind {
   readonly offset: FeatureOffsetForm;
   readonly align: FeatureAlignForm;
   readonly draft: FeatureDraftForm;
+  readonly fixedMate: AssemblyFixedMateForm;
 }
 
 export type SolidDraft = SolidDraftByKind[SolidEditorKind];
@@ -148,6 +151,11 @@ export interface SolidEditorChoices {
   readonly mirrorPlanes?: readonly SolidChoice<MirrorPlaneRef>[];
   readonly datums?: readonly SolidChoice<string>[];
   readonly openFaces?: readonly SolidChoice<FeatureShellOpenFaceRef>[];
+  readonly assemblies?: readonly SolidChoice<string>[];
+  readonly assemblyInstances?: readonly SolidChoice<{
+    readonly assemblyId: string;
+    readonly instanceId: string;
+  }>[];
 }
 
 export interface SolidEditorRequest<

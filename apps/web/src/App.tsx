@@ -13,7 +13,7 @@ import {
   type CadDocument,
   type CadProject,
   type CadFeatureSummary,
-  type CadPartSnapshot,
+  CadPartSnapshot,
   type CadTransactionHistoryEntry,
   type WcadTopologyCheckpointPayloadInput,
   type WcadPackageExportResult,
@@ -30,6 +30,7 @@ import {
   isPatternedSeedFeatureKind
 } from "@web-cad/cad-protocol";
 import type {
+  AssemblySnapshot,
   BodyGeneratedReferencesQueryResponse,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyGeneratedReferenceEvidenceSnapshot,
@@ -113,6 +114,7 @@ import {
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
   buildDatumAndSketchOnPlaneOps,
+  buildAssemblyFixedMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateSketchOnFaceOp,
@@ -153,7 +155,8 @@ import {
   type PrimitiveCommandForm,
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
-  type DatumAxisCreateForm,
+  type AssemblyFixedMateForm,
+  DatumAxisCreateForm,
   type DatumPlaneCreateForm,
   type SketchEntityForm,
   type CreatableSketchEntityKind,
@@ -771,6 +774,7 @@ function readProjectStructure(): {
   readonly parts: readonly CadPartSnapshot[];
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
+  readonly assemblies: readonly AssemblySnapshot[];
 } {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -781,9 +785,10 @@ function readProjectStructure(): {
     ? {
         parts: response.parts,
         features: response.features,
-        bodies: response.bodies
+        bodies: response.bodies,
+        assemblies: response.assemblies ?? []
       }
-    : { parts: [], features: [], bodies: [] };
+    : { parts: [], features: [], bodies: [], assemblies: [] };
 }
 
 function isSketchCurveEditUiAction(
@@ -1683,9 +1688,11 @@ function ProgressiveDocumentTreeDock({
       bodies: props.bodies,
       objects: props.objects,
       namedReferences: props.namedReferences,
+      assemblies: props.assemblies,
       health: props.health
     }),
     [
+      props.assemblies,
       props.bodies,
       props.features,
       props.health,
@@ -2223,6 +2230,20 @@ export function App() {
   const [selectedNamedReferenceName, setSelectedNamedReferenceName] = useState<
     string | undefined
   >();
+  const [selectedAssemblySelection, setSelectedAssemblySelection] = useState<
+    | { readonly kind: "assembly"; readonly id: string }
+    | {
+        readonly kind: "assembly-instance";
+        readonly assemblyId: string;
+        readonly id: string;
+      }
+    | {
+        readonly kind: "assembly-mate";
+        readonly assemblyId: string;
+        readonly id: string;
+      }
+    | undefined
+  >(undefined);
   const [solidCollectorRequest, setSolidCollectorRequest] = useState<
     SolidCollectorRequest | undefined
   >();
@@ -3731,7 +3752,9 @@ export function App() {
       sketchSolverStatusesBySketchId
     ]
   );
-  const selectedDocumentTreeKey = selectedNamedReferenceName
+  const selectedDocumentTreeKey = selectedAssemblySelection
+    ? documentTreeSelectionKey(selectedAssemblySelection)
+    : selectedNamedReferenceName
     ? documentTreeSelectionKey({
         kind: "named-reference",
         name: selectedNamedReferenceName
@@ -4652,6 +4675,58 @@ export function App() {
           name: `Axis ${engine.getDocument().datums.size + 1}`,
           axis: { kind: "globalAxis", axis: "z" }
         } satisfies DatumAxisCreateForm
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.fixed-mate") {
+      const assemblies = projectStructure.assemblies;
+      const assemblyChoices = assemblies.map((assembly) => ({
+        value: assembly.id,
+        key: assembly.id,
+        label: assembly.name,
+        kind: "assembly"
+      }));
+      const instanceChoices = assemblies.flatMap((assembly) =>
+        assembly.instances.map((instance) => ({
+          value: { assemblyId: assembly.id, instanceId: instance.id },
+          key: `${assembly.id}:${instance.id}`,
+          label: `${assembly.name} · ${instance.name}`,
+          kind: "assembly-instance"
+        }))
+      );
+      const preferredAssemblyId =
+        selectedAssemblySelection?.kind === "assembly"
+          ? selectedAssemblySelection.id
+          : selectedAssemblySelection?.kind === "assembly-instance" ||
+              selectedAssemblySelection?.kind === "assembly-mate"
+            ? selectedAssemblySelection.assemblyId
+            : (assemblies[0]?.id ?? "");
+      const preferredInstanceId =
+        selectedAssemblySelection?.kind === "assembly-instance"
+          ? selectedAssemblySelection.id
+          : (assemblies.find((assembly) => assembly.id === preferredAssemblyId)
+              ?.instances[0]?.id ?? "");
+      const hasInstance = instanceChoices.length > 0;
+      return {
+        key,
+        kind: "fixedMate",
+        title: "Create Fixed Mate",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          name: "Ground",
+          assemblyId: preferredAssemblyId,
+          instanceId: preferredInstanceId
+        } satisfies AssemblyFixedMateForm,
+        choices: {
+          assemblies: assemblyChoices,
+          assemblyInstances: instanceChoices
+        },
+        ...(hasInstance
+          ? {}
+          : {
+              blockedReason:
+                "Create an assembly with at least one instance to ground."
+            })
       } as SolidEditorRequest;
     }
     if (actionId === "solid.edit" && selectedFeature) {
@@ -7266,6 +7341,10 @@ export function App() {
     await commitOps([buildDatumAxisCreateOp(form)], () => null);
   }
 
+  async function createFixedMate(form: AssemblyFixedMateForm) {
+    await commitOps([buildAssemblyFixedMateOp(form)], () => null);
+  }
+
   async function createSideHoleSketch(
     form: SketchCreateForm,
     targetBodyId: string
@@ -9386,6 +9465,42 @@ export function App() {
           navigateToMode("inspect");
         });
         return;
+      case "assembly":
+        // Selecting an assembly does not select definition body faces.
+        setSelectedAssemblySelection({ kind: "assembly", id: selection.id });
+        setSelectedId(undefined);
+        setSelectedGeneratedReference(undefined);
+        setSelectedNamedReferenceName(undefined);
+        setSelectedSketchContext(undefined);
+        setCommandNotice(`Assembly ${selection.id} selected.`);
+        return;
+      case "assembly-instance":
+        // Instance selection is not definition-face selection unless a collector says so.
+        setSelectedAssemblySelection({
+          kind: "assembly-instance",
+          assemblyId: selection.assemblyId,
+          id: selection.id
+        });
+        setSelectedId(undefined);
+        setSelectedGeneratedReference(undefined);
+        setSelectedNamedReferenceName(undefined);
+        setSelectedSketchContext(undefined);
+        setCommandNotice(
+          `Instance ${selection.id} selected (not definition faces).`
+        );
+        return;
+      case "assembly-mate":
+        setSelectedAssemblySelection({
+          kind: "assembly-mate",
+          assemblyId: selection.assemblyId,
+          id: selection.id
+        });
+        setSelectedId(undefined);
+        setSelectedGeneratedReference(undefined);
+        setSelectedNamedReferenceName(undefined);
+        setSelectedSketchContext(undefined);
+        setCommandNotice(`Mate ${selection.id} selected.`);
+        return;
     }
   }
 
@@ -9533,6 +9648,7 @@ export function App() {
       submission.kind === "sketch" ||
       submission.kind === "datumPlane" ||
       submission.kind === "datumAxis" ||
+      submission.kind === "fixedMate" ||
       submission.kind === "transform"
     );
 
@@ -9656,6 +9772,9 @@ export function App() {
         return;
       case "datumAxis":
         await createDatumAxis(submission.draft);
+        return;
+      case "fixedMate":
+        await createFixedMate(submission.draft);
         return;
       case "transform":
         await updateSelectedTransform(submission.draft);
@@ -9910,6 +10029,7 @@ export function App() {
       case "solid.sketch":
       case "solid.datum-plane":
       case "solid.datum-axis":
+      case "solid.fixed-mate":
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
@@ -10522,6 +10642,13 @@ export function App() {
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDraft),
       "solid.datum-plane": ready,
       "solid.datum-axis": ready,
+      "solid.fixed-mate":
+        projectStructure.assemblies.some((assembly) => assembly.instances.length > 0)
+          ? ready
+          : {
+              status: "blocked" as const,
+              message: UI_ACTION_AVAILABILITY_MESSAGES.solidFixedMate
+            },
       "solid.edit":
         selectedObject ||
         (selectedFeature && selectedFeature.kind !== "importedBody")
@@ -11083,6 +11210,7 @@ export function App() {
                 bodies={projectStructure.bodies}
                 objects={sceneObjects}
                 namedReferences={namedReferences}
+                assemblies={projectStructure.assemblies}
                 health={projectHealth}
                 suppressSourceMutations={
                   curveEditOwnership.suppressTreeSourceMutations

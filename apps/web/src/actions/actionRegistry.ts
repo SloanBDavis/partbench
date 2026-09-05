@@ -45,6 +45,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidOffset: "Select a sketch profile or a face.",
   solidAlign: "Select a completed exact body and a planar face to move.",
   solidDraft: "Select a completed exact solid and a planar face set.",
+  solidFixedMate: "Create an assembly with at least one instance to ground.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -495,6 +496,16 @@ export const UI_ACTION_METADATA = [
     ["solid", "sketch"],
     ["construction axis", "pattern axis"],
     true
+  ),
+  action(
+    "solid.fixed-mate",
+    "Fixed mate",
+    "Assemble",
+    ["solid"],
+    ["ground", "fixed", "assembly mate", "root"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidFixedMate)
   ),
   action(
     "solid.edit",

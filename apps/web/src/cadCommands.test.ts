@@ -11,6 +11,7 @@ import {
   buildCreateSketchDimensionOp,
   buildCreateSketchOp,
   buildDatumAndSketchOnPlaneOps,
+  buildAssemblyFixedMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateTorusOp,
@@ -2262,6 +2263,26 @@ describe("cad command builders", () => {
       scaleY: 1,
       scaleZ: 1,
       translationX: 1
+    });
+  });
+});
+
+describe("assembly fixed mate Apply parity", () => {
+  it("builds assembly.mate.create kind fixed from the form", () => {
+    expect(
+      buildAssemblyFixedMateOp({
+        id: "mate_ground",
+        name: "Ground",
+        assemblyId: "asm_root",
+        instanceId: "inst_root"
+      })
+    ).toEqual({
+      op: "assembly.mate.create",
+      id: "mate_ground",
+      assemblyId: "asm_root",
+      name: "Ground",
+      kind: "fixed",
+      instanceId: "inst_root"
     });
   });
 });

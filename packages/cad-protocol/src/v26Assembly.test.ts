@@ -3,6 +3,7 @@ import {
   CAD_V19_PROJECT_SCHEMA_VERSION,
   type AssemblyCreateOp,
   type AssemblyInstanceInsertOp,
+  type AssemblyMateCreateOp,
   type AssemblySnapshot,
   type CadOp
 } from "./index";
@@ -73,5 +74,45 @@ describe("assembly definition/instance protocol", () => {
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).not.toBe("web-cad.project.v23");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).not.toBe("web-cad.project.v26");
+  });
+
+  it("names assembly.mate.create kind fixed for a grounded root instance", () => {
+    const fixed: AssemblyMateCreateOp = {
+      op: "assembly.mate.create",
+      id: "mate_ground",
+      assemblyId: "asm_bolt",
+      name: "Ground",
+      kind: "fixed",
+      instanceId: "inst_bolt_a"
+    };
+    const snapshot: AssemblySnapshot = {
+      id: "asm_bolt",
+      name: "Bolt assembly",
+      instances: [
+        {
+          id: "inst_bolt_a",
+          name: "Bolt A",
+          definition: { kind: "body", bodyId: "body_bolt" },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      mates: [
+        {
+          id: "mate_ground",
+          name: "Ground",
+          kind: "fixed",
+          instanceId: "inst_bolt_a"
+        }
+      ]
+    };
+    const ops: readonly CadOp[] = [fixed];
+    expect(ops.map((op) => op.op)).toEqual(["assembly.mate.create"]);
+    expect(fixed.kind).toBe("fixed");
+    expect(snapshot.mates?.[0]?.instanceId).toBe("inst_bolt_a");
+    expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
   });
 });

@@ -82,6 +82,7 @@ function createOperationSummaries(
   let createdDatumIndex = 0;
   let createdAssemblyIndex = 0;
   let createdAssemblyInstanceIndex = 0;
+  let createdAssemblyMateIndex = 0;
   let createdSketchEntityIndex = 0;
   let createdFeatureIndex = 0;
   let deletedFeatureIndex = 0;
@@ -123,6 +124,12 @@ function createOperationSummaries(
       op.op === "assembly.instance.insert"
         ? transaction.diff.assemblies?.instancesCreated?.[
             createdAssemblyInstanceIndex++
+          ]
+        : undefined;
+    const createdAssemblyMateRef =
+      op.op === "assembly.mate.create"
+        ? transaction.diff.assemblies?.matesCreated?.[
+            createdAssemblyMateIndex++
           ]
         : undefined;
     const createdSketchEntityRef = isSketchAddEntityOp(op)
@@ -439,6 +446,14 @@ function createOperationSummaries(
         return {
           op: op.op,
           label: `Insert assembly instance ${instanceId ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
+        };
+      }
+
+      case "assembly.mate.create": {
+        const mateId = op.id ?? createdAssemblyMateRef?.id;
+        return {
+          op: op.op,
+          label: `Create ${op.kind} mate ${mateId ?? "with generated ID"} on ${op.instanceId} in ${op.assemblyId}`
         };
       }
 

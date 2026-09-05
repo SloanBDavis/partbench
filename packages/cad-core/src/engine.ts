@@ -104,11 +104,14 @@ import type {
   CadDatumRef,
   CadAssemblyRef,
   CadAssemblyInstanceRef,
+  CadAssemblyMateRef,
   AssemblySnapshot,
   AssemblyInstanceSnapshot,
+  AssemblyMateSnapshot,
   AssemblyDefinitionRef,
   AssemblyId,
   InstanceId,
+  MateId,
   CadTransactionStatus,
   CadTopologyAnchorCommandProof,
   CadTopologyAnchorEntityKind,
@@ -6058,6 +6061,9 @@ type MutableAssemblySemanticDiff = {
   instancesCreated: CadAssemblyInstanceRef[];
   instancesModified: CadAssemblyInstanceRef[];
   instancesDeleted: CadAssemblyInstanceRef[];
+  matesCreated: CadAssemblyMateRef[];
+  matesModified: CadAssemblyMateRef[];
+  matesDeleted: CadAssemblyMateRef[];
 };
 
 type MutableFeatureSemanticDiff = {
@@ -6136,6 +6142,7 @@ function applyOperation(
   createDatumId: () => DatumId,
   createAssemblyId: () => AssemblyId,
   createInstanceId: () => InstanceId,
+  createMateId: () => MateId,
   opIndex: number
 ): void {
   switch (op.op) {
@@ -6586,6 +6593,11 @@ function applyOperation(
         createInstanceId,
         opIndex
       );
+      return;
+    }
+
+    case "assembly.mate.create": {
+      applyAssemblyMateCreate(state, op, diff, createMateId, opIndex);
       return;
     }
 
@@ -8366,6 +8378,7 @@ function isCadOperationKind(value: string): boolean {
     case "datum.axis.create":
     case "assembly.create":
     case "assembly.instance.insert":
+    case "assembly.mate.create":
     case "sketch.rename":
     case "sketch.delete":
     case "sketch.addPoint":
@@ -14104,6 +14117,104 @@ function applyAssemblyInstanceInsert(
   pushAssemblyInstanceCreated(diff, assemblyInstanceRef(assembly.id, instance));
 }
 
+function applyAssemblyMateCreate(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "assembly.mate.create" }>,
+  diff: MutableSemanticDiff,
+  createMateId: () => MateId,
+  opIndex: number
+): void {
+  if (op.kind !== "fixed") {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `assembly.mate.create kind ${op.kind} is not available yet; use fixed.`,
+      opIndex,
+      path: operationPath(opIndex, "kind"),
+      expected: "fixed",
+      received: op.kind
+    });
+  }
+
+  const assembly = state.assemblies.get(op.assemblyId);
+  if (!assembly) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly does not exist: ${op.assemblyId}`,
+      opIndex,
+      path: operationPath(opIndex, "assemblyId"),
+      expected: "existing assembly id",
+      received: op.assemblyId
+    });
+  }
+
+  const instance = assembly.instances.find(
+    (candidate) => candidate.id === op.instanceId
+  );
+  if (!instance) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${op.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "instanceId"),
+      expected: "existing instance id in assembly",
+      received: op.instanceId
+    });
+  }
+
+  const existingMates = assembly.mates ?? [];
+  const mateId = op.id ?? createMateId();
+  if (existingMates.some((mate) => mate.id === mateId)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly mate already exists: ${mateId}`,
+      opIndex,
+      path: operationPath(opIndex, "id"),
+      expected: "unique mate id",
+      received: mateId
+    });
+  }
+  for (const other of state.assemblies.values()) {
+    if ((other.mates ?? []).some((mate) => mate.id === mateId)) {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: `Assembly mate already exists: ${mateId}`,
+        opIndex,
+        path: operationPath(opIndex, "id"),
+        expected: "unique mate id",
+        received: mateId
+      });
+    }
+  }
+  if (
+    existingMates.some(
+      (mate) => mate.kind === "fixed" && mate.instanceId === op.instanceId
+    )
+  ) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance already has a fixed mate: ${op.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "instanceId"),
+      expected: "ungrounded instance id",
+      received: op.instanceId
+    });
+  }
+
+  const mate: AssemblyMateSnapshot = {
+    id: mateId,
+    name: normalizeAssemblyName(op.name, opIndex, mateId),
+    kind: "fixed",
+    instanceId: op.instanceId
+  };
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    mates: [...existingMates, mate]
+  };
+  state.assemblies.set(assembly.id, updated);
+  pushAssemblyModified(diff, assemblyRef(updated));
+  pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
+}
+
 function assemblyRef(assembly: AssemblySnapshot): CadAssemblyRef {
   return { id: assembly.id, name: assembly.name };
 }
@@ -14118,6 +14229,19 @@ function assemblyInstanceRef(
     name: instance.name,
     definition: { ...instance.definition },
     transform: cloneTransform(instance.transform)
+  };
+}
+
+function assemblyMateRef(
+  assemblyId: AssemblyId,
+  mate: AssemblyMateSnapshot
+): CadAssemblyMateRef {
+  return {
+    id: mate.id,
+    assemblyId,
+    name: mate.name,
+    kind: mate.kind,
+    instanceId: mate.instanceId
   };
 }
 
@@ -24819,7 +24943,10 @@ function ensureAssemblyDiff(
       deleted: [],
       instancesCreated: [],
       instancesModified: [],
-      instancesDeleted: []
+      instancesDeleted: [],
+      matesCreated: [],
+      matesModified: [],
+      matesDeleted: []
     };
   }
   return diff.assemblies;
@@ -24844,6 +24971,13 @@ function pushAssemblyInstanceCreated(
   ref: CadAssemblyInstanceRef
 ): void {
   ensureAssemblyDiff(diff).instancesCreated.push(ref);
+}
+
+function pushAssemblyMateCreated(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyMateRef
+): void {
+  ensureAssemblyDiff(diff).matesCreated.push(ref);
 }
 
 function pushSketchEntityCreated(
@@ -25957,7 +26091,19 @@ function cloneAssembly(assembly: AssemblySnapshot): AssemblySnapshot {
   return {
     id: assembly.id,
     name: assembly.name,
-    instances: assembly.instances.map(cloneAssemblyInstance)
+    instances: assembly.instances.map(cloneAssemblyInstance),
+    ...(assembly.mates && assembly.mates.length > 0
+      ? { mates: assembly.mates.map(cloneAssemblyMate) }
+      : {})
+  };
+}
+
+function cloneAssemblyMate(mate: AssemblyMateSnapshot): AssemblyMateSnapshot {
+  return {
+    id: mate.id,
+    name: mate.name,
+    kind: mate.kind,
+    instanceId: mate.instanceId
   };
 }
 
@@ -29899,6 +30045,7 @@ function runOperations(
   let nextDatumNumber = inferNextDatumNumber(document);
   let nextAssemblyNumber = inferNextAssemblyNumber(document);
   let nextInstanceNumber = inferNextInstanceNumber(document);
+  let nextMateNumber = inferNextMateNumber(document);
   const diff: MutableSemanticDiff = {
     created: [],
     modified: [],
@@ -29970,6 +30117,11 @@ function runOperations(
       const allocateInstanceId = () => {
         const result = createInstanceId(state.assemblies, nextInstanceNumber);
         nextInstanceNumber = result.nextInstanceNumber;
+        return result.id;
+      };
+      const allocateMateId = () => {
+        const result = createMateId(state.assemblies, nextMateNumber);
+        nextMateNumber = result.nextMateNumber;
         return result.id;
       };
       if (isSketchConvenienceOp(op)) {
@@ -30105,6 +30257,7 @@ function runOperations(
         allocateDatumId,
         allocateAssemblyId,
         allocateInstanceId,
+        allocateMateId,
         opIndex
       );
       appliedOps.push(op);
@@ -30300,6 +30453,28 @@ function createInstanceId(
   return {
     id,
     nextInstanceNumber: nextInstanceNumber + 1
+  };
+}
+
+function createMateId(
+  assemblies: ReadonlyMap<AssemblyId, AssemblySnapshot>,
+  initialMateNumber: number
+): { id: MateId; nextMateNumber: number } {
+  let nextMateNumber = initialMateNumber;
+  let id = `mate_${nextMateNumber}`;
+
+  while (
+    [...assemblies.values()].some((assembly) =>
+      (assembly.mates ?? []).some((mate) => mate.id === id)
+    )
+  ) {
+    nextMateNumber += 1;
+    id = `mate_${nextMateNumber}`;
+  }
+
+  return {
+    id,
+    nextMateNumber: nextMateNumber + 1
   };
 }
 
@@ -30945,6 +31120,25 @@ function inferNextInstanceNumber(
     }
   }
   return maxInstanceNumber + 1;
+}
+
+function inferNextMateNumber(
+  document:
+    | CadDocument
+    | { readonly assemblies?: ReadonlyMap<AssemblyId, AssemblySnapshot> }
+): number {
+  let maxMateNumber = 0;
+  for (const assembly of document.assemblies?.values() ?? []) {
+    for (const mate of assembly.mates ?? []) {
+      maxMateNumber = Math.max(maxMateNumber, parseMateNumber(mate.id));
+    }
+  }
+  return maxMateNumber + 1;
+}
+
+function parseMateNumber(id: string): number {
+  const match = /^mate_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
 }
 
 function parseInstanceNumber(id: string): number {
@@ -33863,6 +34057,84 @@ function validateAssemblySnapshots(
           `${instancePath}.transform`,
           "Assembly instance transform must include translation, rotation, and scale vectors."
         );
+      }
+    }
+    if (assembly.mates !== undefined) {
+      if (!Array.isArray(assembly.mates)) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${assemblyPath}.mates`,
+          "Assembly mates must be an array when present."
+        );
+      } else {
+        const seenMateIds = new Set<string>();
+        const instanceIds = new Set(
+          assembly.instances
+            .filter((entry): entry is Record<string, unknown> => isRecord(entry))
+            .map((entry) => entry.id)
+            .filter((id): id is string => typeof id === "string")
+        );
+        for (const [mateIndex, mate] of assembly.mates.entries()) {
+          const matePath = `${assemblyPath}.mates[${mateIndex}]`;
+          if (!isRecord(mate)) {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              matePath,
+              "Assembly mate must be an object."
+            );
+            continue;
+          }
+          if (typeof mate.id !== "string" || mate.id.length === 0) {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `${matePath}.id`,
+              "Assembly mate id must be a non-empty string."
+            );
+          } else if (seenMateIds.has(mate.id)) {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `${matePath}.id`,
+              `Duplicate assembly mate id: ${mate.id}`
+            );
+          } else {
+            seenMateIds.add(mate.id);
+          }
+          if (typeof mate.name !== "string") {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `${matePath}.name`,
+              "Assembly mate name must be a string."
+            );
+          }
+          if (mate.kind !== "fixed") {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `${matePath}.kind`,
+              'Assembly mate kind must be "fixed" in the current schema.'
+            );
+          }
+          if (typeof mate.instanceId !== "string" || mate.instanceId.length === 0) {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `${matePath}.instanceId`,
+              "Assembly mate instanceId must be a non-empty string."
+            );
+          } else if (!instanceIds.has(mate.instanceId)) {
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `${matePath}.instanceId`,
+              `Assembly mate instanceId must reference an instance in the same assembly: ${mate.instanceId}`
+            );
+          }
+        }
       }
     }
   }
@@ -41404,6 +41676,19 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.name) &&
       isAssemblyDefinitionRef(value.definition) &&
       isOptionalTransform(value.transform)
+    );
+  }
+
+  if (value.op === "assembly.mate.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.assemblyId === "string" &&
+      isOptionalString(value.name) &&
+      (value.kind === "fixed" ||
+        value.kind === "coincident" ||
+        value.kind === "concentric" ||
+        value.kind === "distance") &&
+      typeof value.instanceId === "string"
     );
   }
 

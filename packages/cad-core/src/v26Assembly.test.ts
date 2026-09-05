@@ -170,3 +170,132 @@ describe("V26 slice A assembly definition vs instance", () => {
     });
   });
 });
+
+describe("V26 slice B fixed/ground mate and assembly tree", () => {
+  it("grounds a root instance with assembly.mate.create kind fixed and persists mates", () => {
+    const engine = new CadEngine();
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_root", name: "Root assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_root",
+        assemblyId: "asm_root",
+        name: "Root",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 0] }
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_child",
+        assemblyId: "asm_root",
+        name: "Child",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [30, 0, 0] }
+      }
+    ]);
+
+    const grounded = engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_ground",
+      assemblyId: "asm_root",
+      name: "Ground",
+      kind: "fixed",
+      instanceId: "inst_root"
+    });
+    expect(grounded.transaction.diff).toMatchObject({
+      assemblies: {
+        matesCreated: [
+          {
+            id: "mate_ground",
+            assemblyId: "asm_root",
+            name: "Ground",
+            kind: "fixed",
+            instanceId: "inst_root"
+          }
+        ]
+      }
+    });
+
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      assemblies: [
+        {
+          id: "asm_root",
+          instances: [{ id: "inst_root" }, { id: "inst_child" }],
+          mates: [
+            {
+              id: "mate_ground",
+              kind: "fixed",
+              instanceId: "inst_root"
+            }
+          ]
+        }
+      ]
+    });
+    expect(JSON.stringify(structure)).not.toMatch(PRIVATE_ID_PATTERN);
+
+    const exported = exportCadProject(engine);
+    expect(exported.schemaVersion).not.toBe("web-cad.project.v23");
+    expect(exported.schemaVersion).not.toBe("web-cad.project.v26");
+    expect(exported.document.assemblies?.[0]?.mates).toEqual([
+      {
+        id: "mate_ground",
+        name: "Ground",
+        kind: "fixed",
+        instanceId: "inst_root"
+      }
+    ]);
+
+    const restored = importCadProject(exported);
+    expect(exportCadProject(restored).document.assemblies).toEqual(
+      exported.document.assemblies
+    );
+  });
+
+  it("rejects non-fixed mate kinds and duplicate fixed mates on the same instance", () => {
+    const engine = new CadEngine();
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_root", name: "Root assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_root",
+        assemblyId: "asm_root",
+        name: "Root",
+        definition: { kind: "body", bodyId: "body_bolt" }
+      }
+    ]);
+
+    expect(() =>
+      engine.apply({
+        op: "assembly.mate.create",
+        assemblyId: "asm_root",
+        kind: "coincident",
+        instanceId: "inst_root"
+      })
+    ).toThrow(/fixed/);
+
+    engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_ground",
+      assemblyId: "asm_root",
+      kind: "fixed",
+      instanceId: "inst_root"
+    });
+
+    expect(() =>
+      engine.apply({
+        op: "assembly.mate.create",
+        id: "mate_ground_2",
+        assemblyId: "asm_root",
+        kind: "fixed",
+        instanceId: "inst_root"
+      })
+    ).toThrow(/already has a fixed mate/);
+  });
+});

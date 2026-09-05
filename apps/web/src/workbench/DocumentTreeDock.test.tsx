@@ -158,6 +158,7 @@ function createProjection(): DocumentTreeProjection {
     group("origin", "Origin", []),
     group("parameters", "Parameters", []),
     group("model", "Model", [feature]),
+    group("assemblies", "Assemblies", []),
     group("references", "Named references", [])
   ] as const;
 
@@ -180,12 +181,13 @@ function createProjectionWithSketch(): DocumentTreeProjection {
     capabilities: { canEdit: true },
     children: []
   };
-  const model = base.groups[2];
+  const model = base.groups[2]!;
   const groups = [
-    base.groups[0],
-    base.groups[1],
+    base.groups[0]!,
+    base.groups[1]!,
     { ...model, rows: [sketch, ...model.rows] },
-    base.groups[3]
+    base.groups[3]!,
+    base.groups[4]!
   ] as const satisfies DocumentTreeProjection["groups"];
 
   return {

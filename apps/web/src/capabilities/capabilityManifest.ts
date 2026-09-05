@@ -400,6 +400,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildDatumAxisCreateOp",
     "cadCommands.test.ts"
   ),
+  "solid.fixed-mate": featureAudit(
+    "Fixed mate",
+    "createFixedMate",
+    "assembly/instance selection",
+    "buildAssemblyFixedMateOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

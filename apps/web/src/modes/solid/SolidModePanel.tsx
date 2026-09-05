@@ -27,6 +27,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  AssemblyFixedMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -592,6 +593,15 @@ function SolidDraftFields({
           onChange={onChange}
         />
       );
+    case "fixedMate":
+      return (
+        <FixedMateFields
+          draft={draft as AssemblyFixedMateForm}
+          assemblyChoices={request.choices?.assemblies ?? []}
+          instanceChoices={request.choices?.assemblyInstances ?? []}
+          onChange={onChange}
+        />
+      );
     case "transform":
       return (
         <TransformFields
@@ -1016,6 +1026,68 @@ function DatumAxisFields({
             }
           })
         }
+      />
+    </>
+  );
+}
+
+function FixedMateFields({
+  draft,
+  assemblyChoices,
+  instanceChoices,
+  onChange
+}: {
+  readonly draft: AssemblyFixedMateForm;
+  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly instanceChoices: readonly {
+    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly label: string;
+  }[];
+  readonly onChange: (draft: AssemblyFixedMateForm) => void;
+}) {
+  const instancesForAssembly = instanceChoices.filter(
+    (choice) => choice.value.assemblyId === draft.assemblyId
+  );
+  return (
+    <>
+      <TextField
+        label="Name"
+        name="fixed-mate-name"
+        value={draft.name}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Assembly"
+        name="fixed-mate-assembly"
+        value={draft.assemblyId}
+        options={[
+          { value: "", label: "Select assembly" },
+          ...assemblyChoices.map((choice) => ({
+            value: choice.value,
+            label: choice.label
+          }))
+        ]}
+        onChange={(assemblyId) =>
+          onChange({
+            ...draft,
+            assemblyId,
+            instanceId:
+              draft.assemblyId === assemblyId ? draft.instanceId : ""
+          })
+        }
+      />
+      <SelectField
+        label="Instance to ground"
+        name="fixed-mate-instance"
+        value={draft.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) => onChange({ ...draft, instanceId })}
       />
     </>
   );

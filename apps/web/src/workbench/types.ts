@@ -33,6 +33,7 @@ export type FeatureEditorKind =
   | "draft"
   | "datum-plane"
   | "datum-axis"
+  | "fixed-mate"
   | "named-reference"
   | "named-reference-repair";
 

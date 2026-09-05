@@ -36,6 +36,7 @@ import type {
   FeatureOffsetSide,
   FeatureOffsetSource,
   FeatureUpdateOffsetOp,
+  AssemblyMateCreateOp,
   DatumAxisCreateOp,
   DatumAxisSourceRef,
   DatumPlaneCreateOp,
@@ -179,6 +180,13 @@ export interface DatumAxisCreateForm {
   readonly id: string;
   readonly name: string;
   readonly axis: DatumAxisSourceRef;
+}
+
+export interface AssemblyFixedMateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly assemblyId: string;
+  readonly instanceId: string;
 }
 
 export interface SketchCreateOnFaceForm {
@@ -679,6 +687,19 @@ export function buildDatumAxisCreateOp(
     id: normalizeOptionalId(form.id),
     name: form.name.trim(),
     axis: form.axis
+  };
+}
+
+export function buildAssemblyFixedMateOp(
+  form: AssemblyFixedMateForm
+): AssemblyMateCreateOp {
+  return {
+    op: "assembly.mate.create",
+    id: normalizeOptionalId(form.id),
+    assemblyId: form.assemblyId.trim(),
+    name: form.name.trim() || undefined,
+    kind: "fixed",
+    instanceId: form.instanceId.trim()
   };
 }
 

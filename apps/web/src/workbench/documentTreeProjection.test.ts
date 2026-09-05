@@ -21,6 +21,7 @@ describe("document tree projection", () => {
       "Origin",
       "Parameters",
       "Model",
+      "Assemblies",
       "Named references"
     ]);
     expect(projection.groups[0].rows.map((row) => row.label)).toEqual([
@@ -35,7 +36,8 @@ describe("document tree projection", () => {
       "Base block",
       "Later sketch"
     ]);
-    expect(projection.groups[3].rows.map((row) => row.label)).toEqual([
+    expect(projection.groups[3].rows.map((row) => row.label)).toEqual([]);
+    expect(projection.groups[4].rows.map((row) => row.label)).toEqual([
       "top face"
     ]);
   });
@@ -344,3 +346,76 @@ function createTransform() {
     scale: [1, 1, 1] as const
   };
 }
+
+describe("document tree assembly projection", () => {
+  it("lists instances and mates without selecting definition faces", () => {
+    const projection = createDocumentTreeProjection({
+      ...createProjectionInput(),
+      assemblies: [
+        {
+          id: "asm_root",
+          name: "Root assembly",
+          instances: [
+            {
+              id: "inst_root",
+              name: "Root",
+              definition: { kind: "body", bodyId: "body_bolt" },
+              transform: {
+                translation: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            },
+            {
+              id: "inst_child",
+              name: "Child",
+              definition: { kind: "body", bodyId: "body_bolt" },
+              transform: {
+                translation: [30, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            }
+          ],
+          mates: [
+            {
+              id: "mate_ground",
+              name: "Ground",
+              kind: "fixed",
+              instanceId: "inst_root"
+            }
+          ]
+        }
+      ]
+    });
+
+    const assemblyGroup = projection.groups.find(
+      (group) => group.id === "assemblies"
+    );
+    expect(assemblyGroup?.rows.map((row) => row.label)).toEqual([
+      "Root assembly"
+    ]);
+    const assemblyRow = projection.rowsById.get("assembly:asm_root");
+    expect(assemblyRow?.children.map((row) => row.id)).toEqual([
+      "assembly-instance:asm_root:inst_root",
+      "assembly-instance:asm_root:inst_child",
+      "assembly-mate:asm_root:mate_ground"
+    ]);
+    const instance = projection.rowsById.get(
+      "assembly-instance:asm_root:inst_root"
+    );
+    expect(instance?.selection).toEqual({
+      kind: "assembly-instance",
+      assemblyId: "asm_root",
+      id: "inst_root"
+    });
+    expect(instance?.selection.kind).not.toBe("body");
+    expect(
+      documentTreeSelectionKey({
+        kind: "assembly-instance",
+        assemblyId: "asm_root",
+        id: "inst_root"
+      })
+    ).toBe("assembly-instance:asm_root:inst_root");
+  });
+});

@@ -13,6 +13,7 @@ export type BodyId = string;
 export type DatumId = string;
 export type AssemblyId = string;
 export type InstanceId = string;
+export type MateId = string;
 export type SketchId = string;
 export type SketchEntityId = string;
 export type ParameterId = string;
@@ -564,6 +565,7 @@ export type CadOp =
   | DatumAxisCreateOp
   | AssemblyCreateOp
   | AssemblyInstanceInsertOp
+  | AssemblyMateCreateOp
   | SketchRenameOp
   | SketchDeleteOp
   | SketchAddPointOp
@@ -1705,6 +1707,27 @@ export interface AssemblyInstanceInsertOp {
   readonly transform?: Partial<Transform>;
 }
 
+/** V26 mate kinds. Slice B implements fixed/ground only. */
+export type AssemblyMateKind =
+  | "coincident"
+  | "concentric"
+  | "distance"
+  | "fixed";
+
+/**
+ * Create a mate. Slice B: kind fixed grounds one instance (root).
+ * Other kinds land in later V26 slices.
+ */
+export interface AssemblyMateCreateOp {
+  readonly op: "assembly.mate.create";
+  readonly id?: MateId;
+  readonly assemblyId: AssemblyId;
+  readonly name?: string;
+  readonly kind: AssemblyMateKind;
+  /** Grounded instance for kind fixed. */
+  readonly instanceId: InstanceId;
+}
+
 export type PatternSeedFields =
   | { readonly seedBodyId: BodyId; readonly seedFeatureId?: never }
   | { readonly seedFeatureId: FeatureId; readonly seedBodyId?: never };
@@ -2326,6 +2349,14 @@ export interface CadAssemblyInstanceRef {
   readonly transform: Transform;
 }
 
+export interface CadAssemblyMateRef {
+  readonly id: MateId;
+  readonly assemblyId: AssemblyId;
+  readonly name: string;
+  readonly kind: "fixed";
+  readonly instanceId: InstanceId;
+}
+
 export interface CadSketchEntityRef {
   readonly sketchId: SketchId;
   readonly id: SketchEntityId;
@@ -2659,6 +2690,9 @@ export interface AssemblySemanticDiff {
   readonly instancesCreated?: readonly CadAssemblyInstanceRef[];
   readonly instancesModified?: readonly CadAssemblyInstanceRef[];
   readonly instancesDeleted?: readonly CadAssemblyInstanceRef[];
+  readonly matesCreated?: readonly CadAssemblyMateRef[];
+  readonly matesModified?: readonly CadAssemblyMateRef[];
+  readonly matesDeleted?: readonly CadAssemblyMateRef[];
 }
 
 export interface FeatureSemanticDiff {
@@ -4160,10 +4194,22 @@ export interface AssemblyInstanceSnapshot {
   readonly transform: Transform;
 }
 
+/** Fixed/ground mate snapshot (slice B). */
+export interface AssemblyFixedMateSnapshot {
+  readonly id: MateId;
+  readonly name: string;
+  readonly kind: "fixed";
+  readonly instanceId: InstanceId;
+}
+
+export type AssemblyMateSnapshot = AssemblyFixedMateSnapshot;
+
 export interface AssemblySnapshot {
   readonly id: AssemblyId;
   readonly name: string;
   readonly instances: readonly AssemblyInstanceSnapshot[];
+  /** Optional additive mates; absent on slice A documents. */
+  readonly mates?: readonly AssemblyMateSnapshot[];
 }
 
 export interface ExtrudeFeatureSnapshot {

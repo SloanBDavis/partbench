@@ -2413,6 +2413,14 @@ function createOperationReview(
         `Insert assembly instance ${op.id ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
       );
 
+    case "assembly.mate.create":
+      return operationReviewBase(
+        index,
+        op,
+        "create",
+        `Create ${op.kind} mate ${op.id ?? "with generated ID"} on ${op.instanceId} in ${op.assemblyId}`
+      );
+
     case "sketch.createOnFace": {
       const target = op.referenceName
         ? `named reference ${op.referenceName}`
@@ -5937,6 +5945,19 @@ function isCadOp(value: unknown): value is CadOp {
       value.definition.kind === "body" &&
       typeof value.definition.bodyId === "string" &&
       isOptionalTransform(value.transform)
+    );
+  }
+
+  if (value.op === "assembly.mate.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.assemblyId === "string" &&
+      isOptionalString(value.name) &&
+      (value.kind === "fixed" ||
+        value.kind === "coincident" ||
+        value.kind === "concentric" ||
+        value.kind === "distance") &&
+      typeof value.instanceId === "string"
     );
   }
 

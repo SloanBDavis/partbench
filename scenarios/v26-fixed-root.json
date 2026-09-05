@@ -1,0 +1,151 @@
+{
+  "id": "v26-fixed-root",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_bolt",
+      "name": "Bolt",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_bolt",
+      "id": "circle_bolt",
+      "center": [0, 0],
+      "radius": 5
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_bolt",
+      "bodyId": "body_bolt",
+      "sketchId": "sketch_bolt",
+      "entityId": "circle_bolt",
+      "depth": 20
+    }
+  ],
+  "steps": [
+    {
+      "id": "create-assembly-and-instances",
+      "ops": [
+        {
+          "op": "assembly.create",
+          "id": "asm_root",
+          "name": "Root assembly"
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_root",
+          "assemblyId": "asm_root",
+          "name": "Root",
+          "definition": { "kind": "body", "bodyId": "body_bolt" },
+          "transform": { "translation": [0, 0, 0] }
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_child",
+          "assemblyId": "asm_root",
+          "name": "Child",
+          "definition": { "kind": "body", "bodyId": "body_bolt" },
+          "transform": { "translation": [30, 0, 0] }
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.create",
+          "assembly.instance.insert",
+          "assembly.instance.insert"
+        ]
+      }
+    },
+    {
+      "id": "fixed-root-mate",
+      "ops": [
+        {
+          "op": "assembly.mate.create",
+          "id": "mate_ground",
+          "assemblyId": "asm_root",
+          "name": "Ground",
+          "kind": "fixed",
+          "instanceId": "inst_root"
+        }
+      ],
+      "expect": {
+        "ops": ["assembly.mate.create"],
+        "diff": {
+          "assemblies": {
+            "matesCreated": [
+              {
+                "id": "mate_ground",
+                "assemblyId": "asm_root",
+                "name": "Ground",
+                "kind": "fixed",
+                "instanceId": "inst_root"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodyCount": 1,
+            "assemblies": [
+              {
+                "id": "asm_root",
+                "instances": [
+                  {
+                    "id": "inst_root",
+                    "definition": { "kind": "body", "bodyId": "body_bolt" }
+                  },
+                  {
+                    "id": "inst_child",
+                    "definition": { "kind": "body", "bodyId": "body_bolt" }
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed",
+                    "instanceId": "inst_root"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "persist-fixed-root",
+      "persistRoundTrip": true,
+      "expect": {
+        "schemaVersionNot": ["web-cad.project.v23", "web-cad.project.v26"]
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "assemblies": [
+              {
+                "id": "asm_root",
+                "instances": [{ "id": "inst_root" }, { "id": "inst_child" }],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed",
+                    "instanceId": "inst_root"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

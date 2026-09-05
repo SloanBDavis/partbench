@@ -28,6 +28,7 @@ const MODE_RIBBON_GROUP_ORDER: Readonly<
   solid: [
     "Create",
     "Modify",
+    "Assemble",
     "Pattern",
     "Selection",
     "Inspect",
@@ -181,6 +182,7 @@ export function getActionIcon(id: UiActionId, group?: string): IconName {
     combine: "extrude",
     "datum-plane": "extrude",
     "datum-axis": "extrude",
+    "fixed-mate": "constraint",
     edit: "edit",
     rename: "edit",
     delete: "delete",

@@ -1,4 +1,5 @@
 import type {
+  AssemblySnapshot,
   CadBodySnapshot,
   CadDependencyHealthStatus,
   CadFeatureSummary,
@@ -30,7 +31,18 @@ export type DocumentTreeSelection =
   | { readonly kind: "feature"; readonly id: string }
   | { readonly kind: "object"; readonly id: string }
   | { readonly kind: "body"; readonly id: string }
-  | { readonly kind: "named-reference"; readonly name: string };
+  | { readonly kind: "named-reference"; readonly name: string }
+  | { readonly kind: "assembly"; readonly id: string }
+  | {
+      readonly kind: "assembly-instance";
+      readonly assemblyId: string;
+      readonly id: string;
+    }
+  | {
+      readonly kind: "assembly-mate";
+      readonly assemblyId: string;
+      readonly id: string;
+    };
 
 export interface DocumentTreeRowCapabilities {
   readonly visible?: boolean;
@@ -59,14 +71,20 @@ export interface DocumentTreeRow {
 }
 
 export interface DocumentTreeGroup {
-  readonly id: "origin" | "parameters" | "model" | "references";
-  readonly label: "Origin" | "Parameters" | "Model" | "Named references";
+  readonly id: "origin" | "parameters" | "model" | "assemblies" | "references";
+  readonly label:
+    | "Origin"
+    | "Parameters"
+    | "Model"
+    | "Assemblies"
+    | "Named references";
   readonly icon: IconName;
   readonly rows: readonly DocumentTreeRow[];
 }
 
 export interface DocumentTreeProjection {
   readonly groups: readonly [
+    DocumentTreeGroup,
     DocumentTreeGroup,
     DocumentTreeGroup,
     DocumentTreeGroup,
@@ -83,6 +101,7 @@ export interface CreateDocumentTreeProjectionInput {
   readonly bodies: readonly CadBodySnapshot[];
   readonly objects: readonly CadObjectSnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly assemblies?: readonly AssemblySnapshot[];
   readonly health?: ProjectHealthQueryResponse;
   readonly capabilitiesBySelectionKey?: ReadonlyMap<
     string,
@@ -102,6 +121,10 @@ export function documentTreeSelectionKey(
       return `named-reference:${selection.name}`;
     case "sketch-entity":
       return `sketch-entity:${selection.sketchId}:${selection.id}`;
+    case "assembly-instance":
+      return `assembly-instance:${selection.assemblyId}:${selection.id}`;
+    case "assembly-mate":
+      return `assembly-mate:${selection.assemblyId}:${selection.id}`;
     default:
       return `${selection.kind}:${selection.id}`;
   }
@@ -334,6 +357,59 @@ export function createDocumentTreeProjection(
     });
   }
 
+  const assemblyRows = (input.assemblies ?? []).map((assembly) => {
+    const selection = {
+      kind: "assembly",
+      id: assembly.id
+    } as const satisfies DocumentTreeSelection;
+    const instanceRows = assembly.instances.map((instance) => {
+      const instanceSelection = {
+        kind: "assembly-instance",
+        assemblyId: assembly.id,
+        id: instance.id
+      } as const satisfies DocumentTreeSelection;
+      return {
+        id: documentTreeSelectionKey(instanceSelection),
+        label: instance.name,
+        detail: `Instance of ${instance.definition.bodyId}`,
+        icon: "solid" as const,
+        selection: instanceSelection,
+        capabilities: capabilitiesFor(instanceSelection),
+        children: []
+      };
+    });
+    const mateRows = (assembly.mates ?? []).map((mate) => {
+      const mateSelection = {
+        kind: "assembly-mate",
+        assemblyId: assembly.id,
+        id: mate.id
+      } as const satisfies DocumentTreeSelection;
+      return {
+        id: documentTreeSelectionKey(mateSelection),
+        label: mate.name,
+        detail:
+          mate.kind === "fixed"
+            ? `Fixed / ground · ${mate.instanceId}`
+            : mate.kind,
+        icon: "constraint" as const,
+        selection: mateSelection,
+        capabilities: capabilitiesFor(mateSelection),
+        children: []
+      };
+    });
+    return {
+      id: documentTreeSelectionKey(selection),
+      label: assembly.name,
+      detail: `${assembly.instances.length} instance${
+        assembly.instances.length === 1 ? "" : "s"
+      }`,
+      icon: "project" as const,
+      selection,
+      capabilities: capabilitiesFor(selection),
+      children: [...instanceRows, ...mateRows]
+    };
+  });
+
   const groups = [
     { id: "origin", label: "Origin", icon: "isometric", rows: originRows },
     {
@@ -347,6 +423,12 @@ export function createDocumentTreeProjection(
       label: "Model",
       icon: "solid",
       rows: modelRows
+    },
+    {
+      id: "assemblies",
+      label: "Assemblies",
+      icon: "project",
+      rows: assemblyRows
     },
     {
       id: "references",

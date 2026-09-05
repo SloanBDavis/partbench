@@ -19,6 +19,7 @@ import type {
   FeatureSweepForm,
   PrimitiveCommandForm,
   SketchCreateForm,
+  AssemblyFixedMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -79,6 +80,16 @@ export function validateSolidDraft(
     return form.name.trim()
       ? ready()
       : blocked("Enter a datum name.");
+  }
+  if (kind === "fixedMate") {
+    const form = draft as AssemblyFixedMateForm;
+    if (!form.assemblyId.trim()) {
+      return blocked("Choose an assembly.");
+    }
+    if (!form.instanceId.trim()) {
+      return blocked("Choose an instance to ground.");
+    }
+    return ready();
   }
   if (kind === "transform") {
     const form = draft as TransformCommandForm;
