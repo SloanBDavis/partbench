@@ -9,6 +9,7 @@ import type {
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
+import { createAssemblyInstanceRenderId } from "./assemblyInstanceExactDisplay";
 import {
   createViewportCurrentTopologyPickIntent,
   createViewportExactSelection,
@@ -332,6 +333,54 @@ describe("viewport pick intent", () => {
           status: "ambiguous"
         }
       ]
+    });
+    expect(intent).not.toHaveProperty("selectedId");
+  });
+
+  it("resolves body-level pick on an assembly instance mesh to the instance", () => {
+    const renderId = createAssemblyInstanceRenderId("asm_bolts", "inst_b");
+    const body = createExtrudeBody("body_bolt");
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: renderId,
+      bodies: [body],
+      objects: [],
+      assemblies: [
+        {
+          id: "asm_bolts",
+          name: "Bolts",
+          instances: [
+            {
+              id: "inst_a",
+              name: "Bolt A",
+              definition: { kind: "body", bodyId: "body_bolt" },
+              transform: {
+                translation: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            },
+            {
+              id: "inst_b",
+              name: "Bolt B",
+              definition: { kind: "body", bodyId: "body_bolt" },
+              transform: {
+                translation: [40, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(intent).toMatchObject({
+      kind: "assemblyInstance",
+      assemblyId: "asm_bolts",
+      instanceId: "inst_b",
+      bodyId: "body_bolt",
+      renderTargetId: renderId,
+      semanticSelection: { type: "body", bodyId: "body_bolt" }
     });
     expect(intent).not.toHaveProperty("selectedId");
   });

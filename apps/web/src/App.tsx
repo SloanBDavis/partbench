@@ -379,6 +379,11 @@ import {
 } from "./sketchPanelUi";
 import { type ViewportContextualCommandAction } from "./viewportContextualCommands";
 import {
+  createAssemblyInstanceExactDisplayMeshes,
+  createAssemblyInstanceRenderId,
+  findAssemblyInstanceDefinitionBodyId
+} from "./assemblyInstanceExactDisplay";
+import {
   createViewportCurrentTopologyPickIntent,
   createViewportExactSelection,
   isSameViewportExactSelection,
@@ -3464,9 +3469,23 @@ export function App() {
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
     : undefined;
+  const selectedAssemblyInstanceBodyId =
+    selectedAssemblySelection?.kind === "assembly-instance"
+      ? findAssemblyInstanceDefinitionBodyId({
+          assemblies: projectStructure.assemblies,
+          assemblyId: selectedAssemblySelection.assemblyId,
+          instanceId: selectedAssemblySelection.id
+        })
+      : viewportPickIntent?.kind === "assemblyInstance"
+        ? viewportPickIntent.bodyId
+        : undefined;
   const selectedBody = selectedId
     ? projectStructure.bodies.find((body) => body.id === selectedId)
-    : undefined;
+    : selectedAssemblyInstanceBodyId
+      ? projectStructure.bodies.find(
+          (body) => body.id === selectedAssemblyInstanceBodyId
+        )
+      : undefined;
   const selectedBodyId = selectedBody?.id;
   const selectedBodyExactResult = selectedBodyId
     ? currentExactResultProjections.find(
@@ -6813,32 +6832,53 @@ export function App() {
     viewportSelectionDisplay.selectionKind,
     viewportSelectionDisplay.title
   ]);
+  const selectedAssemblyInstanceRenderId =
+    selectedAssemblySelection?.kind === "assembly-instance"
+      ? createAssemblyInstanceRenderId(
+          selectedAssemblySelection.assemblyId,
+          selectedAssemblySelection.id
+        )
+      : viewportPickIntent?.kind === "assemblyInstance"
+        ? viewportPickIntent.renderTargetId
+        : undefined;
   const selectedViewportRenderId =
     viewportPickIntent?.kind === "currentTopology"
       ? undefined
-      : (viewportVisualState.selectedRenderTargetId ??
+      : (selectedAssemblyInstanceRenderId ??
+        viewportVisualState.selectedRenderTargetId ??
         selectedObject?.id ??
         selectedBody?.objectId ??
         selectedBody?.id ??
         selectedId);
-  const renderScene = useMemo(
-    () =>
+  const renderScene = useMemo(() => {
+    const base =
       modelingUiRuntime?.createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
         derivedGeometrySources,
         sketches,
         sketchDisplayState.frames
-      ) ?? { primitives: [], meshes: [] },
-    [
-      derivedGeometryBySourceId,
-      derivedGeometrySources,
-      modelingUiRuntime,
-      sceneObjects,
-      sketchDisplayState.frames,
-      sketches
-    ]
-  );
+      ) ?? { primitives: [], meshes: [] };
+    // V21 exact meshes use bodyId as mesh.id; instances reuse those meshes.
+    const definitionMeshesByBodyId = new Map(
+      base.meshes.map((mesh) => [mesh.id, mesh] as const)
+    )
+    const instanceMeshes = createAssemblyInstanceExactDisplayMeshes({
+      assemblies: projectStructure.assemblies,
+      definitionMeshesByBodyId
+    });
+    return instanceMeshes.length === 0
+      ? base
+      : { ...base, meshes: [...base.meshes, ...instanceMeshes] };
+  }, [
+    derivedGeometryBySourceId,
+    derivedGeometrySources,
+    modelingUiRuntime,
+    projectStructure.assemblies,
+    sceneObjects,
+    sketchDisplayState.frames,
+    sketches
+  ]);
   const previewRenderMeshes = useMemo(() => {
     if (solidPreviewPresentation.status !== "ready" || !solidPreviewResult) {
       return renderScene.meshes;
@@ -7103,6 +7143,7 @@ export function App() {
   function applyObjectSelection(objectId: string | undefined) {
     setSolidCollectorSelectionOverride(undefined);
     setSelectedId(objectId);
+    setSelectedAssemblySelection(undefined);
     setSelectedGeneratedReference(undefined);
     setSelectedNamedReferenceName(undefined);
     setSelectedSketchContext(undefined);
@@ -7138,6 +7179,21 @@ export function App() {
     setSelectedId(intent.selectedId);
     setSelectedNamedReferenceName(undefined);
     setSelectedGeneratedReference(undefined);
+    if (intent.kind === "assemblyInstance") {
+      setSelectedAssemblySelection({
+        kind: "assembly-instance",
+        assemblyId: intent.assemblyId,
+        id: intent.instanceId
+      });
+      setSelectedSketchContext(undefined);
+      setCommandNotice(
+        `Instance ${intent.instanceId} selected (body measure on definition ${intent.bodyId}).`
+      );
+      return;
+    }
+    if (intent.kind === "body" || intent.kind === "object") {
+      setSelectedAssemblySelection(undefined);
+    }
     if (intent.kind === "sketchEntity") {
       setFocusedSketchId(intent.sketchId);
       setSelectedSketchContext({
@@ -7163,6 +7219,7 @@ export function App() {
           bodies: projectStructure.bodies,
           objects: sceneObjects,
           sketches,
+          assemblies: projectStructure.assemblies,
           readReferenceCandidates: (selection) =>
             readSelectionReferenceCandidates(
               selection,
@@ -7277,6 +7334,7 @@ export function App() {
       bodies: projectStructure.bodies,
       objects: sceneObjects,
       sketches,
+      assemblies: projectStructure.assemblies,
       readReferenceCandidates: (selection) =>
         readSelectionReferenceCandidates(
           selection,
@@ -7313,7 +7371,8 @@ export function App() {
       pickedRenderId: pick.pickedRenderId,
       bodies: projectStructure.bodies,
       objects: sceneObjects,
-      sketches
+      sketches,
+      assemblies: projectStructure.assemblies
     });
     const offsetActive = workbenchUi.activeTool === "sketch.offset";
     if (
@@ -7349,7 +7408,8 @@ export function App() {
       pickedRenderId: pick.pickedRenderId,
       bodies: projectStructure.bodies,
       objects: sceneObjects,
-      sketches
+      sketches,
+      assemblies: projectStructure.assemblies
     });
     const offsetActive = workbenchUi.activeTool === "sketch.offset";
     if (
@@ -9716,9 +9776,11 @@ export function App() {
           id: selection.id
         });
         setSelectedId(undefined);
+        setViewportPickIntent(undefined);
         setSelectedGeneratedReference(undefined);
         setSelectedNamedReferenceName(undefined);
         setSelectedSketchContext(undefined);
+        clearViewportExactSelection();
         setCommandNotice(
           `Instance ${selection.id} selected (not definition faces).`
         );

@@ -43,14 +43,19 @@ export function resolveViewportHitCandidateSelection({
     (hitCandidate.instancePath && hitCandidate.instancePath.length > 0) ||
     (hitCandidate.assemblyPath && hitCandidate.assemblyPath.length > 0)
   ) {
-    return createResolution("assembly-unsupported", [
-      createViewportInteractionDiagnostic(
-        "VIEWPORT_ASSEMBLY_INSTANCE_UNSUPPORTED",
-        "assembly-unsupported",
-        "Viewport hit includes assembly instance context, which is reserved for a future release.",
-        { expected: "single-part semantic selection" }
-      )
-    ]);
+    // Slice G: body-level pick on instances is supported. Face/edge/vertex on
+    // instances stays deferred — V22/V23 subentity pick does not thread
+    // instance context cheaply enough for this release.
+    if (hitCandidate.displayEntityKind !== "body") {
+      return createResolution("assembly-unsupported", [
+        createViewportInteractionDiagnostic(
+          "VIEWPORT_ASSEMBLY_INSTANCE_UNSUPPORTED",
+          "assembly-unsupported",
+          "Face/edge/vertex pick on assembly instances is deferred; select the instance body or use the assembly tree.",
+          { expected: "body display entity on an instance", received: hitCandidate.displayEntityKind }
+        )
+      ]);
+    }
   }
 
   if (hitCandidate.displayEntityKind === "sketchEntity") {

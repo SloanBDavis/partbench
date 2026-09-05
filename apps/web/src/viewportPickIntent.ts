@@ -1,6 +1,7 @@
 import type { SceneObject } from "@web-cad/cad-core";
 import type { RenderExactPickCandidate } from "@web-cad/renderer";
 import type {
+  AssemblySnapshot,
   CadBodySnapshot,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
@@ -11,11 +12,13 @@ import type {
   SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
+import { resolveAssemblyInstanceBodyPick } from "./assemblyInstanceExactDisplay";
 import { parseSketchRenderId } from "./sketchRenderIds";
 
 export type ViewportPickIntentKind =
   | "empty"
   | "body"
+  | "assemblyInstance"
   | "currentTopology"
   | "object"
   | "sketchEntity"
@@ -36,6 +39,19 @@ export type ViewportPickIntent =
   | {
       readonly kind: "body";
       readonly selectedId: string;
+      readonly bodyId: string;
+      readonly renderTargetId: string;
+      readonly semanticSelection: CadSelectionReferenceInput;
+      readonly referenceCandidates?: SelectionReferenceCandidatesQueryResponse;
+      readonly issues: readonly CadSelectionReferenceIssue[];
+      readonly interactionDiagnostics: readonly CadViewportInteractionDiagnostic[];
+    }
+  | {
+      readonly kind: "assemblyInstance";
+      /** Instance selection is not definition-face selection. */
+      readonly selectedId?: undefined;
+      readonly assemblyId: string;
+      readonly instanceId: string;
       readonly bodyId: string;
       readonly renderTargetId: string;
       readonly semanticSelection: CadSelectionReferenceInput;
@@ -94,6 +110,7 @@ export interface ResolveViewportPickIntentInput {
   readonly bodies: readonly CadBodySnapshot[];
   readonly objects: readonly SceneObject[];
   readonly sketches?: readonly SketchSnapshot[];
+  readonly assemblies?: readonly AssemblySnapshot[];
   readonly readReferenceCandidates?: (
     selection: CadSelectionReferenceInput
   ) => SelectionReferenceCandidatesQueryResponse | undefined;
@@ -306,6 +323,7 @@ export function resolveViewportPickIntent({
   bodies,
   objects,
   sketches = [],
+  assemblies = [],
   readReferenceCandidates
 }: ResolveViewportPickIntentInput): ViewportPickIntent {
   if (pickedRenderId) {
@@ -330,6 +348,35 @@ export function resolveViewportPickIntent({
           interactionDiagnostics: []
         };
       }
+    }
+
+    const assemblyInstance = resolveAssemblyInstanceBodyPick({
+      pickedRenderId,
+      assemblies
+    });
+    if (assemblyInstance) {
+      const selection = {
+        type: "body",
+        bodyId: assemblyInstance.bodyId
+      } as const;
+      const referenceCandidates = readReferenceCandidates?.(selection);
+      const interactionDiagnostics = referenceCandidates
+        ? createReferenceCandidateDiagnostics(referenceCandidates)
+        : [];
+      const issues =
+        referenceCandidates?.issues ??
+        interactionDiagnostics.map(createSelectionIssueFromViewportDiagnostic);
+      return {
+        kind: "assemblyInstance",
+        assemblyId: assemblyInstance.assemblyId,
+        instanceId: assemblyInstance.instanceId,
+        bodyId: assemblyInstance.bodyId,
+        renderTargetId: assemblyInstance.renderTargetId,
+        semanticSelection: selection,
+        referenceCandidates,
+        issues,
+        interactionDiagnostics
+      };
     }
   }
 

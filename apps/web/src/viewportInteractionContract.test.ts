@@ -43,6 +43,27 @@ describe("viewport interaction contract helpers", () => {
     expect(JSON.stringify(resolution)).not.toContain("selection-buffer");
   });
 
+  it("resolves body-level hits that carry assembly instance context", () => {
+    const resolution = resolveViewportHitCandidateSelection({
+      hitCandidate: {
+        displayEntityKind: "body",
+        instancePath: ["asm_bolts", "inst_a"],
+        assemblyPath: ["asm_bolts"],
+        semanticHint: { type: "body", bodyId: "body_bolt" }
+      }
+    });
+
+    expect(resolution).toEqual({
+      status: "resolved",
+      selection: { type: "body", bodyId: "body_bolt" },
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "body", bodyId: "body_bolt" }
+      },
+      diagnostics: []
+    });
+  });
+
   it("maps generated face and edge hints without leaking renderer-private IDs", () => {
     const faceResolution = resolveViewportHitCandidateSelection({
       hitCandidate: {
@@ -142,11 +163,16 @@ describe("viewport interaction contract helpers", () => {
       "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY"
     ],
     [
-      "future assembly context",
+      "deferred face pick on assembly instance",
       {
-        displayEntityKind: "body",
+        displayEntityKind: "face",
         instancePath: ["root", "instance-a"],
-        semanticHint: { type: "body", bodyId: "body_rect" }
+        semanticHint: {
+          type: "generatedReference",
+          bodyId: "body_rect",
+          stableId: "generated:face:body_rect:endCap",
+          expectedKind: "face"
+        }
       },
       "assembly-unsupported",
       "VIEWPORT_ASSEMBLY_INSTANCE_UNSUPPORTED"
