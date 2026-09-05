@@ -102,6 +102,13 @@ import type {
   CadSketchEditDiagnostic,
   CadSketchRef,
   CadDatumRef,
+  CadAssemblyRef,
+  CadAssemblyInstanceRef,
+  AssemblySnapshot,
+  AssemblyInstanceSnapshot,
+  AssemblyDefinitionRef,
+  AssemblyId,
+  InstanceId,
   CadTransactionStatus,
   CadTopologyAnchorCommandProof,
   CadTopologyAnchorEntityKind,
@@ -1150,6 +1157,7 @@ export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
   readonly datums: ReadonlyMap<DatumId, Datum>;
+  readonly assemblies: ReadonlyMap<AssemblyId, AssemblySnapshot>;
   readonly parameters: ReadonlyMap<ParameterId, CadParameter>;
   readonly sketchDimensions: ReadonlyMap<SketchDimensionId, SketchDimension>;
   readonly sketchConstraints: ReadonlyMap<SketchConstraintId, SketchConstraint>;
@@ -1198,6 +1206,7 @@ export interface CadDocumentSnapshot {
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
   readonly datums?: readonly DatumSnapshot[];
+  readonly assemblies?: readonly AssemblySnapshot[];
   readonly parameters: readonly CadParameterSnapshot[];
   readonly sketchDimensions: readonly SketchDimensionSnapshotCurrent[];
   readonly sketchConstraints: readonly SketchConstraintSnapshot[];
@@ -1953,12 +1962,16 @@ export function createCadDocument(
     readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
   > = [],
   topologyIdentity?: CadTopologyIdentitySourceSnapshot,
-  datums: Iterable<readonly [DatumId, Datum]> = []
+  datums: Iterable<readonly [DatumId, Datum]> = [],
+  assemblies: Iterable<readonly [AssemblyId, AssemblySnapshot]> = []
 ): CadDocument {
   return {
     objects: new Map(objects),
     sketches: new Map(sketches),
     datums: new Map(datums),
+    assemblies: new Map(
+      [...assemblies].map(([id, assembly]) => [id, cloneAssembly(assembly)])
+    ),
     parameters: new Map(parameters),
     sketchDimensions: new Map(
       [...sketchDimensions].map(([id, dimension]) => [
@@ -2475,7 +2488,8 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           objectSources: structure.objectSources,
-          ...(structure.datums ? { datums: structure.datums } : {})
+          ...(structure.datums ? { datums: structure.datums } : {}),
+          ...(structure.assemblies ? { assemblies: structure.assemblies } : {})
         };
       }
 
@@ -6002,6 +6016,7 @@ type MutableSemanticDiff = {
   document?: MutableDocumentSemanticDiff;
   sketches?: MutableSketchSemanticDiff;
   datums?: MutableDatumSemanticDiff;
+  assemblies?: MutableAssemblySemanticDiff;
   features?: MutableFeatureSemanticDiff;
   references?: MutableReferenceSemanticDiff;
   parameters?: MutableParameterSemanticDiff;
@@ -6034,6 +6049,15 @@ type MutableDatumSemanticDiff = {
   created: CadDatumRef[];
   modified: CadDatumRef[];
   deleted: CadDatumRef[];
+};
+
+type MutableAssemblySemanticDiff = {
+  created: CadAssemblyRef[];
+  modified: CadAssemblyRef[];
+  deleted: CadAssemblyRef[];
+  instancesCreated: CadAssemblyInstanceRef[];
+  instancesModified: CadAssemblyInstanceRef[];
+  instancesDeleted: CadAssemblyInstanceRef[];
 };
 
 type MutableFeatureSemanticDiff = {
@@ -6087,6 +6111,7 @@ interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
   datums: Map<DatumId, Datum>;
+  assemblies: Map<AssemblyId, AssemblySnapshot>;
   parameters: Map<ParameterId, CadParameter>;
   sketchDimensions: Map<SketchDimensionId, SketchDimension>;
   sketchConstraints: Map<SketchConstraintId, SketchConstraint>;
@@ -6109,6 +6134,8 @@ function applyOperation(
   createFeatureId: () => FeatureId,
   createBodyId: () => BodyId,
   createDatumId: () => DatumId,
+  createAssemblyId: () => AssemblyId,
+  createInstanceId: () => InstanceId,
   opIndex: number
 ): void {
   switch (op.op) {
@@ -6538,6 +6565,27 @@ function applyOperation(
         axis
       };
       addDatum(state.datums, datum, diff, opIndex);
+      return;
+    }
+
+    case "assembly.create": {
+      const assembly: AssemblySnapshot = {
+        id: op.id ?? createAssemblyId(),
+        name: normalizeAssemblyName(op.name, opIndex, op.id),
+        instances: []
+      };
+      addAssembly(state.assemblies, assembly, diff, opIndex);
+      return;
+    }
+
+    case "assembly.instance.insert": {
+      applyAssemblyInstanceInsert(
+        state,
+        op,
+        diff,
+        createInstanceId,
+        opIndex
+      );
       return;
     }
 
@@ -8316,6 +8364,8 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.createOnFace":
     case "datum.plane.create":
     case "datum.axis.create":
+    case "assembly.create":
+    case "assembly.instance.insert":
     case "sketch.rename":
     case "sketch.delete":
     case "sketch.addPoint":
@@ -13951,6 +14001,135 @@ function addDatum(
 
   datums.set(datum.id, datum);
   pushDatumCreated(diff, datumRef(datum));
+}
+
+function addAssembly(
+  assemblies: Map<AssemblyId, AssemblySnapshot>,
+  assembly: AssemblySnapshot,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  if (assemblies.has(assembly.id)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly already exists: ${assembly.id}`,
+      opIndex,
+      path: operationPath(opIndex, "id"),
+      expected: "unique assembly id",
+      received: assembly.id
+    });
+  }
+
+  assemblies.set(assembly.id, assembly);
+  pushAssemblyCreated(diff, assemblyRef(assembly));
+}
+
+function applyAssemblyInstanceInsert(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "assembly.instance.insert" }>,
+  diff: MutableSemanticDiff,
+  createInstanceId: () => InstanceId,
+  opIndex: number
+): void {
+  const assembly = state.assemblies.get(op.assemblyId);
+  if (!assembly) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly does not exist: ${op.assemblyId}`,
+      opIndex,
+      path: operationPath(opIndex, "assemblyId"),
+      expected: "existing assembly id",
+      received: op.assemblyId
+    });
+  }
+
+  if (op.definition.kind !== "body") {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.instance.insert definition.kind must be body.",
+      opIndex,
+      path: operationPath(opIndex, "definition.kind"),
+      expected: "body",
+      received: describeReceived(op.definition.kind)
+    });
+  }
+
+  if (!documentBodyExists(state, op.definition.bodyId)) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Assembly definition body does not exist: ${op.definition.bodyId}`,
+      opIndex,
+      path: operationPath(opIndex, "definition.bodyId"),
+      expected: "existing completed solid body id",
+      received: op.definition.bodyId
+    });
+  }
+
+  const instanceId = op.id ?? createInstanceId();
+  if (assembly.instances.some((instance) => instance.id === instanceId)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance already exists: ${instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "id"),
+      expected: "unique instance id",
+      received: instanceId
+    });
+  }
+  for (const other of state.assemblies.values()) {
+    if (other.instances.some((instance) => instance.id === instanceId)) {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: `Assembly instance already exists: ${instanceId}`,
+        opIndex,
+        path: operationPath(opIndex, "id"),
+        expected: "unique instance id",
+        received: instanceId
+      });
+    }
+  }
+
+  const instance: AssemblyInstanceSnapshot = {
+    id: instanceId,
+    name: normalizeAssemblyName(op.name, opIndex, instanceId),
+    definition: { kind: "body", bodyId: op.definition.bodyId },
+    transform: mergeTransform(op.transform)
+  };
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    instances: [...assembly.instances, instance]
+  };
+  state.assemblies.set(assembly.id, updated);
+  pushAssemblyModified(diff, assemblyRef(updated));
+  pushAssemblyInstanceCreated(diff, assemblyInstanceRef(assembly.id, instance));
+}
+
+function assemblyRef(assembly: AssemblySnapshot): CadAssemblyRef {
+  return { id: assembly.id, name: assembly.name };
+}
+
+function assemblyInstanceRef(
+  assemblyId: AssemblyId,
+  instance: AssemblyInstanceSnapshot
+): CadAssemblyInstanceRef {
+  return {
+    id: instance.id,
+    assemblyId,
+    name: instance.name,
+    definition: { ...instance.definition },
+    transform: cloneTransform(instance.transform)
+  };
+}
+
+function normalizeAssemblyName(
+  name: string | undefined,
+  opIndex: number,
+  fallbackId?: string
+): string {
+  if (name === undefined || name.trim().length === 0) {
+    return fallbackId ? `Assembly ${fallbackId}` : "Assembly";
+  }
+  return normalizeSketchName(name, opIndex, fallbackId);
 }
 
 function resolveSketchCreateTarget(
@@ -24630,6 +24809,43 @@ function pushDatumCreated(diff: MutableSemanticDiff, ref: CadDatumRef): void {
   ensureDatumDiff(diff).created.push(ref);
 }
 
+function ensureAssemblyDiff(
+  diff: MutableSemanticDiff
+): MutableAssemblySemanticDiff {
+  if (!diff.assemblies) {
+    diff.assemblies = {
+      created: [],
+      modified: [],
+      deleted: [],
+      instancesCreated: [],
+      instancesModified: [],
+      instancesDeleted: []
+    };
+  }
+  return diff.assemblies;
+}
+
+function pushAssemblyCreated(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyRef
+): void {
+  ensureAssemblyDiff(diff).created.push(ref);
+}
+
+function pushAssemblyModified(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyRef
+): void {
+  ensureAssemblyDiff(diff).modified.push(ref);
+}
+
+function pushAssemblyInstanceCreated(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyInstanceRef
+): void {
+  ensureAssemblyDiff(diff).instancesCreated.push(ref);
+}
+
 function pushSketchEntityCreated(
   diff: MutableSemanticDiff,
   ref: CadSketchEntityRef
@@ -25357,6 +25573,11 @@ export function createCadDocumentSnapshot(
           datums: [...document.datums.values()].map(cloneDatum)
         }
       : {}),
+    ...(document.assemblies.size > 0
+      ? {
+          assemblies: [...document.assemblies.values()].map(cloneAssembly)
+        }
+      : {}),
     parameters: [...document.parameters.values()].map(cloneParameterSnapshot),
     sketchDimensions: [...document.sketchDimensions.values()].map(
       cloneSketchDimensionSnapshot
@@ -25423,6 +25644,9 @@ export function createCadDocumentFromSnapshot(
       : undefined,
     (snapshot.datums ?? []).map(
       (datum) => [datum.id, cloneDatum(datum)] as const
+    ),
+    (snapshot.assemblies ?? []).map(
+      (assembly) => [assembly.id, cloneAssembly(assembly)] as const
     )
   );
 }
@@ -25729,6 +25953,25 @@ function cloneDatum(datum: Datum): Datum {
       };
 }
 
+function cloneAssembly(assembly: AssemblySnapshot): AssemblySnapshot {
+  return {
+    id: assembly.id,
+    name: assembly.name,
+    instances: assembly.instances.map(cloneAssemblyInstance)
+  };
+}
+
+function cloneAssemblyInstance(
+  instance: AssemblyInstanceSnapshot
+): AssemblyInstanceSnapshot {
+  return {
+    id: instance.id,
+    name: instance.name,
+    definition: { ...instance.definition },
+    transform: cloneTransform(instance.transform)
+  };
+}
+
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
   return cloneJsonSource(feature) as unknown as FeatureSnapshot;
 }
@@ -26030,6 +26273,7 @@ interface CadProjectStructureSnapshot {
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
+  readonly assemblies?: readonly AssemblySnapshot[];
 }
 
 const SUMMARY_REFERENCE_OPERATIONS = [
@@ -26555,6 +26799,9 @@ function createProjectStructure(
     objectSources,
     ...(document.datums.size > 0
       ? { datums: [...document.datums.values()].map(cloneDatum) }
+      : {}),
+    ...(document.assemblies.size > 0
+      ? { assemblies: [...document.assemblies.values()].map(cloneAssembly) }
       : {})
   };
 }
@@ -29621,6 +29868,12 @@ function runOperations(
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
     datums: new Map(document.datums ?? []),
+    assemblies: new Map(
+      [...(document.assemblies ?? [])].map(([id, assembly]) => [
+        id,
+        cloneAssembly(assembly)
+      ])
+    ),
     parameters: new Map(document.parameters),
     sketchDimensions: new Map(document.sketchDimensions),
     sketchConstraints: new Map(document.sketchConstraints),
@@ -29644,6 +29897,8 @@ function runOperations(
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
   let nextDatumNumber = inferNextDatumNumber(document);
+  let nextAssemblyNumber = inferNextAssemblyNumber(document);
+  let nextInstanceNumber = inferNextInstanceNumber(document);
   const diff: MutableSemanticDiff = {
     created: [],
     modified: [],
@@ -29705,6 +29960,16 @@ function runOperations(
       const allocateDatumId = () => {
         const result = createDatumId(state.datums, nextDatumNumber);
         nextDatumNumber = result.nextDatumNumber;
+        return result.id;
+      };
+      const allocateAssemblyId = () => {
+        const result = createAssemblyId(state.assemblies, nextAssemblyNumber);
+        nextAssemblyNumber = result.nextAssemblyNumber;
+        return result.id;
+      };
+      const allocateInstanceId = () => {
+        const result = createInstanceId(state.assemblies, nextInstanceNumber);
+        nextInstanceNumber = result.nextInstanceNumber;
         return result.id;
       };
       if (isSketchConvenienceOp(op)) {
@@ -29838,6 +30103,8 @@ function runOperations(
         allocateFeatureId,
         allocateBodyId,
         allocateDatumId,
+        allocateAssemblyId,
+        allocateInstanceId,
         opIndex
       );
       appliedOps.push(op);
@@ -29865,7 +30132,8 @@ function runOperations(
     state.features,
     state.namedReferences,
     state.topologyIdentity,
-    state.datums
+    state.datums,
+    state.assemblies
   );
 
   return {
@@ -29992,6 +30260,46 @@ function createDatumId(
   return {
     id,
     nextDatumNumber: nextDatumNumber + 1
+  };
+}
+
+function createAssemblyId(
+  assemblies: ReadonlyMap<AssemblyId, AssemblySnapshot>,
+  initialAssemblyNumber: number
+): { id: AssemblyId; nextAssemblyNumber: number } {
+  let nextAssemblyNumber = initialAssemblyNumber;
+  let id = `asm_${nextAssemblyNumber}`;
+
+  while (assemblies.has(id)) {
+    nextAssemblyNumber += 1;
+    id = `asm_${nextAssemblyNumber}`;
+  }
+
+  return {
+    id,
+    nextAssemblyNumber: nextAssemblyNumber + 1
+  };
+}
+
+function createInstanceId(
+  assemblies: ReadonlyMap<AssemblyId, AssemblySnapshot>,
+  initialInstanceNumber: number
+): { id: InstanceId; nextInstanceNumber: number } {
+  let nextInstanceNumber = initialInstanceNumber;
+  let id = `inst_${nextInstanceNumber}`;
+
+  while (
+    [...assemblies.values()].some((assembly) =>
+      assembly.instances.some((instance) => instance.id === id)
+    )
+  ) {
+    nextInstanceNumber += 1;
+    id = `inst_${nextInstanceNumber}`;
+  }
+
+  return {
+    id,
+    nextInstanceNumber: nextInstanceNumber + 1
   };
 }
 
@@ -30602,6 +30910,45 @@ function inferNextDatumNumber(
 
 function parseDatumNumber(id: string): number {
   const match = /^datum_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function inferNextAssemblyNumber(
+  document:
+    | CadDocument
+    | { readonly assemblies?: ReadonlyMap<AssemblyId, AssemblySnapshot> }
+): number {
+  let maxAssemblyNumber = 0;
+  for (const id of document.assemblies?.keys() ?? []) {
+    maxAssemblyNumber = Math.max(maxAssemblyNumber, parseAssemblyNumber(id));
+  }
+  return maxAssemblyNumber + 1;
+}
+
+function parseAssemblyNumber(id: string): number {
+  const match = /^asm_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function inferNextInstanceNumber(
+  document:
+    | CadDocument
+    | { readonly assemblies?: ReadonlyMap<AssemblyId, AssemblySnapshot> }
+): number {
+  let maxInstanceNumber = 0;
+  for (const assembly of document.assemblies?.values() ?? []) {
+    for (const instance of assembly.instances) {
+      maxInstanceNumber = Math.max(
+        maxInstanceNumber,
+        parseInstanceNumber(instance.id)
+      );
+    }
+  }
+  return maxInstanceNumber + 1;
+}
+
+function parseInstanceNumber(id: string): number {
+  const match = /^inst_(\d+)$/.exec(id);
   return match ? Number(match[1]) : 0;
 }
 
@@ -32827,6 +33174,10 @@ function validateCadDocumentSnapshot(
     validateDatumPlaneSnapshots(value.datums, `${path}.datums`, issues);
   }
 
+  if (value.assemblies !== undefined) {
+    validateAssemblySnapshots(value.assemblies, `${path}.assemblies`, issues);
+  }
+
   if (Array.isArray(value.sketches) && Array.isArray(value.datums)) {
     const datumIds = new Set(
       value.datums
@@ -33391,6 +33742,130 @@ function validateSketchAttachmentSnapshot(
   }
 
   return valid;
+}
+
+
+function validateAssemblySnapshots(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!Array.isArray(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      path,
+      "Document assemblies must be an array."
+    );
+    return;
+  }
+
+  const seenAssemblyIds = new Set<string>();
+  const seenInstanceIds = new Set<string>();
+  for (const [index, assembly] of value.entries()) {
+    const assemblyPath = `${path}[${index}]`;
+    if (!isRecord(assembly)) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        assemblyPath,
+        "Assembly must be an object."
+      );
+      continue;
+    }
+    if (typeof assembly.id !== "string" || assembly.id.length === 0) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${assemblyPath}.id`,
+        "Assembly id must be a non-empty string."
+      );
+    } else if (seenAssemblyIds.has(assembly.id)) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${assemblyPath}.id`,
+        `Duplicate assembly id: ${assembly.id}`
+      );
+    } else {
+      seenAssemblyIds.add(assembly.id);
+    }
+    if (typeof assembly.name !== "string") {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${assemblyPath}.name`,
+        "Assembly name must be a string."
+      );
+    }
+    if (!Array.isArray(assembly.instances)) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${assemblyPath}.instances`,
+        "Assembly instances must be an array."
+      );
+      continue;
+    }
+    for (const [instanceIndex, instance] of assembly.instances.entries()) {
+      const instancePath = `${assemblyPath}.instances[${instanceIndex}]`;
+      if (!isRecord(instance)) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          instancePath,
+          "Assembly instance must be an object."
+        );
+        continue;
+      }
+      if (typeof instance.id !== "string" || instance.id.length === 0) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${instancePath}.id`,
+          "Assembly instance id must be a non-empty string."
+        );
+      } else if (seenInstanceIds.has(instance.id)) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${instancePath}.id`,
+          `Duplicate assembly instance id: ${instance.id}`
+        );
+      } else {
+        seenInstanceIds.add(instance.id);
+      }
+      if (typeof instance.name !== "string") {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${instancePath}.name`,
+          "Assembly instance name must be a string."
+        );
+      }
+      if (!isAssemblyDefinitionRef(instance.definition)) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${instancePath}.definition`,
+          "Assembly instance definition must be { kind: \"body\", bodyId }."
+        );
+      }
+      if (
+        !isRecord(instance.transform) ||
+        !isVec3(instance.transform.translation) ||
+        !isVec3(instance.transform.rotation) ||
+        !isVec3(instance.transform.scale)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${instancePath}.transform`,
+          "Assembly instance transform must include translation, rotation, and scale vectors."
+        );
+      }
+    }
+  }
 }
 
 function validateDatumPlaneSnapshots(
@@ -40918,6 +41393,20 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "assembly.create") {
+    return isOptionalString(value.id) && isOptionalString(value.name);
+  }
+
+  if (value.op === "assembly.instance.insert") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.assemblyId === "string" &&
+      isOptionalString(value.name) &&
+      isAssemblyDefinitionRef(value.definition) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
   if (value.op === "sketch.createOnFace") {
     const hasGeneratedReference =
       typeof value.bodyId === "string" &&
@@ -42630,6 +43119,17 @@ function isOptionalTransform(value: unknown): value is Partial<Transform> {
     (value.translation === undefined || isVec3(value.translation)) &&
     (value.rotation === undefined || isVec3(value.rotation)) &&
     (value.scale === undefined || isVec3(value.scale))
+  );
+}
+
+function isAssemblyDefinitionRef(
+  value: unknown
+): value is AssemblyDefinitionRef {
+  return (
+    isRecord(value) &&
+    value.kind === "body" &&
+    typeof value.bodyId === "string" &&
+    value.bodyId.length > 0
   );
 }
 

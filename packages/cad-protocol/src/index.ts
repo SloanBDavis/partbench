@@ -11,6 +11,8 @@ export type PartId = string;
 export type FeatureId = string;
 export type BodyId = string;
 export type DatumId = string;
+export type AssemblyId = string;
+export type InstanceId = string;
 export type SketchId = string;
 export type SketchEntityId = string;
 export type ParameterId = string;
@@ -560,6 +562,8 @@ export type CadOp =
   | SketchCreateOnFaceOp
   | DatumPlaneCreateOp
   | DatumAxisCreateOp
+  | AssemblyCreateOp
+  | AssemblyInstanceInsertOp
   | SketchRenameOp
   | SketchDeleteOp
   | SketchAddPointOp
@@ -1678,6 +1682,29 @@ export interface DatumAxisCreateOp {
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
+/** Completed solid body used as a shared part definition (no duplicated B-rep). */
+export interface AssemblyBodyDefinitionRef {
+  readonly kind: "body";
+  readonly bodyId: BodyId;
+}
+
+export type AssemblyDefinitionRef = AssemblyBodyDefinitionRef;
+
+export interface AssemblyCreateOp {
+  readonly op: "assembly.create";
+  readonly id?: AssemblyId;
+  readonly name?: string;
+}
+
+export interface AssemblyInstanceInsertOp {
+  readonly op: "assembly.instance.insert";
+  readonly id?: InstanceId;
+  readonly assemblyId: AssemblyId;
+  readonly name?: string;
+  readonly definition: AssemblyDefinitionRef;
+  readonly transform?: Partial<Transform>;
+}
+
 export type PatternSeedFields =
   | { readonly seedBodyId: BodyId; readonly seedFeatureId?: never }
   | { readonly seedFeatureId: FeatureId; readonly seedBodyId?: never };
@@ -2286,6 +2313,19 @@ export interface CadDatumAxisRef {
   readonly axis: DatumAxisSourceRef;
 }
 
+export interface CadAssemblyRef {
+  readonly id: AssemblyId;
+  readonly name: string;
+}
+
+export interface CadAssemblyInstanceRef {
+  readonly id: InstanceId;
+  readonly assemblyId: AssemblyId;
+  readonly name: string;
+  readonly definition: AssemblyDefinitionRef;
+  readonly transform: Transform;
+}
+
 export interface CadSketchEntityRef {
   readonly sketchId: SketchId;
   readonly id: SketchEntityId;
@@ -2612,6 +2652,15 @@ export interface DatumSemanticDiff {
   readonly deleted?: readonly CadDatumRef[];
 }
 
+export interface AssemblySemanticDiff {
+  readonly created?: readonly CadAssemblyRef[];
+  readonly modified?: readonly CadAssemblyRef[];
+  readonly deleted?: readonly CadAssemblyRef[];
+  readonly instancesCreated?: readonly CadAssemblyInstanceRef[];
+  readonly instancesModified?: readonly CadAssemblyInstanceRef[];
+  readonly instancesDeleted?: readonly CadAssemblyInstanceRef[];
+}
+
 export interface FeatureSemanticDiff {
   readonly created?: readonly CadFeatureRef[];
   readonly modified?: readonly CadFeatureRef[];
@@ -2784,6 +2833,7 @@ export interface SemanticDiff {
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
   readonly datums?: DatumSemanticDiff;
+  readonly assemblies?: AssemblySemanticDiff;
   readonly features?: FeatureSemanticDiff;
   readonly references?: ReferenceSemanticDiff;
   readonly parameters?: ParameterSemanticDiff;
@@ -4102,6 +4152,19 @@ export interface DatumAxisSnapshot {
 }
 
 export type DatumSnapshot = DatumPlaneSnapshot | DatumAxisSnapshot;
+
+export interface AssemblyInstanceSnapshot {
+  readonly id: InstanceId;
+  readonly name: string;
+  readonly definition: AssemblyDefinitionRef;
+  readonly transform: Transform;
+}
+
+export interface AssemblySnapshot {
+  readonly id: AssemblyId;
+  readonly name: string;
+  readonly instances: readonly AssemblyInstanceSnapshot[];
+}
 
 export interface ExtrudeFeatureSnapshot {
   readonly id: FeatureId;
@@ -7673,6 +7736,7 @@ export interface CadSemanticDiffSummary {
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
   readonly datums?: DatumSemanticDiff;
+  readonly assemblies?: AssemblySemanticDiff;
   readonly features?: FeatureSemanticDiff;
   readonly references?: ReferenceSemanticDiff;
   readonly parameters?: ParameterSemanticDiff;
@@ -9539,6 +9603,7 @@ export interface ProjectStructureQueryResponse {
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
+  readonly assemblies?: readonly AssemblySnapshot[];
 }
 
 export interface ProjectHealthQueryResponse {

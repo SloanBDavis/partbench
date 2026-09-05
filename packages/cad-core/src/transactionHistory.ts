@@ -80,6 +80,8 @@ function createOperationSummaries(
   let createdIndex = 0;
   let createdSketchIndex = 0;
   let createdDatumIndex = 0;
+  let createdAssemblyIndex = 0;
+  let createdAssemblyInstanceIndex = 0;
   let createdSketchEntityIndex = 0;
   let createdFeatureIndex = 0;
   let deletedFeatureIndex = 0;
@@ -112,6 +114,16 @@ function createOperationSummaries(
     const createdDatumRef =
       op.op === "datum.plane.create" || op.op === "datum.axis.create"
         ? transaction.diff.datums?.created?.[createdDatumIndex++]
+        : undefined;
+    const createdAssemblyRef =
+      op.op === "assembly.create"
+        ? transaction.diff.assemblies?.created?.[createdAssemblyIndex++]
+        : undefined;
+    const createdAssemblyInstanceRef =
+      op.op === "assembly.instance.insert"
+        ? transaction.diff.assemblies?.instancesCreated?.[
+            createdAssemblyInstanceIndex++
+          ]
         : undefined;
     const createdSketchEntityRef = isSketchAddEntityOp(op)
       ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
@@ -411,6 +423,22 @@ function createOperationSummaries(
           op: op.op,
           label: `Create datum axis ${datumId ?? "with generated ID"}`,
           datumId
+        };
+      }
+
+      case "assembly.create": {
+        const assemblyId = op.id ?? createdAssemblyRef?.id;
+        return {
+          op: op.op,
+          label: `Create assembly ${assemblyId ?? "with generated ID"}`
+        };
+      }
+
+      case "assembly.instance.insert": {
+        const instanceId = op.id ?? createdAssemblyInstanceRef?.id;
+        return {
+          op: op.op,
+          label: `Insert assembly instance ${instanceId ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
         };
       }
 

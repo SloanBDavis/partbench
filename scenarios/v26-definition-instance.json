@@ -1,0 +1,148 @@
+{
+  "id": "v26-definition-instance",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_bolt",
+      "name": "Bolt",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_bolt",
+      "id": "circle_bolt",
+      "center": [0, 0],
+      "radius": 5
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_bolt",
+      "bodyId": "body_bolt",
+      "sketchId": "sketch_bolt",
+      "entityId": "circle_bolt",
+      "depth": 20
+    }
+  ],
+  "steps": [
+    {
+      "id": "create-assembly",
+      "ops": [
+        {
+          "op": "assembly.create",
+          "id": "asm_bolt",
+          "name": "Bolt assembly"
+        }
+      ],
+      "expect": {
+        "ops": ["assembly.create"],
+        "diff": {
+          "assemblies": {
+            "created": [{ "id": "asm_bolt", "name": "Bolt assembly" }]
+          }
+        }
+      }
+    },
+    {
+      "id": "insert-two-instances",
+      "ops": [
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_bolt_a",
+          "assemblyId": "asm_bolt",
+          "name": "Bolt A",
+          "definition": { "kind": "body", "bodyId": "body_bolt" },
+          "transform": { "translation": [0, 0, 0] }
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_bolt_b",
+          "assemblyId": "asm_bolt",
+          "name": "Bolt B",
+          "definition": { "kind": "body", "bodyId": "body_bolt" },
+          "transform": { "translation": [40, 0, 0] }
+        }
+      ],
+      "expect": {
+        "ops": ["assembly.instance.insert", "assembly.instance.insert"],
+        "diff": {
+          "assemblies": {
+            "instancesCreated": [
+              {
+                "id": "inst_bolt_a",
+                "assemblyId": "asm_bolt",
+                "definition": { "kind": "body", "bodyId": "body_bolt" },
+                "transform": { "translation": [0, 0, 0] }
+              },
+              {
+                "id": "inst_bolt_b",
+                "assemblyId": "asm_bolt",
+                "definition": { "kind": "body", "bodyId": "body_bolt" },
+                "transform": { "translation": [40, 0, 0] }
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodyCount": 1,
+            "assemblies": [
+              {
+                "id": "asm_bolt",
+                "instances": [
+                  {
+                    "id": "inst_bolt_a",
+                    "definition": { "kind": "body", "bodyId": "body_bolt" },
+                    "transform": { "translation": [0, 0, 0] }
+                  },
+                  {
+                    "id": "inst_bolt_b",
+                    "definition": { "kind": "body", "bodyId": "body_bolt" },
+                    "transform": { "translation": [40, 0, 0] }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "persist-round-trip",
+      "persistRoundTrip": true,
+      "expect": {
+        "schemaVersionNot": ["web-cad.project.v23", "web-cad.project.v26"]
+      },
+      "queries": [
+        {
+          "query": { "query": "project.structure" },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodyCount": 1,
+            "assemblies": [
+              {
+                "id": "asm_bolt",
+                "instances": [
+                  {
+                    "id": "inst_bolt_a",
+                    "definition": { "kind": "body", "bodyId": "body_bolt" }
+                  },
+                  {
+                    "id": "inst_bolt_b",
+                    "definition": { "kind": "body", "bodyId": "body_bolt" }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

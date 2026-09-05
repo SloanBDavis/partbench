@@ -9,7 +9,7 @@ const PRIVATE_ID_PATTERN = /snapshot-local|raw-occt|entitySignature|localId/i;
 
 register(new URL("./ts-source-loader.mjs", import.meta.url), import.meta.url);
 
-const { CadEngine } = await import(
+const { CadEngine, exportCadProject, importCadProject } = await import(
   pathToFileURL(resolve(repoRoot, "packages/cad-core/src/index.ts")).href
 );
 
@@ -122,12 +122,42 @@ function promotionOps(engine, scenario, testCase) {
 }
 
 function runCadopsScenario(name, scenario) {
-  const engine = new CadEngine();
+  let engine = new CadEngine();
   if (Array.isArray(scenario.seed) && scenario.seed.length > 0) {
     engine.applyBatch(scenario.seed);
   }
 
   for (const step of scenario.steps) {
+    if (step.persistRoundTrip) {
+      const exported = exportCadProject(engine);
+      if (step.expect?.schemaVersion && exported.schemaVersion !== step.expect.schemaVersion) {
+        fail(
+          `${name} ${step.id} schemaVersion mismatch.\nexpected ${step.expect.schemaVersion}\nactual ${exported.schemaVersion}`
+        );
+      }
+      for (const banned of step.expect?.schemaVersionNot ?? []) {
+        if (exported.schemaVersion === banned) {
+          fail(`${name} ${step.id} unexpectedly bumped schema to ${banned}`);
+        }
+      }
+      engine = importCadProject(exported);
+      for (const queryCase of step.queries ?? []) {
+        const response = engine.executeQuery({
+          version: "cadops.v1",
+          query: queryCase.query
+        });
+        assertPublicJson(response, `${name} ${step.id} query`);
+        if (queryCase.expect) {
+          assertMatch(
+            response,
+            queryCase.expect,
+            `${name} ${step.id} query`
+          );
+        }
+      }
+      continue;
+    }
+
     if (step.expect?.error) {
       let thrown;
       try {
