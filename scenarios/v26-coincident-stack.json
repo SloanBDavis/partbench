@@ -12,7 +12,10 @@
       "op": "sketch.addCircle",
       "sketchId": "sketch_plate",
       "id": "circle_plate",
-      "center": [0, 0],
+      "center": [
+        0,
+        0
+      ],
       "radius": 10
     },
     {
@@ -22,51 +25,56 @@
       "sketchId": "sketch_plate",
       "entityId": "circle_plate",
       "depth": 20
-    }
-  ],
-  "steps": [
+    },
     {
-      "id": "create-stack-assembly",
-      "ops": [
-        {
-          "op": "assembly.create",
-          "id": "asm_stack",
-          "name": "Stack assembly"
-        },
-        {
-          "op": "assembly.instance.insert",
-          "id": "inst_base",
-          "assemblyId": "asm_stack",
-          "name": "Base",
-          "definition": { "kind": "body", "bodyId": "body_plate" },
-          "transform": { "translation": [0, 0, 0] }
-        },
-        {
-          "op": "assembly.instance.insert",
-          "id": "inst_top",
-          "assemblyId": "asm_stack",
-          "name": "Top",
-          "definition": { "kind": "body", "bodyId": "body_plate" },
-          "transform": { "translation": [0, 0, 50] }
-        },
-        {
-          "op": "assembly.mate.create",
-          "id": "mate_ground",
-          "assemblyId": "asm_stack",
-          "name": "Ground",
-          "kind": "fixed",
-          "instanceId": "inst_base"
-        }
-      ],
-      "expect": {
-        "ops": [
-          "assembly.create",
-          "assembly.instance.insert",
-          "assembly.instance.insert",
-          "assembly.mate.create"
+      "op": "assembly.create",
+      "id": "asm_stack",
+      "name": "Stack assembly"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "inst_base",
+      "assemblyId": "asm_stack",
+      "name": "Base",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_plate"
+      },
+      "transform": {
+        "translation": [
+          0,
+          0,
+          0
         ]
       }
     },
+    {
+      "op": "assembly.instance.insert",
+      "id": "inst_top",
+      "assemblyId": "asm_stack",
+      "name": "Top",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_plate"
+      },
+      "transform": {
+        "translation": [
+          0,
+          0,
+          50
+        ]
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "mate_ground",
+      "assemblyId": "asm_stack",
+      "name": "Ground",
+      "kind": "fixed",
+      "instanceId": "inst_base"
+    }
+  ],
+  "steps": [
     {
       "id": "coincident-plane-stack",
       "ops": [
@@ -88,7 +96,9 @@
         }
       ],
       "expect": {
-        "ops": ["assembly.mate.create"],
+        "ops": [
+          "assembly.mate.create"
+        ],
         "diff": {
           "assemblies": {
             "matesCreated": [
@@ -113,7 +123,9 @@
       },
       "queries": [
         {
-          "query": { "query": "project.structure" },
+          "query": {
+            "query": "project.structure"
+          },
           "expect": {
             "ok": true,
             "query": "project.structure",
@@ -124,13 +136,31 @@
                 "instances": [
                   {
                     "id": "inst_base",
-                    "definition": { "kind": "body", "bodyId": "body_plate" },
-                    "transform": { "translation": [0, 0, 0] }
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_plate"
+                    },
+                    "transform": {
+                      "translation": [
+                        0,
+                        0,
+                        0
+                      ]
+                    }
                   },
                   {
                     "id": "inst_top",
-                    "definition": { "kind": "body", "bodyId": "body_plate" },
-                    "transform": { "translation": [0, 0, 20] }
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_plate"
+                    },
+                    "transform": {
+                      "translation": [
+                        0,
+                        0,
+                        20
+                      ]
+                    }
                   }
                 ],
                 "mates": [
@@ -163,23 +193,52 @@
       "id": "persist-coincident-stack",
       "persistRoundTrip": true,
       "expect": {
-        "schemaVersionNot": ["web-cad.project.v23", "web-cad.project.v26"]
+        "schemaVersionNot": [
+          "web-cad.project.v23",
+          "web-cad.project.v26"
+        ]
       },
       "queries": [
         {
-          "query": { "query": "project.structure" },
+          "query": {
+            "query": "project.structure"
+          },
           "expect": {
             "ok": true,
             "assemblies": [
               {
                 "id": "asm_stack",
                 "instances": [
-                  { "id": "inst_base", "transform": { "translation": [0, 0, 0] } },
-                  { "id": "inst_top", "transform": { "translation": [0, 0, 20] } }
+                  {
+                    "id": "inst_base",
+                    "transform": {
+                      "translation": [
+                        0,
+                        0,
+                        0
+                      ]
+                    }
+                  },
+                  {
+                    "id": "inst_top",
+                    "transform": {
+                      "translation": [
+                        0,
+                        0,
+                        20
+                      ]
+                    }
+                  }
                 ],
                 "mates": [
-                  { "id": "mate_ground", "kind": "fixed" },
-                  { "id": "mate_stack", "kind": "coincident" }
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  },
+                  {
+                    "id": "mate_stack",
+                    "kind": "coincident"
+                  }
                 ]
               }
             ]
@@ -187,5 +246,124 @@
         }
       ]
     }
-  ]
+  ],
+  "use": [
+    {
+      "wait": "[data-action-id=\"solid.coincident-mate\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.coincident-mate\"]"
+    },
+    {
+      "wait": "#solid-coincident-mate-primary-instance"
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-assembly",
+        "option": "asm_stack"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-primary-instance",
+        "option": "inst_base"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-primary-plane",
+        "option": "XY"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-coincident-mate-primary-offset",
+        "text": "20"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-secondary-instance",
+        "option": "inst_top"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-secondary-plane",
+        "option": "XY"
+      }
+    },
+    {
+      "apply": true
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "screenshot": "v26-coincident-stack-use"
+    }
+  ],
+  "useBreak": [
+    {
+      "wait": "[data-action-id=\"solid.coincident-mate\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.coincident-mate\"]"
+    },
+    {
+      "wait": "#solid-coincident-mate-primary-instance"
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-assembly",
+        "option": "asm_stack"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-primary-instance",
+        "option": "inst_base"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-coincident-mate-secondary-instance",
+        "option": "Select instance"
+      }
+    },
+    {
+      "expectDisabled": "[data-ui-smoke=\"apply\"]"
+    },
+    {
+      "screenshot": "v26-coincident-stack-use-break"
+    }
+  ],
+  "useExpect": {
+    "forbidClicks": [
+      "solid.box"
+    ],
+    "assemblies": [
+      {
+        "id": "asm_stack",
+        "mates": [
+          {
+            "kind": "fixed",
+            "instanceId": "inst_base"
+          },
+          {
+            "kind": "coincident",
+            "primary": {
+              "instanceId": "inst_base",
+              "plane": "XY",
+              "offset": 20
+            },
+            "secondary": {
+              "instanceId": "inst_top",
+              "plane": "XY"
+            }
+          }
+        ]
+      }
+    ]
+  }
 }
