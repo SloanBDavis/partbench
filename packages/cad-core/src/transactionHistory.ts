@@ -83,6 +83,10 @@ function createOperationSummaries(
   let createdAssemblyIndex = 0;
   let createdAssemblyInstanceIndex = 0;
   let createdAssemblyMateIndex = 0;
+  let modifiedAssemblyInstanceIndex = 0;
+  let deletedAssemblyInstanceIndex = 0;
+  let modifiedAssemblyMateIndex = 0;
+  let deletedAssemblyMateIndex = 0;
   let createdSketchEntityIndex = 0;
   let createdFeatureIndex = 0;
   let deletedFeatureIndex = 0;
@@ -130,6 +134,30 @@ function createOperationSummaries(
       op.op === "assembly.mate.create"
         ? transaction.diff.assemblies?.matesCreated?.[
             createdAssemblyMateIndex++
+          ]
+        : undefined;
+    const modifiedAssemblyInstanceRef =
+      op.op === "assembly.instance.replace"
+        ? transaction.diff.assemblies?.instancesModified?.[
+            modifiedAssemblyInstanceIndex++
+          ]
+        : undefined;
+    const deletedAssemblyInstanceRef =
+      op.op === "assembly.instance.delete"
+        ? transaction.diff.assemblies?.instancesDeleted?.[
+            deletedAssemblyInstanceIndex++
+          ]
+        : undefined;
+    const modifiedAssemblyMateRef =
+      op.op === "assembly.mate.edit"
+        ? transaction.diff.assemblies?.matesModified?.[
+            modifiedAssemblyMateIndex++
+          ]
+        : undefined;
+    const deletedAssemblyMateRef =
+      op.op === "assembly.mate.delete"
+        ? transaction.diff.assemblies?.matesDeleted?.[
+            deletedAssemblyMateIndex++
           ]
         : undefined;
     const createdSketchEntityRef = isSketchAddEntityOp(op)
@@ -458,10 +486,56 @@ function createOperationSummaries(
               ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
               : op.kind === "concentric"
                 ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
-                : `kind ${String(op.kind)}`;
+                : op.kind === "distance"
+                  ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`
+                  : `kind ${String((op as { kind: string }).kind)}`;
         return {
           op: op.op,
           label: `Create ${op.kind} mate ${mateId ?? "with generated ID"} ${target} in ${op.assemblyId}`
+        };
+      }
+
+      case "assembly.instance.replace": {
+        const instanceId =
+          op.instanceId ?? modifiedAssemblyInstanceRef?.id ?? "instance";
+        return {
+          op: op.op,
+          label: `Replace assembly instance ${instanceId} definition with ${op.definition.bodyId} in ${op.assemblyId}`
+        };
+      }
+
+      case "assembly.instance.delete": {
+        const instanceId =
+          op.instanceId ?? deletedAssemblyInstanceRef?.id ?? "instance";
+        return {
+          op: op.op,
+          label: `Delete assembly instance ${instanceId} from ${op.assemblyId}`
+        };
+      }
+
+      case "assembly.mate.edit": {
+        const mateId = op.mateId ?? modifiedAssemblyMateRef?.id;
+        const target =
+          op.kind === "fixed"
+            ? `on ${op.instanceId}`
+            : op.kind === "coincident"
+              ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
+              : op.kind === "concentric"
+                ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
+                : op.kind === "distance"
+                  ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`
+                  : `kind ${String((op as { kind: string }).kind)}`;
+        return {
+          op: op.op,
+          label: `Edit ${op.kind} mate ${mateId ?? "with generated ID"} ${target} in ${op.assemblyId}`
+        };
+      }
+
+      case "assembly.mate.delete": {
+        const mateId = op.mateId ?? deletedAssemblyMateRef?.id ?? "mate";
+        return {
+          op: op.op,
+          label: `Delete assembly mate ${mateId} from ${op.assemblyId}`
         };
       }
 

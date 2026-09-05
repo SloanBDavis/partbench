@@ -37,6 +37,10 @@ import type {
   FeatureOffsetSource,
   FeatureUpdateOffsetOp,
   AssemblyMateCreateOp,
+  AssemblyMateEditOp,
+  AssemblyMateDeleteOp,
+  AssemblyInstanceReplaceOp,
+  AssemblyInstanceDeleteOp,
   DatumAxisCreateOp,
   DatumAxisSourceRef,
   DatumPlaneCreateOp,
@@ -227,6 +231,31 @@ export interface AssemblyDistanceMateForm {
   readonly primary: AssemblyCoincidentMatePlaneForm;
   readonly secondary: AssemblyCoincidentMatePlaneForm;
   readonly distance: number;
+}
+
+export interface AssemblyInstanceReplaceForm {
+  readonly assemblyId: string;
+  readonly instanceId: string;
+  readonly bodyId: string;
+}
+
+export interface AssemblyInstanceDeleteForm {
+  readonly assemblyId: string;
+  readonly instanceId: string;
+}
+
+export interface AssemblyDistanceMateEditForm {
+  readonly mateId: string;
+  readonly name: string;
+  readonly assemblyId: string;
+  readonly primary: AssemblyCoincidentMatePlaneForm;
+  readonly secondary: AssemblyCoincidentMatePlaneForm;
+  readonly distance: number;
+}
+
+export interface AssemblyMateDeleteForm {
+  readonly assemblyId: string;
+  readonly mateId: string;
 }
 
 export interface SketchCreateOnFaceForm {
@@ -826,6 +855,62 @@ export function buildAssemblyDistanceMateOp(
       ...(form.secondary.flip ? { flip: true } : {})
     },
     distance: form.distance
+  };
+}
+
+export function buildAssemblyInstanceReplaceOp(
+  form: AssemblyInstanceReplaceForm
+): AssemblyInstanceReplaceOp {
+  return {
+    op: "assembly.instance.replace",
+    assemblyId: form.assemblyId.trim(),
+    instanceId: form.instanceId.trim(),
+    definition: { kind: "body", bodyId: form.bodyId.trim() }
+  };
+}
+
+export function buildAssemblyInstanceDeleteOp(
+  form: AssemblyInstanceDeleteForm
+): AssemblyInstanceDeleteOp {
+  return {
+    op: "assembly.instance.delete",
+    assemblyId: form.assemblyId.trim(),
+    instanceId: form.instanceId.trim()
+  };
+}
+
+export function buildAssemblyDistanceMateEditOp(
+  form: AssemblyDistanceMateEditForm
+): AssemblyMateEditOp {
+  return {
+    op: "assembly.mate.edit",
+    mateId: form.mateId.trim(),
+    assemblyId: form.assemblyId.trim(),
+    name: form.name.trim() || undefined,
+    kind: "distance",
+    primary: {
+      instanceId: form.primary.instanceId.trim(),
+      plane: form.primary.plane,
+      ...(form.primary.offset !== 0 ? { offset: form.primary.offset } : {}),
+      ...(form.primary.flip ? { flip: true } : {})
+    },
+    secondary: {
+      instanceId: form.secondary.instanceId.trim(),
+      plane: form.secondary.plane,
+      ...(form.secondary.offset !== 0 ? { offset: form.secondary.offset } : {}),
+      ...(form.secondary.flip ? { flip: true } : {})
+    },
+    distance: form.distance
+  };
+}
+
+export function buildAssemblyMateDeleteOp(
+  form: AssemblyMateDeleteForm
+): AssemblyMateDeleteOp {
+  return {
+    op: "assembly.mate.delete",
+    assemblyId: form.assemblyId.trim(),
+    mateId: form.mateId.trim()
   };
 }
 

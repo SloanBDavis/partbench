@@ -871,3 +871,206 @@ describe("V26 slice E distance offset mate", () => {
     }
   });
 });
+
+describe("V26 slice F instance and mate CRUD", () => {
+  function seedTwoBodies(engine: CadEngine): void {
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_nut", name: "Nut", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_nut",
+        id: "circle_nut",
+        center: [0, 0],
+        radius: 8
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_nut",
+        bodyId: "body_nut",
+        sketchId: "sketch_nut",
+        entityId: "circle_nut",
+        depth: 10
+      }
+    ]);
+  }
+
+  function seedCrudAssembly(engine: CadEngine): void {
+    seedTwoBodies(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_crud", name: "CRUD assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_base",
+        assemblyId: "asm_crud",
+        name: "Base",
+        definition: { kind: "body", bodyId: "body_bolt" }
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_top",
+        assemblyId: "asm_crud",
+        name: "Top",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 50] }
+      },
+      {
+        op: "assembly.mate.create",
+        id: "mate_ground",
+        assemblyId: "asm_crud",
+        kind: "fixed",
+        instanceId: "inst_base"
+      },
+      {
+        op: "assembly.mate.create",
+        id: "mate_gap",
+        assemblyId: "asm_crud",
+        name: "Gap",
+        kind: "distance",
+        primary: { instanceId: "inst_base", plane: "XY" },
+        secondary: { instanceId: "inst_top", plane: "XY" },
+        distance: 30
+      }
+    ]);
+  }
+
+  it("edits a distance mate and re-solves pose", () => {
+    const engine = new CadEngine();
+    seedCrudAssembly(engine);
+    const edited = engine.apply({
+      op: "assembly.mate.edit",
+      mateId: "mate_gap",
+      assemblyId: "asm_crud",
+      name: "Gap wide",
+      kind: "distance",
+      primary: { instanceId: "inst_base", plane: "XY" },
+      secondary: { instanceId: "inst_top", plane: "XY" },
+      distance: 40
+    });
+    expect(edited.transaction.diff.assemblies?.matesModified).toEqual([
+      expect.objectContaining({
+        id: "mate_gap",
+        kind: "distance",
+        distance: 40,
+        name: "Gap wide"
+      })
+    ]);
+    expect(edited.transaction.diff.assemblies?.matesCreated ?? []).toHaveLength(0);
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      assemblies: [
+        {
+          id: "asm_crud",
+          instances: [
+            { id: "inst_base" },
+            { id: "inst_top", transform: { translation: [0, 0, 40] } }
+          ],
+          mates: [
+            { id: "mate_ground", kind: "fixed" },
+            { id: "mate_gap", kind: "distance", distance: 40 }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("replaces an instance definition without duplicating bodies", () => {
+    const engine = new CadEngine();
+    seedCrudAssembly(engine);
+    const replaced = engine.apply({
+      op: "assembly.instance.replace",
+      assemblyId: "asm_crud",
+      instanceId: "inst_top",
+      definition: { kind: "body", bodyId: "body_nut" }
+    });
+    expect(replaced.transaction.diff.assemblies?.instancesModified).toEqual([
+      expect.objectContaining({
+        id: "inst_top",
+        definition: { kind: "body", bodyId: "body_nut" }
+      })
+    ]);
+    expect(replaced.transaction.diff.features?.bodiesCreated).toBeUndefined();
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      bodyCount: 2,
+      assemblies: [
+        {
+          instances: [
+            { id: "inst_base", definition: { kind: "body", bodyId: "body_bolt" } },
+            {
+              id: "inst_top",
+              definition: { kind: "body", bodyId: "body_nut" },
+              transform: { translation: [0, 0, 30] }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("deletes a mate and leaves instance transforms", () => {
+    const engine = new CadEngine();
+    seedCrudAssembly(engine);
+    const deleted = engine.apply({
+      op: "assembly.mate.delete",
+      assemblyId: "asm_crud",
+      mateId: "mate_gap"
+    });
+    expect(deleted.transaction.diff.assemblies?.matesDeleted).toEqual([
+      expect.objectContaining({ id: "mate_gap", kind: "distance" })
+    ]);
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      assemblies: [
+        {
+          instances: [
+            { id: "inst_base" },
+            { id: "inst_top", transform: { translation: [0, 0, 30] } }
+          ],
+          mates: [{ id: "mate_ground", kind: "fixed" }]
+        }
+      ]
+    });
+  });
+
+  it("deletes an instance and cascade-deletes referencing mates", () => {
+    const engine = new CadEngine();
+    seedCrudAssembly(engine);
+    const deleted = engine.apply({
+      op: "assembly.instance.delete",
+      assemblyId: "asm_crud",
+      instanceId: "inst_top"
+    });
+    expect(deleted.transaction.diff.assemblies?.instancesDeleted).toEqual([
+      expect.objectContaining({ id: "inst_top" })
+    ]);
+    expect(deleted.transaction.diff.assemblies?.matesDeleted).toEqual([
+      expect.objectContaining({ id: "mate_gap", kind: "distance" })
+    ]);
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      assemblies: [
+        {
+          instances: [{ id: "inst_base" }],
+          mates: [{ id: "mate_ground", kind: "fixed" }]
+        }
+      ]
+    });
+  });
+});

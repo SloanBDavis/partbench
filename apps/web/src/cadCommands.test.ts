@@ -15,6 +15,10 @@ import {
   buildAssemblyCoincidentMateOp,
   buildAssemblyConcentricMateOp,
   buildAssemblyDistanceMateOp,
+  buildAssemblyInstanceReplaceOp,
+  buildAssemblyInstanceDeleteOp,
+  buildAssemblyDistanceMateEditOp,
+  buildAssemblyMateDeleteOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateTorusOp,
@@ -2390,3 +2394,77 @@ describe("assembly distance mate Apply parity", () => {
   });
 });
 
+describe("assembly instance/mate CRUD Apply parity", () => {
+  it("builds assembly.instance.replace from the form", () => {
+    expect(
+      buildAssemblyInstanceReplaceOp({
+        assemblyId: "asm_bolt",
+        instanceId: "inst_bolt_b",
+        bodyId: "body_nut"
+      })
+    ).toEqual({
+      op: "assembly.instance.replace",
+      assemblyId: "asm_bolt",
+      instanceId: "inst_bolt_b",
+      definition: { kind: "body", bodyId: "body_nut" }
+    });
+  });
+
+  it("builds assembly.instance.delete from the form", () => {
+    expect(
+      buildAssemblyInstanceDeleteOp({
+        assemblyId: "asm_bolt",
+        instanceId: "inst_bolt_b"
+      })
+    ).toEqual({
+      op: "assembly.instance.delete",
+      assemblyId: "asm_bolt",
+      instanceId: "inst_bolt_b"
+    });
+  });
+
+  it("builds assembly.mate.edit kind distance from the form", () => {
+    expect(
+      buildAssemblyDistanceMateEditOp({
+        mateId: "mate_gap",
+        name: "Gap",
+        assemblyId: "asm_gap",
+        primary: {
+          instanceId: "inst_base",
+          plane: "XY",
+          offset: 0,
+          flip: false
+        },
+        secondary: {
+          instanceId: "inst_top",
+          plane: "XY",
+          offset: 0,
+          flip: false
+        },
+        distance: 40
+      })
+    ).toEqual({
+      op: "assembly.mate.edit",
+      mateId: "mate_gap",
+      assemblyId: "asm_gap",
+      name: "Gap",
+      kind: "distance",
+      primary: { instanceId: "inst_base", plane: "XY" },
+      secondary: { instanceId: "inst_top", plane: "XY" },
+      distance: 40
+    });
+  });
+
+  it("builds assembly.mate.delete from the form", () => {
+    expect(
+      buildAssemblyMateDeleteOp({
+        assemblyId: "asm_gap",
+        mateId: "mate_gap"
+      })
+    ).toEqual({
+      op: "assembly.mate.delete",
+      assemblyId: "asm_gap",
+      mateId: "mate_gap"
+    });
+  });
+});

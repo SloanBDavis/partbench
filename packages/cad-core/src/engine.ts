@@ -6601,6 +6601,26 @@ function applyOperation(
       return;
     }
 
+    case "assembly.instance.replace": {
+      applyAssemblyInstanceReplace(state, op, diff, opIndex);
+      return;
+    }
+
+    case "assembly.instance.delete": {
+      applyAssemblyInstanceDelete(state, op, diff, opIndex);
+      return;
+    }
+
+    case "assembly.mate.edit": {
+      applyAssemblyMateEdit(state, op, diff, opIndex);
+      return;
+    }
+
+    case "assembly.mate.delete": {
+      applyAssemblyMateDelete(state, op, diff, opIndex);
+      return;
+    }
+
     case "sketch.createOnFace": {
       const target = resolveSketchAttachmentTarget(state, op, opIndex);
       const sketch: Sketch = {
@@ -8378,7 +8398,11 @@ function isCadOperationKind(value: string): boolean {
     case "datum.axis.create":
     case "assembly.create":
     case "assembly.instance.insert":
+    case "assembly.instance.replace":
+    case "assembly.instance.delete":
     case "assembly.mate.create":
+    case "assembly.mate.edit":
+    case "assembly.mate.delete":
     case "sketch.rename":
     case "sketch.delete":
     case "sketch.addPoint":
@@ -14767,6 +14791,315 @@ function applyAssemblyDistanceMateCreate(
     assemblyInstanceRef(assembly.id, updatedMoving)
   );
   pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
+}
+
+function mateReferencesInstance(
+  mate: AssemblyMateSnapshot,
+  instanceId: InstanceId
+): boolean {
+  if (mate.kind === "fixed") {
+    return mate.instanceId === instanceId;
+  }
+  return (
+    mate.primary.instanceId === instanceId ||
+    mate.secondary.instanceId === instanceId
+  );
+}
+
+function applyAssemblyInstanceReplace(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "assembly.instance.replace" }>,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const assembly = state.assemblies.get(op.assemblyId);
+  if (!assembly) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly does not exist: ${op.assemblyId}`,
+      opIndex,
+      path: operationPath(opIndex, "assemblyId"),
+      expected: "existing assembly id",
+      received: op.assemblyId
+    });
+  }
+
+  if (op.definition.kind !== "body") {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.instance.replace definition.kind must be body.",
+      opIndex,
+      path: operationPath(opIndex, "definition.kind"),
+      expected: "body",
+      received: describeReceived(op.definition.kind)
+    });
+  }
+
+  if (!documentBodyExists(state, op.definition.bodyId)) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Assembly definition body does not exist: ${op.definition.bodyId}`,
+      opIndex,
+      path: operationPath(opIndex, "definition.bodyId"),
+      expected: "existing completed solid body id",
+      received: op.definition.bodyId
+    });
+  }
+
+  const instanceIndex = assembly.instances.findIndex(
+    (instance) => instance.id === op.instanceId
+  );
+  if (instanceIndex < 0) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${op.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "instanceId"),
+      expected: "existing instance id in assembly",
+      received: op.instanceId
+    });
+  }
+
+  const existing = assembly.instances[instanceIndex]!;
+  const replaced: AssemblyInstanceSnapshot = {
+    ...existing,
+    definition: { kind: "body", bodyId: op.definition.bodyId }
+  };
+  const nextInstances = assembly.instances.map((instance, index) =>
+    index === instanceIndex ? replaced : instance
+  );
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    instances: nextInstances
+  };
+  state.assemblies.set(assembly.id, updated);
+  pushAssemblyModified(diff, assemblyRef(updated));
+  pushAssemblyInstanceModified(diff, assemblyInstanceRef(assembly.id, replaced));
+}
+
+function applyAssemblyInstanceDelete(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "assembly.instance.delete" }>,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const assembly = state.assemblies.get(op.assemblyId);
+  if (!assembly) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly does not exist: ${op.assemblyId}`,
+      opIndex,
+      path: operationPath(opIndex, "assemblyId"),
+      expected: "existing assembly id",
+      received: op.assemblyId
+    });
+  }
+
+  const existing = assembly.instances.find(
+    (instance) => instance.id === op.instanceId
+  );
+  if (!existing) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${op.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "instanceId"),
+      expected: "existing instance id in assembly",
+      received: op.instanceId
+    });
+  }
+
+  const existingMates = assembly.mates ?? [];
+  const removedMates = existingMates.filter((mate) =>
+    mateReferencesInstance(mate, op.instanceId)
+  );
+  const remainingMates = existingMates.filter(
+    (mate) => !mateReferencesInstance(mate, op.instanceId)
+  );
+  const nextInstances = assembly.instances.filter(
+    (instance) => instance.id !== op.instanceId
+  );
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    instances: nextInstances,
+    ...(remainingMates.length > 0 ? { mates: remainingMates } : {})
+  };
+  // Drop empty mates key when none remain.
+  if (remainingMates.length === 0 && "mates" in updated) {
+    const { mates: _removed, ...withoutMates } = updated as AssemblySnapshot & {
+      mates?: readonly AssemblyMateSnapshot[];
+    };
+    state.assemblies.set(assembly.id, withoutMates);
+  } else {
+    state.assemblies.set(assembly.id, updated);
+  }
+  const stored = state.assemblies.get(assembly.id)!;
+  pushAssemblyModified(diff, assemblyRef(stored));
+  pushAssemblyInstanceDeleted(diff, assemblyInstanceRef(assembly.id, existing));
+  for (const mate of removedMates) {
+    pushAssemblyMateDeleted(diff, assemblyMateRef(assembly.id, mate));
+  }
+}
+
+function applyAssemblyMateDelete(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "assembly.mate.delete" }>,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const assembly = state.assemblies.get(op.assemblyId);
+  if (!assembly) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly does not exist: ${op.assemblyId}`,
+      opIndex,
+      path: operationPath(opIndex, "assemblyId"),
+      expected: "existing assembly id",
+      received: op.assemblyId
+    });
+  }
+
+  const existingMates = assembly.mates ?? [];
+  const mate = existingMates.find((candidate) => candidate.id === op.mateId);
+  if (!mate) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly mate does not exist: ${op.mateId}`,
+      opIndex,
+      path: operationPath(opIndex, "mateId"),
+      expected: "existing mate id in assembly",
+      received: op.mateId
+    });
+  }
+
+  const remainingMates = existingMates.filter(
+    (candidate) => candidate.id !== op.mateId
+  );
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    ...(remainingMates.length > 0 ? { mates: remainingMates } : {})
+  };
+  if (remainingMates.length === 0) {
+    const { mates: _removed, ...withoutMates } = {
+      ...assembly
+    } as AssemblySnapshot & {
+      mates?: readonly AssemblyMateSnapshot[];
+    };
+    state.assemblies.set(assembly.id, {
+      id: withoutMates.id,
+      name: withoutMates.name,
+      instances: withoutMates.instances
+    });
+  } else {
+    state.assemblies.set(assembly.id, updated);
+  }
+  const stored = state.assemblies.get(assembly.id)!;
+  pushAssemblyModified(diff, assemblyRef(stored));
+  pushAssemblyMateDeleted(diff, assemblyMateRef(assembly.id, mate));
+}
+
+function applyAssemblyMateEdit(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "assembly.mate.edit" }>,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const assembly = state.assemblies.get(op.assemblyId);
+  if (!assembly) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly does not exist: ${op.assemblyId}`,
+      opIndex,
+      path: operationPath(opIndex, "assemblyId"),
+      expected: "existing assembly id",
+      received: op.assemblyId
+    });
+  }
+
+  const existingMates = assembly.mates ?? [];
+  const mateIndex = existingMates.findIndex(
+    (candidate) => candidate.id === op.mateId
+  );
+  if (mateIndex < 0) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly mate does not exist: ${op.mateId}`,
+      opIndex,
+      path: operationPath(opIndex, "mateId"),
+      expected: "existing mate id in assembly",
+      received: op.mateId
+    });
+  }
+
+  const withoutMate = existingMates.filter(
+    (candidate) => candidate.id !== op.mateId
+  );
+  state.assemblies.set(assembly.id, {
+    ...assembly,
+    ...(withoutMate.length > 0 ? { mates: withoutMate } : { mates: [] })
+  });
+
+  const createOp = assemblyMateEditToCreateOp(op);
+  applyAssemblyMateCreate(
+    state,
+    createOp,
+    diff,
+    () => op.mateId,
+    opIndex
+  );
+
+  const assemblyDiff = ensureAssemblyDiff(diff);
+  const created = assemblyDiff.matesCreated.pop();
+  if (created) {
+    pushAssemblyMateModified(diff, created);
+  }
+}
+
+function assemblyMateEditToCreateOp(
+  op: Extract<CadOp, { readonly op: "assembly.mate.edit" }>
+): Extract<CadOp, { readonly op: "assembly.mate.create" }> {
+  if (op.kind === "fixed") {
+    return {
+      op: "assembly.mate.create",
+      id: op.mateId,
+      assemblyId: op.assemblyId,
+      name: op.name,
+      kind: "fixed",
+      instanceId: op.instanceId
+    };
+  }
+  if (op.kind === "coincident") {
+    return {
+      op: "assembly.mate.create",
+      id: op.mateId,
+      assemblyId: op.assemblyId,
+      name: op.name,
+      kind: "coincident",
+      primary: op.primary,
+      secondary: op.secondary
+    };
+  }
+  if (op.kind === "concentric") {
+    return {
+      op: "assembly.mate.create",
+      id: op.mateId,
+      assemblyId: op.assemblyId,
+      name: op.name,
+      kind: "concentric",
+      primary: op.primary,
+      secondary: op.secondary
+    };
+  }
+  return {
+    op: "assembly.mate.create",
+    id: op.mateId,
+    assemblyId: op.assemblyId,
+    name: op.name,
+    kind: "distance",
+    primary: op.primary,
+    secondary: op.secondary,
+    distance: op.distance
+  };
 }
 
 function isAssemblyMatePlaneRefShape(
@@ -25812,6 +26145,27 @@ function pushAssemblyMateCreated(
   ref: CadAssemblyMateRef
 ): void {
   ensureAssemblyDiff(diff).matesCreated.push(ref);
+}
+
+function pushAssemblyInstanceDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyInstanceRef
+): void {
+  ensureAssemblyDiff(diff).instancesDeleted.push(ref);
+}
+
+function pushAssemblyMateModified(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyMateRef
+): void {
+  ensureAssemblyDiff(diff).matesModified.push(ref);
+}
+
+function pushAssemblyMateDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadAssemblyMateRef
+): void {
+  ensureAssemblyDiff(diff).matesDeleted.push(ref);
 }
 
 function pushSketchEntityCreated(
@@ -42776,6 +43130,60 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
     return false;
+  }
+
+  if (value.op === "assembly.instance.replace") {
+    return (
+      typeof value.assemblyId === "string" &&
+      typeof value.instanceId === "string" &&
+      isAssemblyDefinitionRef(value.definition)
+    );
+  }
+
+  if (value.op === "assembly.instance.delete") {
+    return (
+      typeof value.assemblyId === "string" && typeof value.instanceId === "string"
+    );
+  }
+
+  if (value.op === "assembly.mate.edit") {
+    if (
+      !(
+        typeof value.assemblyId === "string" &&
+        typeof value.mateId === "string" &&
+        isOptionalString(value.name)
+      )
+    ) {
+      return false;
+    }
+    if (value.kind === "fixed") {
+      return typeof value.instanceId === "string";
+    }
+    if (value.kind === "coincident") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary)
+      );
+    }
+    if (value.kind === "concentric") {
+      return (
+        isAssemblyMateAxisRefShape(value.primary) &&
+        isAssemblyMateAxisRefShape(value.secondary)
+      );
+    }
+    if (value.kind === "distance") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary) &&
+        typeof value.distance === "number" &&
+        Number.isFinite(value.distance)
+      );
+    }
+    return false;
+  }
+
+  if (value.op === "assembly.mate.delete") {
+    return typeof value.assemblyId === "string" && typeof value.mateId === "string";
   }
 
   if (value.op === "sketch.createOnFace") {

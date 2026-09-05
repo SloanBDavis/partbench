@@ -1,0 +1,433 @@
+{
+  "id": "v26-instance-mate-crud",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "sketch.create",
+      "id": "sketch_bolt",
+      "name": "Bolt",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_bolt",
+      "id": "circle_bolt",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 5
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_bolt",
+      "bodyId": "body_bolt",
+      "sketchId": "sketch_bolt",
+      "entityId": "circle_bolt",
+      "depth": 20
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_nut",
+      "name": "Nut",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_nut",
+      "id": "circle_nut",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 8
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feat_nut",
+      "bodyId": "body_nut",
+      "sketchId": "sketch_nut",
+      "entityId": "circle_nut",
+      "depth": 10
+    }
+  ],
+  "steps": [
+    {
+      "id": "seed-assembly",
+      "ops": [
+        {
+          "op": "assembly.create",
+          "id": "asm_crud",
+          "name": "CRUD assembly"
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_base",
+          "assemblyId": "asm_crud",
+          "name": "Base",
+          "definition": {
+            "kind": "body",
+            "bodyId": "body_bolt"
+          },
+          "transform": {
+            "translation": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "inst_top",
+          "assemblyId": "asm_crud",
+          "name": "Top",
+          "definition": {
+            "kind": "body",
+            "bodyId": "body_bolt"
+          },
+          "transform": {
+            "translation": [
+              0,
+              0,
+              50
+            ]
+          }
+        },
+        {
+          "op": "assembly.mate.create",
+          "id": "mate_ground",
+          "assemblyId": "asm_crud",
+          "name": "Ground",
+          "kind": "fixed",
+          "instanceId": "inst_base"
+        },
+        {
+          "op": "assembly.mate.create",
+          "id": "mate_gap",
+          "assemblyId": "asm_crud",
+          "name": "Gap",
+          "kind": "distance",
+          "primary": {
+            "instanceId": "inst_base",
+            "plane": "XY"
+          },
+          "secondary": {
+            "instanceId": "inst_top",
+            "plane": "XY"
+          },
+          "distance": 30
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.create",
+          "assembly.instance.insert",
+          "assembly.instance.insert",
+          "assembly.mate.create",
+          "assembly.mate.create"
+        ]
+      }
+    },
+    {
+      "id": "edit-distance-mate",
+      "ops": [
+        {
+          "op": "assembly.mate.edit",
+          "mateId": "mate_gap",
+          "assemblyId": "asm_crud",
+          "name": "Gap wide",
+          "kind": "distance",
+          "primary": {
+            "instanceId": "inst_base",
+            "plane": "XY"
+          },
+          "secondary": {
+            "instanceId": "inst_top",
+            "plane": "XY"
+          },
+          "distance": 40
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.mate.edit"
+        ],
+        "diff": {
+          "assemblies": {
+            "matesModified": [
+              {
+                "id": "mate_gap",
+                "assemblyId": "asm_crud",
+                "name": "Gap wide",
+                "kind": "distance",
+                "distance": 40
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "assemblies": [
+              {
+                "id": "asm_crud",
+                "instances": [
+                  {
+                    "id": "inst_base"
+                  },
+                  {
+                    "id": "inst_top",
+                    "transform": {
+                      "translation": [
+                        0,
+                        0,
+                        40
+                      ]
+                    }
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  },
+                  {
+                    "id": "mate_gap",
+                    "kind": "distance",
+                    "distance": 40
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "replace-top-definition",
+      "ops": [
+        {
+          "op": "assembly.instance.replace",
+          "assemblyId": "asm_crud",
+          "instanceId": "inst_top",
+          "definition": {
+            "kind": "body",
+            "bodyId": "body_nut"
+          }
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.instance.replace"
+        ],
+        "diff": {
+          "assemblies": {
+            "instancesModified": [
+              {
+                "id": "inst_top",
+                "assemblyId": "asm_crud",
+                "definition": {
+                  "kind": "body",
+                  "bodyId": "body_nut"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodyCount": 2,
+            "assemblies": [
+              {
+                "id": "asm_crud",
+                "instances": [
+                  {
+                    "id": "inst_base",
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_bolt"
+                    }
+                  },
+                  {
+                    "id": "inst_top",
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_nut"
+                    },
+                    "transform": {
+                      "translation": [
+                        0,
+                        0,
+                        40
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete-distance-mate",
+      "ops": [
+        {
+          "op": "assembly.mate.delete",
+          "assemblyId": "asm_crud",
+          "mateId": "mate_gap"
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.mate.delete"
+        ],
+        "diff": {
+          "assemblies": {
+            "matesDeleted": [
+              {
+                "id": "mate_gap",
+                "assemblyId": "asm_crud",
+                "kind": "distance"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "assemblies": [
+              {
+                "id": "asm_crud",
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete-top-instance",
+      "ops": [
+        {
+          "op": "assembly.instance.delete",
+          "assemblyId": "asm_crud",
+          "instanceId": "inst_top"
+        }
+      ],
+      "expect": {
+        "ops": [
+          "assembly.instance.delete"
+        ],
+        "diff": {
+          "assemblies": {
+            "instancesDeleted": [
+              {
+                "id": "inst_top",
+                "assemblyId": "asm_crud",
+                "definition": {
+                  "kind": "body",
+                  "bodyId": "body_nut"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "assemblies": [
+              {
+                "id": "asm_crud",
+                "instances": [
+                  {
+                    "id": "inst_base"
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "persist-crud",
+      "persistRoundTrip": true,
+      "expect": {
+        "schemaVersionNot": [
+          "web-cad.project.v23",
+          "web-cad.project.v26"
+        ]
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "query": "project.structure",
+            "bodyCount": 2,
+            "assemblies": [
+              {
+                "id": "asm_crud",
+                "instances": [
+                  {
+                    "id": "inst_base",
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_bolt"
+                    }
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

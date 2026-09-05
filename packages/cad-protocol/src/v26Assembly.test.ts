@@ -3,7 +3,11 @@ import {
   CAD_V19_PROJECT_SCHEMA_VERSION,
   type AssemblyCreateOp,
   type AssemblyInstanceInsertOp,
+  type AssemblyInstanceReplaceOp,
+  type AssemblyInstanceDeleteOp,
   type AssemblyMateCreateOp,
+  type AssemblyMateEditOp,
+  type AssemblyMateDeleteOp,
   type AssemblySnapshot,
   type CadOp
 } from "./index";
@@ -276,6 +280,45 @@ describe("assembly definition/instance protocol", () => {
     expect(ops.map((op) => op.op)).toEqual(["assembly.mate.create"]);
     expect(distance.kind).toBe("distance");
     expect(snapshot.mates?.[0]?.kind).toBe("distance");
+    expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
+  });
+});
+
+describe("assembly instance/mate CRUD protocol", () => {
+  it("names replace, delete instance, edit mate, and delete mate without a schema bump", () => {
+    const replace: AssemblyInstanceReplaceOp = {
+      op: "assembly.instance.replace",
+      assemblyId: "asm_crud",
+      instanceId: "inst_top",
+      definition: { kind: "body", bodyId: "body_nut" }
+    };
+    const deleteInstance: AssemblyInstanceDeleteOp = {
+      op: "assembly.instance.delete",
+      assemblyId: "asm_crud",
+      instanceId: "inst_top"
+    };
+    const editMate: AssemblyMateEditOp = {
+      op: "assembly.mate.edit",
+      assemblyId: "asm_crud",
+      mateId: "mate_gap",
+      name: "Gap wide",
+      kind: "distance",
+      primary: { instanceId: "inst_base", plane: "XY" },
+      secondary: { instanceId: "inst_top", plane: "XY" },
+      distance: 40
+    };
+    const deleteMate: AssemblyMateDeleteOp = {
+      op: "assembly.mate.delete",
+      assemblyId: "asm_crud",
+      mateId: "mate_gap"
+    };
+    const ops: readonly CadOp[] = [replace, deleteInstance, editMate, deleteMate];
+    expect(ops.map((op) => op.op)).toEqual([
+      "assembly.instance.replace",
+      "assembly.instance.delete",
+      "assembly.mate.edit",
+      "assembly.mate.delete"
+    ]);
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
   });
 });

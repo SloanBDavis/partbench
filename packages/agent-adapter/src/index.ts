@@ -2432,6 +2432,49 @@ function createOperationReview(
       );
     }
 
+    case "assembly.instance.replace":
+      return operationReviewBase(
+        index,
+        op,
+        "modify",
+        `Replace assembly instance ${op.instanceId} definition with ${op.definition.bodyId} in ${op.assemblyId}`
+      );
+
+    case "assembly.instance.delete":
+      return operationReviewBase(
+        index,
+        op,
+        "delete",
+        `Delete assembly instance ${op.instanceId} from ${op.assemblyId}`
+      );
+
+    case "assembly.mate.edit": {
+      let target: string;
+      if (op.kind === "fixed") {
+        target = `on ${op.instanceId}`;
+      } else if (op.kind === "coincident") {
+        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`;
+      } else if (op.kind === "concentric") {
+        target = `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`;
+      } else {
+        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`;
+      }
+      return operationReviewBase(
+        index,
+        op,
+        "modify",
+        `Edit ${op.kind} mate ${op.mateId} ${target} in ${op.assemblyId}`
+      );
+    }
+
+    case "assembly.mate.delete":
+      return operationReviewBase(
+        index,
+        op,
+        "delete",
+        `Delete assembly mate ${op.mateId} from ${op.assemblyId}`
+      );
+
     case "sketch.createOnFace": {
       const target = op.referenceName
         ? `named reference ${op.referenceName}`
@@ -3400,7 +3443,9 @@ function isDestructiveOperation(op: CadOp): boolean {
       ((op.deleteConstraintIds?.length ?? 0) > 0 ||
         (op.deleteDimensionIds?.length ?? 0) > 0)) ||
     op.op === "feature.delete" ||
-    op.op === "reference.deleteName"
+    op.op === "reference.deleteName" ||
+    op.op === "assembly.instance.delete" ||
+    op.op === "assembly.mate.delete"
   );
 }
 
@@ -6034,6 +6079,62 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
     return false;
+  }
+
+  if (value.op === "assembly.instance.replace") {
+    return (
+      typeof value.assemblyId === "string" &&
+      typeof value.instanceId === "string" &&
+      isRecord(value.definition) &&
+      value.definition.kind === "body" &&
+      typeof value.definition.bodyId === "string"
+    );
+  }
+
+  if (value.op === "assembly.instance.delete") {
+    return (
+      typeof value.assemblyId === "string" && typeof value.instanceId === "string"
+    );
+  }
+
+  if (value.op === "assembly.mate.edit") {
+    if (
+      !(
+        typeof value.assemblyId === "string" &&
+        typeof value.mateId === "string" &&
+        isOptionalString(value.name)
+      )
+    ) {
+      return false;
+    }
+    if (value.kind === "fixed") {
+      return typeof value.instanceId === "string";
+    }
+    if (value.kind === "coincident") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary)
+      );
+    }
+    if (value.kind === "concentric") {
+      return (
+        isAssemblyMateAxisRefShape(value.primary) &&
+        isAssemblyMateAxisRefShape(value.secondary)
+      );
+    }
+    if (value.kind === "distance") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary) &&
+        typeof value.distance === "number" &&
+        Number.isFinite(value.distance)
+      );
+    }
+    return false;
+  }
+
+  if (value.op === "assembly.mate.delete") {
+    return typeof value.assemblyId === "string" && typeof value.mateId === "string";
   }
 
   if (value.op === "sketch.createOnFace") {

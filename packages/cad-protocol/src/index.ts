@@ -565,7 +565,11 @@ export type CadOp =
   | DatumAxisCreateOp
   | AssemblyCreateOp
   | AssemblyInstanceInsertOp
+  | AssemblyInstanceReplaceOp
+  | AssemblyInstanceDeleteOp
   | AssemblyMateCreateOp
+  | AssemblyMateEditOp
+  | AssemblyMateDeleteOp
   | SketchRenameOp
   | SketchDeleteOp
   | SketchAddPointOp
@@ -1789,6 +1793,77 @@ export interface AssemblyDistanceMateCreateOp {
   readonly secondary: AssemblyMatePlaneRef;
   /** Signed separation along the stationary plane normal after pose solve. */
   readonly distance: number;
+}
+
+/** Replace an instance's part definition (keep id, name, transform). */
+export interface AssemblyInstanceReplaceOp {
+  readonly op: "assembly.instance.replace";
+  readonly assemblyId: AssemblyId;
+  readonly instanceId: InstanceId;
+  readonly definition: AssemblyDefinitionRef;
+}
+
+/** Delete an instance; mates that reference it are cascade-deleted. */
+export interface AssemblyInstanceDeleteOp {
+  readonly op: "assembly.instance.delete";
+  readonly assemblyId: AssemblyId;
+  readonly instanceId: InstanceId;
+}
+
+/**
+ * Edit an existing mate (refs, distance, kind fields). Same payload shapes as
+ * create, identified by mateId. Re-solves pose for coincident/concentric/distance.
+ */
+export type AssemblyMateEditOp =
+  | AssemblyFixedMateEditOp
+  | AssemblyCoincidentMateEditOp
+  | AssemblyConcentricMateEditOp
+  | AssemblyDistanceMateEditOp;
+
+export interface AssemblyFixedMateEditOp {
+  readonly op: "assembly.mate.edit";
+  readonly assemblyId: AssemblyId;
+  readonly mateId: MateId;
+  readonly name?: string;
+  readonly kind: "fixed";
+  readonly instanceId: InstanceId;
+}
+
+export interface AssemblyCoincidentMateEditOp {
+  readonly op: "assembly.mate.edit";
+  readonly assemblyId: AssemblyId;
+  readonly mateId: MateId;
+  readonly name?: string;
+  readonly kind: "coincident";
+  readonly primary: AssemblyMatePlaneRef;
+  readonly secondary: AssemblyMatePlaneRef;
+}
+
+export interface AssemblyConcentricMateEditOp {
+  readonly op: "assembly.mate.edit";
+  readonly assemblyId: AssemblyId;
+  readonly mateId: MateId;
+  readonly name?: string;
+  readonly kind: "concentric";
+  readonly primary: AssemblyMateAxisRef;
+  readonly secondary: AssemblyMateAxisRef;
+}
+
+export interface AssemblyDistanceMateEditOp {
+  readonly op: "assembly.mate.edit";
+  readonly assemblyId: AssemblyId;
+  readonly mateId: MateId;
+  readonly name?: string;
+  readonly kind: "distance";
+  readonly primary: AssemblyMatePlaneRef;
+  readonly secondary: AssemblyMatePlaneRef;
+  readonly distance: number;
+}
+
+export interface AssemblyMateDeleteOp {
+  readonly op: "assembly.mate.delete";
+  readonly assemblyId: AssemblyId;
+  readonly mateId: MateId;
 }
 
 export type PatternSeedFields =
