@@ -21,6 +21,7 @@ import type {
   SketchCreateForm,
   AssemblyFixedMateForm,
   AssemblyCoincidentMateForm,
+  AssemblyConcentricMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -110,6 +111,36 @@ export function validateSolidDraft(
     }
     if (![form.primary.offset, form.secondary.offset].every(Number.isFinite)) {
       return blocked("Plane offsets must be finite numbers.");
+    }
+    return ready();
+  }
+  if (kind === "concentricMate") {
+    const form = draft as AssemblyConcentricMateForm;
+    if (!form.assemblyId.trim()) {
+      return blocked("Choose an assembly.");
+    }
+    if (!form.primary.instanceId.trim() || !form.secondary.instanceId.trim()) {
+      return blocked("Choose primary and secondary instances.");
+    }
+    if (form.primary.instanceId === form.secondary.instanceId) {
+      return blocked("Concentric mate needs two different instances.");
+    }
+    if (![form.primary.axis, form.secondary.axis].every((axis) =>
+      axis === "X" || axis === "Y" || axis === "Z"
+    )) {
+      return blocked("Choose X, Y, or Z axes.");
+    }
+    if (
+      ![
+        form.primary.originX,
+        form.primary.originY,
+        form.primary.originZ,
+        form.secondary.originX,
+        form.secondary.originY,
+        form.secondary.originZ
+      ].every(Number.isFinite)
+    ) {
+      return blocked("Axis origins must be finite numbers.");
     }
     return ready();
   }

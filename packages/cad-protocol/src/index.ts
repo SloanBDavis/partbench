@@ -1707,7 +1707,7 @@ export interface AssemblyInstanceInsertOp {
   readonly transform?: Partial<Transform>;
 }
 
-/** V26 mate kinds. Slices B–C: fixed + coincident planes. */
+/** V26 mate kinds. Slices B–D: fixed + coincident planes + concentric axes. */
 export type AssemblyMateKind =
   | "coincident"
   | "concentric"
@@ -1726,15 +1726,27 @@ export interface AssemblyMatePlaneRef {
   readonly flip?: boolean;
 }
 
+/** Instance-local standard axis for concentric (definition space). */
+export type AssemblyMateAxisName = "X" | "Y" | "Z";
+
+export interface AssemblyMateAxisRef {
+  readonly instanceId: InstanceId;
+  readonly axis: AssemblyMateAxisName;
+  /** Point the axis passes through in definition space (default [0,0,0]). */
+  readonly origin?: Vec3;
+}
+
 /**
  * Create a mate.
  * Slice B: kind fixed grounds one instance (root).
  * Slice C: kind coincident constrains two instance planes.
- * Concentric / distance land in later V26 slices.
+ * Slice D: kind concentric constrains two instance axes.
+ * Distance lands in a later V26 slice.
  */
 export type AssemblyMateCreateOp =
   | AssemblyFixedMateCreateOp
   | AssemblyCoincidentMateCreateOp
+  | AssemblyConcentricMateCreateOp
   | AssemblyUnimplementedMateCreateOp;
 
 /** Stub shape for mate kinds that land in later V26 slices. */
@@ -1743,7 +1755,7 @@ export interface AssemblyUnimplementedMateCreateOp {
   readonly id?: MateId;
   readonly assemblyId: AssemblyId;
   readonly name?: string;
-  readonly kind: "concentric" | "distance";
+  readonly kind: "distance";
 }
 
 export interface AssemblyFixedMateCreateOp {
@@ -1764,6 +1776,16 @@ export interface AssemblyCoincidentMateCreateOp {
   readonly kind: "coincident";
   readonly primary: AssemblyMatePlaneRef;
   readonly secondary: AssemblyMatePlaneRef;
+}
+
+export interface AssemblyConcentricMateCreateOp {
+  readonly op: "assembly.mate.create";
+  readonly id?: MateId;
+  readonly assemblyId: AssemblyId;
+  readonly name?: string;
+  readonly kind: "concentric";
+  readonly primary: AssemblyMateAxisRef;
+  readonly secondary: AssemblyMateAxisRef;
 }
 
 export type PatternSeedFields =
@@ -2402,6 +2424,14 @@ export type CadAssemblyMateRef =
       readonly kind: "coincident";
       readonly primary: AssemblyMatePlaneRef;
       readonly secondary: AssemblyMatePlaneRef;
+    }
+  | {
+      readonly id: MateId;
+      readonly assemblyId: AssemblyId;
+      readonly name: string;
+      readonly kind: "concentric";
+      readonly primary: AssemblyMateAxisRef;
+      readonly secondary: AssemblyMateAxisRef;
     };
 
 export interface CadSketchEntityRef {
@@ -4258,9 +4288,19 @@ export interface AssemblyCoincidentMateSnapshot {
   readonly secondary: AssemblyMatePlaneRef;
 }
 
+/** Concentric axis–axis mate snapshot (slice D). */
+export interface AssemblyConcentricMateSnapshot {
+  readonly id: MateId;
+  readonly name: string;
+  readonly kind: "concentric";
+  readonly primary: AssemblyMateAxisRef;
+  readonly secondary: AssemblyMateAxisRef;
+}
+
 export type AssemblyMateSnapshot =
   | AssemblyFixedMateSnapshot
-  | AssemblyCoincidentMateSnapshot;
+  | AssemblyCoincidentMateSnapshot
+  | AssemblyConcentricMateSnapshot;
 
 export interface AssemblySnapshot {
   readonly id: AssemblyId;

@@ -390,7 +390,9 @@ export function createDocumentTreeProjection(
         detail:
           mate.kind === "fixed"
             ? `Fixed / ground · ${mate.instanceId}`
-            : `Coincident · ${mate.primary.instanceId}/${mate.primary.plane} ~ ${mate.secondary.instanceId}/${mate.secondary.plane}`,
+            : mate.kind === "coincident"
+              ? `Coincident · ${mate.primary.instanceId}/${mate.primary.plane} ~ ${mate.secondary.instanceId}/${mate.secondary.plane}`
+              : `Concentric · ${mate.primary.instanceId}/${mate.primary.axis} ~ ${mate.secondary.instanceId}/${mate.secondary.axis}`,
         icon: "constraint" as const,
         selection: mateSelection,
         capabilities: capabilitiesFor(mateSelection),

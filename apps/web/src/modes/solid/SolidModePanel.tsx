@@ -29,6 +29,7 @@ import type {
   SketchCreateForm,
   AssemblyFixedMateForm,
   AssemblyCoincidentMateForm,
+  AssemblyConcentricMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -607,6 +608,15 @@ function SolidDraftFields({
       return (
         <CoincidentMateFields
           draft={draft as AssemblyCoincidentMateForm}
+          assemblyChoices={request.choices?.assemblies ?? []}
+          instanceChoices={request.choices?.assemblyInstances ?? []}
+          onChange={onChange}
+        />
+      );
+    case "concentricMate":
+      return (
+        <ConcentricMateFields
+          draft={draft as AssemblyConcentricMateForm}
           assemblyChoices={request.choices?.assemblies ?? []}
           instanceChoices={request.choices?.assemblyInstances ?? []}
           onChange={onChange}
@@ -1278,6 +1288,202 @@ function CoincidentMateFields({
           onChange({
             ...draft,
             secondary: { ...draft.secondary, flip: value === "yes" }
+          })
+        }
+      />
+    </>
+  );
+}
+
+function ConcentricMateFields({
+  draft,
+  assemblyChoices,
+  instanceChoices,
+  onChange
+}: {
+  readonly draft: AssemblyConcentricMateForm;
+  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly instanceChoices: readonly {
+    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly label: string;
+  }[];
+  readonly onChange: (draft: AssemblyConcentricMateForm) => void;
+}) {
+  const instancesForAssembly = instanceChoices.filter(
+    (choice) => choice.value.assemblyId === draft.assemblyId
+  );
+  const axisOptions = [
+    { value: "X", label: "X" },
+    { value: "Y", label: "Y" },
+    { value: "Z", label: "Z" }
+  ];
+  return (
+    <>
+      <TextField
+        label="Name"
+        name="concentric-mate-name"
+        value={draft.name}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Assembly"
+        name="concentric-mate-assembly"
+        value={draft.assemblyId}
+        options={[
+          { value: "", label: "Select assembly" },
+          ...assemblyChoices.map((choice) => ({
+            value: choice.value,
+            label: choice.label
+          }))
+        ]}
+        onChange={(assemblyId) =>
+          onChange({
+            ...draft,
+            assemblyId,
+            primary: {
+              ...draft.primary,
+              instanceId:
+                draft.assemblyId === assemblyId ? draft.primary.instanceId : ""
+            },
+            secondary: {
+              ...draft.secondary,
+              instanceId:
+                draft.assemblyId === assemblyId
+                  ? draft.secondary.instanceId
+                  : ""
+            }
+          })
+        }
+      />
+      <SelectField
+        label="Primary instance"
+        name="concentric-mate-primary-instance"
+        value={draft.primary.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, instanceId }
+          })
+        }
+      />
+      <SelectField
+        label="Primary axis"
+        name="concentric-mate-primary-axis"
+        value={draft.primary.axis}
+        options={axisOptions}
+        onChange={(axis) =>
+          onChange({
+            ...draft,
+            primary: {
+              ...draft.primary,
+              axis: axis as "X" | "Y" | "Z"
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Primary origin X"
+        name="concentric-mate-primary-origin-x"
+        value={draft.primary.originX}
+        onChange={(originX) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, originX }
+          })
+        }
+      />
+      <NumberField
+        label="Primary origin Y"
+        name="concentric-mate-primary-origin-y"
+        value={draft.primary.originY}
+        onChange={(originY) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, originY }
+          })
+        }
+      />
+      <NumberField
+        label="Primary origin Z"
+        name="concentric-mate-primary-origin-z"
+        value={draft.primary.originZ}
+        onChange={(originZ) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, originZ }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary instance"
+        name="concentric-mate-secondary-instance"
+        value={draft.secondary.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, instanceId }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary axis"
+        name="concentric-mate-secondary-axis"
+        value={draft.secondary.axis}
+        options={axisOptions}
+        onChange={(axis) =>
+          onChange({
+            ...draft,
+            secondary: {
+              ...draft.secondary,
+              axis: axis as "X" | "Y" | "Z"
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Secondary origin X"
+        name="concentric-mate-secondary-origin-x"
+        value={draft.secondary.originX}
+        onChange={(originX) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, originX }
+          })
+        }
+      />
+      <NumberField
+        label="Secondary origin Y"
+        name="concentric-mate-secondary-origin-y"
+        value={draft.secondary.originY}
+        onChange={(originY) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, originY }
+          })
+        }
+      />
+      <NumberField
+        label="Secondary origin Z"
+        name="concentric-mate-secondary-origin-z"
+        value={draft.secondary.originZ}
+        onChange={(originZ) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, originZ }
           })
         }
       />

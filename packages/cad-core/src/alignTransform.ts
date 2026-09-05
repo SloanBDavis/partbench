@@ -38,6 +38,37 @@ export function computeAlignPose(
     : alignPlaneToAxis(source, target.axis);
 }
 
+/**
+ * Axis–axis concentric: shortest rotation that matches source direction to
+ * target direction (preferring same sense), then radial translation so the
+ * axes coincide. Remaining slide along the common axis stays free.
+ */
+export function computeConcentricAxisPose(
+  source: AlignAxisFrame,
+  target: AlignAxisFrame
+): { readonly transform: FeatureAlignTransform } {
+  const sourceDir = unitOrThrow(source.direction, "source axis direction");
+  const targetDir = unitOrThrow(target.direction, "target axis direction");
+  // Prefer same-sense alignment; if anti-parallel is closer, flip target sense.
+  const same = shortestRotation(sourceDir, targetDir);
+  const flipped = shortestRotation(sourceDir, scale(targetDir, -1));
+  const useFlipped =
+    Math.abs(flipped.degrees) + ALIGN_EPSILON < Math.abs(same.degrees);
+  const rotation = useFlipped ? flipped : same;
+  const commonDir = useFlipped ? scale(targetDir, -1) : targetDir;
+  // Radial correction onto the common axis line (axial slide stays free).
+  const signedAlong = dot(sub(source.origin, target.origin), commonDir);
+  const onAxis = add(target.origin, scale(commonDir, signedAlong));
+  const translation = sub(onAxis, source.origin);
+  return {
+    transform: {
+      translation: canonicalVec3(translation),
+      rotationAxis: canonicalVec3(rotation.axis),
+      rotationDegrees: rotation.degrees
+    }
+  };
+}
+
 function alignPlaneToPlane(
   source: FeatureAlignPlane,
   target: FeatureAlignPlane

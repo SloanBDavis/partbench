@@ -523,7 +523,7 @@ import {
   evaluateCadBodyDependencies,
   type CadDownstreamBodyPolicyProjection
 } from "./downstreamBodyPolicy";
-import { computeAlignPose } from "./alignTransform";
+import { computeAlignPose, computeConcentricAxisPose } from "./alignTransform";
 import { computeDraftGeometry } from "./draftGeometry";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import {
@@ -14163,13 +14163,24 @@ function applyAssemblyMateCreate(
         opIndex
       );
       return;
+    case "concentric":
+      applyAssemblyConcentricMateCreate(
+        state,
+        assembly,
+        existingMates,
+        mateId,
+        op,
+        diff,
+        opIndex
+      );
+      return;
     default:
       throwValidationError({
         code: "INVALID_OPERATION",
-        message: `assembly.mate.create kind ${op.kind} is not available yet; use fixed or coincident.`,
+        message: `assembly.mate.create kind ${op.kind} is not available yet; use fixed, coincident, or concentric.`,
         opIndex,
         path: operationPath(opIndex, "kind"),
-        expected: "fixed | coincident",
+        expected: "fixed | coincident | concentric",
         received: op.kind
       });
   }
@@ -14417,6 +14428,162 @@ function applyAssemblyCoincidentMateCreate(
   pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
 }
 
+function applyAssemblyConcentricMateCreate(
+  state: MutableDocumentState,
+  assembly: AssemblySnapshot,
+  existingMates: readonly AssemblyMateSnapshot[],
+  mateId: MateId,
+  op: Extract<
+    CadOp,
+    { readonly op: "assembly.mate.create"; readonly kind: "concentric" }
+  >,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const primaryRef = op.primary;
+  const secondaryRef = op.secondary;
+  if (!isAssemblyMateAxisRefShape(primaryRef)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.mate.create concentric requires primary axis ref.",
+      opIndex,
+      path: operationPath(opIndex, "primary"),
+      expected: "instanceId + axis (X|Y|Z) with optional origin",
+      received: describeReceived(primaryRef)
+    });
+  }
+  if (!isAssemblyMateAxisRefShape(secondaryRef)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "assembly.mate.create concentric requires secondary axis ref.",
+      opIndex,
+      path: operationPath(opIndex, "secondary"),
+      expected: "instanceId + axis (X|Y|Z) with optional origin",
+      received: describeReceived(secondaryRef)
+    });
+  }
+
+  const primaryInstance = assembly.instances.find(
+    (candidate) => candidate.id === primaryRef.instanceId
+  );
+  if (!primaryInstance) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${primaryRef.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "primary.instanceId"),
+      expected: "existing instance id in assembly",
+      received: primaryRef.instanceId
+    });
+  }
+  const secondaryInstance = assembly.instances.find(
+    (candidate) => candidate.id === secondaryRef.instanceId
+  );
+  if (!secondaryInstance) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly instance does not exist: ${secondaryRef.instanceId}`,
+      opIndex,
+      path: operationPath(opIndex, "secondary.instanceId"),
+      expected: "existing instance id in assembly",
+      received: secondaryRef.instanceId
+    });
+  }
+  if (primaryRef.instanceId === secondaryRef.instanceId) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "Concentric mate requires two different instances.",
+      opIndex,
+      path: operationPath(opIndex, "secondary.instanceId"),
+      expected: "instance id different from primary",
+      received: secondaryRef.instanceId
+    });
+  }
+
+  const fixedInstanceIds = new Set(
+    existingMates
+      .filter((mate) => mate.kind === "fixed")
+      .map((mate) => mate.instanceId)
+  );
+  const primaryFixed = fixedInstanceIds.has(primaryRef.instanceId);
+  const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
+  if (primaryFixed && secondaryFixed) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        "Concentric mate conflicts: both instances are fixed/grounded and cannot move.",
+      opIndex,
+      path: operationPath(opIndex, "kind"),
+      expected: "at most one fixed instance in the mate pair",
+      received: `${primaryRef.instanceId}, ${secondaryRef.instanceId}`
+    });
+  }
+  if (!primaryFixed && !secondaryFixed) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        "Concentric mate is underconstrained: ground one instance with a fixed mate before solving pose.",
+      opIndex,
+      path: operationPath(opIndex, "kind"),
+      expected: "one fixed/grounded instance in the mate pair",
+      received: "neither instance fixed"
+    });
+  }
+
+  const movingIsSecondary = !secondaryFixed;
+  const stationaryInstance = movingIsSecondary
+    ? primaryInstance
+    : secondaryInstance;
+  const movingInstance = movingIsSecondary
+    ? secondaryInstance
+    : primaryInstance;
+  const stationaryAxisRef = movingIsSecondary ? primaryRef : secondaryRef;
+  const movingAxisRef = movingIsSecondary ? secondaryRef : primaryRef;
+
+  const stationaryAxis = resolveAssemblyMateAxisWorld(
+    stationaryInstance,
+    stationaryAxisRef
+  );
+  const movingAxis = resolveAssemblyMateAxisWorld(
+    movingInstance,
+    movingAxisRef
+  );
+  const aligned = computeConcentricAxisPose(movingAxis, stationaryAxis);
+  const nextMovingTransform = applyAlignPoseToInstanceTransform(
+    movingInstance.transform,
+    aligned.transform
+  );
+
+  const mate: AssemblyMateSnapshot = {
+    id: mateId,
+    name: normalizeAssemblyName(op.name, opIndex, mateId),
+    kind: "concentric",
+    primary: cloneAssemblyMateAxisRef(primaryRef),
+    secondary: cloneAssemblyMateAxisRef(secondaryRef)
+  };
+
+  const nextInstances = assembly.instances.map((instance) =>
+    instance.id === movingInstance.id
+      ? { ...instance, transform: nextMovingTransform }
+      : instance
+  );
+  const updated: AssemblySnapshot = {
+    ...assembly,
+    instances: nextInstances,
+    mates: [...existingMates, mate]
+  };
+  state.assemblies.set(assembly.id, updated);
+  pushAssemblyModified(diff, assemblyRef(updated));
+  const updatedMoving = nextInstances.find(
+    (instance) => instance.id === movingInstance.id
+  )!;
+  pushAssemblyInstanceModified(
+    diff,
+    assemblyInstanceRef(assembly.id, updatedMoving)
+  );
+  pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
+}
+
 function isAssemblyMatePlaneRefShape(
   value: unknown
 ): value is {
@@ -14491,6 +14658,74 @@ function resolveAssemblyMatePlaneWorld(
   const point = transformPoint(local.point, instance.transform);
   const normal = rotateEuler(local.normal, instance.transform.rotation);
   return { point, normal };
+}
+
+
+function isAssemblyMateAxisRefShape(
+  value: unknown
+): value is {
+  readonly instanceId: string;
+  readonly axis: "X" | "Y" | "Z";
+  readonly origin?: Vec3;
+} {
+  if (!isRecord(value) || typeof value.instanceId !== "string") {
+    return false;
+  }
+  if (value.axis !== "X" && value.axis !== "Y" && value.axis !== "Z") {
+    return false;
+  }
+  if (value.origin !== undefined && !isVec3(value.origin)) {
+    return false;
+  }
+  return true;
+}
+
+function cloneAssemblyMateAxisRef(ref: {
+  readonly instanceId: string;
+  readonly axis: "X" | "Y" | "Z";
+  readonly origin?: Vec3;
+}): {
+  readonly instanceId: string;
+  readonly axis: "X" | "Y" | "Z";
+  readonly origin?: Vec3;
+} {
+  return {
+    instanceId: ref.instanceId,
+    axis: ref.axis,
+    ...(ref.origin !== undefined
+      ? { origin: [ref.origin[0], ref.origin[1], ref.origin[2]] as Vec3 }
+      : {})
+  };
+}
+
+function resolveAssemblyMateAxisLocal(ref: {
+  readonly axis: "X" | "Y" | "Z";
+  readonly origin?: Vec3;
+}): { readonly origin: Vec3; readonly direction: Vec3 } {
+  const origin: Vec3 = ref.origin
+    ? [ref.origin[0], ref.origin[1], ref.origin[2]]
+    : [0, 0, 0];
+  switch (ref.axis) {
+    case "X":
+      return { origin, direction: [1, 0, 0] };
+    case "Y":
+      return { origin, direction: [0, 1, 0] };
+    case "Z":
+      return { origin, direction: [0, 0, 1] };
+  }
+}
+
+function resolveAssemblyMateAxisWorld(
+  instance: AssemblyInstanceSnapshot,
+  ref: {
+    readonly axis: "X" | "Y" | "Z";
+    readonly origin?: Vec3;
+  }
+): { readonly origin: Vec3; readonly direction: Vec3 } {
+  const local = resolveAssemblyMateAxisLocal(ref);
+  const origin = transformPoint(local.origin, instance.transform);
+  const direction = rotateEuler(local.direction, instance.transform.rotation);
+  return { origin, direction };
 }
 
 function applyAlignPoseToInstanceTransform(
@@ -14621,13 +14856,23 @@ function assemblyMateRef(
       instanceId: mate.instanceId
     };
   }
+  if (mate.kind === "coincident") {
+    return {
+      id: mate.id,
+      assemblyId,
+      name: mate.name,
+      kind: "coincident",
+      primary: cloneAssemblyMatePlaneRef(mate.primary),
+      secondary: cloneAssemblyMatePlaneRef(mate.secondary)
+    };
+  }
   return {
     id: mate.id,
     assemblyId,
     name: mate.name,
-    kind: "coincident",
-    primary: cloneAssemblyMatePlaneRef(mate.primary),
-    secondary: cloneAssemblyMatePlaneRef(mate.secondary)
+    kind: "concentric",
+    primary: cloneAssemblyMateAxisRef(mate.primary),
+    secondary: cloneAssemblyMateAxisRef(mate.secondary)
   };
 }
 
@@ -26500,12 +26745,21 @@ function cloneAssemblyMate(mate: AssemblyMateSnapshot): AssemblyMateSnapshot {
       instanceId: mate.instanceId
     };
   }
+  if (mate.kind === "coincident") {
+    return {
+      id: mate.id,
+      name: mate.name,
+      kind: "coincident",
+      primary: cloneAssemblyMatePlaneRef(mate.primary),
+      secondary: cloneAssemblyMatePlaneRef(mate.secondary)
+    };
+  }
   return {
     id: mate.id,
     name: mate.name,
-    kind: "coincident",
-    primary: cloneAssemblyMatePlaneRef(mate.primary),
-    secondary: cloneAssemblyMatePlaneRef(mate.secondary)
+    kind: "concentric",
+    primary: cloneAssemblyMateAxisRef(mate.primary),
+    secondary: cloneAssemblyMateAxisRef(mate.secondary)
   };
 }
 
@@ -34513,12 +34767,16 @@ function validateAssemblySnapshots(
               "Assembly mate name must be a string."
             );
           }
-          if (mate.kind !== "fixed" && mate.kind !== "coincident") {
+          if (
+            mate.kind !== "fixed" &&
+            mate.kind !== "coincident" &&
+            mate.kind !== "concentric"
+          ) {
             addProjectIssue(
               issues,
               "INVALID_DOCUMENT",
               `${matePath}.kind`,
-              'Assembly mate kind must be "fixed" or "coincident" in the current schema.'
+              'Assembly mate kind must be "fixed", "coincident", or "concentric" in the current schema.'
             );
           }
           if (mate.kind === "fixed") {
@@ -34601,6 +34859,58 @@ function validateAssemblySnapshots(
                   "INVALID_DOCUMENT",
                   `${sidePath}.flip`,
                   `Assembly coincident mate ${side}.flip must be a boolean when present.`
+                );
+              }
+            }
+          } else if (mate.kind === "concentric") {
+            for (const side of ["primary", "secondary"] as const) {
+              const axisRef = mate[side];
+              const sidePath = `${matePath}.${side}`;
+              if (!isRecord(axisRef)) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  sidePath,
+                  `Assembly concentric mate ${side} must be an object.`
+                );
+                continue;
+              }
+              if (
+                typeof axisRef.instanceId !== "string" ||
+                axisRef.instanceId.length === 0
+              ) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.instanceId`,
+                  `Assembly concentric mate ${side}.instanceId must be a non-empty string.`
+                );
+              } else if (!instanceIds.has(axisRef.instanceId)) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.instanceId`,
+                  `Assembly concentric mate ${side}.instanceId must reference an instance in the same assembly: ${axisRef.instanceId}`
+                );
+              }
+              if (
+                axisRef.axis !== "X" &&
+                axisRef.axis !== "Y" &&
+                axisRef.axis !== "Z"
+              ) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.axis`,
+                  `Assembly concentric mate ${side}.axis must be X, Y, or Z.`
+                );
+              }
+              if (axisRef.origin !== undefined && !isVec3(axisRef.origin)) {
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${sidePath}.origin`,
+                  `Assembly concentric mate ${side}.origin must be a Vec3 when present.`
                 );
               }
             }
@@ -42167,6 +42477,12 @@ function isCadOp(value: unknown): value is CadOp {
       return (
         isAssemblyMatePlaneRefShape(value.primary) &&
         isAssemblyMatePlaneRefShape(value.secondary)
+      );
+    }
+    if (value.kind === "concentric") {
+      return (
+        isAssemblyMateAxisRefShape(value.primary) &&
+        isAssemblyMateAxisRefShape(value.secondary)
       );
     }
     return false;

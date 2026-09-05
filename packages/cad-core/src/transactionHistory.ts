@@ -456,7 +456,9 @@ function createOperationSummaries(
             ? `on ${op.instanceId}`
             : op.kind === "coincident"
               ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
-              : `kind ${String(op.kind)}`;
+              : op.kind === "concentric"
+                ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
+                : `kind ${String(op.kind)}`;
         return {
           op: op.op,
           label: `Create ${op.kind} mate ${mateId ?? "with generated ID"} ${target} in ${op.assemblyId}`

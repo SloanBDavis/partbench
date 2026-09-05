@@ -465,4 +465,51 @@ describe("document tree assembly projection", () => {
       "Coincident · inst_base/XY ~ inst_top/XY"
     );
   });
+
+  it("labels concentric mates with axis refs", () => {
+    const projection = createDocumentTreeProjection({
+      ...createProjectionInput(),
+      assemblies: [
+        {
+          id: "asm_pin",
+          name: "Pin assembly",
+          instances: [
+            {
+              id: "inst_bore",
+              name: "Bore",
+              definition: { kind: "body", bodyId: "body_bore" },
+              transform: {
+                translation: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            },
+            {
+              id: "inst_pin",
+              name: "Pin",
+              definition: { kind: "body", bodyId: "body_pin" },
+              transform: {
+                translation: [0, 0, 5],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            }
+          ],
+          mates: [
+            {
+              id: "mate_concentric",
+              name: "Pin in bore",
+              kind: "concentric",
+              primary: { instanceId: "inst_bore", axis: "Z" },
+              secondary: { instanceId: "inst_pin", axis: "Z" }
+            }
+          ]
+        }
+      ]
+    });
+    const mateRow = projection.rowsById.get("assembly-mate:asm_pin:mate_concentric");
+    expect(mateRow?.detail).toBe(
+      "Concentric · inst_bore/Z ~ inst_pin/Z"
+    );
+  });
 });

@@ -30,6 +30,7 @@ import type {
   SketchCreateForm,
   AssemblyFixedMateForm,
   AssemblyCoincidentMateForm,
+  AssemblyConcentricMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -67,7 +68,8 @@ export type SolidEditorKind =
   | "align"
   | "draft"
   | "fixedMate"
-  | "coincidentMate";
+  | "coincidentMate"
+  | "concentricMate";
 
 export interface SolidDraftByKind {
   readonly box: PrimitiveCommandForm;
@@ -99,6 +101,7 @@ export interface SolidDraftByKind {
   readonly draft: FeatureDraftForm;
   readonly fixedMate: AssemblyFixedMateForm;
   readonly coincidentMate: AssemblyCoincidentMateForm;
+  readonly concentricMate: AssemblyConcentricMateForm;
 }
 
 export type SolidDraft = SolidDraftByKind[SolidEditorKind];

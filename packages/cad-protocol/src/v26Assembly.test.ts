@@ -172,4 +172,56 @@ describe("assembly definition/instance protocol", () => {
     expect(snapshot.mates?.[0]?.kind).toBe("coincident");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
   });
+
+  it("names assembly.mate.create kind concentric for axis-axis refs", () => {
+    const concentric: AssemblyMateCreateOp = {
+      op: "assembly.mate.create",
+      id: "mate_concentric",
+      assemblyId: "asm_pin",
+      name: "Pin in bore",
+      kind: "concentric",
+      primary: { instanceId: "inst_bore", axis: "Z" },
+      secondary: { instanceId: "inst_pin", axis: "Z" }
+    };
+    const snapshot: AssemblySnapshot = {
+      id: "asm_pin",
+      name: "Pin assembly",
+      instances: [
+        {
+          id: "inst_bore",
+          name: "Bore",
+          definition: { kind: "body", bodyId: "body_bore" },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        {
+          id: "inst_pin",
+          name: "Pin",
+          definition: { kind: "body", bodyId: "body_pin" },
+          transform: {
+            translation: [0, 0, 5],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      mates: [
+        {
+          id: "mate_concentric",
+          name: "Pin in bore",
+          kind: "concentric",
+          primary: { instanceId: "inst_bore", axis: "Z" },
+          secondary: { instanceId: "inst_pin", axis: "Z" }
+        }
+      ]
+    };
+    const ops: readonly CadOp[] = [concentric];
+    expect(ops.map((op) => op.op)).toEqual(["assembly.mate.create"]);
+    expect(concentric.kind).toBe("concentric");
+    expect(snapshot.mates?.[0]?.kind).toBe("concentric");
+    expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
+  });
 });

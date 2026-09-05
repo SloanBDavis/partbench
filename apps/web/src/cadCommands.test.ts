@@ -13,6 +13,7 @@ import {
   buildDatumAndSketchOnPlaneOps,
   buildAssemblyFixedMateOp,
   buildAssemblyCoincidentMateOp,
+  buildAssemblyConcentricMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateTorusOp,
@@ -2316,6 +2317,40 @@ describe("assembly coincident mate Apply parity", () => {
       kind: "coincident",
       primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
       secondary: { instanceId: "inst_top", plane: "XY" }
+    });
+  });
+});
+
+describe("assembly concentric mate Apply parity", () => {
+  it("builds assembly.mate.create kind concentric from the form", () => {
+    expect(
+      buildAssemblyConcentricMateOp({
+        id: "mate_concentric",
+        name: "Pin in bore",
+        assemblyId: "asm_pin",
+        primary: {
+          instanceId: "inst_bore",
+          axis: "Z",
+          originX: 0,
+          originY: 0,
+          originZ: 0
+        },
+        secondary: {
+          instanceId: "inst_pin",
+          axis: "Z",
+          originX: 0,
+          originY: 0,
+          originZ: 0
+        }
+      })
+    ).toEqual({
+      op: "assembly.mate.create",
+      id: "mate_concentric",
+      assemblyId: "asm_pin",
+      name: "Pin in bore",
+      kind: "concentric",
+      primary: { instanceId: "inst_bore", axis: "Z" },
+      secondary: { instanceId: "inst_pin", axis: "Z" }
     });
   });
 });

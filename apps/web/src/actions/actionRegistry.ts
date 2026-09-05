@@ -47,6 +47,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidDraft: "Select a completed exact solid and a planar face set.",
   solidFixedMate: "Create an assembly with at least one instance to ground.",
   solidCoincidentMate: "Create an assembly with at least two instances to mate.",
+  solidConcentricMate: "Create an assembly with at least two instances to mate.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -517,6 +518,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCoincidentMate)
+  ),
+  action(
+    "solid.concentric-mate",
+    "Concentric mate",
+    "Assemble",
+    ["solid"],
+    ["concentric", "axis mate", "pin", "bore", "assembly mate"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidConcentricMate)
   ),
   action(
     "solid.edit",

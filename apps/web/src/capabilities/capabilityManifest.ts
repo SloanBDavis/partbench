@@ -414,6 +414,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildAssemblyCoincidentMateOp",
     "cadCommands.test.ts"
   ),
+  "solid.concentric-mate": featureAudit(
+    "Concentric mate",
+    "createConcentricMate",
+    "assembly/instance/axis selection",
+    "buildAssemblyConcentricMateOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

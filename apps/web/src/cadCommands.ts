@@ -204,6 +204,22 @@ export interface AssemblyCoincidentMateForm {
   readonly secondary: AssemblyCoincidentMatePlaneForm;
 }
 
+export interface AssemblyConcentricMateAxisForm {
+  readonly instanceId: string;
+  readonly axis: "X" | "Y" | "Z";
+  readonly originX: number;
+  readonly originY: number;
+  readonly originZ: number;
+}
+
+export interface AssemblyConcentricMateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly assemblyId: string;
+  readonly primary: AssemblyConcentricMateAxisForm;
+  readonly secondary: AssemblyConcentricMateAxisForm;
+}
+
 export interface SketchCreateOnFaceForm {
   readonly id: string;
   readonly name: string;
@@ -738,6 +754,43 @@ export function buildAssemblyCoincidentMateOp(
       plane: form.secondary.plane,
       ...(form.secondary.offset !== 0 ? { offset: form.secondary.offset } : {}),
       ...(form.secondary.flip ? { flip: true } : {})
+    }
+  };
+}
+
+function concentricAxisOrigin(
+  form: AssemblyConcentricMateAxisForm
+): readonly [number, number, number] | undefined {
+  if (
+    form.originX === 0 &&
+    form.originY === 0 &&
+    form.originZ === 0
+  ) {
+    return undefined;
+  }
+  return [form.originX, form.originY, form.originZ];
+}
+
+export function buildAssemblyConcentricMateOp(
+  form: AssemblyConcentricMateForm
+): AssemblyMateCreateOp {
+  const primaryOrigin = concentricAxisOrigin(form.primary);
+  const secondaryOrigin = concentricAxisOrigin(form.secondary);
+  return {
+    op: "assembly.mate.create",
+    id: normalizeOptionalId(form.id),
+    assemblyId: form.assemblyId.trim(),
+    name: form.name.trim() || undefined,
+    kind: "concentric",
+    primary: {
+      instanceId: form.primary.instanceId.trim(),
+      axis: form.primary.axis,
+      ...(primaryOrigin !== undefined ? { origin: primaryOrigin } : {})
+    },
+    secondary: {
+      instanceId: form.secondary.instanceId.trim(),
+      axis: form.secondary.axis,
+      ...(secondaryOrigin !== undefined ? { origin: secondaryOrigin } : {})
     }
   };
 }

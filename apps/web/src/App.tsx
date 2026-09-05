@@ -116,6 +116,7 @@ import {
   buildDatumAndSketchOnPlaneOps,
   buildAssemblyFixedMateOp,
   buildAssemblyCoincidentMateOp,
+  buildAssemblyConcentricMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateSketchOnFaceOp,
@@ -158,6 +159,7 @@ import {
   type SketchCreateForm,
   type AssemblyFixedMateForm,
   type AssemblyCoincidentMateForm,
+  type AssemblyConcentricMateForm,
   DatumAxisCreateForm,
   type DatumPlaneCreateForm,
   type SketchEntityForm,
@@ -4802,6 +4804,79 @@ export function App() {
             })
       } as SolidEditorRequest;
     }
+    if (actionId === "solid.concentric-mate") {
+      const assemblies = projectStructure.assemblies;
+      const assemblyChoices = assemblies.map((assembly) => ({
+        value: assembly.id,
+        key: assembly.id,
+        label: assembly.name,
+        kind: "assembly"
+      }));
+      const instanceChoices = assemblies.flatMap((assembly) =>
+        assembly.instances.map((instance) => ({
+          value: { assemblyId: assembly.id, instanceId: instance.id },
+          key: `${assembly.id}:${instance.id}`,
+          label: `${assembly.name} · ${instance.name}`,
+          kind: "assembly-instance"
+        }))
+      );
+      const preferredAssemblyId =
+        selectedAssemblySelection?.kind === "assembly"
+          ? selectedAssemblySelection.id
+          : selectedAssemblySelection?.kind === "assembly-instance" ||
+              selectedAssemblySelection?.kind === "assembly-mate"
+            ? selectedAssemblySelection.assemblyId
+            : (assemblies[0]?.id ?? "");
+      const preferredAssembly = assemblies.find(
+        (assembly) => assembly.id === preferredAssemblyId
+      );
+      const preferredPrimaryId =
+        selectedAssemblySelection?.kind === "assembly-instance"
+          ? selectedAssemblySelection.id
+          : (preferredAssembly?.instances[0]?.id ?? "");
+      const preferredSecondaryId =
+        preferredAssembly?.instances.find(
+          (instance) => instance.id !== preferredPrimaryId
+        )?.id ??
+        preferredAssembly?.instances[1]?.id ??
+        "";
+      const hasPair = assemblies.some((assembly) => assembly.instances.length >= 2);
+      return {
+        key,
+        kind: "concentricMate",
+        title: "Create Concentric Mate",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          name: "Concentric",
+          assemblyId: preferredAssemblyId,
+          primary: {
+            instanceId: preferredPrimaryId,
+            axis: "Z",
+            originX: 0,
+            originY: 0,
+            originZ: 0
+          },
+          secondary: {
+            instanceId: preferredSecondaryId,
+            axis: "Z",
+            originX: 0,
+            originY: 0,
+            originZ: 0
+          }
+        } satisfies AssemblyConcentricMateForm,
+        choices: {
+          assemblies: assemblyChoices,
+          assemblyInstances: instanceChoices
+        },
+        ...(hasPair
+          ? {}
+          : {
+              blockedReason:
+                "Create an assembly with at least two instances to mate."
+            })
+      } as SolidEditorRequest;
+    }
     if (actionId === "solid.edit" && selectedFeature) {
       if (selectedFeature.kind === "primitive") {
         const transform = selectedFeature.transform;
@@ -7422,6 +7497,10 @@ export function App() {
     await commitOps([buildAssemblyCoincidentMateOp(form)], () => null);
   }
 
+  async function createConcentricMate(form: AssemblyConcentricMateForm) {
+    await commitOps([buildAssemblyConcentricMateOp(form)], () => null);
+  }
+
   async function createSideHoleSketch(
     form: SketchCreateForm,
     targetBodyId: string
@@ -9727,6 +9806,7 @@ export function App() {
       submission.kind === "datumAxis" ||
       submission.kind === "fixedMate" ||
       submission.kind === "coincidentMate" ||
+      submission.kind === "concentricMate" ||
       submission.kind === "transform"
     );
 
@@ -9856,6 +9936,9 @@ export function App() {
         return;
       case "coincidentMate":
         await createCoincidentMate(submission.draft);
+        return;
+      case "concentricMate":
+        await createConcentricMate(submission.draft);
         return;
       case "transform":
         await updateSelectedTransform(submission.draft);
@@ -10112,6 +10195,7 @@ export function App() {
       case "solid.datum-axis":
       case "solid.fixed-mate":
       case "solid.coincident-mate":
+      case "solid.concentric-mate":
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
@@ -10737,6 +10821,13 @@ export function App() {
           : {
               status: "blocked" as const,
               message: UI_ACTION_AVAILABILITY_MESSAGES.solidCoincidentMate
+            },
+      "solid.concentric-mate":
+        projectStructure.assemblies.some((assembly) => assembly.instances.length >= 2)
+          ? ready
+          : {
+              status: "blocked" as const,
+              message: UI_ACTION_AVAILABILITY_MESSAGES.solidConcentricMate
             },
       "solid.edit":
         selectedObject ||

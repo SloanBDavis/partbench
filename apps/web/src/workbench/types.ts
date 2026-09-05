@@ -35,6 +35,7 @@ export type FeatureEditorKind =
   | "datum-axis"
   | "fixed-mate"
   | "coincident-mate"
+  | "concentric-mate"
   | "named-reference"
   | "named-reference-repair";
 

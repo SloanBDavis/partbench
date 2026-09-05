@@ -2419,7 +2419,9 @@ function createOperationReview(
           ? `on ${op.instanceId}`
           : op.kind === "coincident"
             ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
-            : `kind ${String(op.kind)}`;
+            : op.kind === "concentric"
+              ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
+              : `kind ${String(op.kind)}`;
       return operationReviewBase(
         index,
         op,
@@ -5787,6 +5789,27 @@ function isAssemblyMatePlaneRefShape(value: unknown): boolean {
   return true;
 }
 
+function isAssemblyMateAxisRefShape(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.instanceId !== "string") {
+    return false;
+  }
+  if (value.axis !== "X" && value.axis !== "Y" && value.axis !== "Z") {
+    return false;
+  }
+  if (value.origin !== undefined) {
+    if (
+      !Array.isArray(value.origin) ||
+      value.origin.length !== 3 ||
+      !value.origin.every(
+        (item: unknown) => typeof item === "number" && Number.isFinite(item)
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
@@ -5994,7 +6017,13 @@ function isCadOp(value: unknown): value is CadOp {
         isAssemblyMatePlaneRefShape(value.secondary)
       );
     }
-    // Concentric / distance shapes land in later V26 slices.
+    if (value.kind === "concentric") {
+      return (
+        isAssemblyMateAxisRefShape(value.primary) &&
+        isAssemblyMateAxisRefShape(value.secondary)
+      );
+    }
+    // Distance shape lands in a later V26 slice.
     return false;
   }
 
