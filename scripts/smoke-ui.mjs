@@ -506,6 +506,10 @@ async function runCadopsScenario(view, name, scenario) {
   }
 
   for (const step of scenario.steps ?? []) {
+    // Persist round-trips are proven by scenarios-run; engine smoke has no export/import hook.
+    if (step.persistRoundTrip && (!Array.isArray(step.ops) || step.ops.length === 0)) {
+      continue;
+    }
     const result = await applyOps(view, step.ops ?? []);
     if (step.expect && step.expect.error) {
       if (result.ok) {
@@ -812,6 +816,10 @@ async function assertUseOutcome(view, name, scenario, clicks) {
     (state.structureQuery && state.structureQuery.bodies) ||
     state.bodies ||
     [];
+  const assemblies =
+    (state.structureQuery && state.structureQuery.assemblies) ||
+    state.assemblies ||
+    [];
   for (const expectedFeature of expectSpec.features ?? []) {
     if (!someMatches(features, expectedFeature)) {
       throw new Error(
@@ -825,7 +833,20 @@ async function assertUseOutcome(view, name, scenario, clicks) {
       );
     }
   }
+  for (const expectedAssembly of expectSpec.assemblies ?? []) {
+    if (!someMatches(assemblies, expectedAssembly)) {
+      throw new Error(
+        name +
+          " use did not produce " +
+          JSON.stringify(expectedAssembly) +
+          ". actual assemblies " +
+          JSON.stringify(assemblies)
+      );
+    }
+  }
+  const expectsAssemblies = (expectSpec.assemblies ?? []).length > 0;
   const justBox =
+    !expectsAssemblies &&
     features.some((feature) => feature && (feature.kind === "primitive" || feature.kind === "box")) &&
     !features.some((feature) => feature && feature.kind === "linearPattern");
   if (justBox) {
@@ -833,7 +854,7 @@ async function assertUseOutcome(view, name, scenario, clicks) {
       name + " use state is a box, not a fillet pattern. " + JSON.stringify(features)
     );
   }
-  console.log(name, "use structure", JSON.stringify({ features, bodies }));
+  console.log(name, "use structure", JSON.stringify({ features, bodies, assemblies }));
 }
 
 

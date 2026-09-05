@@ -102,5 +102,5 @@ boundaries separate. Do not couple the React UI to geometry internals.
 
 Do not implement the whole architecture at once.
 
-V22-V25 are complete. Current user goal is assemblies in [`docs/v26.md`](./v26.md). Do not invent V27. This document names sticky constraints only.
+V22-V26 are complete ([`docs/v26.md`](./v26.md)). Do not invent V27. Next is a new user goal. This document names sticky constraints only.
 It is not a source for inventing a next release.

@@ -8,7 +8,7 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Proof / close loop: [docs/verification.md](docs/verification.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Current user goal: [docs/v26.md](docs/v26.md). V22–V25 complete. Do not reopen. Do not invent V27.
+- Last completed user goal: [docs/v26.md](docs/v26.md). V22–V26 complete. Do not reopen. Do not invent V27. Next is a new user goal.
 
 Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md, or per-gate markdown unless the current user-goal doc names them.
 
@@ -27,7 +27,7 @@ Node.js 22 and pnpm 10.
 Per-save: focused tests and typecheck of the packages you touched. No Chromium on every save.
 Never rerun V7-V25 gauntlets. Proof: [docs/verification.md](docs/verification.md).
 
-Completed closers: smoke:v25-part-toolkit, smoke:v24-finished-parts, smoke:v23-promotion-workflow. The V26 named closer is in [docs/v26.md](docs/v26.md); add that script when Must-row scenarios exist.
+Completed closers: smoke:v26-assemblies, smoke:v25-part-toolkit, smoke:v24-finished-parts, smoke:v23-promotion-workflow.
 
 ## Slice close
 

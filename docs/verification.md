@@ -29,3 +29,5 @@ Named closer + `smoke:ui` (engine) + Use path green. See [close-a-slice.md](./sk
 ## Passing record
 
 2026-09-02 1:08 AM PT. `pnpm smoke:ui-use -- scenarios/v25-feature-pattern-fillet.json`. chrome /usr/bin/google-chrome. backend HeadlessChrome/151.0.0.0 (not WebKit). Template Use is box Apply (open Box, type width 20, Apply, solid). Break: width 0 -> Apply disabled (blocked control, not a freeze). Screenshot `.metrics/ui-smoke/v25-feature-pattern-fillet-use.png`.
+
+2026-09-04 PT. Fixed mate Apply Use on v26-fixed-root. Chromium not WebKit. Break: empty instance Apply disabled. Success screenshot under ui-smoke for fixed-root-use.

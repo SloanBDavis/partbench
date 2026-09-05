@@ -46,6 +46,7 @@
     "smoke:v23-promotion-workflow": "pnpm --filter @web-cad/cad-core exec vitest run src/v23Promotion.test.ts --no-file-parallelism && pnpm --filter @web-cad/web exec vitest run src/currentExactPromotionApply.test.ts src/modes/solid/exactFeaturePreviewPlan.test.ts src/viewportExactCandidateAnnouncement.test.ts src/sketchOnFacePromotion.test.ts --no-file-parallelism && pnpm --filter @web-cad/mcp-adapter exec vitest run src/v23PromotionMcp.test.ts --no-file-parallelism",
     "smoke:v24-finished-parts": "node scripts/scenarios-run.mjs && pnpm --filter @web-cad/web exec vitest run src/modes/solid/exactFeaturePreviewPlan.test.ts src/cadCommands.test.ts --no-file-parallelism",
     "smoke:v25-part-toolkit": "node scripts/scenarios-run.mjs && pnpm --filter @web-cad/web exec vitest run src/modes/solid/exactFeaturePreviewPlan.test.ts src/cadCommands.test.ts --no-file-parallelism && bun scripts/smoke-ui-v25.mjs",
+    "smoke:v26-assemblies": "node scripts/scenarios-run.mjs && pnpm --filter @web-cad/web exec vitest run src/modes/solid/exactFeaturePreviewPlan.test.ts src/cadCommands.test.ts --no-file-parallelism && bun scripts/smoke-ui-v26.mjs && bun scripts/smoke-ui-use.mjs -- scenarios/v26-fixed-root.json",
     "legacy:smoke:v18-geometry-reliability": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v18-geometry-reliability.mjs",
     "legacy:capture:v18-visuals": "node scripts/capture-v18-visual-artifacts.mjs",
     "lint": "eslint .",

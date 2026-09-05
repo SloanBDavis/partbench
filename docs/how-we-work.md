@@ -15,8 +15,7 @@ architecture. Do not implement the whole architecture at once.
 A release is one paragraph of what a person can do in the running app when
 the release is done. That paragraph is the user goal.
 
-The current user goal is the Product Goal in [`docs/v26.md`](./v26.md).
-V22-V25 are complete. Do not reopen them. Do not invent V27.
+V22-V26 are complete ([`docs/v26.md`](./v26.md)). Do not reopen them. Do not invent V27. Next is a new user goal.
 
 Do not replay V25 gates or V7-V25 gauntlets. Do not paste a changelog into
 `AGENTS.md`.
