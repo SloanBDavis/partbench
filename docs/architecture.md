@@ -60,7 +60,7 @@ user-goal doc says so.
 
 OCCT/WASM owns exact B-rep. The current viewport is Canvas 2D.
 
-Do not implement assemblies, WebGPU, or drawings unless a user-goal doc
+Assemblies are allowed because [`docs/v26.md`](./v26.md) names them. Do not implement WebGPU or drawings unless a user-goal doc
 says so.
 
 Do not couple the React UI directly to geometry internals. Keep renderer,
@@ -93,7 +93,7 @@ existing checkpoint plus anchor path, then the consuming feature op.
 2. Every implemented command has tests and a structured semantic diff.
 3. Do not add a production dependency, workspace package, schema, or
    `.wcad` version unless a user-goal doc says so.
-4. Do not expand OCCT/WASM, MCP, OPFS, STEP, WebGPU, assemblies, hosted
+4. Do not expand OCCT/WASM, MCP, OPFS, STEP, WebGPU, hosted
    collaboration, or native storage beyond the requested release tranche.
 5. Prefer small, testable packages over one large app.
 
@@ -102,5 +102,5 @@ boundaries separate. Do not couple the React UI to geometry internals.
 
 Do not implement the whole architecture at once.
 
-V22, V23, V24, and V25 are complete. This document names sticky constraints only.
+V22-V25 are complete. Current user goal is assemblies in [`docs/v26.md`](./v26.md). Do not invent V27. This document names sticky constraints only.
 It is not a source for inventing a next release.
