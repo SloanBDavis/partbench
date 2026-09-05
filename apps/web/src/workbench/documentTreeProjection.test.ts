@@ -418,4 +418,51 @@ describe("document tree assembly projection", () => {
       })
     ).toBe("assembly-instance:asm_root:inst_root");
   });
+
+  it("labels coincident mates with plane refs", () => {
+    const projection = createDocumentTreeProjection({
+      ...createProjectionInput(),
+      assemblies: [
+        {
+          id: "asm_stack",
+          name: "Stack assembly",
+          instances: [
+            {
+              id: "inst_base",
+              name: "Base",
+              definition: { kind: "body", bodyId: "body_plate" },
+              transform: {
+                translation: [0, 0, 0],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            },
+            {
+              id: "inst_top",
+              name: "Top",
+              definition: { kind: "body", bodyId: "body_plate" },
+              transform: {
+                translation: [0, 0, 20],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1]
+              }
+            }
+          ],
+          mates: [
+            {
+              id: "mate_stack",
+              name: "Stack",
+              kind: "coincident",
+              primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+              secondary: { instanceId: "inst_top", plane: "XY" }
+            }
+          ]
+        }
+      ]
+    });
+    const mateRow = projection.rowsById.get("assembly-mate:asm_stack:mate_stack");
+    expect(mateRow?.detail).toBe(
+      "Coincident · inst_base/XY ~ inst_top/XY"
+    );
+  });
 });

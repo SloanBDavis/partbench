@@ -46,6 +46,7 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidAlign: "Select a completed exact body and a planar face to move.",
   solidDraft: "Select a completed exact solid and a planar face set.",
   solidFixedMate: "Create an assembly with at least one instance to ground.",
+  solidCoincidentMate: "Create an assembly with at least two instances to mate.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
   solidDelete: "Select a deletable object or sketch item.",
@@ -506,6 +507,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidFixedMate)
+  ),
+  action(
+    "solid.coincident-mate",
+    "Coincident mate",
+    "Assemble",
+    ["solid"],
+    ["coincident", "plane mate", "stack", "assembly mate"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCoincidentMate)
   ),
   action(
     "solid.edit",

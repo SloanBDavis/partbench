@@ -28,6 +28,7 @@ import type {
   PrimitiveCommandForm,
   SketchCreateForm,
   AssemblyFixedMateForm,
+  AssemblyCoincidentMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -602,6 +603,15 @@ function SolidDraftFields({
           onChange={onChange}
         />
       );
+    case "coincidentMate":
+      return (
+        <CoincidentMateFields
+          draft={draft as AssemblyCoincidentMateForm}
+          assemblyChoices={request.choices?.assemblies ?? []}
+          instanceChoices={request.choices?.assemblyInstances ?? []}
+          onChange={onChange}
+        />
+      );
     case "transform":
       return (
         <TransformFields
@@ -1088,6 +1098,188 @@ function FixedMateFields({
           }))
         ]}
         onChange={(instanceId) => onChange({ ...draft, instanceId })}
+      />
+    </>
+  );
+}
+
+function CoincidentMateFields({
+  draft,
+  assemblyChoices,
+  instanceChoices,
+  onChange
+}: {
+  readonly draft: AssemblyCoincidentMateForm;
+  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly instanceChoices: readonly {
+    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly label: string;
+  }[];
+  readonly onChange: (draft: AssemblyCoincidentMateForm) => void;
+}) {
+  const instancesForAssembly = instanceChoices.filter(
+    (choice) => choice.value.assemblyId === draft.assemblyId
+  );
+  const planeOptions = [
+    { value: "XY", label: "XY" },
+    { value: "XZ", label: "XZ" },
+    { value: "YZ", label: "YZ" }
+  ];
+  return (
+    <>
+      <TextField
+        label="Name"
+        name="coincident-mate-name"
+        value={draft.name}
+        onChange={(name) => onChange({ ...draft, name })}
+      />
+      <SelectField
+        label="Assembly"
+        name="coincident-mate-assembly"
+        value={draft.assemblyId}
+        options={[
+          { value: "", label: "Select assembly" },
+          ...assemblyChoices.map((choice) => ({
+            value: choice.value,
+            label: choice.label
+          }))
+        ]}
+        onChange={(assemblyId) =>
+          onChange({
+            ...draft,
+            assemblyId,
+            primary: {
+              ...draft.primary,
+              instanceId:
+                draft.assemblyId === assemblyId ? draft.primary.instanceId : ""
+            },
+            secondary: {
+              ...draft.secondary,
+              instanceId:
+                draft.assemblyId === assemblyId
+                  ? draft.secondary.instanceId
+                  : ""
+            }
+          })
+        }
+      />
+      <SelectField
+        label="Primary instance"
+        name="coincident-mate-primary-instance"
+        value={draft.primary.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, instanceId }
+          })
+        }
+      />
+      <SelectField
+        label="Primary plane"
+        name="coincident-mate-primary-plane"
+        value={draft.primary.plane}
+        options={planeOptions}
+        onChange={(plane) =>
+          onChange({
+            ...draft,
+            primary: {
+              ...draft.primary,
+              plane: plane as "XY" | "XZ" | "YZ"
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Primary offset"
+        name="coincident-mate-primary-offset"
+        value={draft.primary.offset}
+        onChange={(offset) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, offset }
+          })
+        }
+      />
+      <SelectField
+        label="Primary flip"
+        name="coincident-mate-primary-flip"
+        value={draft.primary.flip ? "yes" : "no"}
+        options={[
+          { value: "no", label: "No" },
+          { value: "yes", label: "Yes" }
+        ]}
+        onChange={(value) =>
+          onChange({
+            ...draft,
+            primary: { ...draft.primary, flip: value === "yes" }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary instance"
+        name="coincident-mate-secondary-instance"
+        value={draft.secondary.instanceId}
+        options={[
+          { value: "", label: "Select instance" },
+          ...instancesForAssembly.map((choice) => ({
+            value: choice.value.instanceId,
+            label: choice.label
+          }))
+        ]}
+        onChange={(instanceId) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, instanceId }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary plane"
+        name="coincident-mate-secondary-plane"
+        value={draft.secondary.plane}
+        options={planeOptions}
+        onChange={(plane) =>
+          onChange({
+            ...draft,
+            secondary: {
+              ...draft.secondary,
+              plane: plane as "XY" | "XZ" | "YZ"
+            }
+          })
+        }
+      />
+      <NumberField
+        label="Secondary offset"
+        name="coincident-mate-secondary-offset"
+        value={draft.secondary.offset}
+        onChange={(offset) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, offset }
+          })
+        }
+      />
+      <SelectField
+        label="Secondary flip"
+        name="coincident-mate-secondary-flip"
+        value={draft.secondary.flip ? "yes" : "no"}
+        options={[
+          { value: "no", label: "No" },
+          { value: "yes", label: "Yes" }
+        ]}
+        onChange={(value) =>
+          onChange({
+            ...draft,
+            secondary: { ...draft.secondary, flip: value === "yes" }
+          })
+        }
       />
     </>
   );

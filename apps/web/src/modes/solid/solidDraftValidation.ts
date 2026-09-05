@@ -20,6 +20,7 @@ import type {
   PrimitiveCommandForm,
   SketchCreateForm,
   AssemblyFixedMateForm,
+  AssemblyCoincidentMateForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -88,6 +89,27 @@ export function validateSolidDraft(
     }
     if (!form.instanceId.trim()) {
       return blocked("Choose an instance to ground.");
+    }
+    return ready();
+  }
+  if (kind === "coincidentMate") {
+    const form = draft as AssemblyCoincidentMateForm;
+    if (!form.assemblyId.trim()) {
+      return blocked("Choose an assembly.");
+    }
+    if (!form.primary.instanceId.trim() || !form.secondary.instanceId.trim()) {
+      return blocked("Choose primary and secondary instances.");
+    }
+    if (form.primary.instanceId === form.secondary.instanceId) {
+      return blocked("Coincident mate needs two different instances.");
+    }
+    if (![form.primary.plane, form.secondary.plane].every((plane) =>
+      plane === "XY" || plane === "XZ" || plane === "YZ"
+    )) {
+      return blocked("Choose XY, XZ, or YZ planes.");
+    }
+    if (![form.primary.offset, form.secondary.offset].every(Number.isFinite)) {
+      return blocked("Plane offsets must be finite numbers.");
     }
     return ready();
   }

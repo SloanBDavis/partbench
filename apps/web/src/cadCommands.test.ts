@@ -12,6 +12,7 @@ import {
   buildCreateSketchOp,
   buildDatumAndSketchOnPlaneOps,
   buildAssemblyFixedMateOp,
+  buildAssemblyCoincidentMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateTorusOp,
@@ -2283,6 +2284,38 @@ describe("assembly fixed mate Apply parity", () => {
       name: "Ground",
       kind: "fixed",
       instanceId: "inst_root"
+    });
+  });
+});
+
+describe("assembly coincident mate Apply parity", () => {
+  it("builds assembly.mate.create kind coincident from the form", () => {
+    expect(
+      buildAssemblyCoincidentMateOp({
+        id: "mate_stack",
+        name: "Stack",
+        assemblyId: "asm_stack",
+        primary: {
+          instanceId: "inst_base",
+          plane: "XY",
+          offset: 20,
+          flip: false
+        },
+        secondary: {
+          instanceId: "inst_top",
+          plane: "XY",
+          offset: 0,
+          flip: false
+        }
+      })
+    ).toEqual({
+      op: "assembly.mate.create",
+      id: "mate_stack",
+      assemblyId: "asm_stack",
+      name: "Stack",
+      kind: "coincident",
+      primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+      secondary: { instanceId: "inst_top", plane: "XY" }
     });
   });
 });

@@ -189,6 +189,21 @@ export interface AssemblyFixedMateForm {
   readonly instanceId: string;
 }
 
+export interface AssemblyCoincidentMatePlaneForm {
+  readonly instanceId: string;
+  readonly plane: "XY" | "XZ" | "YZ";
+  readonly offset: number;
+  readonly flip: boolean;
+}
+
+export interface AssemblyCoincidentMateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly assemblyId: string;
+  readonly primary: AssemblyCoincidentMatePlaneForm;
+  readonly secondary: AssemblyCoincidentMatePlaneForm;
+}
+
 export interface SketchCreateOnFaceForm {
   readonly id: string;
   readonly name: string;
@@ -700,6 +715,30 @@ export function buildAssemblyFixedMateOp(
     name: form.name.trim() || undefined,
     kind: "fixed",
     instanceId: form.instanceId.trim()
+  };
+}
+
+export function buildAssemblyCoincidentMateOp(
+  form: AssemblyCoincidentMateForm
+): AssemblyMateCreateOp {
+  return {
+    op: "assembly.mate.create",
+    id: normalizeOptionalId(form.id),
+    assemblyId: form.assemblyId.trim(),
+    name: form.name.trim() || undefined,
+    kind: "coincident",
+    primary: {
+      instanceId: form.primary.instanceId.trim(),
+      plane: form.primary.plane,
+      ...(form.primary.offset !== 0 ? { offset: form.primary.offset } : {}),
+      ...(form.primary.flip ? { flip: true } : {})
+    },
+    secondary: {
+      instanceId: form.secondary.instanceId.trim(),
+      plane: form.secondary.plane,
+      ...(form.secondary.offset !== 0 ? { offset: form.secondary.offset } : {}),
+      ...(form.secondary.flip ? { flip: true } : {})
+    }
   };
 }
 

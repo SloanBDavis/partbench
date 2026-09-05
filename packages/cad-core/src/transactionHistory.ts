@@ -451,9 +451,15 @@ function createOperationSummaries(
 
       case "assembly.mate.create": {
         const mateId = op.id ?? createdAssemblyMateRef?.id;
+        const target =
+          op.kind === "fixed"
+            ? `on ${op.instanceId}`
+            : op.kind === "coincident"
+              ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
+              : `kind ${String(op.kind)}`;
         return {
           op: op.op,
-          label: `Create ${op.kind} mate ${mateId ?? "with generated ID"} on ${op.instanceId} in ${op.assemblyId}`
+          label: `Create ${op.kind} mate ${mateId ?? "with generated ID"} ${target} in ${op.assemblyId}`
         };
       }
 

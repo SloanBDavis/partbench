@@ -183,6 +183,7 @@ export function getActionIcon(id: UiActionId, group?: string): IconName {
     "datum-plane": "extrude",
     "datum-axis": "extrude",
     "fixed-mate": "constraint",
+    "coincident-mate": "constraint",
     edit: "edit",
     rename: "edit",
     delete: "delete",

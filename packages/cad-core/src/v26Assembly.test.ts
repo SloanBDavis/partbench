@@ -257,7 +257,7 @@ describe("V26 slice B fixed/ground mate and assembly tree", () => {
     );
   });
 
-  it("rejects non-fixed mate kinds and duplicate fixed mates on the same instance", () => {
+  it("rejects unimplemented mate kinds and duplicate fixed mates on the same instance", () => {
     const engine = new CadEngine();
     seedCompletedBolt(engine);
     engine.applyBatch([
@@ -275,10 +275,9 @@ describe("V26 slice B fixed/ground mate and assembly tree", () => {
       engine.apply({
         op: "assembly.mate.create",
         assemblyId: "asm_root",
-        kind: "coincident",
-        instanceId: "inst_root"
+        kind: "concentric"
       })
-    ).toThrow(/fixed/);
+    ).toThrow(/fixed or coincident/);
 
     engine.apply({
       op: "assembly.mate.create",
@@ -297,5 +296,181 @@ describe("V26 slice B fixed/ground mate and assembly tree", () => {
         instanceId: "inst_root"
       })
     ).toThrow(/already has a fixed mate/);
+  });
+});
+
+describe("V26 slice C coincident plane mate", () => {
+  it("stacks two instances with coincident XY planes and persists pose", () => {
+    const engine = new CadEngine();
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_stack", name: "Stack assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_base",
+        assemblyId: "asm_stack",
+        name: "Base",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 0] }
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_top",
+        assemblyId: "asm_stack",
+        name: "Top",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 50] }
+      },
+      {
+        op: "assembly.mate.create",
+        id: "mate_ground",
+        assemblyId: "asm_stack",
+        name: "Ground",
+        kind: "fixed",
+        instanceId: "inst_base"
+      }
+    ]);
+
+    const stacked = engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_stack",
+      assemblyId: "asm_stack",
+      name: "Stack",
+      kind: "coincident",
+      primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+      secondary: { instanceId: "inst_top", plane: "XY" }
+    });
+    expect(stacked.transaction.diff).toMatchObject({
+      assemblies: {
+        matesCreated: [
+          {
+            id: "mate_stack",
+            kind: "coincident",
+            primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+            secondary: { instanceId: "inst_top", plane: "XY" }
+          }
+        ],
+        instancesModified: [
+          {
+            id: "inst_top",
+            transform: { translation: [0, 0, 20] }
+          }
+        ]
+      }
+    });
+
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      assemblies: [
+        {
+          id: "asm_stack",
+          instances: [
+            { id: "inst_base", transform: { translation: [0, 0, 0] } },
+            { id: "inst_top", transform: { translation: [0, 0, 20] } }
+          ],
+          mates: [
+            { id: "mate_ground", kind: "fixed", instanceId: "inst_base" },
+            {
+              id: "mate_stack",
+              kind: "coincident",
+              primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+              secondary: { instanceId: "inst_top", plane: "XY" }
+            }
+          ]
+        }
+      ]
+    });
+    expect(JSON.stringify(structure)).not.toMatch(PRIVATE_ID_PATTERN);
+
+    const exported = exportCadProject(engine);
+    expect(exported.schemaVersion).not.toBe("web-cad.project.v23");
+    expect(exported.schemaVersion).not.toBe("web-cad.project.v26");
+    expect(exported.document.assemblies?.[0]?.mates).toEqual([
+      {
+        id: "mate_ground",
+        name: "Ground",
+        kind: "fixed",
+        instanceId: "inst_base"
+      },
+      {
+        id: "mate_stack",
+        name: "Stack",
+        kind: "coincident",
+        primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+        secondary: { instanceId: "inst_top", plane: "XY" }
+      }
+    ]);
+    expect(exported.document.assemblies?.[0]?.instances[1]?.transform.translation).toEqual([
+      0, 0, 20
+    ]);
+
+    const restored = importCadProject(exported);
+    expect(exportCadProject(restored).document.assemblies).toEqual(
+      exported.document.assemblies
+    );
+  });
+
+  it("fails structured when underconstrained or conflicting", () => {
+    const engine = new CadEngine();
+    seedCompletedBolt(engine);
+    engine.applyBatch([
+      { op: "assembly.create", id: "asm_stack", name: "Stack assembly" },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_base",
+        assemblyId: "asm_stack",
+        name: "Base",
+        definition: { kind: "body", bodyId: "body_bolt" }
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "inst_top",
+        assemblyId: "asm_stack",
+        name: "Top",
+        definition: { kind: "body", bodyId: "body_bolt" },
+        transform: { translation: [0, 0, 50] }
+      }
+    ]);
+
+    expect(() =>
+      engine.apply({
+        op: "assembly.mate.create",
+        id: "mate_stack",
+        assemblyId: "asm_stack",
+        kind: "coincident",
+        primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+        secondary: { instanceId: "inst_top", plane: "XY" }
+      })
+    ).toThrow(/underconstrained/);
+
+    engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_ground_base",
+      assemblyId: "asm_stack",
+      kind: "fixed",
+      instanceId: "inst_base"
+    });
+    engine.apply({
+      op: "assembly.mate.create",
+      id: "mate_ground_top",
+      assemblyId: "asm_stack",
+      kind: "fixed",
+      instanceId: "inst_top"
+    });
+
+    expect(() =>
+      engine.apply({
+        op: "assembly.mate.create",
+        id: "mate_stack",
+        assemblyId: "asm_stack",
+        kind: "coincident",
+        primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+        secondary: { instanceId: "inst_top", plane: "XY" }
+      })
+    ).toThrow(/conflicts/);
   });
 });

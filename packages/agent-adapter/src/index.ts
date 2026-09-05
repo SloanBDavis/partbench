@@ -2413,13 +2413,20 @@ function createOperationReview(
         `Insert assembly instance ${op.id ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
       );
 
-    case "assembly.mate.create":
+    case "assembly.mate.create": {
+      const target =
+        op.kind === "fixed"
+          ? `on ${op.instanceId}`
+          : op.kind === "coincident"
+            ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`
+            : `kind ${String(op.kind)}`;
       return operationReviewBase(
         index,
         op,
         "create",
-        `Create ${op.kind} mate ${op.id ?? "with generated ID"} on ${op.instanceId} in ${op.assemblyId}`
+        `Create ${op.kind} mate ${op.id ?? "with generated ID"} ${target} in ${op.assemblyId}`
       );
+    }
 
     case "sketch.createOnFace": {
       const target = op.referenceName
@@ -5760,6 +5767,26 @@ function isCadBodyExactMetadataDiagnostic(
   );
 }
 
+
+function isAssemblyMatePlaneRefShape(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.instanceId !== "string") {
+    return false;
+  }
+  if (value.plane !== "XY" && value.plane !== "XZ" && value.plane !== "YZ") {
+    return false;
+  }
+  if (
+    value.offset !== undefined &&
+    (typeof value.offset !== "number" || !Number.isFinite(value.offset))
+  ) {
+    return false;
+  }
+  if (value.flip !== undefined && typeof value.flip !== "boolean") {
+    return false;
+  }
+  return true;
+}
+
 function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
@@ -5949,16 +5976,26 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "assembly.mate.create") {
-    return (
-      isOptionalString(value.id) &&
-      typeof value.assemblyId === "string" &&
-      isOptionalString(value.name) &&
-      (value.kind === "fixed" ||
-        value.kind === "coincident" ||
-        value.kind === "concentric" ||
-        value.kind === "distance") &&
-      typeof value.instanceId === "string"
-    );
+    if (
+      !(
+        isOptionalString(value.id) &&
+        typeof value.assemblyId === "string" &&
+        isOptionalString(value.name)
+      )
+    ) {
+      return false;
+    }
+    if (value.kind === "fixed") {
+      return typeof value.instanceId === "string";
+    }
+    if (value.kind === "coincident") {
+      return (
+        isAssemblyMatePlaneRefShape(value.primary) &&
+        isAssemblyMatePlaneRefShape(value.secondary)
+      );
+    }
+    // Concentric / distance shapes land in later V26 slices.
+    return false;
   }
 
   if (value.op === "sketch.createOnFace") {

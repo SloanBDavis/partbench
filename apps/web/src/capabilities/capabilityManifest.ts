@@ -407,6 +407,13 @@ const ACTION_AUDIT_BY_ID = {
     "buildAssemblyFixedMateOp",
     "cadCommands.test.ts"
   ),
+  "solid.coincident-mate": featureAudit(
+    "Coincident mate",
+    "createCoincidentMate",
+    "assembly/instance/plane selection",
+    "buildAssemblyCoincidentMateOp",
+    "cadCommands.test.ts"
+  ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

@@ -34,6 +34,7 @@ export type FeatureEditorKind =
   | "datum-plane"
   | "datum-axis"
   | "fixed-mate"
+  | "coincident-mate"
   | "named-reference"
   | "named-reference-repair";
 

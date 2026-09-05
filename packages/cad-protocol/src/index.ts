@@ -1707,25 +1707,63 @@ export interface AssemblyInstanceInsertOp {
   readonly transform?: Partial<Transform>;
 }
 
-/** V26 mate kinds. Slice B implements fixed/ground only. */
+/** V26 mate kinds. Slices B–C: fixed + coincident planes. */
 export type AssemblyMateKind =
   | "coincident"
   | "concentric"
   | "distance"
   | "fixed";
 
+/** Instance-local standard plane for coincident (definition space). */
+export type AssemblyMatePlaneName = FeatureMirrorPlane;
+
+export interface AssemblyMatePlaneRef {
+  readonly instanceId: InstanceId;
+  readonly plane: AssemblyMatePlaneName;
+  /** Offset along the plane normal in definition space (default 0). */
+  readonly offset?: number;
+  /** Flip the plane normal (default false). */
+  readonly flip?: boolean;
+}
+
 /**
- * Create a mate. Slice B: kind fixed grounds one instance (root).
- * Other kinds land in later V26 slices.
+ * Create a mate.
+ * Slice B: kind fixed grounds one instance (root).
+ * Slice C: kind coincident constrains two instance planes.
+ * Concentric / distance land in later V26 slices.
  */
-export interface AssemblyMateCreateOp {
+export type AssemblyMateCreateOp =
+  | AssemblyFixedMateCreateOp
+  | AssemblyCoincidentMateCreateOp
+  | AssemblyUnimplementedMateCreateOp;
+
+/** Stub shape for mate kinds that land in later V26 slices. */
+export interface AssemblyUnimplementedMateCreateOp {
   readonly op: "assembly.mate.create";
   readonly id?: MateId;
   readonly assemblyId: AssemblyId;
   readonly name?: string;
-  readonly kind: AssemblyMateKind;
-  /** Grounded instance for kind fixed. */
+  readonly kind: "concentric" | "distance";
+}
+
+export interface AssemblyFixedMateCreateOp {
+  readonly op: "assembly.mate.create";
+  readonly id?: MateId;
+  readonly assemblyId: AssemblyId;
+  readonly name?: string;
+  readonly kind: "fixed";
+  /** Grounded instance. */
   readonly instanceId: InstanceId;
+}
+
+export interface AssemblyCoincidentMateCreateOp {
+  readonly op: "assembly.mate.create";
+  readonly id?: MateId;
+  readonly assemblyId: AssemblyId;
+  readonly name?: string;
+  readonly kind: "coincident";
+  readonly primary: AssemblyMatePlaneRef;
+  readonly secondary: AssemblyMatePlaneRef;
 }
 
 export type PatternSeedFields =
@@ -2349,13 +2387,22 @@ export interface CadAssemblyInstanceRef {
   readonly transform: Transform;
 }
 
-export interface CadAssemblyMateRef {
-  readonly id: MateId;
-  readonly assemblyId: AssemblyId;
-  readonly name: string;
-  readonly kind: "fixed";
-  readonly instanceId: InstanceId;
-}
+export type CadAssemblyMateRef =
+  | {
+      readonly id: MateId;
+      readonly assemblyId: AssemblyId;
+      readonly name: string;
+      readonly kind: "fixed";
+      readonly instanceId: InstanceId;
+    }
+  | {
+      readonly id: MateId;
+      readonly assemblyId: AssemblyId;
+      readonly name: string;
+      readonly kind: "coincident";
+      readonly primary: AssemblyMatePlaneRef;
+      readonly secondary: AssemblyMatePlaneRef;
+    };
 
 export interface CadSketchEntityRef {
   readonly sketchId: SketchId;
@@ -4202,7 +4249,18 @@ export interface AssemblyFixedMateSnapshot {
   readonly instanceId: InstanceId;
 }
 
-export type AssemblyMateSnapshot = AssemblyFixedMateSnapshot;
+/** Coincident plane–plane mate snapshot (slice C). */
+export interface AssemblyCoincidentMateSnapshot {
+  readonly id: MateId;
+  readonly name: string;
+  readonly kind: "coincident";
+  readonly primary: AssemblyMatePlaneRef;
+  readonly secondary: AssemblyMatePlaneRef;
+}
+
+export type AssemblyMateSnapshot =
+  | AssemblyFixedMateSnapshot
+  | AssemblyCoincidentMateSnapshot;
 
 export interface AssemblySnapshot {
   readonly id: AssemblyId;

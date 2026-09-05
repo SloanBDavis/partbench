@@ -115,6 +115,7 @@ import {
   buildAddSketchRectangleOp,
   buildDatumAndSketchOnPlaneOps,
   buildAssemblyFixedMateOp,
+  buildAssemblyCoincidentMateOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateSketchOnFaceOp,
@@ -156,6 +157,7 @@ import {
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
   type AssemblyFixedMateForm,
+  type AssemblyCoincidentMateForm,
   DatumAxisCreateForm,
   type DatumPlaneCreateForm,
   type SketchEntityForm,
@@ -4729,6 +4731,77 @@ export function App() {
             })
       } as SolidEditorRequest;
     }
+    if (actionId === "solid.coincident-mate") {
+      const assemblies = projectStructure.assemblies;
+      const assemblyChoices = assemblies.map((assembly) => ({
+        value: assembly.id,
+        key: assembly.id,
+        label: assembly.name,
+        kind: "assembly"
+      }));
+      const instanceChoices = assemblies.flatMap((assembly) =>
+        assembly.instances.map((instance) => ({
+          value: { assemblyId: assembly.id, instanceId: instance.id },
+          key: `${assembly.id}:${instance.id}`,
+          label: `${assembly.name} · ${instance.name}`,
+          kind: "assembly-instance"
+        }))
+      );
+      const preferredAssemblyId =
+        selectedAssemblySelection?.kind === "assembly"
+          ? selectedAssemblySelection.id
+          : selectedAssemblySelection?.kind === "assembly-instance" ||
+              selectedAssemblySelection?.kind === "assembly-mate"
+            ? selectedAssemblySelection.assemblyId
+            : (assemblies[0]?.id ?? "");
+      const preferredAssembly = assemblies.find(
+        (assembly) => assembly.id === preferredAssemblyId
+      );
+      const preferredPrimaryId =
+        selectedAssemblySelection?.kind === "assembly-instance"
+          ? selectedAssemblySelection.id
+          : (preferredAssembly?.instances[0]?.id ?? "");
+      const preferredSecondaryId =
+        preferredAssembly?.instances.find(
+          (instance) => instance.id !== preferredPrimaryId
+        )?.id ??
+        preferredAssembly?.instances[1]?.id ??
+        "";
+      const hasPair = assemblies.some((assembly) => assembly.instances.length >= 2);
+      return {
+        key,
+        kind: "coincidentMate",
+        title: "Create Coincident Mate",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          name: "Coincident",
+          assemblyId: preferredAssemblyId,
+          primary: {
+            instanceId: preferredPrimaryId,
+            plane: "XY",
+            offset: 0,
+            flip: false
+          },
+          secondary: {
+            instanceId: preferredSecondaryId,
+            plane: "XY",
+            offset: 0,
+            flip: false
+          }
+        } satisfies AssemblyCoincidentMateForm,
+        choices: {
+          assemblies: assemblyChoices,
+          assemblyInstances: instanceChoices
+        },
+        ...(hasPair
+          ? {}
+          : {
+              blockedReason:
+                "Create an assembly with at least two instances to mate."
+            })
+      } as SolidEditorRequest;
+    }
     if (actionId === "solid.edit" && selectedFeature) {
       if (selectedFeature.kind === "primitive") {
         const transform = selectedFeature.transform;
@@ -7345,6 +7418,10 @@ export function App() {
     await commitOps([buildAssemblyFixedMateOp(form)], () => null);
   }
 
+  async function createCoincidentMate(form: AssemblyCoincidentMateForm) {
+    await commitOps([buildAssemblyCoincidentMateOp(form)], () => null);
+  }
+
   async function createSideHoleSketch(
     form: SketchCreateForm,
     targetBodyId: string
@@ -9649,6 +9726,7 @@ export function App() {
       submission.kind === "datumPlane" ||
       submission.kind === "datumAxis" ||
       submission.kind === "fixedMate" ||
+      submission.kind === "coincidentMate" ||
       submission.kind === "transform"
     );
 
@@ -9775,6 +9853,9 @@ export function App() {
         return;
       case "fixedMate":
         await createFixedMate(submission.draft);
+        return;
+      case "coincidentMate":
+        await createCoincidentMate(submission.draft);
         return;
       case "transform":
         await updateSelectedTransform(submission.draft);
@@ -10030,6 +10111,7 @@ export function App() {
       case "solid.datum-plane":
       case "solid.datum-axis":
       case "solid.fixed-mate":
+      case "solid.coincident-mate":
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
@@ -10648,6 +10730,13 @@ export function App() {
           : {
               status: "blocked" as const,
               message: UI_ACTION_AVAILABILITY_MESSAGES.solidFixedMate
+            },
+      "solid.coincident-mate":
+        projectStructure.assemblies.some((assembly) => assembly.instances.length >= 2)
+          ? ready
+          : {
+              status: "blocked" as const,
+              message: UI_ACTION_AVAILABILITY_MESSAGES.solidCoincidentMate
             },
       "solid.edit":
         selectedObject ||

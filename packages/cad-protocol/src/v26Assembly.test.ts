@@ -112,7 +112,64 @@ describe("assembly definition/instance protocol", () => {
     const ops: readonly CadOp[] = [fixed];
     expect(ops.map((op) => op.op)).toEqual(["assembly.mate.create"]);
     expect(fixed.kind).toBe("fixed");
-    expect(snapshot.mates?.[0]?.instanceId).toBe("inst_bolt_a");
+    expect(snapshot.mates?.[0]?.kind).toBe("fixed");
+    expect(
+      snapshot.mates?.[0]?.kind === "fixed"
+        ? snapshot.mates[0].instanceId
+        : undefined
+    ).toBe("inst_bolt_a");
+    expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
+  });
+
+  it("names assembly.mate.create kind coincident for plane-plane refs", () => {
+    const coincident: AssemblyMateCreateOp = {
+      op: "assembly.mate.create",
+      id: "mate_stack",
+      assemblyId: "asm_stack",
+      name: "Stack",
+      kind: "coincident",
+      primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+      secondary: { instanceId: "inst_top", plane: "XY" }
+    };
+    const snapshot: AssemblySnapshot = {
+      id: "asm_stack",
+      name: "Stack assembly",
+      instances: [
+        {
+          id: "inst_base",
+          name: "Base",
+          definition: { kind: "body", bodyId: "body_plate" },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        {
+          id: "inst_top",
+          name: "Top",
+          definition: { kind: "body", bodyId: "body_plate" },
+          transform: {
+            translation: [0, 0, 20],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      mates: [
+        {
+          id: "mate_stack",
+          name: "Stack",
+          kind: "coincident",
+          primary: { instanceId: "inst_base", plane: "XY", offset: 20 },
+          secondary: { instanceId: "inst_top", plane: "XY" }
+        }
+      ]
+    };
+    const ops: readonly CadOp[] = [coincident];
+    expect(ops.map((op) => op.op)).toEqual(["assembly.mate.create"]);
+    expect(coincident.kind).toBe("coincident");
+    expect(snapshot.mates?.[0]?.kind).toBe("coincident");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
   });
 });
