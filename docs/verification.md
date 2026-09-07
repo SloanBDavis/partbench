@@ -65,3 +65,13 @@ All five `smoke:ui-use` workflows passed; the two selected `smoke:ui` engine
 scenarios passed; `node scripts/scenarios-run.mjs` passed 25/25 command cases.
 Success/break screenshots are in `.metrics/ui-smoke/`. Script ESLint,
 Prettier, Node syntax validation, and `git diff --check` passed.
+
+
+2026-09-07 follow-up: pre-Apply assertions reproduced a real app defect in both
+focused journeys: valid assembly mate drafts displayed an unsupported exact
+preview error. Preview routing now uses the same feature-kind classification
+as Apply, so mates, primitives, datums, sketches, and transforms do not start
+solid-feature previews. All four mate Use paths assert no preview/error before
+Apply (and before Cancel in the concentric path). The strengthened tests failed
+before the fix and all five UI workflows passed afterward. The app typecheck
+and 106 focused web tests passed. No geometry or command support changed.

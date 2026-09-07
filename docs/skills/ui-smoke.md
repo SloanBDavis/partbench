@@ -39,7 +39,7 @@ Crash-recovery dialogs are skipped under the ui-smoke query flag.
 
 ## Use path (`smoke:ui-use`)
 
-A scenario may include `use` and `useBreak`: selectors + click/type/apply + wait-for-ready + screenshot name, then a break case. Use `expectStructure` after Apply, Cancel, Undo, or Redo to wait for the expected `project.structure` subset; arrays must match in length as well as contents. This verifies pose and mate changes without waiting for a transient pending indicator.
+A scenario may include `use` and `useBreak`: selectors + click/type/apply + wait-for-ready + screenshot name, then a break case. Use `expectStructure` after Apply, Cancel, Undo, or Redo to wait for the expected `project.structure` subset; arrays must match in length as well as contents. This verifies pose and mate changes without waiting for a transient pending indicator. `expectNoPreview` checks that a non-feature editor stays idle without reporting a preview error before Apply.
 Button clicks and numeric typing use native Bun input. Select helpers require visible, enabled controls but set values through input/change events. Each scenario and break case uses a fresh tab, sharing one browser/server, without seed retries.
 
 First landing: drive the UI once and write that block from what worked. After that, the script is the hill-climb.

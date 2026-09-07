@@ -238,6 +238,7 @@ import {
   prependCurrentExactPromotionOps
 } from "./currentExactPromotionApply";
 import { applyCommittedSolidEditorSubmission } from "./modes/solid/solidEditorApply";
+import { isSolidFeatureEditorKind } from "./modes/solid/solidEditorTypes";
 import { materializeSolidEditorRequestIds } from "./modes/solid/exactFeaturePreviewIds";
 import {
   createInitialWorkbenchUiState,
@@ -6101,7 +6102,7 @@ export function App() {
   }, []);
   const handleSolidPreviewRequest = useCallback(
     (submission: SolidEditorSubmission | undefined): void => {
-      if (!submission) {
+      if (!submission || !isSolidFeatureEditorKind(submission.kind)) {
         clearSolidPreview();
         return;
       }
@@ -9935,23 +9936,7 @@ export function App() {
           )
         : undefined;
 
-    const isFeatureSubmission = !(
-      submission.kind === "box" ||
-      submission.kind === "cylinder" ||
-      submission.kind === "sphere" ||
-      submission.kind === "cone" ||
-      submission.kind === "torus" ||
-      submission.kind === "sketch" ||
-      submission.kind === "datumPlane" ||
-      submission.kind === "datumAxis" ||
-      submission.kind === "fixedMate" ||
-      submission.kind === "coincidentMate" ||
-      submission.kind === "concentricMate" ||
-      submission.kind === "distanceMate" ||
-      submission.kind === "transform"
-    );
-
-    if (isFeatureSubmission) {
+    if (isSolidFeatureEditorKind(submission.kind)) {
       if (!solidEditorRequest) {
         throw new Error("The active solid editor is no longer available.");
       }

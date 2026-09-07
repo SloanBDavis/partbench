@@ -12,10 +12,7 @@
       "op": "sketch.addCircle",
       "sketchId": "sketch_bolt",
       "id": "circle_bolt",
-      "center": [
-        0,
-        0
-      ],
+      "center": [0, 0],
       "radius": 5
     },
     {
@@ -41,11 +38,7 @@
         "bodyId": "body_bolt"
       },
       "transform": {
-        "translation": [
-          0,
-          0,
-          0
-        ]
+        "translation": [0, 0, 0]
       }
     },
     {
@@ -58,11 +51,7 @@
         "bodyId": "body_bolt"
       },
       "transform": {
-        "translation": [
-          30,
-          0,
-          0
-        ]
+        "translation": [30, 0, 0]
       }
     }
   ],
@@ -80,9 +69,7 @@
         }
       ],
       "expect": {
-        "ops": [
-          "assembly.mate.create"
-        ],
+        "ops": ["assembly.mate.create"],
         "diff": {
           "assemblies": {
             "matesCreated": [
@@ -142,10 +129,7 @@
       "id": "persist-fixed-root",
       "persistRoundTrip": true,
       "expect": {
-        "schemaVersionNot": [
-          "web-cad.project.v23",
-          "web-cad.project.v26"
-        ]
+        "schemaVersionNot": ["web-cad.project.v23", "web-cad.project.v26"]
       },
       "queries": [
         {
@@ -202,6 +186,9 @@
       }
     },
     {
+      "expectNoPreview": true
+    },
+    {
       "apply": true
     },
     {
@@ -241,9 +228,7 @@
     }
   ],
   "useExpect": {
-    "forbidClicks": [
-      "solid.box"
-    ],
+    "forbidClicks": ["solid.box"],
     "assemblies": [
       {
         "id": "asm_root",

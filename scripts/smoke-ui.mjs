@@ -897,6 +897,24 @@ async function runUseSteps(view, name, steps, label) {
       await clickVisibleControl(view, selector);
       continue;
     }
+    if (step.expectNoPreview) {
+      // Flush the editor's React effects before checking that a non-feature
+      // draft neither schedules an exact preview nor reports a preview error.
+      await evaluate(
+        view,
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))"
+      );
+      await assertNoErrorToast(view, name + " " + label);
+      const message = await evaluate(
+        view,
+        "document.querySelector('.pb-feature-editor .pb-solid-field-note[aria-live]')?.textContent?.trim()"
+      );
+      if (message !== "")
+        throw new Error(
+          name + " unexpected preview feedback: " + JSON.stringify(message)
+        );
+      continue;
+    }
     if (step.expectStructure) {
       await expectStructure(view, name + " " + label, step.expectStructure);
       continue;

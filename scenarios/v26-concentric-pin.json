@@ -253,6 +253,9 @@
       }
     },
     {
+      "expectNoPreview": true
+    },
+    {
       "click": ".pb-feature-editor__footer-actions button:not([data-ui-smoke])"
     },
     {
@@ -323,6 +326,9 @@
         "selector": "#solid-concentric-mate-secondary-axis",
         "option": "Z"
       }
+    },
+    {
+      "expectNoPreview": true
     },
     {
       "apply": true

@@ -214,3 +214,22 @@ export function createSolidEditorSubmission(
 ): SolidEditorSubmission {
   return { kind, draft } as SolidEditorSubmission;
 }
+
+/** True for editors that share the solid-feature plan for preview and Apply. */
+export function isSolidFeatureEditorKind(kind: SolidEditorKind): boolean {
+  return !(
+    kind === "box" ||
+    kind === "cylinder" ||
+    kind === "sphere" ||
+    kind === "cone" ||
+    kind === "torus" ||
+    kind === "sketch" ||
+    kind === "datumPlane" ||
+    kind === "datumAxis" ||
+    kind === "fixedMate" ||
+    kind === "coincidentMate" ||
+    kind === "concentricMate" ||
+    kind === "distanceMate" ||
+    kind === "transform"
+  );
+}

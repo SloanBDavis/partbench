@@ -245,6 +245,9 @@
       }
     },
     {
+      "expectNoPreview": true
+    },
+    {
       "apply": true
     },
     {
