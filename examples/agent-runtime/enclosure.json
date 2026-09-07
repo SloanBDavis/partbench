@@ -1,0 +1,186 @@
+{
+  "id": "enclosure",
+  "brief": "Create a 60 by 40 by 20 mm open enclosure with 2 mm walls and a separate 2 mm lid. Add a 1.5 mm deep locating lip with 0.2 mm clearance on each side. Assemble the lid at the top of the grounded enclosure.",
+  "revisionBrief": "Make the enclosure 24 mm tall and move the lid to match, preserving its fit and all other dimensions.",
+  "create": [
+    {
+      "op": "sketch.create",
+      "id": "case_sketch",
+      "name": "Enclosure outline",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "case_sketch",
+      "id": "case_rectangle",
+      "center": [0, 0],
+      "width": 60,
+      "height": 40
+    },
+    {
+      "op": "feature.extrude",
+      "id": "case_extrude",
+      "bodyId": "case_blank",
+      "sketchId": "case_sketch",
+      "entityId": "case_rectangle",
+      "depth": 20
+    },
+    {
+      "op": "feature.shell",
+      "id": "case_shell",
+      "bodyId": "case",
+      "targetBodyId": "case_blank",
+      "wallThickness": 2,
+      "openFaceRefs": [
+        {
+          "kind": "generatedFace",
+          "bodyId": "case_blank",
+          "stableId": "generated:face:case_blank:endCap"
+        }
+      ]
+    },
+    {
+      "op": "sketch.create",
+      "id": "lid_sketch",
+      "name": "Lid outline",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "lid_sketch",
+      "id": "lid_rectangle",
+      "center": [0, 0],
+      "width": 60,
+      "height": 40
+    },
+    {
+      "op": "feature.extrude",
+      "id": "lid_extrude",
+      "bodyId": "lid_plate",
+      "sketchId": "lid_sketch",
+      "entityId": "lid_rectangle",
+      "depth": 2
+    },
+    {
+      "op": "sketch.create",
+      "id": "lip_sketch",
+      "name": "Locating lip",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "lip_sketch",
+      "id": "lip_rectangle",
+      "center": [0, 0],
+      "width": 55.6,
+      "height": 35.6
+    },
+    {
+      "op": "feature.extrude",
+      "id": "lip_extrude",
+      "bodyId": "lid",
+      "targetBodyId": "lid_plate",
+      "sketchId": "lip_sketch",
+      "entityId": "lip_rectangle",
+      "depth": 1.5,
+      "side": "negative",
+      "operationMode": "add"
+    },
+    {
+      "op": "assembly.create",
+      "id": "enclosure_assembly",
+      "name": "Enclosure and lid"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "case_instance",
+      "assemblyId": "enclosure_assembly",
+      "name": "Case",
+      "definition": {
+        "kind": "body",
+        "bodyId": "case"
+      },
+      "transform": {
+        "translation": [0, 0, 0]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "lid_instance",
+      "assemblyId": "enclosure_assembly",
+      "name": "Lid",
+      "definition": {
+        "kind": "body",
+        "bodyId": "lid"
+      },
+      "transform": {
+        "translation": [0, 0, 20]
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "case_ground",
+      "assemblyId": "enclosure_assembly",
+      "name": "Ground enclosure",
+      "kind": "fixed",
+      "instanceId": "case_instance"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "lid_height",
+      "assemblyId": "enclosure_assembly",
+      "name": "Lid height",
+      "kind": "distance",
+      "primary": {
+        "instanceId": "case_instance",
+        "plane": "XY"
+      },
+      "secondary": {
+        "instanceId": "lid_instance",
+        "plane": "XY"
+      },
+      "distance": 20
+    }
+  ],
+  "revise": [
+    {
+      "op": "feature.updateExtrude",
+      "id": "case_extrude",
+      "depth": 24
+    },
+    {
+      "op": "assembly.mate.edit",
+      "assemblyId": "enclosure_assembly",
+      "mateId": "lid_height",
+      "kind": "distance",
+      "primary": {
+        "instanceId": "case_instance",
+        "plane": "XY"
+      },
+      "secondary": {
+        "instanceId": "lid_instance",
+        "plane": "XY"
+      },
+      "distance": 24
+    }
+  ],
+  "invalid": [
+    {
+      "op": "feature.updateShell",
+      "id": "case_shell",
+      "wallThickness": 40
+    }
+  ],
+  "bodyIds": ["case", "lid"],
+  "expected": {
+    "volumesBefore": [11712, 7769.04],
+    "volumesAfter": [13248, 7769.04],
+    "assemblyId": "enclosure_assembly",
+    "movedInstanceId": "lid_instance",
+    "translationAfter": [0, 0, 24],
+    "rejection": {
+      "code": "UNSUPPORTED_FEATURE_OPERATION",
+      "messageIncludes": "Exact geometry rejected this batch:"
+    }
+  }
+}

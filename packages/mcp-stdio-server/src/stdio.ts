@@ -2,6 +2,7 @@
 import { createCadMcpServer } from "@web-cad/mcp-adapter";
 import { createMcpStdioSession } from "@web-cad/mcp-stdio-server";
 import { openLocalAgentBrowser, startLocalAgentLauncher } from "./launcher.ts";
+import { CLI_HELP, parseCliOptions } from "./cliOptions.ts";
 
 void main().catch((error: unknown) => {
   process.stderr.write(
@@ -11,18 +12,25 @@ void main().catch((error: unknown) => {
 });
 
 async function main(): Promise<void> {
-  const launcher = await startLocalAgentLauncher();
+  const options = parseCliOptions(process.argv.slice(2));
+  if (options.help) {
+    process.stdout.write(CLI_HELP);
+    return;
+  }
+  const host = options.headless
+    ? await (
+        await import("./headless.ts")
+      ).createHeadlessAgentHost({ workspace: options.workspace })
+    : await createBrowserHost();
   const session = createMcpStdioSession({
-    server: createCadMcpServer({ executionPort: launcher.relay })
+    server: host.server
   });
   const pending = new Set<Promise<void>>();
   let buffer = "";
   let closing = false;
 
-  process.stderr.write(`Partbench local agent: ${launcher.launchUrl}\n`);
-  if (process.env.PARTBENCH_SKIP_BROWSER_OPEN !== "1") {
-    openLocalAgentBrowser(launcher.launchUrl);
-  }
+  if ("workspace" in host)
+    process.stderr.write(`Partbench headless agent: ${host.workspace}\n`);
 
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk) => {
@@ -50,9 +58,17 @@ async function main(): Promise<void> {
   }
 
   function writeLineResponse(line: string): void {
-    const task = session.handleLineAsync(line).then((response) => {
-      if (response) process.stdout.write(`${response}\n`);
-    });
+    const task = session
+      .handleLineAsync(line)
+      .then((response) => {
+        if (response) process.stdout.write(`${response}\n`);
+      })
+      .catch((error: unknown) => {
+        process.stderr.write(
+          `${error instanceof Error ? error.message : "Request failed."}\n`
+        );
+        process.exitCode = 1;
+      });
     pending.add(task);
     void task.finally(() => pending.delete(task));
   }
@@ -60,7 +76,20 @@ async function main(): Promise<void> {
   async function close(): Promise<void> {
     if (closing) return;
     closing = true;
-    await launcher.close();
+    // Browser relay shutdown resolves pending requests; headless drains them first.
+    if (!options.headless) await host.close();
     await Promise.allSettled(pending);
+    if (options.headless) await host.close();
   }
+}
+
+async function createBrowserHost() {
+  const launcher = await startLocalAgentLauncher();
+  process.stderr.write(`Partbench local agent: ${launcher.launchUrl}\n`);
+  if (process.env.PARTBENCH_SKIP_BROWSER_OPEN !== "1")
+    openLocalAgentBrowser(launcher.launchUrl);
+  return {
+    server: createCadMcpServer({ executionPort: launcher.relay }),
+    close: () => launcher.close()
+  };
 }

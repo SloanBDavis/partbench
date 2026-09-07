@@ -225,6 +225,47 @@ describe("modeling result state", () => {
     ).toBe("Building exact results");
   });
 
+  it("ignores legitimately consumed intermediates while preserving active result blockers", () => {
+    const base = {
+      commandPending: false,
+      commandFailed: false,
+      derivedGeometryEnabled: true,
+      derivedSourceCount: 1,
+      derivedGeometry: readyGeometry,
+      derivedExactSourceCount: 1,
+      derivedExactMetadata: readyExactMetadata,
+      projectHealthStatus: "healthy" as const
+    };
+    const consumed = {
+      status: "blocked" as const,
+      diagnostics: [
+        {
+          code: "EXPORT_BODY_NOT_ACTIVE" as const,
+          status: "blocked" as const,
+          message: "Consumed by a downstream feature."
+        }
+      ]
+    };
+    expect(
+      createModelingResultState({
+        ...base,
+        currentExactResults: [consumed, consumed, consumed, { status: "ready" }]
+      })
+    ).toBe("Ready");
+    expect(
+      createModelingResultState({
+        ...base,
+        currentExactResults: [consumed, { status: "blocked" }]
+      })
+    ).toBe("1 exact result needs attention");
+    expect(
+      createModelingResultState({
+        ...base,
+        currentExactResults: [consumed, { status: "pending" }]
+      })
+    ).toBe("Building exact results");
+  });
+
   it("prioritizes live command state and command failure", () => {
     expect(
       createModelingResultState({

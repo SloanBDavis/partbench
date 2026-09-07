@@ -4,6 +4,11 @@ Partbench is a browser-native CAD application. This document names sticky
 constraints only. It is not an implementation checklist and is not a source
 for inventing a next release.
 
+The [agent runtime goal](./agent-runtime.md) also authorizes first-class
+headless exact sessions. Host-independent exact source resolution, checkpoint
+handling, and STEP execution live in `cad-runtime`; browser and Node hosts
+retain their own worker/display and file delivery adapters.
+
 ## Authorities
 
 CADOps is the center. cad-core is the document authority. OCCT/WASM is the
@@ -84,6 +89,7 @@ existing checkpoint plus anchor path, then the consuming feature op.
 - packages/occt-wasm — isolated OCCT/WASM integration
 - packages/sketch-solver — pure TypeScript 2D sketch solver
 - packages/agent-adapter — structured CADOps adapter for external callers
+- packages/cad-runtime — shared exact resolution and headless CAD sessions
 - packages/mcp-adapter — MCP tool wrapper over the agent adapter
 - packages/mcp-stdio-server — local stdio JSON-RPC MCP transport
 
@@ -102,5 +108,5 @@ boundaries separate. Do not couple the React UI to geometry internals.
 
 Do not implement the whole architecture at once.
 
-V22-V26 are complete ([`docs/v26.md`](./v26.md)). Do not invent V27. Next is a new user goal. This document names sticky constraints only.
+V22-V26 are complete ([`docs/v26.md`](./v26.md)). Do not invent V27. The current user goal is [agent runtime](./agent-runtime.md). This document names sticky constraints only.
 It is not a source for inventing a next release.

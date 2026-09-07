@@ -10,6 +10,7 @@ import {
   createOcctRevolveProfileMesh,
   createOcctExactBodyArtifactMetadataWithInstance,
   createOcctExactBodyArtifactWithLoader,
+  createOcctExactBodyDataArtifactWithLoader,
   createOcctExactBodyMeshWithLoader,
   createOcctExactTopologySnapshot,
   createOcctExactTopologyCheckpointPayload,
@@ -29,6 +30,9 @@ import {
 import {
   assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
+  executeGeometryKernelExactBodyDataArtifactWithFactory,
+  type ExactBodyArtifactRequest,
+  type GeometryKernelExactBodyDataArtifactResponse,
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
@@ -426,4 +430,19 @@ export type {
   GeometryKernelExactViewportPickMapDowngrade,
   GeometryKernelExactViewportPickMapEntity,
   GeometryKernelExactViewportPickMapPayload
+} from "./kernel";
+
+/** Build validated BRep/metadata/topology without meshing or viewport picks. */
+export async function executeGeometryKernelExactBodyDataArtifactRequest(
+  request: ExactBodyArtifactRequest
+): Promise<GeometryKernelExactBodyDataArtifactResponse> {
+  return executeGeometryKernelExactBodyDataArtifactWithFactory(
+    (input) => createOcctExactBodyDataArtifactWithLoader(loadOcct, input),
+    request
+  );
+}
+
+export type {
+  GeometryKernelExactBodyDataArtifact,
+  GeometryKernelExactBodyDataArtifactResponse
 } from "./kernel";

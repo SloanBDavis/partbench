@@ -105,6 +105,7 @@ export interface ProjectHealthOptions {
   readonly ownerPartId: PartId;
   readonly units: DocumentUnits;
   readonly bodyExists: (bodyId: BodyId) => boolean;
+  readonly isHoleTargetSourceEligible?: (featureId: FeatureId) => boolean;
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
   readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
@@ -1015,7 +1016,12 @@ function createAuthoredHoleHealth(
       featureId: feature.id,
       bodyId: feature.targetBodyId
     });
-  } else if (!isSupportedHoleTargetFeature(feature, targetFeature, document)) {
+  } else if (
+    !(
+      options.isHoleTargetSourceEligible?.(feature.id) ??
+      isSupportedHoleTargetFeature(feature, targetFeature, document)
+    )
+  ) {
     issues.push({
       code: "UNSUPPORTED_BODY_REFERENCES",
       message:

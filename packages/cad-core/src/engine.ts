@@ -2433,6 +2433,42 @@ export class CadEngine {
           document: this.#document,
           features: structure.features
         });
+        const sourceFeature = this.#document.features.get(
+          request.query.featureId
+        );
+        // Use the command validator for consumed-source editability, rather than
+        // maintaining a second, shallower dependency policy in the query layer.
+        const rebuildValidation =
+          sourceFeature?.kind === "extrude" &&
+          structure.bodies.some(
+            (body) => body.id === sourceFeature.bodyId && body.consumedByFeatureId
+          )
+            ? this.executeBatch({
+                version: request.version,
+                mode: "dryRun",
+                ops: [{
+                  op: "feature.updateExtrude",
+                  id: sourceFeature.id,
+                  depth: sourceFeature.depth
+                }]
+              })
+            : undefined;
+        const proposal = request.query.proposedEdit;
+        const proposedRebuildValidation =
+          rebuildValidation?.ok && sourceFeature?.kind === "extrude" &&
+          proposal?.kind === "extrude" && proposal.profile
+            ? this.executeBatch({
+                version: request.version,
+                mode: "dryRun",
+                ops: [{
+                  op: "feature.updateExtrude",
+                  id: sourceFeature.id,
+                  profile: proposal.profile,
+                  depth: proposal.depth ?? sourceFeature.depth,
+                  side: proposal.side ?? sourceFeature.side
+                }]
+              })
+            : undefined;
 
         return createFeatureEditabilityResponse({
           cadOpsVersion: request.version,
@@ -2444,6 +2480,17 @@ export class CadEngine {
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
           sketchProfileHealth,
+          validatedRebuildFeatureIds: rebuildValidation?.ok
+            ? rebuildValidation.modifiedFeatureIds
+            : undefined,
+          rebuildValidationMessage:
+            rebuildValidation && !rebuildValidation.ok
+              ? rebuildValidation.error.message
+              : undefined,
+          rebuildProposalValidationMessage:
+            proposedRebuildValidation && !proposedRebuildValidation.ok
+              ? proposedRebuildValidation.error.message
+              : undefined,
           topologyMatchResults: request.query.topologyMatchResults
         });
       }
@@ -2522,6 +2569,8 @@ export class CadEngine {
           units: this.#document.units,
           derivedExactMetadata: request.query.derivedExactMetadata ?? [],
           currentExactResults,
+          isHoleTargetSourceEligible: (featureId) =>
+            isHoleTargetSourceEligibleForHealth(this.#document, featureId),
           bodyExists: (bodyId) =>
             structure.bodies.some((body) => body.id === bodyId)
         });
@@ -15907,12 +15956,6 @@ function updateExtrudeFeature(
     });
   }
 
-  const scopedRebuildChain = validateScopedSourceExtrudeRebuildChain(
-    state,
-    feature,
-    opIndex
-  );
-
   const requestedProfile = resolveUpdateExtrudeCommandInputProfile(op, opIndex);
 
   if (
@@ -16071,6 +16114,13 @@ function updateExtrudeFeature(
   );
 
   state.features.set(featureId, updated);
+  // Validate every downstream input against the candidate source, not the old
+  // profile. This state is transactional and is discarded if a reference fails.
+  const scopedRebuildChain = validateScopedSourceExtrudeRebuildChain(
+    state,
+    updated,
+    opIndex
+  );
   pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   if (requestedProfile) {
@@ -16086,31 +16136,38 @@ function updateExtrudeFeature(
     );
   }
   if (scopedRebuildChain) {
-    pushFeatureModified(
-      diff,
-      featureRef(state, scopedRebuildChain.consumingFeature)
-    );
-    pushBodyModified(diff, bodyRef(scopedRebuildChain.consumingFeature));
-  }
-  pushFeatureReferenceEffects(
-    diff,
-    scopedRebuildChain
-      ? createScopedSourceExtrudeRebuildReferenceEffects(
+    let source: Feature = updated;
+    for (const consumer of scopedRebuildChain.consumingFeatures) {
+      pushFeatureModified(diff, featureRef(state, consumer));
+      pushBodyModified(diff, bodyRef(consumer));
+      const hasNext = consumer !== scopedRebuildChain.consumingFeatures.at(-1);
+      pushFeatureReferenceEffects(
+        diff,
+        createScopedSourceExtrudeRebuildReferenceEffects(
           state,
-          updated,
-          scopedRebuildChain.consumingFeature
-        )
-      : createActiveExtrudeEditReferenceEffects(state, updated)
-  );
-  pushFeatureLifecycleEffects(
-    diff,
-    scopedRebuildChain
-      ? createScopedSourceExtrudeRebuildLifecycleEffects(
-          updated,
-          scopedRebuildChain.consumingFeature
-        )
-      : createActiveSourceFeatureEditLifecycleEffects(updated)
-  );
+          source,
+          consumer
+        ).filter((effect) => !hasNext || effect.bodyId !== consumer.bodyId)
+      );
+      pushFeatureLifecycleEffects(
+        diff,
+        createScopedSourceExtrudeRebuildLifecycleEffects(
+          source,
+          consumer
+        ).filter((effect) => !hasNext || effect.bodyId !== consumer.bodyId)
+      );
+      source = consumer;
+    }
+  } else {
+    pushFeatureReferenceEffects(
+      diff,
+      createActiveExtrudeEditReferenceEffects(state, updated)
+    );
+    pushFeatureLifecycleEffects(
+      diff,
+      createActiveSourceFeatureEditLifecycleEffects(updated)
+    );
+  }
 }
 
 type TargetConsumingFeature =
@@ -16131,7 +16188,7 @@ type TargetConsumingFeature =
   | ShellFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
-  readonly consumingFeature: TargetConsumingFeature;
+  readonly consumingFeatures: readonly TargetConsumingFeature[];
 }
 
 function validateScopedSourceExtrudeRebuildChain(
@@ -16139,54 +16196,41 @@ function validateScopedSourceExtrudeRebuildChain(
   feature: ExtrudeFeature,
   opIndex?: number
 ): ScopedSourceExtrudeRebuildChain | undefined {
-  const consumingFeatures = findConsumingFeaturesByTargetBodyId(
-    state.features,
-    feature.bodyId
-  );
-  const consumingFeature = consumingFeatures[0];
-
-  if (!consumingFeature) {
-    return undefined;
+  const chain: TargetConsumingFeature[] = [];
+  const visited = new Set<BodyId>([feature.bodyId]);
+  let bodyId = feature.bodyId;
+  while (true) {
+    const consumers = findConsumingFeaturesByTargetBodyId(
+      state.features,
+      bodyId
+    );
+    const consumer = consumers[0];
+    if (!consumer) break;
+    if (consumers.length > 1 || visited.has(consumer.bodyId)) {
+      throwValidationError({
+        code: "FEATURE_NOT_EDITABLE",
+        message:
+          consumers.length > 1
+            ? "Feature result has multiple downstream consumers."
+            : "Feature result has a cyclic downstream dependency.",
+        opIndex,
+        featureId: feature.id,
+        bodyId,
+        path: operationPath(opIndex, "id"),
+        expected: "an acyclic chain with one supported consumer per body",
+        received: consumers.map((candidate) => candidate.id).join(", ")
+      });
+    }
+    validateDirectConsumingFeatureForSourceExtrudeRebuild(
+      state,
+      consumer,
+      opIndex
+    );
+    chain.push(consumer);
+    visited.add(consumer.bodyId);
+    bodyId = consumer.bodyId;
   }
-
-  if (consumingFeatures.length > 1) {
-    throwValidationError({
-      code: "FEATURE_NOT_EDITABLE",
-      message: "Feature result has multiple downstream consumers.",
-      opIndex,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      path: operationPath(opIndex, "id"),
-      expected: "one direct supported consuming feature",
-      received: consumingFeatures.map((candidate) => candidate.id).join(", ")
-    });
-  }
-
-  const nextConsumer = findConsumingFeatureByTargetBodyId(
-    state.features,
-    consumingFeature.bodyId
-  );
-
-  if (nextConsumer) {
-    throwValidationError({
-      code: "FEATURE_NOT_EDITABLE",
-      message: "A downstream result already has a consumer.",
-      opIndex,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      path: operationPath(opIndex, "id"),
-      expected: "one direct supported consuming feature",
-      received: nextConsumer.id
-    });
-  }
-
-  validateDirectConsumingFeatureForSourceExtrudeRebuild(
-    state,
-    consumingFeature,
-    opIndex
-  );
-
-  return { consumingFeature };
+  return chain.length > 0 ? { consumingFeatures: chain } : undefined;
 }
 
 function validateDirectConsumingFeatureForSourceExtrudeRebuild(
@@ -20448,7 +20492,7 @@ function createHoleRetargetLifecycleEffects(
 
 function createScopedSourceExtrudeRebuildReferenceEffects(
   state: MutableDocumentState,
-  sourceFeature: ExtrudeFeature,
+  sourceFeature: Feature,
   consumingFeature: TargetConsumingFeature
 ): readonly CadFeatureReferenceChangeSummary[] {
   const targetGeneratedReferences = listGeneratedReferences(
@@ -20506,7 +20550,7 @@ function createScopedSourceExtrudeRebuildReferenceEffects(
 
 function createScopedResultActiveReferenceEffects(
   state: MutableDocumentState,
-  sourceFeature: ExtrudeFeature,
+  sourceFeature: Feature,
   consumingFeature: TargetConsumingFeature
 ): readonly CadFeatureReferenceChangeSummary[] {
   if (
@@ -20565,7 +20609,7 @@ function createScopedResultActiveReferenceEffects(
 }
 
 function createScopedSourceExtrudeRebuildLifecycleEffects(
-  sourceFeature: ExtrudeFeature,
+  sourceFeature: Feature,
   consumingFeature: TargetConsumingFeature
 ): readonly CadBodyLifecycleEffectSummary[] {
   const resultEffect: CadBodyLifecycleEffectSummary =
@@ -21515,7 +21559,7 @@ function validateCommandDownstreamBodyId(
 }
 
 function createCommandDownstreamBodyPolicyProjection(
-  state: MutableDocumentState,
+  state: CadDocument,
   feature: Feature | BodyId,
   consumingFeature: Feature | undefined,
   operation: CadExactDownstreamOperation
@@ -21533,6 +21577,26 @@ function createCommandDownstreamBodyPolicyProjection(
     dependencyStatus: dependency.status,
     dependencyCycle: dependency.cycle
   });
+}
+
+function isHoleTargetSourceEligibleForHealth(
+  document: CadDocument,
+  featureId: FeatureId
+): boolean {
+  const feature = document.features.get(featureId);
+  if (feature?.kind !== "hole") return false;
+  const target = findFeatureByBodyId(document.features, feature.targetBodyId);
+  if (!target) return false;
+  const consumer = findConsumingFeatureByTargetBodyId(
+    document.features,
+    target.bodyId
+  );
+  return createCommandDownstreamBodyPolicyProjection(
+    document,
+    target,
+    consumer?.id === feature.id ? undefined : consumer,
+    "holeTarget"
+  ).sourceEligible;
 }
 
 function throwCommandDownstreamBodyPolicyError(
@@ -27702,6 +27766,8 @@ function createProjectSummary(
     units: document.units,
     derivedExactMetadata,
     currentExactResults: exportReadiness.currentExactResults,
+    isHoleTargetSourceEligible: (featureId) =>
+      isHoleTargetSourceEligibleForHealth(document, featureId),
     bodyExists
   });
   const structureSummary: ProjectSummaryQueryResponse["structure"] = {

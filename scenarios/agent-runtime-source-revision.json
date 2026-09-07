@@ -1,0 +1,326 @@
+{
+  "id": "agent-runtime-source-revision",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "parameter.create",
+      "id": "hole_radius",
+      "name": "Hole radius",
+      "value": 2
+    },
+    {
+      "op": "sketch.create",
+      "id": "base_sketch",
+      "name": "Base",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "base_sketch",
+      "id": "base_rectangle",
+      "center": [0, 0],
+      "width": 40,
+      "height": 24
+    },
+    {
+      "op": "feature.extrude",
+      "id": "base_extrude",
+      "bodyId": "base",
+      "sketchId": "base_sketch",
+      "entityId": "base_rectangle",
+      "depth": 4
+    },
+    {
+      "op": "feature.fillet",
+      "id": "base_fillet",
+      "bodyId": "rounded_base",
+      "targetBodyId": "base",
+      "edgeStableId": "generated:edge:base:start:uMax",
+      "radius": 1
+    },
+    {
+      "op": "sketch.create",
+      "id": "hole_sketch",
+      "name": "Mounting holes",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "hole_sketch",
+      "id": "hole_circle",
+      "center": [-6, 0],
+      "radius": 2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "hole_dimension",
+      "name": "Mounting hole radius",
+      "sketchId": "hole_sketch",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "hole_circle",
+        "entityKind": "circle",
+        "role": "radius"
+      },
+      "parameterId": "hole_radius"
+    },
+    {
+      "op": "feature.hole",
+      "id": "mounting_hole",
+      "bodyId": "drilled_base",
+      "targetBodyId": "rounded_base",
+      "sketchId": "hole_sketch",
+      "circleEntityId": "hole_circle",
+      "depthMode": "throughAll",
+      "direction": "positive"
+    },
+    {
+      "op": "feature.linearPattern",
+      "id": "hole_pattern",
+      "bodyId": "patterned_base",
+      "seedFeatureId": "mounting_hole",
+      "direction": {
+        "kind": "globalAxis",
+        "axis": "x"
+      },
+      "spacing": 18,
+      "instanceCount": 2
+    }
+  ],
+  "steps": [
+    {
+      "id": "revise-parameter-and-consumed-extrude-source",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "hole_radius",
+          "value": 2.5
+        },
+        {
+          "op": "feature.updateExtrude",
+          "id": "base_extrude",
+          "depth": 6
+        }
+      ],
+      "expect": {
+        "ops": ["parameter.update", "feature.updateExtrude"],
+        "diff": {
+          "features": {
+            "modified": [
+              {
+                "id": "mounting_hole",
+                "kind": "hole",
+                "bodyId": "drilled_base"
+              },
+              {
+                "id": "hole_pattern",
+                "kind": "linearPattern",
+                "bodyId": "patterned_base"
+              },
+              {
+                "id": "base_extrude",
+                "kind": "extrude",
+                "bodyId": "base"
+              },
+              {
+                "id": "base_fillet",
+                "kind": "fillet",
+                "bodyId": "rounded_base"
+              },
+              {
+                "id": "mounting_hole",
+                "kind": "hole",
+                "bodyId": "drilled_base"
+              },
+              {
+                "id": "hole_pattern",
+                "kind": "linearPattern",
+                "bodyId": "patterned_base"
+              }
+            ],
+            "bodiesModified": [
+              {
+                "id": "drilled_base",
+                "featureId": "mounting_hole"
+              },
+              {
+                "id": "patterned_base",
+                "featureId": "hole_pattern"
+              },
+              {
+                "id": "base",
+                "featureId": "base_extrude"
+              },
+              {
+                "id": "rounded_base",
+                "featureId": "base_fillet"
+              },
+              {
+                "id": "drilled_base",
+                "featureId": "mounting_hole"
+              },
+              {
+                "id": "patterned_base",
+                "featureId": "hole_pattern"
+              }
+            ],
+            "lifecycleEffects": [
+              {
+                "bodyId": "base",
+                "featureId": "base_extrude",
+                "targetFeatureId": "base_fillet",
+                "primaryState": "consumed",
+                "states": ["consumed", "source", "modified"]
+              },
+              {
+                "bodyId": "rounded_base",
+                "featureId": "base_fillet",
+                "targetFeatureId": "mounting_hole",
+                "primaryState": "consumed",
+                "states": ["consumed", "source", "modified"]
+              },
+              {
+                "bodyId": "drilled_base",
+                "featureId": "mounting_hole",
+                "targetFeatureId": "hole_pattern",
+                "primaryState": "consumed",
+                "states": ["consumed", "source", "modified"]
+              },
+              {
+                "bodyId": "patterned_base",
+                "featureId": "hole_pattern",
+                "primaryState": "replacement",
+                "states": ["active", "result", "modified", "replacement"]
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "feature.editability",
+            "featureId": "base_extrude"
+          },
+          "expect": {
+            "ok": true,
+            "status": "editable",
+            "affected": {
+              "featureIds": [
+                "base_extrude",
+                "base_fillet",
+                "mounting_hole",
+                "hole_pattern"
+              ],
+              "bodyIds": [
+                "base",
+                "rounded_base",
+                "drilled_base",
+                "patterned_base"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject-consumed-fillet-edit",
+      "ops": [
+        {
+          "op": "feature.updateFillet",
+          "id": "base_fillet",
+          "radius": 100
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "FEATURE_NOT_EDITABLE",
+          "messageIncludes": "downstream consumer"
+        }
+      }
+    },
+    {
+      "id": "persist-revised-source-after-rejection",
+      "persistRoundTrip": true,
+      "expect": {
+        "schemaVersion": "web-cad.project.v22"
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "parameter.get",
+            "id": "hole_radius"
+          },
+          "expect": {
+            "ok": true,
+            "parameter": {
+              "id": "hole_radius",
+              "value": 2.5
+            }
+          }
+        },
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "featureCount": 4,
+            "bodyCount": 4,
+            "features": [
+              {
+                "id": "base_extrude",
+                "kind": "extrude",
+                "bodyId": "base",
+                "depth": 6
+              },
+              {
+                "id": "base_fillet",
+                "kind": "fillet",
+                "bodyId": "rounded_base",
+                "targetBodyId": "base",
+                "radius": 1
+              },
+              {
+                "id": "mounting_hole",
+                "kind": "hole",
+                "bodyId": "drilled_base",
+                "targetBodyId": "rounded_base",
+                "depthMode": "throughAll"
+              },
+              {
+                "id": "hole_pattern",
+                "kind": "linearPattern",
+                "bodyId": "patterned_base",
+                "seedFeatureId": "mounting_hole",
+                "spacing": 18,
+                "instanceCount": 2
+              }
+            ],
+            "bodies": [
+              {
+                "id": "base",
+                "featureId": "base_extrude",
+                "consumedByFeatureId": "base_fillet"
+              },
+              {
+                "id": "rounded_base",
+                "featureId": "base_fillet",
+                "consumedByFeatureId": "mounting_hole"
+              },
+              {
+                "id": "drilled_base",
+                "featureId": "mounting_hole",
+                "consumedByFeatureId": "hole_pattern"
+              },
+              {
+                "id": "patterned_base",
+                "featureId": "hole_pattern"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,7 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Proof / close loop: [docs/verification.md](docs/verification.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Last completed user goal: [docs/v26.md](docs/v26.md). V22–V26 complete. Do not reopen. Do not invent V27. Next is a new user goal.
+- Last completed user goal: [docs/agent-runtime.md](docs/agent-runtime.md). V22–V26 and agent runtime are complete. Do not reopen or invent V27. Next is a new user goal.
 
 Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md, or per-gate markdown unless the current user-goal doc names them.
 
@@ -45,5 +45,6 @@ Named closer + (if UI) `smoke:ui` engine and Use path green. CADOps scenarios ar
 - packages/occt-wasm - isolated OCCT/WASM integration
 - packages/sketch-solver - pure TypeScript 2D sketch solver
 - packages/agent-adapter - structured CADOps adapter for external callers
+- packages/cad-runtime - shared exact evaluation and headless CAD sessions
 - packages/mcp-adapter - MCP tool wrapper over the agent adapter
 - packages/mcp-stdio-server - local stdio JSON-RPC MCP transport

@@ -1,0 +1,130 @@
+{
+  "id": "agent-runtime-native-edit",
+  "kind": "cadops",
+  "seed": [],
+  "steps": [],
+  "use": [
+    {
+      "openWcad": ".metrics/agent-runtime/mounting-plate/mounting-plate.wcad"
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "patterned_base",
+        "volume": 5519.230106902305
+      }
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "expectText": {
+        "selector": ".pb-project-table tbody tr:first-child td:first-of-type",
+        "text": "2.5"
+      }
+    },
+    {
+      "click": ".pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": "3"
+      }
+    },
+    {
+      "click": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectText": {
+        "selector": ".pb-project-table tbody tr:first-child td:first-of-type",
+        "text": "3"
+      }
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "patterned_base",
+        "volume": 5415.557549333842
+      }
+    },
+    {
+      "screenshot": "agent-runtime-native-edit-use"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "screenshot": "agent-runtime-native-edit-solid"
+    }
+  ],
+  "useBreak": [
+    {
+      "openWcad": ".metrics/agent-runtime/mounting-plate/mounting-plate.wcad"
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "patterned_base",
+        "volume": 5519.230106902305
+      }
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "click": ".pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "expectText": {
+        "selector": ".pb-project-table tbody tr:first-child td:first-of-type",
+        "text": "2.5"
+      }
+    },
+    {
+      "screenshot": "agent-runtime-native-edit-use-break"
+    }
+  ],
+  "useExpect": {
+    "features": [
+      {
+        "id": "base_extrude",
+        "kind": "extrude",
+        "depth": 6
+      },
+      {
+        "id": "base_fillet",
+        "kind": "fillet"
+      },
+      {
+        "id": "mounting_hole",
+        "kind": "hole"
+      },
+      {
+        "id": "hole_pattern",
+        "kind": "linearPattern"
+      }
+    ]
+  }
+}

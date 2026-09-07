@@ -87,6 +87,8 @@ import {
 import {
   createOcctExactBodyArtifactMetadataWithInstance,
   createOcctExactBodyArtifactWithInstance,
+  createOcctExactBodyDataArtifactWithInstance,
+  createOcctExactBodyDataArtifactWithLoader,
   createOcctExactBodyArtifactWithLoader,
   createOcctExactBodyMeshWithInstance,
   createOcctExactBodyMeshWithLoader,
@@ -102,6 +104,7 @@ import {
   type OcctArtifactMirrorSource,
   type OcctArtifactShellSource,
   type OcctExactBodyArtifact,
+  type OcctExactBodyDataArtifact,
   type OcctExactBodyArtifactLeaf,
   type OcctExactBodyArtifactShapePolicy,
   type OcctExactBodyArtifactInput,
@@ -214,6 +217,7 @@ export type {
   OcctArtifactMirrorSource,
   OcctArtifactShellSource,
   OcctExactBodyArtifact,
+  OcctExactBodyDataArtifact,
   OcctExactBodyArtifactLeaf,
   OcctExactBodyArtifactShapePolicy,
   OcctExactBodyArtifactInput,
@@ -288,6 +292,8 @@ export {
   runOcctNamedStepProbeWithInstance,
   runOcctNamedStepProbeWithLoader,
   createOcctExactBodyArtifactWithInstance,
+  createOcctExactBodyDataArtifactWithInstance,
+  createOcctExactBodyDataArtifactWithLoader,
   createOcctExactBodyArtifactWithLoader,
   createOcctExactBodyArtifactMetadataWithInstance,
   createOcctExactBodyMeshWithInstance,
@@ -319,7 +325,14 @@ export {
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
 
 export async function loadOcct(): Promise<OpenCascadeInstance> {
-  occtPromise ??= initOpenCascade();
+  // A headless MCP host owns stdout for JSON-RPC; native writer diagnostics
+  // must use stderr even when this module is loaded outside that host.
+  occtPromise ??= initOpenCascade({
+    module: {
+      print: (message: string) => process.stderr.write(`${message}\n`),
+      printErr: (message: string) => process.stderr.write(`${message}\n`)
+    }
+  });
   return occtPromise;
 }
 

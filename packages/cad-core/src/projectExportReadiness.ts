@@ -1306,7 +1306,6 @@ function classifyLegacyBodySource(
 
     if (
       feature.operationMode !== "newBody" &&
-      feature.profile.kind === "wire" &&
       hasCurrentReadyExactResultEvidence(
         document,
         body,
@@ -1321,7 +1320,7 @@ function classifyLegacyBodySource(
           createBodyDiagnostic(
             "EXPORT_BODY_SOURCE_SUPPORTED",
             "supported",
-            `Composite wire ${feature.operationMode} result body ${body.id} has current exact result evidence and a recursive exact STEP recipe.`,
+            `Extrude ${feature.operationMode} result body ${body.id} has current exact result evidence and a recursive exact STEP recipe.`,
             body,
             sourceKind
           )
@@ -1470,7 +1469,8 @@ function classifyLegacyBodySource(
             body,
             sourceKind,
             {
-              expected: "resolved arc, spline, or G1 line/arc/spline-chain sweep",
+              expected:
+                "resolved arc, spline, or G1 line/arc/spline-chain sweep",
               received: "legacy or unresolved sweep"
             }
           )

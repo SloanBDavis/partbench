@@ -25,6 +25,7 @@ export function NumericInput({
   value,
   onValueChange,
   onBlur,
+  step = "any",
   ...props
 }: NumericInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +47,7 @@ export function NumericInput({
       {...props}
       ref={inputRef}
       type="number"
+      step={step}
       defaultValue={Number.isFinite(value) ? value : ""}
       onChange={(event) => onValueChange(event.currentTarget.valueAsNumber)}
       onBlur={handleBlur}

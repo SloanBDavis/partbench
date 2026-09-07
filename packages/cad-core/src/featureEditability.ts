@@ -68,6 +68,10 @@ export interface CreateFeatureEditabilityResponseOptions {
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly sketchProfileHealth?: readonly SketchProfileHealthEntry[];
   readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
+  /** A nonmutating CADOps validation supplies the complete downstream chain. */
+  readonly validatedRebuildFeatureIds?: readonly FeatureId[];
+  readonly rebuildValidationMessage?: string;
+  readonly rebuildProposalValidationMessage?: string;
 }
 
 export function createFeatureEditabilityResponse(
@@ -430,14 +434,16 @@ function createExtrudeEditabilityResponse(
   const body = options.bodies.find(
     (candidate) => candidate.id === feature.bodyId
   );
-  const scopedRebuildConsumer = getScopedSourceExtrudeRebuildConsumer(
-    options,
-    feature,
-    body
-  );
-  const scopedRebuildBlocker = scopedRebuildConsumer
-    ? undefined
-    : getScopedSourceExtrudeRebuildBlocker(options, feature, body);
+  const scopedRebuildConsumers = (options.validatedRebuildFeatureIds ?? [])
+    .filter((id) => id !== feature.id)
+    .flatMap((id) => {
+      const consumer = options.features.find(
+        (candidate) => candidate.id === id
+      );
+      return consumer && consumer.kind !== "primitive" ? [consumer] : [];
+    });
+  const scopedRebuildConsumer = scopedRebuildConsumers[0];
+  const finalRebuildConsumer = scopedRebuildConsumers.at(-1);
   const blockingDiagnostics: CadFeatureEditDiagnostic[] = [];
   blockingDiagnostics.push(
     ...createProfileBlockingDiagnostics(options, feature.id)
@@ -447,16 +453,13 @@ function createExtrudeEditabilityResponse(
       createDiagnostic({
         code: "FEATURE_EDIT_CONSUMED_BODY",
         severity: "blocker",
-        message: scopedRebuildBlocker
-          ? `Feature ${feature.id} cannot be edited safely because downstream result body ${scopedRebuildBlocker.consumerBodyId} is consumed by feature ${scopedRebuildBlocker.nextConsumerId}. Edit or repair that downstream feature before changing the original source.`
-          : `Feature ${feature.id} cannot be edited safely because body ${feature.bodyId} is consumed by feature ${body.consumedByFeatureId}.`,
+        message:
+          options.rebuildValidationMessage ??
+          `Feature ${feature.id} cannot be edited because its downstream chain could not be revalidated.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        expected: scopedRebuildBlocker
-          ? "one direct supported consuming feature"
-          : "active feature body",
-        received:
-          scopedRebuildBlocker?.nextConsumerId ?? body.consumedByFeatureId
+        expected: "an acyclic chain with one supported consumer per body",
+        received: body.consumedByFeatureId
       })
     );
   }
@@ -514,27 +517,27 @@ function createExtrudeEditabilityResponse(
           code: "FEATURE_EDIT_SUPPORTED",
           severity: "info",
           message: scopedRebuildConsumer
-            ? "Extrude profile, depth, and side can be edited through feature.updateExtrude with one direct downstream rebuild; this query does not mutate document state."
+            ? "Extrude profile, depth, and side can be edited through feature.updateExtrude with the supported downstream chain rebuilt; this query does not mutate document state."
             : "Extrude profile, depth, and side can be edited through feature.updateExtrude; this query does not mutate document state.",
           featureId: feature.id,
           bodyId: feature.bodyId
         })
       ]
     : [];
-  const scopedRebuildDiagnostics = scopedRebuildConsumer
-    ? scopedRebuildConsumer.kind === "hole"
+  const scopedRebuildDiagnostics = finalRebuildConsumer
+    ? finalRebuildConsumer.kind === "hole"
       ? []
       : [
           createDiagnostic({
             code: "AMBIGUOUS_RESULT_TOPOLOGY",
             severity: "warning",
             message:
-              "The direct downstream source-model rebuild can commit, but downstream result generated topology remains repair-needed until a later stable-reference tranche proves it.",
+              "The downstream source-model rebuild can commit; final result topology requires fresh exact evidence before topology-dependent operations.",
             featureId: feature.id,
-            bodyId: scopedRebuildConsumer.bodyId,
+            bodyId: finalRebuildConsumer.bodyId,
             targetBodyId: feature.bodyId,
             expected: "command-ready downstream result topology",
-            received: scopedRebuildConsumer.kind
+            received: finalRebuildConsumer.kind
           })
         ]
     : [];
@@ -543,12 +546,21 @@ function createExtrudeEditabilityResponse(
     ...scopedRebuildDiagnostics,
     ...blockingDiagnostics
   ];
-  const dryRunDiagnostics = createExtrudeDryRunDiagnostics(
+  const dryRunDiagnostics = [...createExtrudeDryRunDiagnostics(
     feature,
     options.proposedEdit,
     blockingDiagnostics,
     options.document
-  );
+  )];
+  if (options.rebuildProposalValidationMessage && dryRunDiagnostics.length === 0) {
+    dryRunDiagnostics.push(createDiagnostic({
+      code: "FEATURE_EDIT_INVALID_PROPOSAL",
+      severity: "blocker",
+      message: options.rebuildProposalValidationMessage,
+      featureId: feature.id,
+      bodyId: feature.bodyId
+    }));
+  }
   const dryRunStatus = chooseExtrudeDryRunStatus(
     options.proposedEdit,
     editable,
@@ -562,27 +574,34 @@ function createExtrudeEditabilityResponse(
       ? "consumed"
       : "ambiguous";
   const affectedFeatureIds = scopedRebuildConsumer
-    ? [feature.id, scopedRebuildConsumer.id]
+    ? [feature.id, ...scopedRebuildConsumers.map((consumer) => consumer.id)]
     : [feature.id];
   const affectedBodyIds = scopedRebuildConsumer
-    ? [feature.bodyId, scopedRebuildConsumer.bodyId]
+    ? [
+        feature.bodyId,
+        ...scopedRebuildConsumers.map((consumer) => consumer.bodyId)
+      ]
     : [feature.bodyId, ...(feature.targetBodyId ? [feature.targetBodyId] : [])];
   const generatedReferenceCount =
     countGeneratedReferences(options, feature.bodyId) +
-    (scopedRebuildConsumer
-      ? countGeneratedReferences(options, scopedRebuildConsumer.bodyId)
-      : 0);
+    scopedRebuildConsumers.reduce(
+      (count, consumer) =>
+        count + countGeneratedReferences(options, consumer.bodyId),
+      0
+    );
   const namedReferenceCount =
     countNamedReferences(options, feature.bodyId) +
-    (scopedRebuildConsumer
-      ? countNamedReferences(options, scopedRebuildConsumer.bodyId)
-      : 0);
+    scopedRebuildConsumers.reduce(
+      (count, consumer) =>
+        count + countNamedReferences(options, consumer.bodyId),
+      0
+    );
   const affected = createAffectedSummary(
     [
       feature.sketchId,
-      ...(scopedRebuildConsumer && "sketchId" in scopedRebuildConsumer
-        ? [scopedRebuildConsumer.sketchId]
-        : [])
+      ...scopedRebuildConsumers.flatMap((consumer) =>
+        "sketchId" in consumer ? [consumer.sketchId] : []
+      )
     ],
     affectedFeatureIds,
     affectedBodyIds,
@@ -604,33 +623,44 @@ function createExtrudeEditabilityResponse(
         : "AMBIGUOUS_RESULT_TOPOLOGY",
     message: editable
       ? scopedRebuildConsumer
-        ? "Source references remain consumed while the direct downstream feature is rebuilt."
+        ? "Source references remain consumed while the downstream chain is rebuilt."
         : "Source generated references are active for this supported edit query."
       : "Source generated references require review before a committed edit can be considered command-ready."
   });
-  const resultReferenceChanges = scopedRebuildConsumer
-    ? [
-        ...createScopedResultActiveReferenceChanges({
-          options,
-          sourceFeature: feature,
-          consumingFeature: scopedRebuildConsumer
-        }),
+  const resultReferenceChanges = scopedRebuildConsumers.flatMap(
+    (consumer, index) => {
+      const next = scopedRebuildConsumers[index + 1];
+      return [
+        ...(next
+          ? []
+          : createScopedResultActiveReferenceChanges({
+              options,
+              sourceFeature: feature,
+              consumingFeature: consumer
+            })),
         createReferenceChange({
-          category:
-            scopedRebuildConsumer.kind === "hole" ? "active" : "replaced",
-          bodyId: scopedRebuildConsumer.bodyId,
+          category: next
+            ? "consumed"
+            : consumer.kind === "hole"
+              ? "active"
+              : "replaced",
+          bodyId: consumer.bodyId,
           sourceFeatureId: feature.id,
-          targetFeatureId: scopedRebuildConsumer.id,
-          ...(scopedRebuildConsumer.kind === "hole"
-            ? {}
-            : { diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY" as const }),
-          message:
-            scopedRebuildConsumer.kind === "hole"
-              ? "Direct downstream hole result references can be revalidated from source records."
-              : "Direct downstream result can be revalidated from source records, but generated result topology remains repair-needed."
+          targetFeatureId: next?.id ?? consumer.id,
+          ...(next
+            ? {
+                diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const
+              }
+            : consumer.kind === "hole"
+              ? {}
+              : { diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY" as const }),
+          message: next
+            ? "Intermediate result remains consumed by the next rebuilt feature."
+            : "Final downstream result can be rebuilt from source records; topology-dependent operations require current evidence."
         })
-      ]
-    : [];
+      ];
+    }
+  );
 
   return createResponse({
     options,
@@ -1092,159 +1122,6 @@ function createResultBodyBlockingDiagnostics(
       received: consumedByFeatureId
     })
   ];
-}
-
-function getScopedSourceExtrudeRebuildConsumer(
-  options: CreateFeatureEditabilityResponseOptions,
-  feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
-  body: CadBodySnapshot | undefined
-): Exclude<CadFeatureSummary, { readonly kind: "primitive" }> | undefined {
-  if (!body?.consumedByFeatureId || feature.operationMode !== "newBody") {
-    return undefined;
-  }
-
-  const consumer = options.features.find(
-    (
-      candidate
-    ): candidate is Exclude<
-      CadFeatureSummary,
-      { readonly kind: "primitive" }
-    > =>
-      candidate.kind !== "primitive" &&
-      candidate.id === body.consumedByFeatureId &&
-      "targetBodyId" in candidate &&
-      candidate.targetBodyId === feature.bodyId
-  );
-  const consumerBody = consumer
-    ? options.bodies.find((candidate) => candidate.id === consumer.bodyId)
-    : undefined;
-
-  if (!consumer || consumerBody?.consumedByFeatureId) {
-    return undefined;
-  }
-
-  if (consumer.kind === "hole") {
-    return isSourceExtrudeProfileSupportedForConsumingFeature(feature) &&
-      isValidHoleConsumer(options, consumer)
-      ? consumer
-      : undefined;
-  }
-
-  if (consumer.kind === "chamfer" || consumer.kind === "fillet") {
-    return isSourceExtrudeProfileSupportedForConsumingFeature(feature) &&
-      isValidEdgeFinishConsumer(options, consumer)
-      ? consumer
-      : undefined;
-  }
-
-  if (
-    consumer.kind === "extrude" &&
-    consumer.operationMode === "cut" &&
-    isBooleanToolProfileSupportedForConsumingFeature(consumer) &&
-    isSourceExtrudeProfileSupportedForConsumingFeature(feature)
-  ) {
-    return consumer;
-  }
-
-  if (
-    consumer.kind === "extrude" &&
-    consumer.operationMode === "add" &&
-    isBooleanToolProfileSupportedForConsumingFeature(consumer) &&
-    feature.profileKind === "rectangle"
-  ) {
-    return consumer;
-  }
-
-  return undefined;
-}
-
-function getScopedSourceExtrudeRebuildBlocker(
-  options: CreateFeatureEditabilityResponseOptions,
-  feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
-  body: CadBodySnapshot | undefined
-):
-  | { readonly consumerBodyId: BodyId; readonly nextConsumerId: FeatureId }
-  | undefined {
-  if (!body?.consumedByFeatureId || feature.operationMode !== "newBody") {
-    return undefined;
-  }
-
-  const consumer = options.features.find(
-    (
-      candidate
-    ): candidate is Exclude<
-      CadFeatureSummary,
-      { readonly kind: "primitive" }
-    > =>
-      candidate.kind !== "primitive" &&
-      candidate.id === body.consumedByFeatureId &&
-      "targetBodyId" in candidate &&
-      candidate.targetBodyId === feature.bodyId
-  );
-  const nextConsumerId = consumer
-    ? options.bodies.find((candidate) => candidate.id === consumer.bodyId)
-        ?.consumedByFeatureId
-    : undefined;
-
-  return consumer && nextConsumerId
-    ? { consumerBodyId: consumer.bodyId, nextConsumerId }
-    : undefined;
-}
-
-function isSourceExtrudeProfileSupportedForConsumingFeature(
-  feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>
-): boolean {
-  return (
-    feature.profileKind === "rectangle" || feature.profileKind === "circle"
-  );
-}
-
-function isBooleanToolProfileSupportedForConsumingFeature(
-  feature: Exclude<CadFeatureSummary, { readonly kind: "primitive" }>
-): boolean {
-  return (
-    "profileKind" in feature &&
-    (feature.profileKind === "rectangle" || feature.profileKind === "circle")
-  );
-}
-
-function isValidHoleConsumer(
-  options: CreateFeatureEditabilityResponseOptions,
-  consumer: Extract<CadFeatureSummary, { readonly kind: "hole" }>
-): boolean {
-  const sketch = options.document.sketches.get(consumer.sketchId);
-  const entity = sketch?.entities.get(consumer.circleEntityId);
-
-  return entity?.kind === "circle";
-}
-
-function isValidEdgeFinishConsumer(
-  options: CreateFeatureEditabilityResponseOptions,
-  consumer: Extract<CadFeatureSummary, { readonly kind: "chamfer" | "fillet" }>
-): boolean {
-  const stableId =
-    consumer.edgeStableId ??
-    (consumer.namedReference
-      ? options.namedReferences.find(
-          (reference) => reference.name === consumer.namedReference
-        )?.stableId
-      : undefined);
-
-  if (!stableId) {
-    return false;
-  }
-
-  const generatedReferences = createBodyGeneratedReferences(
-    options.document,
-    consumer.targetBodyId,
-    "part:default"
-  );
-
-  return (
-    generatedReferences?.edges.some(
-      (reference) => reference.stableId === stableId
-    ) ?? false
-  );
 }
 
 function createRepairNeededResultReferenceChanges(

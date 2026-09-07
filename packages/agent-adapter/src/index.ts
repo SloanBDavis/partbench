@@ -22,6 +22,7 @@ import {
 } from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
+  AssemblySnapshot,
   CadBatch,
   CadBatchMode,
   CadBatchResponse,
@@ -667,6 +668,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
+  readonly assemblies?: readonly AssemblySnapshot[];
 }
 
 export interface CadOpsAgentProjectHealthQueryResponse {
@@ -3584,7 +3586,8 @@ function toAgentQueryResponse(
       features: response.features,
       bodies: response.bodies,
       objectSources: response.objectSources,
-      ...(response.datums ? { datums: response.datums } : {})
+      ...(response.datums ? { datums: response.datums } : {}),
+      ...(response.assemblies ? { assemblies: response.assemblies } : {})
     };
   }
 
@@ -5816,7 +5819,6 @@ function isCadBodyExactMetadataDiagnostic(
   );
 }
 
-
 function isAssemblyMatePlaneRefShape(value: unknown): boolean {
   if (!isRecord(value) || typeof value.instanceId !== "string") {
     return false;
@@ -6093,7 +6095,8 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "assembly.instance.delete") {
     return (
-      typeof value.assemblyId === "string" && typeof value.instanceId === "string"
+      typeof value.assemblyId === "string" &&
+      typeof value.instanceId === "string"
     );
   }
 
@@ -6134,7 +6137,9 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "assembly.mate.delete") {
-    return typeof value.assemblyId === "string" && typeof value.mateId === "string";
+    return (
+      typeof value.assemblyId === "string" && typeof value.mateId === "string"
+    );
   }
 
   if (value.op === "sketch.createOnFace") {
@@ -7366,7 +7371,11 @@ function isPatternRotationAxisRefShape(value: unknown): boolean {
   if (isPatternDirectionRefShape(value)) {
     return true;
   }
-  return isRecord(value) && value.kind === "datumAxis" && typeof value.datumId === "string";
+  return (
+    isRecord(value) &&
+    value.kind === "datumAxis" &&
+    typeof value.datumId === "string"
+  );
 }
 
 function isMirrorPlaneRefShape(value: unknown): boolean {
@@ -7394,7 +7403,9 @@ function isMirrorPlaneRefShape(value: unknown): boolean {
 
 function isDatumPlaneSourceRefShape(value: unknown): boolean {
   return (
-    isMirrorPlaneRefShape(value) && isRecord(value) && value.kind !== "datumPlane"
+    isMirrorPlaneRefShape(value) &&
+    isRecord(value) &&
+    value.kind !== "datumPlane"
   );
 }
 

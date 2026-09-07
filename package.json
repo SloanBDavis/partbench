@@ -90,7 +90,10 @@
     "smoke:ui": "bun scripts/smoke-ui.mjs",
     "smoke:ui-use": "bun scripts/smoke-ui-use.mjs",
     "verify": "pnpm typecheck && node scripts/scenarios-run.mjs",
-    "smoke:e2e": "bun scripts/smoke-ui-use.mjs -- scenarios/v26-distance-mate.json scenarios/v26-concentric-pin.json"
+    "smoke:e2e": "bun scripts/smoke-ui-use.mjs -- scenarios/v26-distance-mate.json scenarios/v26-concentric-pin.json",
+    "smoke:agent-runtime": "pnpm --filter @web-cad/mcp-stdio-server build && node scripts/smoke-agent-runtime.mjs",
+    "benchmark:cad-runtime": "node scripts/benchmark-cad-runtime.mjs",
+    "smoke:agent-runtime:browser": "bun scripts/smoke-ui-use.mjs -- examples/agent-runtime/browser-use.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

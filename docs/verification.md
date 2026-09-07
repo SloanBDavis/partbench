@@ -50,7 +50,9 @@ its break case gets a fresh tab while sharing Chrome and Vite. There are no
 scenario/seed retries. Assertions wait for observable document/geometry state;
 strict array lengths catch duplicate mates and failed undo. Screenshots are
 inspection artifacts, not visual snapshot comparisons. Save/reopen and recovery
-remain outside this deliberately small suite.
+remain outside this deliberately small assembly suite. The separate
+[agent runtime checks](./agent-runtime-verification.md) cover native save/reopen
+through headless sessions and a browser Open/edit journey.
 
 ## Passing record
 

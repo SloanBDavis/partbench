@@ -221,6 +221,12 @@ export interface OcctExactBodyArtifact {
   readonly viewportPickMap?: OcctExactViewportPickMapPayload;
 }
 
+/** Exact geometry evidence for hosts that do not render a viewport. */
+export type OcctExactBodyDataArtifact = Omit<
+  OcctExactBodyArtifact,
+  "displayMesh" | "viewportPickMap"
+>;
+
 export interface OcctExactViewportPickMapEntity {
   readonly localId: string;
   readonly entitySignature: string;
@@ -281,7 +287,7 @@ export function createOcctExactTopologyCheckpointPayloadWithInstance(
   oc: OpenCascadeInstance,
   input: OcctExactTopologyCheckpointPayloadInput
 ): OcctExactTopologyCheckpointPayload {
-  const artifact = createOcctExactBodyArtifactWithInstance(oc, input);
+  const artifact = createOcctExactBodyDataArtifactWithInstance(oc, input);
   return {
     checkpointId: input.checkpointId,
     bodyId: input.bodyId,
@@ -303,6 +309,36 @@ export async function createOcctExactBodyArtifactWithLoader(
   input: OcctExactBodyArtifactInput
 ): Promise<OcctExactBodyArtifact> {
   return createOcctExactBodyArtifactWithInstance(await loadOcct(), input);
+}
+
+export async function createOcctExactBodyDataArtifactWithLoader(
+  loadOcct: OcctLoader,
+  input: OcctExactBodyArtifactInput
+): Promise<OcctExactBodyDataArtifact> {
+  return createOcctExactBodyDataArtifactWithInstance(await loadOcct(), input);
+}
+
+export function createOcctExactBodyDataArtifactWithInstance(
+  oc: OpenCascadeInstance,
+  input: OcctExactBodyArtifactInput
+): OcctExactBodyDataArtifact {
+  if (input.source.kind !== "bodyArtifact") {
+    assertBrepCheckpointWriterBindings(oc);
+  }
+  return withOcctExactBodyArtifactShape(
+    oc,
+    input.source,
+    (shape, sourceKind, generatedReferences) =>
+      createExactBodyDataArtifact(
+        oc,
+        shape,
+        sourceKind,
+        generatedReferences,
+        input.source.kind === "bodyArtifact"
+          ? input.source.brepBytes
+          : undefined
+      )
+  );
 }
 
 export function createOcctExactBodyArtifactWithInstance(
@@ -771,13 +807,13 @@ function withCheckpointBooleanResultShape<T>(
   }
 }
 
-function createExactBodyArtifact(
+function createExactBodyDataArtifact(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyArtifact["sourceKind"],
   generatedReferences?: OcctGeneratedReferences,
   retainedBrepBytes?: Uint8Array
-): OcctExactBodyArtifact {
+): OcctExactBodyDataArtifact {
   if (shape.IsNull()) {
     throw new Error(
       "Open CASCADE exact artifact source returned a null shape."
@@ -806,6 +842,31 @@ function createExactBodyArtifact(
     ...readExactTopologySnapshot(oc, shape, sourceKind),
     ...(generatedReferences ? { generatedReferences } : {})
   };
+  return {
+    sourceKind,
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    metadata,
+    topologySnapshot
+  };
+}
+
+function createExactBodyArtifact(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  sourceKind: OcctExactBodyArtifact["sourceKind"],
+  generatedReferences?: OcctGeneratedReferences,
+  retainedBrepBytes?: Uint8Array
+): OcctExactBodyArtifact {
+  const artifact = createExactBodyDataArtifact(
+    oc,
+    shape,
+    sourceKind,
+    generatedReferences,
+    retainedBrepBytes
+  );
   const mesher = new oc.BRepMesh_IncrementalMesh_2(
     shape,
     0.25,
@@ -846,7 +907,7 @@ function createExactBodyArtifact(
         viewportPickMap = createExactViewportPickMap(
           oc,
           shape,
-          topologySnapshot,
+          artifact.topologySnapshot,
           faceTriangleRanges,
           displayMesh
         );
@@ -859,13 +920,7 @@ function createExactBodyArtifact(
   }
 
   return {
-    sourceKind,
-    brepFormat: "occt-brep",
-    brepWriter: "BRepTools.Write_3",
-    brepBytes,
-    brepByteLength: brepBytes.byteLength,
-    metadata,
-    topologySnapshot,
+    ...artifact,
     displayMesh,
     ...(viewportPickMap ? { viewportPickMap } : {})
   };

@@ -1,5 +1,6 @@
-import type { CadFeatureSummary, CadOp } from "@web-cad/cad-protocol";
+import type { CadBodySnapshot, CadFeatureSummary, CadOp } from "@web-cad/cad-protocol";
 
+import { requiresExactGeometryCommitPreflight } from "../../exactGeometryCommitPolicy";
 import {
   buildFeatureChamferOp,
   buildFeatureCompositeExtrudeOp,
@@ -50,6 +51,7 @@ export interface ExactFeaturePreviewPlanInput {
   readonly request: SolidEditorRequest;
   readonly submission: SolidEditorSubmission;
   readonly existingFeature?: CadFeatureSummary;
+  readonly existingBody?: Pick<CadBodySnapshot, "id" | "consumedByFeatureId">;
   readonly selectedSketchEntityContext?: SolidSelectedSketchEntityContext;
 }
 
@@ -71,19 +73,6 @@ export type ExactFeaturePreviewPlan =
   | ExactFeaturePreviewUnsupportedPlan;
 
 type Feature<K extends CadFeatureSummary["kind"]> = Extract<CadFeatureSummary, { readonly kind: K }>;
-
-const EXACT_DOWNSTREAM_OPS = new Set<CadOp["op"]>([
-  "feature.hole",
-  "feature.linearPattern",
-  "feature.circularPattern",
-  "feature.mirror",
-  "feature.shell",
-  "feature.updateHole",
-  "feature.updateLinearPattern",
-  "feature.updateCircularPattern",
-  "feature.updateMirror",
-  "feature.updateShell"
-]);
 
 const EXPECTED_FEATURE_KIND: Partial<
   Record<SolidEditorKind, CadFeatureSummary["kind"]>
@@ -118,15 +107,16 @@ function bodyIdFromOp(op: CadOp): string | undefined {
 
 function globalSupported(
   op: CadOp,
-  fallbackBodyId?: string,
-  prefixOps?: readonly CadOp[]
+  fallbackBodyId: string | undefined,
+  prefixOps: readonly CadOp[] | undefined,
+  requiresExactDownstreamCommitPreflight: boolean
 ): ExactFeaturePreviewSupportedPlan {
   const bodyId = bodyIdFromOp(op) ?? fallbackBodyId;
   return {
     status: "supported",
     ops: [...(prefixOps ?? []), op],
     ...(bodyId ? { affectedBodyId: bodyId, resultBodyId: bodyId } : {}),
-    requiresExactDownstreamCommitPreflight: EXACT_DOWNSTREAM_OPS.has(op.op)
+    requiresExactDownstreamCommitPreflight
   };
 }
 
@@ -220,7 +210,16 @@ export function planExactFeaturePreview(
     op: CadOp,
     fallbackBodyId?: string,
     prefixOps = request.pendingCurrentExactPromotionOps
-  ) => globalSupported(op, fallbackBodyId, prefixOps);
+  ) => globalSupported(
+    op,
+    fallbackBodyId,
+    prefixOps,
+    requiresExactGeometryCommitPreflight(
+      [...(prefixOps ?? []), op],
+      existingFeature ? [existingFeature] : [],
+      input.existingBody ? [input.existingBody] : []
+    )
+  );
 
   const edit = (request.mode ?? (existingFeature ? "edit" : "create")) === "edit";
   if (edit) {

@@ -25,10 +25,8 @@ import type {
   CadAgentExactExportRequest,
   CadAgentExactExportResult
 } from "@web-cad/agent-adapter";
-import {
-  isCadExactDownstreamGeometryOp,
-  isPatternedSeedFeatureKind
-} from "@web-cad/cad-protocol";
+import { isPatternedSeedFeatureKind } from "@web-cad/cad-protocol";
+import { requiresExactGeometryCommitPreflight } from "./exactGeometryCommitPolicy";
 import type {
   AssemblySnapshot,
   BodyGeneratedReferencesQueryResponse,
@@ -6045,7 +6043,9 @@ export function App() {
     solidEditorRequest && "id" in solidEditorRequest.initialDraft
       ? solidEditorRequest.initialDraft.id
       : undefined;
-  const solidPreviewSelectedSketchEntityContext: SolidSelectedSketchEntityContext | undefined =
+  const solidPreviewSelectedSketchEntityContext:
+    | SolidSelectedSketchEntityContext
+    | undefined =
     modelingSelectionContext.selectionKind === "sketchEntity"
       ? {
           sketchId: modelingSelectionContext.sketch.id,
@@ -6852,18 +6852,17 @@ export function App() {
         selectedBody?.id ??
         selectedId);
   const renderScene = useMemo(() => {
-    const base =
-      modelingUiRuntime?.createRenderSceneInputs(
-        sceneObjects,
-        derivedGeometryBySourceId,
-        derivedGeometrySources,
-        sketches,
-        sketchDisplayState.frames
-      ) ?? { primitives: [], meshes: [] };
+    const base = modelingUiRuntime?.createRenderSceneInputs(
+      sceneObjects,
+      derivedGeometryBySourceId,
+      derivedGeometrySources,
+      sketches,
+      sketchDisplayState.frames
+    ) ?? { primitives: [], meshes: [] };
     // V21 exact meshes use bodyId as mesh.id; instances reuse those meshes.
     const definitionMeshesByBodyId = new Map(
       base.meshes.map((mesh) => [mesh.id, mesh] as const)
-    )
+    );
     const instanceMeshes = createAssemblyInstanceExactDisplayMeshes({
       assemblies: projectStructure.assemblies,
       definitionMeshesByBodyId
@@ -9955,6 +9954,9 @@ export function App() {
         request: solidEditorRequest,
         submission,
         existingFeature: selectedFeature,
+        existingBody: projectStructure.bodies.find(
+          (body) => body.id === selectedFeature?.bodyId
+        ),
         selectedSketchEntityContext
       });
 
@@ -11285,8 +11287,17 @@ export function App() {
         ),
         exactResults: currentExactResultProjections.map((projection) => ({
           bodyId: projection.bodyId,
-          status: projection.status
+          status: projection.status,
+          diagnostics: projection.diagnostics.map(({ code, message }) => ({
+            code,
+            message
+          }))
         })),
+        exactMeasurements: currentAgentExactEvidence.derivedExactMetadata.flatMap((entry) =>
+          entry.status === "ready" && entry.metadata
+            ? [{ bodyId: entry.bodyId, volume: entry.metadata.volume, bounds: entry.metadata.bounds }]
+            : []
+        ),
         displayStatuses: derivedGeometry.entries.map((entry) => entry.status),
         diagnostic: [
           commandError,
@@ -11295,9 +11306,27 @@ export function App() {
           ...dom.alerts,
           "exact=" +
             currentExactResultProjections
-              .map((p) => p.bodyId + ":" + p.status)
+              .map(
+                (projection) =>
+                  projection.bodyId +
+                  ":" +
+                  projection.status +
+                  (projection.status === "failed"
+                    ? ":" +
+                      projection.diagnostics
+                        .map(({ message }) => message)
+                        .join("; ")
+                    : "")
+              )
               .join(","),
-          "display=" + derivedGeometry.entries.map((e) => e.status).join(",")
+          "display=" +
+            derivedGeometry.entries
+              .map(
+                (entry) =>
+                  entry.status +
+                  (entry.status === "error" ? ":" + entry.error.message : "")
+              )
+              .join(",")
         ]
           .filter(Boolean)
           .join(" · "),
@@ -11334,9 +11363,12 @@ export function App() {
               selection={currentAgentSelection}
               currentExactEvidence={currentAgentExactEvidence}
               preflightCommit={async (request, sourceAuthorityEpoch) => {
+                const structure = readProjectStructure();
                 if (
-                  !request.batch.ops.some((op) =>
-                    isCadExactDownstreamGeometryOp(op)
+                  !requiresExactGeometryCommitPreflight(
+                    request.batch.ops,
+                    structure.features,
+                    structure.bodies
                   )
                 ) {
                   pendingAgentExactArtifactsRef.current = [];

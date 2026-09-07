@@ -107,6 +107,7 @@ describe("mcp-adapter", () => {
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
+      "cad.body_mass_properties",
       "cad.body_imported_body_status",
       "cad.body_topology",
       "cad.body_topology_identity",
@@ -2202,7 +2203,10 @@ describe("mcp-adapter", () => {
           "feature.attachSketchPlane",
           "feature.measureReference",
           "feature.selectReference",
-          "feature.shell"
+          "feature.shell",
+          "feature.offset",
+          "feature.align",
+          "feature.draft"
         ],
         candidateCount: 1,
         proof: {
@@ -2274,7 +2278,10 @@ describe("mcp-adapter", () => {
           "feature.attachSketchPlane",
           "feature.measureReference",
           "feature.selectReference",
-          "feature.shell"
+          "feature.shell",
+          "feature.offset",
+          "feature.align",
+          "feature.draft"
         ],
         anchorReadiness: expect.objectContaining({
           query: "topology.anchorCommandReadiness",
@@ -6470,6 +6477,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },
+          { name: "cad.body_mass_properties" },
           { name: "cad.body_imported_body_status" },
           { name: "cad.body_topology" },
           { name: "cad.body_topology_identity" },

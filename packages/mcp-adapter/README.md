@@ -35,10 +35,27 @@ current-selection calls. The connected stdio launcher supplies its browser
 relay as that port; existing in-memory callers remain the default. Tool schemas,
 validation, and response shaping are shared in both paths.
 
-V21 extends existing project health/readiness results with the exact export plan
-and bounded connected-browser evidence. No STEP/download tool is added: MCP
-receives no artifact bytes, handles, paths, renderer IDs, approval proposal, or
-new permission surface.
+Project health/readiness results include exact export plans and bounded derived
+evidence. Browser export remains browser-owned through
+`cad.project_request_exact_export`.
+
+The agent-runtime goal adds an optional `projectFiles` host port. It advertises
+`cad.session_info`, `cad.project_open`, `cad.project_save`, and
+`cad.project_export_file` only when the supplied host implements them. Headless
+stdio supplies this port and replaces browser-download discovery with local STEP
+export. It returns confined workspace artifact paths and metadata; file bytes,
+OCCT internals, and mesh data do not enter tool responses. Existing modeling
+operations and their CADOps semantics are unchanged. Lifecycle tools are asynchronous;
+use `callToolAsync` or `handleJsonRpcAsync` for a host-backed server.
+
+The `cad.batch` tool schema includes concrete operation fields for common
+parameter, rectangle/circle sketch, extrusion, hole, fillet, pattern, shell,
+and assembly workflows, including their revision commands. Discover these
+through `tools/list` without reading TypeScript. Other existing CADOps retain a
+clearly labeled fallback schema; it does not promise support for invented
+operation names. Geometry-dependent eligibility is still validated by the
+shared command/runtime path. `cad.body_mass_properties` exposes the existing
+exact mass-properties query for inspection of final result bodies.
 
 ## Local Client Shape
 

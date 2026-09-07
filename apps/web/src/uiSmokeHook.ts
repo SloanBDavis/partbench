@@ -43,6 +43,14 @@ export interface UiSmokeState {
     readonly bodyId: string;
     readonly status: string;
   }[];
+  readonly exactMeasurements?: readonly {
+    readonly bodyId: string;
+    readonly volume?: number;
+    readonly bounds?: {
+      readonly min: readonly number[];
+      readonly max: readonly number[];
+    };
+  }[];
   readonly displayStatuses: readonly string[];
   readonly diagnostic: string;
   readonly userAgent: string;

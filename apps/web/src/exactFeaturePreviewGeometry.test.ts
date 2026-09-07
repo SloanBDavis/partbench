@@ -13,6 +13,7 @@ import type {
   DerivedGeometryExecutionContext,
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
+import { requiresExactGeometryCommitPreflight } from "./exactGeometryCommitPolicy";
 import { projectExactFeaturePreviewGeometry } from "./exactFeaturePreviewGeometry";
 import { preflightExactDownstreamGeometryCommand } from "./holeGeometryPreflight";
 
@@ -70,6 +71,78 @@ describe("projectExactFeaturePreviewGeometry", () => {
     expect(result.artifacts.map((artifact) => artifact.bodyId)).toEqual([
       "v15_linear_result_body"
     ]);
+  });
+
+  it("preflights a consumed source extrusion through its active descendant without committing failed geometry", async () => {
+    const engine = new CadEngine();
+    expect(engine.executeBatch(SAMPLE_BATCH).ok).toBe(true);
+    const extrusion = SAMPLE_BATCH.ops.find(
+      (op) => op.op === "feature.extrude"
+    );
+    if (!extrusion || extrusion.op !== "feature.extrude" || !extrusion.id)
+      throw new Error("Missing source extrusion.");
+    const ops: CadBatch["ops"] = [
+      { op: "feature.updateExtrude", id: extrusion.id, depth: 24 }
+    ];
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    if (!structure.ok || structure.query !== "project.structure")
+      throw new Error("Missing structure.");
+    expect(
+      requiresExactGeometryCommitPreflight(
+        ops,
+        structure.features,
+        structure.bodies
+      )
+    ).toBe(true);
+    expect(
+      requiresExactGeometryCommitPreflight(
+        ops,
+        structure.features,
+        structure.bodies.map((body) => ({ id: body.id }))
+      )
+    ).toBe(false);
+    const before = exportCadProjectJson(engine);
+    const beforeEpoch = engine.getSourceAuthorityEpoch();
+    const runtime = createRuntime();
+    const projected = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops,
+      runtime
+    });
+    expect(projected).toMatchObject({
+      ok: true,
+      artifacts: [{ bodyId: "v15_linear_result_body" }]
+    });
+    if (!projected.ok) throw new Error(projected.message);
+    const revisionOps: CadBatch["ops"] = [
+      { op: "feature.updateExtrude", id: extrusion.id, depth: 26 }
+    ];
+    const calls = runtime.artifactInputs.length;
+    const revised = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops: revisionOps,
+      existingArtifacts: projected.artifacts,
+      runtime
+    });
+    expect(revised).toMatchObject({ ok: true });
+    expect(runtime.artifactInputs.length).toBeGreaterThan(calls);
+    const failure = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops: revisionOps,
+      existingArtifacts: projected.artifacts,
+      runtime: {
+        ...runtime,
+        exactBodyArtifact: async () => {
+          throw new Error("The revised descendant is invalid.");
+        }
+      }
+    });
+    expect(failure).toMatchObject({ ok: false, reason: "runtime" });
+    expect(exportCadProjectJson(engine)).toBe(before);
+    expect(engine.getSourceAuthorityEpoch()).toBe(beforeEpoch);
   });
 
   it("fails before geometry work when dry-run or projected commit rejects the batch", async () => {

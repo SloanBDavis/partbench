@@ -859,11 +859,104 @@ async function assertUseOutcome(view, name, scenario, clicks) {
   );
 }
 
+async function openNativeProject(view, filePath) {
+  const bytes = readFileSync(resolve(repoRoot, filePath)).toString("base64");
+  const fileName = filePath.split(/[\\/]/).at(-1);
+  // Supply a deterministic file-picker result while exercising the real Open
+  // control, native reader, project replacement, rebuild, and rendering path.
+  await evaluate(
+    view,
+    "(() => { window.__pbOriginalOpenPicker = window.showOpenFilePicker; " +
+      "const bytes = Uint8Array.from(atob(" +
+      JSON.stringify(bytes) +
+      "), c => c.charCodeAt(0)); " +
+      "const file = new File([bytes], " +
+      JSON.stringify(fileName) +
+      "); " +
+      "window.showOpenFilePicker = async () => [{ kind: 'file', name: file.name, " +
+      "getFile: async () => file, queryPermission: async () => 'granted', requestPermission: async () => 'granted' }]; return true; })()"
+  );
+  try {
+    await clickVisibleControl(view, '[data-ribbon-roving-id="mode-project"]');
+    await clickVisibleControl(view, '[data-action-id="project.open"]');
+    await waitForReady(view, { timeoutMs: readyTimeoutMs, allowEmpty: false });
+    await assertNoErrorToast(view, "Open " + fileName);
+  } finally {
+    await evaluate(
+      view,
+      "(() => { window.showOpenFilePicker = window.__pbOriginalOpenPicker; delete window.__pbOriginalOpenPicker; return true; })()"
+    );
+  }
+}
+
 async function runUseSteps(view, name, steps, label) {
   let sawScreenshot = false;
   let sawBreak = false;
   const clicks = [];
   for (const step of steps) {
+    if (step.openWcad) {
+      clicks.push('[data-action-id="project.open"]');
+      await openNativeProject(view, step.openWcad);
+      continue;
+    }
+    if (step.expectText) {
+      const { selector, text } = step.expectText;
+      const deadline = Date.now() + 10_000;
+      let actual;
+      do {
+        actual = await evaluate(
+          view,
+          "document.querySelector(" +
+            JSON.stringify(selector) +
+            ")?.textContent?.trim()"
+        );
+        if (actual === text) break;
+        await delay(50);
+      } while (Date.now() < deadline);
+      if (actual !== text)
+        throw new Error(
+          name +
+            " expected text " +
+            JSON.stringify(text) +
+            ", got " +
+            JSON.stringify(actual)
+        );
+      continue;
+    }
+    if (step.expectExactVolume) {
+      const { bodyId, volume } = step.expectExactVolume;
+      const deadline = Date.now() + 10_000;
+      let actual;
+      let matched = false;
+      do {
+        const state = await getState(view);
+        if (state.commandError || isTerminalFailure(state))
+          throw new Error(name + " exact result failed: " + state.diagnostic);
+        actual = state.exactMeasurements?.find(
+          (body) => body.bodyId === bodyId
+        )?.volume;
+        if (
+          isExactDisplayReady(state, false) &&
+          Number.isFinite(actual) &&
+          Math.abs(actual - volume) <= 1e-6
+        ) {
+          matched = true;
+          break;
+        }
+        await delay(50);
+      } while (Date.now() < deadline);
+      if (!matched)
+        throw new Error(
+          name +
+            " expected exact volume " +
+            volume +
+            " for " +
+            bodyId +
+            ", got " +
+            actual
+        );
+      continue;
+    }
     if (step.click) {
       clicks.push(step.click);
       await clickVisibleControl(view, step.click);

@@ -122,6 +122,25 @@ function expectSupported(
 }
 
 describe("V22 exact feature preview planner", () => {
+  it("requires exact commit preflight when editing an extrusion consumed by a finished result", () => {
+    const input = makeInput("extrude", {
+      id: "feature-existing",
+      bodyId: "body-existing",
+      name: "",
+      depth: 0.1,
+      side: "positive",
+      operationMode: "newBody"
+    } satisfies FeatureExtrudeForm, "edit", feature("extrude", { operationMode: "newBody" }));
+    expectSupported(planExactFeaturePreview({
+      ...input,
+      existingBody: { id: "body-existing", consumedByFeatureId: "rounding" }
+    }), "feature.updateExtrude", "body-existing", true);
+    expectSupported(planExactFeaturePreview({
+      ...input,
+      existingBody: { id: "body-existing" }
+    }), "feature.updateExtrude", "body-existing", false);
+  });
+
   it.each([
     {
       kind: "extrude" as const,

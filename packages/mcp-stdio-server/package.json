@@ -12,14 +12,17 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/stdio.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/stdio.js",
+    "build": "tsc -p tsconfig.json && esbuild src/stdio.ts --bundle --platform=node --format=esm --target=node22 --external:opencascade.js --outfile=dist/stdio.js",
     "start": "pnpm --filter @web-cad/web build && pnpm build && node dist/stdio.js",
+    "start:headless": "pnpm build && node dist/stdio.js --headless",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@web-cad/cad-runtime": "workspace:*",
     "@web-cad/agent-adapter": "workspace:*",
-    "@web-cad/mcp-adapter": "workspace:*"
+    "@web-cad/mcp-adapter": "workspace:*",
+    "opencascade.js": "2.0.0-beta.b5ff984"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

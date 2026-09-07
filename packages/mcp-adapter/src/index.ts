@@ -40,9 +40,26 @@ import type {
   CadTopologyMatchSnapshotInput
 } from "@web-cad/cad-protocol";
 
+import {
+  callProjectFileTool,
+  isProjectFileTool,
+  listProjectFileTools,
+  type CadMcpProjectFilesPort,
+  type CadProjectToolName,
+  type CadProjectToolResult
+} from "./projectFiles";
+import { createModelingOpSchemas } from "./modelingSchemas";
+export type {
+  CadMcpProjectFilesPort,
+  CadProjectFileRequest,
+  CadProjectExportFileRequest,
+  CadProjectToolResult
+} from "./projectFiles";
+
 const SHA256_HEX_PATTERN = "^[a-f0-9]{64}$";
 
 export type CadMcpToolName =
+  | CadProjectToolName
   | "cad.parameter_list"
   | "cad.parameter_get"
   | "cad.project_parameter_evaluation"
@@ -71,6 +88,7 @@ export type CadMcpToolName =
   | "cad.body_topology"
   | "cad.body_topology_identity"
   | "cad.body_measurements"
+  | "cad.body_mass_properties"
   | "cad.body_imported_body_status"
   | "cad.project_extents"
   | "cad.sketch_get"
@@ -112,6 +130,7 @@ export interface McpTextContent {
 }
 
 export type CadMcpStructuredContent =
+  | CadProjectToolResult
   | CadOpsAgentQueryResponse
   | CadOpsAgentResponse
   | CadOpsAgentV8ProjectSurfaceResponse
@@ -164,6 +183,7 @@ export interface McpJsonRpcError {
 export interface CadMcpServerOptions {
   readonly adapter?: CadOpsAgentAdapter;
   readonly executionPort?: CadMcpExecutionPort;
+  readonly projectFiles?: CadMcpProjectFilesPort;
 }
 
 type CadMcpSyncExecutionPort = Pick<
@@ -204,6 +224,7 @@ export class CadMcpServer {
   #nextRequestNumber = 1;
   readonly #adapter: CadMcpSyncExecutionPort;
   readonly #executionPort?: CadMcpExecutionPort;
+  readonly #projectFiles?: CadMcpProjectFilesPort;
 
   constructor(options: CadMcpServerOptions = {}) {
     if (options.adapter && options.executionPort) {
@@ -212,6 +233,7 @@ export class CadMcpServer {
       );
     }
     this.#executionPort = options.executionPort;
+    this.#projectFiles = options.projectFiles;
     this.#adapter = options.executionPort
       ? new DeferredCadOpsAgentAdapter()
       : (options.adapter ?? createCadOpsAgentAdapter());
@@ -219,7 +241,14 @@ export class CadMcpServer {
 
   listTools(): { readonly tools: readonly McpToolDefinition[] } {
     return {
-      tools: CAD_MCP_TOOLS
+      tools: [
+        ...listProjectFileTools(this.#projectFiles),
+        ...CAD_MCP_TOOLS.filter(
+          (tool) =>
+            !(this.#projectFiles?.exportProjectFile &&
+              tool.name === "cad.project_request_exact_export")
+        )
+      ]
     };
   }
 
@@ -335,6 +364,9 @@ export class CadMcpServer {
     if (request.name === "cad.body_measurements") {
       return this.#callBodyMeasurements(request);
     }
+    if (request.name === "cad.body_mass_properties") {
+      return this.#callBodyMassProperties(request);
+    }
 
     if (request.name === "cad.body_imported_body_status") {
       return this.#callBodyImportedBodyStatus(request);
@@ -444,6 +476,14 @@ export class CadMcpServer {
   async callToolAsync(
     request: CadMcpToolCallRequest
   ): Promise<CadMcpToolCallResult> {
+    if (isProjectFileTool(request.name)) {
+      const response = await callProjectFileTool(
+        this.#projectFiles,
+        request.name,
+        request.arguments
+      );
+      return createToolResult(request.name, response, !response.ok);
+    }
     try {
       return this.callTool(request);
     } catch (error) {
@@ -1182,6 +1222,31 @@ export class CadMcpServer {
       })
     );
 
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callBodyMassProperties(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isBodyMeasurementsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.body_mass_properties expects arguments shaped as { bodyId: string }."
+      );
+    }
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.massProperties",
+            bodyId: request.arguments.bodyId
+          }
+        }
+      })
+    );
     return createToolResult(request.name, response, !response.ok);
   }
 
@@ -2621,8 +2686,15 @@ const V19_CONSTRAINT_DEFINITION_SCHEMA = {
   ]
 } as const;
 
+const MODELING_OP_SCHEMAS = createModelingOpSchemas(
+  V19_VEC2_SCHEMA,
+  V19_ORIENTED_SEGMENT_SCHEMA,
+  V19_LOOP_REF_SCHEMA
+);
+
 const V19_BATCH_OP_SCHEMA = {
   oneOf: [
+    ...MODELING_OP_SCHEMAS,
     {
       type: "object",
       additionalProperties: false,
@@ -2815,13 +2887,14 @@ const V19_BATCH_OP_SCHEMA = {
     {
       type: "object",
       description:
-        "A legacy typed CadOp whose op is not one of the schema-exact V19 sketch commands.",
+        "Another supported typed CadOp outside the common modeling and schema-exact sketch operations described above. Execution always validates against CADOps; this fallback does not imply arbitrary operations are supported.",
       required: ["op"],
       properties: {
         op: {
           type: "string",
           not: {
             enum: [
+              ...new Set(MODELING_OP_SCHEMAS.map((schema) => schema.properties.op.const)),
               "sketch.offset",
               "sketch.addSlot",
               "sketch.addRoundedRectangle",
@@ -3422,6 +3495,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         bodyId: {
           type: "string",
           description: "Authored sketch-extrude body ID to measure."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.body_mass_properties",
+    description:
+      "Returns exact volume, surface area, centroid, and bounds for one final body through the existing body.massProperties CADOps query. The headless runtime evaluates current exact geometry automatically. Inspect status/availability before using measurements; unavailable evidence is never a mesh approximation.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Body ID from cad.project_structure."
         }
       }
     }

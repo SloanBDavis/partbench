@@ -34,10 +34,11 @@ export interface ModelingResultStateInput {
     readonly cancelledCount?: number;
   };
   readonly projectHealthStatus: CadDependencyHealthStatus;
-  readonly currentExactResults?: readonly Pick<
+  readonly currentExactResults?: readonly (Pick<
     CurrentExactResultProjection,
     "status"
-  >[];
+  > &
+    Partial<Pick<CurrentExactResultProjection, "diagnostics">>)[];
 }
 
 export function createModelingResultState({
@@ -62,8 +63,18 @@ export function createModelingResultState({
   }
 
   if (currentExactResults?.length) {
+    const activeResults = currentExactResults.filter(
+      (result) =>
+        !(
+          result.status === "blocked" &&
+          result.diagnostics?.length &&
+          result.diagnostics.every(
+            (diagnostic) => diagnostic.code === "EXPORT_BODY_NOT_ACTIVE"
+          )
+        )
+    );
     const count = (status: CurrentExactResultProjection["status"]) =>
-      currentExactResults.filter((result) => result.status === status).length;
+      activeResults.filter((result) => result.status === status).length;
     const failed = count("failed");
     if (failed > 0)
       return `${failed} exact ${plural(failed, "result", "results")} failed`;

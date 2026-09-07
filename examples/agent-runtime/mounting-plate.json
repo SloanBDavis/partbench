@@ -1,0 +1,127 @@
+{
+  "id": "mounting-plate",
+  "brief": "Create a 40 by 24 by 4 mm mounting plate with a 1 mm rounded outer base edge and two patterned 4 mm mounting holes, 18 mm apart. Keep hole radius editable as a named parameter.",
+  "revisionBrief": "Increase the mounting holes to 5 mm diameter and the plate thickness to 6 mm, preserving the rounded edge and hole pattern.",
+  "create": [
+    {
+      "op": "parameter.create",
+      "id": "hole_radius",
+      "name": "Hole radius",
+      "value": 2
+    },
+    {
+      "op": "sketch.create",
+      "id": "base_sketch",
+      "name": "Base",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "base_sketch",
+      "id": "base_rectangle",
+      "center": [0, 0],
+      "width": 40,
+      "height": 24
+    },
+    {
+      "op": "feature.extrude",
+      "id": "base_extrude",
+      "bodyId": "base",
+      "sketchId": "base_sketch",
+      "entityId": "base_rectangle",
+      "depth": 4
+    },
+    {
+      "op": "feature.fillet",
+      "id": "base_fillet",
+      "bodyId": "rounded_base",
+      "targetBodyId": "base",
+      "edgeStableId": "generated:edge:base:start:uMax",
+      "radius": 1
+    },
+    {
+      "op": "sketch.create",
+      "id": "hole_sketch",
+      "name": "Mounting holes",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "hole_sketch",
+      "id": "hole_circle",
+      "center": [-6, 0],
+      "radius": 2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "hole_dimension",
+      "name": "Mounting hole radius",
+      "sketchId": "hole_sketch",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "hole_circle",
+        "entityKind": "circle",
+        "role": "radius"
+      },
+      "parameterId": "hole_radius"
+    },
+    {
+      "op": "feature.hole",
+      "id": "mounting_hole",
+      "bodyId": "drilled_base",
+      "targetBodyId": "rounded_base",
+      "sketchId": "hole_sketch",
+      "circleEntityId": "hole_circle",
+      "depthMode": "throughAll",
+      "direction": "positive"
+    },
+    {
+      "op": "feature.linearPattern",
+      "id": "hole_pattern",
+      "bodyId": "patterned_base",
+      "seedFeatureId": "mounting_hole",
+      "direction": {
+        "kind": "globalAxis",
+        "axis": "x"
+      },
+      "spacing": 18,
+      "instanceCount": 2
+    }
+  ],
+  "revise": [
+    {
+      "op": "parameter.update",
+      "id": "hole_radius",
+      "value": 2.5
+    },
+    {
+      "op": "feature.updateExtrude",
+      "id": "base_extrude",
+      "depth": 6
+    }
+  ],
+  "invalid": [
+    {
+      "op": "feature.updateFillet",
+      "id": "base_fillet",
+      "radius": 100
+    }
+  ],
+  "bodyIds": ["patterned_base"],
+  "expected": {
+    "volumesBefore": [3734.3185910066654],
+    "volumesAfter": [5519.230106902304],
+    "boundsBefore": {
+      "min": [-20, -12, 0],
+      "max": [20, 12, 4]
+    },
+    "boundsAfter": {
+      "min": [-20, -12, 0],
+      "max": [20, 12, 6]
+    },
+    "rejection": {
+      "code": "FEATURE_NOT_EDITABLE",
+      "messageIncludes": "downstream consumer"
+    }
+  }
+}

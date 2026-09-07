@@ -14,9 +14,12 @@ import type {
 } from "@web-cad/cad-protocol";
 import type {
   GeometryKernelExactBodyArtifact,
-  GeometryWorkerRequest
+  GeometryWorkerRequest,
+  GeometryWorkerResponse
 } from "@web-cad/geometry-worker";
 import { describe, expect, it, vi } from "vitest";
+import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker";
+import { GeometryJobScheduler } from "./geometryJobScheduler";
 
 import {
   resolveCurrentExactBodies,
@@ -47,6 +50,83 @@ type ExportRuntime = Pick<
 };
 
 describe("projectExactStepExport", () => {
+  it("schedules revised artifacts through edit, undo, redo, and reopen without metadata or generation collisions", async () => {
+    const fixture = createFixture();
+    const scheduler = new GeometryJobScheduler({
+      createWorker: () => ({
+        async executeTracked<
+          TPayload extends GeometryWorkerRequest["payload"]
+        >() {
+          return { response: { ok: true } } as GeometryWorkerResponse<TPayload>;
+        },
+        dispose() {}
+      })
+    });
+    const schedulingRequest = createBoxTessellationWorkerRequest({
+      id: "scheduler-regression",
+      width: 1, height: 1, depth: 1
+    });
+    const baseRuntime = createRuntime();
+    const runtime: ExportRuntime = {
+      ...baseRuntime,
+      async exactBodyArtifact(input, context) {
+        if (!context || "intent" in context)
+          throw new Error("Expected derived artifact scheduling.");
+        await scheduler.execute(
+          { intent: "exact", ...context },
+          schedulingRequest
+        );
+        return baseRuntime.exactBodyArtifact(input, {
+          intent: "user",
+          userKind: "export"
+        });
+      }
+    };
+    const build = async () => {
+      const current = createFixtureForEngine(fixture.engine);
+      const artifacts = await buildCurrentExactBodyArtifacts({
+        engine: fixture.engine,
+        resolutions: current.resolutions.filter(
+          (resolution) => resolution.status === "ready"
+        ),
+        runtime,
+        documentSourceIdentity: current.exactExport.plan!.sourceIdentity,
+        units: "mm",
+        executionIntent: "exact",
+        requestIdPrefix: "current-exact-projection",
+        assertCurrent: () => undefined
+      });
+      expect(artifacts).toHaveLength(3);
+    };
+    try {
+      await scheduler.execute(
+        {
+          intent: "exact",
+          sourceId: "body:z",
+          documentRevision: 1000,
+          cacheKey: "metadata-service"
+        },
+        schedulingRequest
+      );
+      await build();
+      fixture.engine.apply({
+        op: "scene.updateBoxDimensions",
+        id: "z",
+        dimensions: { width: 2, height: 2, depth: 3 }
+      });
+      await build();
+      fixture.engine.undo();
+      await build();
+      fixture.engine.redo();
+      await build();
+      fixture.engine.loadProject(fixture.engine.exportProject());
+      await build();
+      expect(scheduler.getSnapshot().generation).toBe(1);
+    } finally {
+      scheduler.dispose();
+    }
+  });
+
   it("retains validated exact artifact evidence", async () => {
     const current = createFixture();
     const plan = current.exactExport.plan;

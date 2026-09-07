@@ -1100,6 +1100,18 @@ export interface GeometryKernelExactBodyArtifact {
   readonly viewportPickMapDowngrade?: GeometryKernelExactViewportPickMapDowngrade;
 }
 
+/** Same exact evidence as a displayed artifact, without derived viewport data. */
+export type GeometryKernelExactBodyDataArtifact = Omit<
+  GeometryKernelExactBodyArtifact,
+  "displayMesh" | "viewportPickMap" | "viewportPickMapDowngrade"
+>;
+
+export type GeometryKernelExactBodyDataArtifactResponse =
+  | (Omit<GeometryKernelExactBodyArtifactSuccessResponse, "artifact"> & {
+      readonly artifact: GeometryKernelExactBodyDataArtifact;
+    })
+  | GeometryKernelErrorResponse;
+
 export type GeometryKernelExactBodyArtifactPayload = Pick<
   Omit<
     GeometryKernelExactBodyArtifact,
@@ -1605,6 +1617,15 @@ export type GeometryKernelExactBodyArtifactFactory = (
   input: Pick<ExactBodyArtifactRequest, "source">
 ) => Promise<GeometryKernelExactBodyArtifactPayload>;
 
+export type GeometryKernelExactBodyDataArtifactFactory = (
+  input: Pick<ExactBodyArtifactRequest, "source">
+) => Promise<
+  Omit<
+    GeometryKernelExactBodyArtifactPayload,
+    "displayMesh" | "viewportPickMap"
+  >
+>;
+
 export type GeometryKernelExactTopologySnapshotFactory = (
   input: Omit<ExactTopologySnapshotRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactTopologySnapshot>;
@@ -1836,6 +1857,44 @@ export function getGeometryKernelStepImportCapabilities(
           : "The geometry kernel cannot route STEP import until the isolated OpenCascade.js boundary exposes every required reader, healing, and checkpoint binding."
     }
   ];
+}
+
+/** Headless host adapter; validation and exact evidence match the display path. */
+export async function executeGeometryKernelExactBodyDataArtifactWithFactory(
+  factory: GeometryKernelExactBodyDataArtifactFactory,
+  request: ExactBodyArtifactRequest
+): Promise<GeometryKernelExactBodyDataArtifactResponse> {
+  const validationError = validateRequest(request);
+  if (validationError) return errorResponse(request, validationError);
+  try {
+    const checkpointError = await validateExactBodyArtifactHashes(
+      request.source
+    );
+    if (checkpointError) return errorResponse(request, checkpointError);
+    const payload = await factory({ source: request.source });
+    const artifact = await attachExactBodyArtifactIdentity(payload, request);
+    if (
+      isInvalidExactBodyDataArtifact(artifact, request) ||
+      (request.source.kind === "extrude" &&
+        request.source.profile.kind === "wire" &&
+        (isInvalidWireGeneratedReferences(
+          artifact.metadata.generatedReferences,
+          request.source.profile
+        ) ||
+          isInvalidWireGeneratedReferences(
+            artifact.topologySnapshot.generatedReferences,
+            request.source.profile
+          )))
+    ) {
+      return errorResponse(request, {
+        code: "INVALID_RESULT",
+        message: "The geometry kernel returned inconsistent exact body data."
+      });
+    }
+    return { ok: true, id: request.id, op: request.op, artifact, warnings: [] };
+  } catch (error) {
+    return errorResponse(request, toGeometryKernelError(error));
+  }
 }
 
 export async function executeGeometryKernelRequestWithMeshFactory<
@@ -2327,7 +2386,8 @@ function validateRequest(
     ) {
       return {
         code: "INVALID_DIMENSIONS",
-        message: "Boolean extrude requests require operation add, cut, or intersect."
+        message:
+          "Boolean extrude requests require operation add, cut, or intersect."
       };
     }
 
@@ -2550,9 +2610,7 @@ function validateRequest(
       !Array.isArray(request.draftedFaces) ||
       request.draftedFaces.length !== request.faceStableIds.length ||
       request.draftedFaces.some(
-        (face) =>
-          !isFiniteVec3(face.point) ||
-          !isUnitVec3(face.normal)
+        (face) => !isFiniteVec3(face.point) || !isUnitVec3(face.normal)
       )
     ) {
       return {
@@ -2953,28 +3011,10 @@ async function createExactBodyArtifact(
   const payload = await factories.createExactBodyArtifact({
     source: request.source
   });
-  if (
-    payload.brepBytes instanceof Uint8Array &&
-    payload.brepBytes.byteLength > MAX_EXACT_BODY_ARTIFACT_BYTES
-  ) {
-    throw {
-      code: "RESOURCE_LIMIT_EXCEEDED",
-      message: `Exact body artifacts may not exceed ${MAX_EXACT_BODY_ARTIFACT_BYTES} bytes.`
-    } satisfies GeometryKernelError;
-  }
   const { viewportPickMap, ...artifactPayload } = payload;
   const artifact: GeometryKernelExactBodyArtifact = {
-    artifactVersion: "partbench.exact-body-artifact.v1",
-    bodyId: request.bodyId,
-    sourceType: request.sourceType,
-    documentSourceIdentity: request.documentSourceIdentity,
-    bodySourceIdentitySignature: request.bodySourceIdentitySignature,
-    sourceCacheKeySha256: request.sourceCacheKeySha256,
-    sourceGraphNodeCount: request.sourceGraphNodeCount,
-    units: request.units,
-    shapePolicy: request.shapePolicy,
-    ...artifactPayload,
-    brepSha256: await sha256Hex(payload.brepBytes)
+    ...(await attachExactBodyArtifactIdentity(artifactPayload, request)),
+    displayMesh: payload.displayMesh
   };
   const pickMapResult = viewportPickMap
     ? attachExactViewportPickMap(viewportPickMap, artifact)
@@ -2985,6 +3025,34 @@ async function createExactBodyArtifact(
     : pickMapResult?.downgrade
       ? { ...artifact, viewportPickMapDowngrade: pickMapResult.downgrade }
       : artifact;
+}
+
+async function attachExactBodyArtifactIdentity(
+  payload: Awaited<ReturnType<GeometryKernelExactBodyDataArtifactFactory>>,
+  request: ExactBodyArtifactRequest
+): Promise<GeometryKernelExactBodyDataArtifact> {
+  if (
+    payload.brepBytes instanceof Uint8Array &&
+    payload.brepBytes.byteLength > MAX_EXACT_BODY_ARTIFACT_BYTES
+  ) {
+    throw {
+      code: "RESOURCE_LIMIT_EXCEEDED",
+      message: `Exact body artifacts may not exceed ${MAX_EXACT_BODY_ARTIFACT_BYTES} bytes.`
+    } satisfies GeometryKernelError;
+  }
+  return {
+    artifactVersion: "partbench.exact-body-artifact.v1",
+    bodyId: request.bodyId,
+    sourceType: request.sourceType,
+    documentSourceIdentity: request.documentSourceIdentity,
+    bodySourceIdentitySignature: request.bodySourceIdentitySignature,
+    sourceCacheKeySha256: request.sourceCacheKeySha256,
+    sourceGraphNodeCount: request.sourceGraphNodeCount,
+    units: request.units,
+    shapePolicy: request.shapePolicy,
+    ...payload,
+    brepSha256: await sha256Hex(payload.brepBytes)
+  };
 }
 
 function createExactTopologySnapshot(
@@ -4115,7 +4183,8 @@ function sweepSegmentStart(segment: SweepPathSegment): GeometryKernelDirection {
 }
 
 function sweepSegmentEnd(segment: SweepPathSegment): GeometryKernelDirection {
-  if (segment.kind === "spline") return segment.points[segment.points.length - 1]!;
+  if (segment.kind === "spline")
+    return segment.points[segment.points.length - 1]!;
   return segment.end;
 }
 
@@ -4282,9 +4351,11 @@ function isValidOptionalPatternFeatureTools(source: {
   readonly booleanTool?: PatternBooleanToolSource;
   readonly edgeFinishTool?: PatternEdgeFinishToolSource;
 }): boolean {
-  const attached = [source.holeTool, source.booleanTool, source.edgeFinishTool].filter(
-    Boolean
-  ).length;
+  const attached = [
+    source.holeTool,
+    source.booleanTool,
+    source.edgeFinishTool
+  ].filter(Boolean).length;
   if (attached > 1) {
     return false;
   }
@@ -5349,6 +5420,18 @@ function isInvalidExactBodyArtifact(
   artifact: GeometryKernelExactBodyArtifact,
   request: ExactBodyArtifactRequest
 ): boolean {
+  return (
+    isInvalidExactBodyDataArtifact(artifact, request) ||
+    !artifact.displayMesh ||
+    isEmptyMesh(artifact.displayMesh) ||
+    isInvalidMesh(artifact.displayMesh)
+  );
+}
+
+function isInvalidExactBodyDataArtifact(
+  artifact: GeometryKernelExactBodyDataArtifact,
+  request: ExactBodyArtifactRequest
+): boolean {
   const solidCount = artifact.metadata.topologyCounts.solidCount;
   return (
     artifact.artifactVersion !== "partbench.exact-body-artifact.v1" ||
@@ -5384,9 +5467,6 @@ function isInvalidExactBodyArtifact(
       artifact.topologySnapshot.entityCounts.edgeCount ||
     artifact.metadata.topologyCounts.vertexCount !==
       artifact.topologySnapshot.entityCounts.vertexCount ||
-    !artifact.displayMesh ||
-    isEmptyMesh(artifact.displayMesh) ||
-    isInvalidMesh(artifact.displayMesh) ||
     (request.source.kind === "checkpointBody" &&
       artifact.topologySnapshot.signature !==
         request.source.topologySignature) ||
@@ -5945,9 +6025,7 @@ function isSupportedBooleanExtrudeProfileKinds(
   targetProfile: GeometryKernelExtrudeProfileKind
 ): boolean {
   return (
-    (operation === "add" ||
-      operation === "cut" ||
-      operation === "intersect") &&
+    (operation === "add" || operation === "cut" || operation === "intersect") &&
     (targetProfile === "rectangle" ||
       targetProfile === "circle" ||
       targetProfile === "wire")

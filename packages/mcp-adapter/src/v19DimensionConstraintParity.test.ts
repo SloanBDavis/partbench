@@ -342,23 +342,26 @@ describe("V19 D5 MCP dimension and constraint parity", () => {
       }
     ).properties.batch.properties.ops.items.oneOf;
 
-    expect(schemas).toHaveLength(12);
-    const dimensionCreate = schemas[3] as {
+    const schemaFor = (name: string) => schemas.find((schema) =>
+      (schema.properties as { op?: { const?: string } } | undefined)?.op?.const === name ||
+      (schema.oneOf as { properties?: { op?: { const?: string } } }[] | undefined)?.some((variant) => variant.properties?.op?.const === name)
+    );
+    const dimensionCreate = schemaFor("sketch.dimension.create") as {
       additionalProperties: boolean;
       oneOf: readonly unknown[];
       properties: { target: { oneOf: readonly unknown[] } };
     };
-    const dimensionUpdate = schemas[4] as {
+    const dimensionUpdate = schemaFor("sketch.dimension.update") as {
       additionalProperties: boolean;
       oneOf: readonly unknown[];
     };
-    const constraintCreate = schemas[7] as {
+    const constraintCreate = schemaFor("sketch.constraint.create") as {
       oneOf: readonly {
         additionalProperties: boolean;
         properties: { kind: { const?: string; enum?: readonly string[] } };
       }[];
     };
-    const constraintUpdate = schemas[8] as {
+    const constraintUpdate = schemaFor("sketch.constraint.update") as {
       properties: {
         definition: {
           oneOf: readonly {

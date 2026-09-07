@@ -1,6 +1,6 @@
 import type {
   ExactBodyArtifactShapePolicy,
-  GeometryKernelExactBodyArtifact
+  GeometryKernelExactBodyArtifact as DisplayedGeometryKernelExactBodyArtifact
 } from "@web-cad/geometry-worker/browser";
 import {
   createProjectOpfsCacheSha256Hex,
@@ -31,6 +31,10 @@ export const EXACT_ARTIFACT_CACHE_MAX_INDEX_BYTES = 16 * 1024 * 1024;
 const INDEX_FILE_NAME = "index.json";
 const ARTIFACTS_DIRECTORY_NAME = "artifacts";
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+type GeometryKernelExactBodyArtifact = Omit<
+  DisplayedGeometryKernelExactBodyArtifact,
+  "displayMesh"
+>;
 type ExactTopologySourceKind = GeometryKernelExactBodyArtifact["sourceKind"];
 
 const SOURCE_KINDS = new Set<ExactTopologySourceKind>([
@@ -53,85 +57,19 @@ const SOURCE_KINDS = new Set<ExactTopologySourceKind>([
   "importedBody"
 ]);
 
-export type ExactArtifactCacheIdentity = Pick<
-  GeometryKernelExactBodyArtifact,
-  | "bodyId"
-  | "sourceType"
-  | "documentSourceIdentity"
-  | "bodySourceIdentitySignature"
-  | "sourceCacheKeySha256"
-  | "sourceGraphNodeCount"
-  | "units"
-  | "shapePolicy"
->;
-
-export interface ExactArtifactCacheCandidate {
-  readonly sourceKind: ExactTopologySourceKind;
-  readonly shapePolicy: ExactBodyArtifactShapePolicy;
-  readonly brepFormat: typeof EXACT_ARTIFACT_CACHE_BREP_FORMAT;
-  readonly brepWriter: typeof EXACT_ARTIFACT_CACHE_BREP_WRITER;
-  readonly brepBytes: Uint8Array;
-  readonly brepByteLength: number;
-  readonly brepSha256: string;
-  readonly topologySignature: string;
-}
-
-export type ExactArtifactCacheMissReason =
-  | "absent"
-  | "unavailable"
-  | "permission-denied"
-  | "corrupt"
-  | "version-mismatch"
-  | "stale"
-  | "storage-full"
-  | "storage-error";
-
-export type ExactArtifactCacheReadResult =
-  | {
-      readonly status: "hit";
-      readonly artifact: GeometryKernelExactBodyArtifact;
-    }
-  | {
-      readonly status: "miss";
-      readonly reason: ExactArtifactCacheMissReason;
-    };
-
-export type ExactArtifactCacheWriteResult =
-  | {
-      readonly status: "stored";
-      readonly evictedEntryCount: number;
-      readonly entryCount: number;
-      readonly byteLength: number;
-    }
-  | {
-      readonly status: "skipped";
-      readonly reason:
-        | Exclude<ExactArtifactCacheMissReason, "absent">
-        | "too-large";
-    };
-
-export type ExactArtifactCacheClearResult =
-  | { readonly status: "cleared" }
-  | {
-      readonly status: "unavailable" | "failed";
-      readonly reason: "unavailable" | "permission-denied" | "storage-error";
-    };
-
-export interface ExactArtifactOpfsCache {
-  readonly read: (input: {
-    readonly identity: ExactArtifactCacheIdentity;
-    readonly isCurrent: () => boolean;
-    /** Parses the candidate through OCCT and returns freshly recomputed evidence. */
-    readonly validate: (
-      candidate: ExactArtifactCacheCandidate
-    ) => Promise<GeometryKernelExactBodyArtifact>;
-  }) => Promise<ExactArtifactCacheReadResult>;
-  readonly write: (input: {
-    readonly artifact: GeometryKernelExactBodyArtifact;
-    readonly isCurrent: () => boolean;
-  }) => Promise<ExactArtifactCacheWriteResult>;
-  readonly clear: () => Promise<ExactArtifactCacheClearResult>;
-}
+import type {
+  ExactArtifactCacheIdentity,
+  ExactArtifactOpfsCache
+} from "@web-cad/cad-runtime/shared/exactArtifactCache";
+export type {
+  ExactArtifactCacheIdentity,
+  ExactArtifactCacheCandidate,
+  ExactArtifactCacheMissReason,
+  ExactArtifactCacheReadResult,
+  ExactArtifactCacheWriteResult,
+  ExactArtifactCacheClearResult,
+  ExactArtifactOpfsCache
+} from "@web-cad/cad-runtime/shared/exactArtifactCache";
 
 interface ExactArtifactCacheEntry {
   readonly version: typeof EXACT_ARTIFACT_CACHE_ENTRY_VERSION;

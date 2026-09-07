@@ -44,6 +44,9 @@ importers:
       '@web-cad/cad-protocol':
         specifier: workspace:*
         version: link:../../packages/cad-protocol
+      '@web-cad/cad-runtime':
+        specifier: workspace:*
+        version: link:../../packages/cad-runtime
       '@web-cad/geometry-worker':
         specifier: workspace:*
         version: link:../../packages/geometry-worker
@@ -96,6 +99,30 @@ importers:
 
   packages/cad-protocol: {}
 
+  packages/cad-runtime:
+    dependencies:
+      '@web-cad/agent-adapter':
+        specifier: workspace:*
+        version: link:../agent-adapter
+      '@web-cad/cad-core':
+        specifier: workspace:*
+        version: link:../cad-core
+      '@web-cad/cad-protocol':
+        specifier: workspace:*
+        version: link:../cad-protocol
+      '@web-cad/geometry-kernel':
+        specifier: workspace:*
+        version: link:../geometry-kernel
+      '@web-cad/geometry-worker':
+        specifier: workspace:*
+        version: link:../geometry-worker
+      '@web-cad/renderer':
+        specifier: workspace:*
+        version: link:../renderer
+      '@web-cad/renderer-mesh-bridge':
+        specifier: workspace:*
+        version: link:../renderer-mesh-bridge
+
   packages/geometry-kernel:
     dependencies:
       '@web-cad/occt-wasm':
@@ -122,9 +149,15 @@ importers:
       '@web-cad/agent-adapter':
         specifier: workspace:*
         version: link:../agent-adapter
+      '@web-cad/cad-runtime':
+        specifier: workspace:*
+        version: link:../cad-runtime
       '@web-cad/mcp-adapter':
         specifier: workspace:*
         version: link:../mcp-adapter
+      opencascade.js:
+        specifier: 2.0.0-beta.b5ff984
+        version: 2.0.0-beta.b5ff984(ws@8.20.1)
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
