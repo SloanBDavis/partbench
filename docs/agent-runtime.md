@@ -2,6 +2,8 @@
 
 Status: complete. User-approved goal, September 7, 2026.
 
+Implementation commit: `917cecd79685dcf23b57d09d11e80aebb9213136`.
+
 [Usage and examples](./agent-runtime-usage.md) ·
 [Verification, measurements, and remaining limits](./agent-runtime-verification.md).
 
