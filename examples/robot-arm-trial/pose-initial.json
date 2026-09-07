@@ -1,0 +1,1215 @@
+{
+  "span": 160,
+  "opening": 20,
+  "anglesDegrees": {
+    "yaw": 25,
+    "shoulderElevation": 60,
+    "elbowRelative": -100,
+    "forearmElevation": -40,
+    "wristRelative": 40,
+    "gripperElevation": 0
+  },
+  "jointCenters": {
+    "shoulder": [0, 0, 60],
+    "elbow": [72.504622962932, 33.80946093925596, 198.56406460551017],
+    "wrist": [169.70270912501576, 79.13367287464501, 108.57379924939467]
+  },
+  "instances": [
+    {
+      "id": "i_base",
+      "body": "base",
+      "transform": {
+        "translation": [0, 0, 0],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_yaw",
+      "body": "yaw",
+      "transform": {
+        "translation": [0, 0, 10],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_shoulder_front",
+      "body": "shoulder",
+      "transform": {
+        "translation": [2.5357095704441965, -5.437846722219899, 20],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_shoulder_back",
+      "body": "shoulder",
+      "transform": {
+        "translation": [-5.9166556643697925, 12.688309018513099, 20],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_upper",
+      "body": "upper",
+      "transform": {
+        "translation": [
+          34.5618384345032, 20.529961617774582, 129.28203230275508
+        ],
+        "rotation": [
+          1.5707963267948966, -1.0471975511965976, 0.4363323129985824
+        ]
+      }
+    },
+    {
+      "id": "i_forearm",
+      "body": "forearm",
+      "transform": {
+        "translation": [
+          115.18701037960408, 69.15987592546358, 153.5689319274524
+        ],
+        "rotation": [1.5707963267948966, 0.6981317007977318, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_wrist_front",
+      "body": "wrist",
+      "transform": {
+        "translation": [
+          168.01223607805295, 82.75890402279161, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_wrist_back",
+      "body": "wrist",
+      "transform": {
+        "translation": [
+          159.55987084323897, 100.88505976352461, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_rail",
+      "body": "rail",
+      "transform": {
+        "translation": [
+          195.14527900874324, 109.75516267693324, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_finger_lower",
+      "body": "finger",
+      "transform": {
+        "translation": [
+          207.28882723840516, 112.10765845671168, 91.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_finger_upper",
+      "body": "finger",
+      "transform": {
+        "translation": [
+          207.28882723840516, 112.10765845671168, 125.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_pin_yaw",
+      "body": "pin8",
+      "transform": {
+        "translation": [0, 0, 14],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_pin_shoulder",
+      "body": "pin8",
+      "transform": {
+        "translation": [0, 0, 60],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_pin_elbow",
+      "body": "pin8",
+      "transform": {
+        "translation": [
+          70.3915316542285, 38.34099987443921, 198.56406460551017
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_pin_wrist",
+      "body": "pin8",
+      "transform": {
+        "translation": [
+          165.47652650760875, 88.19675074501151, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_base_-40_-40",
+      "body": "bolt4",
+      "transform": {
+        "translation": [-19.347581011838017, -53.15704195109397, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_base_40_-40",
+      "body": "bolt4",
+      "transform": {
+        "translation": [53.15704195109397, -19.347581011838017, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_base_-40_40",
+      "body": "bolt4",
+      "transform": {
+        "translation": [-53.15704195109397, 19.347581011838017, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_base_40_40",
+      "body": "bolt4",
+      "transform": {
+        "translation": [19.347581011838017, 53.15704195109397, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_yaw_-20_-10",
+      "body": "bolt4",
+      "transform": {
+        "translation": [-13.899973123326003, -17.515443105180488, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_yaw_20_-10",
+      "body": "bolt4",
+      "transform": {
+        "translation": [22.352338358139992, -0.6107126355525097, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_yaw_-20_10",
+      "body": "bolt4",
+      "transform": {
+        "translation": [-22.352338358139992, 0.6107126355525097, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_bolt_yaw_20_10",
+      "body": "bolt4",
+      "transform": {
+        "translation": [13.899973123326003, 17.515443105180488, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_spacer_yaw",
+      "body": "spacer",
+      "transform": {
+        "translation": [0, 0, 8],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_spacer_shoulder_front",
+      "body": "spacer",
+      "transform": {
+        "translation": [1.6904730469627978, -3.6252311481465997, 60],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_spacer_shoulder_back",
+      "body": "spacer",
+      "transform": {
+        "translation": [-2.5357095704441965, 5.437846722219899, 60],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_spacer_elbow",
+      "body": "spacer",
+      "transform": {
+        "translation": [
+          69.9689133924878, 39.247307661475865, 198.56406460551017
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_spacer_wrist_front",
+      "body": "spacer",
+      "transform": {
+        "translation": [
+          167.16699955457156, 84.57151959686492, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "id": "i_spacer_wrist_back",
+      "body": "spacer",
+      "transform": {
+        "translation": [
+          162.94081693716456, 93.63459746723142, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    }
+  ],
+  "mates": [
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_base",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_base"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_yaw",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_yaw"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_shoulder_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_shoulder_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_shoulder_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_shoulder_back"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_upper",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_upper"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_forearm",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_forearm"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_wrist_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_wrist_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_wrist_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_wrist_back"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_rail",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_rail"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "jaw_i_finger_lower",
+      "assemblyId": "arm",
+      "kind": "distance",
+      "primary": {
+        "instanceId": "i_rail",
+        "plane": "XZ"
+      },
+      "secondary": {
+        "instanceId": "i_finger_lower",
+        "plane": "XZ"
+      },
+      "distance": -17
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "jaw_i_finger_upper",
+      "assemblyId": "arm",
+      "kind": "distance",
+      "primary": {
+        "instanceId": "i_rail",
+        "plane": "XZ"
+      },
+      "secondary": {
+        "instanceId": "i_finger_upper",
+        "plane": "XZ"
+      },
+      "distance": 17
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_yaw",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_base",
+        "axis": "Z",
+        "origin": [0, 0, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_yaw",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_shoulder",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_shoulder_front",
+        "axis": "Z",
+        "origin": [0, 40, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_shoulder",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_elbow",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_upper",
+        "axis": "Z",
+        "origin": [80, 0, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_elbow",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_wrist",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_forearm",
+        "axis": "Z",
+        "origin": [70, 0, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_wrist",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_-40_-40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_-40_-40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_40_-40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_40_-40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_-40_40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_-40_40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_40_40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_40_40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_-20_-10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_-20_-10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_20_-10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_20_-10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_-20_10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_-20_10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_20_10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_20_10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_yaw",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_yaw"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_shoulder_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_shoulder_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_shoulder_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_shoulder_back"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_elbow",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_elbow"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_wrist_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_wrist_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_wrist_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_wrist_back"
+    }
+  ],
+  "ops": [
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_base",
+      "assemblyId": "arm",
+      "name": "i base",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_base"
+      },
+      "transform": {
+        "translation": [0, 0, 0],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_yaw",
+      "assemblyId": "arm",
+      "name": "i yaw",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_yaw"
+      },
+      "transform": {
+        "translation": [0, 0, 10],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_shoulder_front",
+      "assemblyId": "arm",
+      "name": "i shoulder front",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_shoulder"
+      },
+      "transform": {
+        "translation": [2.5357095704441965, -5.437846722219899, 20],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_shoulder_back",
+      "assemblyId": "arm",
+      "name": "i shoulder back",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_shoulder"
+      },
+      "transform": {
+        "translation": [-5.9166556643697925, 12.688309018513099, 20],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_upper",
+      "assemblyId": "arm",
+      "name": "i upper",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_upper"
+      },
+      "transform": {
+        "translation": [
+          34.5618384345032, 20.529961617774582, 129.28203230275508
+        ],
+        "rotation": [
+          1.5707963267948966, -1.0471975511965976, 0.4363323129985824
+        ]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_forearm",
+      "assemblyId": "arm",
+      "name": "i forearm",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_forearm"
+      },
+      "transform": {
+        "translation": [
+          115.18701037960408, 69.15987592546358, 153.5689319274524
+        ],
+        "rotation": [1.5707963267948966, 0.6981317007977318, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_wrist_front",
+      "assemblyId": "arm",
+      "name": "i wrist front",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_wrist"
+      },
+      "transform": {
+        "translation": [
+          168.01223607805295, 82.75890402279161, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_wrist_back",
+      "assemblyId": "arm",
+      "name": "i wrist back",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_wrist"
+      },
+      "transform": {
+        "translation": [
+          159.55987084323897, 100.88505976352461, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_rail",
+      "assemblyId": "arm",
+      "name": "i rail",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_rail"
+      },
+      "transform": {
+        "translation": [
+          195.14527900874324, 109.75516267693324, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_finger_lower",
+      "assemblyId": "arm",
+      "name": "i finger lower",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_finger"
+      },
+      "transform": {
+        "translation": [
+          207.28882723840516, 112.10765845671168, 91.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_finger_upper",
+      "assemblyId": "arm",
+      "name": "i finger upper",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_finger"
+      },
+      "transform": {
+        "translation": [
+          207.28882723840516, 112.10765845671168, 125.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_pin_yaw",
+      "assemblyId": "arm",
+      "name": "i pin yaw",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_pin8"
+      },
+      "transform": {
+        "translation": [0, 0, 14],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_pin_shoulder",
+      "assemblyId": "arm",
+      "name": "i pin shoulder",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_pin8"
+      },
+      "transform": {
+        "translation": [0, 0, 60],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_pin_elbow",
+      "assemblyId": "arm",
+      "name": "i pin elbow",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_pin8"
+      },
+      "transform": {
+        "translation": [
+          70.3915316542285, 38.34099987443921, 198.56406460551017
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_pin_wrist",
+      "assemblyId": "arm",
+      "name": "i pin wrist",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_pin8"
+      },
+      "transform": {
+        "translation": [
+          165.47652650760875, 88.19675074501151, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_base_-40_-40",
+      "assemblyId": "arm",
+      "name": "i bolt base -40 -40",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [-19.347581011838017, -53.15704195109397, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_base_40_-40",
+      "assemblyId": "arm",
+      "name": "i bolt base 40 -40",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [53.15704195109397, -19.347581011838017, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_base_-40_40",
+      "assemblyId": "arm",
+      "name": "i bolt base -40 40",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [-53.15704195109397, 19.347581011838017, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_base_40_40",
+      "assemblyId": "arm",
+      "name": "i bolt base 40 40",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [19.347581011838017, 53.15704195109397, -5],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_yaw_-20_-10",
+      "assemblyId": "arm",
+      "name": "i bolt yaw -20 -10",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [-13.899973123326003, -17.515443105180488, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_yaw_20_-10",
+      "assemblyId": "arm",
+      "name": "i bolt yaw 20 -10",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [22.352338358139992, -0.6107126355525097, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_yaw_-20_10",
+      "assemblyId": "arm",
+      "name": "i bolt yaw -20 10",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [-22.352338358139992, 0.6107126355525097, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_bolt_yaw_20_10",
+      "assemblyId": "arm",
+      "name": "i bolt yaw 20 10",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_bolt4"
+      },
+      "transform": {
+        "translation": [13.899973123326003, 17.515443105180488, 7],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_spacer_yaw",
+      "assemblyId": "arm",
+      "name": "i spacer yaw",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_spacer"
+      },
+      "transform": {
+        "translation": [0, 0, 8],
+        "rotation": [0, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_spacer_shoulder_front",
+      "assemblyId": "arm",
+      "name": "i spacer shoulder front",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_spacer"
+      },
+      "transform": {
+        "translation": [1.6904730469627978, -3.6252311481465997, 60],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_spacer_shoulder_back",
+      "assemblyId": "arm",
+      "name": "i spacer shoulder back",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_spacer"
+      },
+      "transform": {
+        "translation": [-2.5357095704441965, 5.437846722219899, 60],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_spacer_elbow",
+      "assemblyId": "arm",
+      "name": "i spacer elbow",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_spacer"
+      },
+      "transform": {
+        "translation": [
+          69.9689133924878, 39.247307661475865, 198.56406460551017
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_spacer_wrist_front",
+      "assemblyId": "arm",
+      "name": "i spacer wrist front",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_spacer"
+      },
+      "transform": {
+        "translation": [
+          167.16699955457156, 84.57151959686492, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "i_spacer_wrist_back",
+      "assemblyId": "arm",
+      "name": "i spacer wrist back",
+      "definition": {
+        "kind": "body",
+        "bodyId": "b_spacer"
+      },
+      "transform": {
+        "translation": [
+          162.94081693716456, 93.63459746723142, 108.57379924939467
+        ],
+        "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_base",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_base"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_yaw",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_yaw"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_shoulder_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_shoulder_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_shoulder_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_shoulder_back"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_upper",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_upper"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_forearm",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_forearm"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_wrist_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_wrist_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_wrist_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_wrist_back"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_rail",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_rail"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "jaw_i_finger_lower",
+      "assemblyId": "arm",
+      "kind": "distance",
+      "primary": {
+        "instanceId": "i_rail",
+        "plane": "XZ"
+      },
+      "secondary": {
+        "instanceId": "i_finger_lower",
+        "plane": "XZ"
+      },
+      "distance": -17
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "jaw_i_finger_upper",
+      "assemblyId": "arm",
+      "kind": "distance",
+      "primary": {
+        "instanceId": "i_rail",
+        "plane": "XZ"
+      },
+      "secondary": {
+        "instanceId": "i_finger_upper",
+        "plane": "XZ"
+      },
+      "distance": 17
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_yaw",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_base",
+        "axis": "Z",
+        "origin": [0, 0, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_yaw",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_shoulder",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_shoulder_front",
+        "axis": "Z",
+        "origin": [0, 40, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_shoulder",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_elbow",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_upper",
+        "axis": "Z",
+        "origin": [80, 0, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_elbow",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "pin_i_pin_wrist",
+      "assemblyId": "arm",
+      "kind": "concentric",
+      "primary": {
+        "instanceId": "i_forearm",
+        "axis": "Z",
+        "origin": [70, 0, 0]
+      },
+      "secondary": {
+        "instanceId": "i_pin_wrist",
+        "axis": "Z"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_-40_-40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_-40_-40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_40_-40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_40_-40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_-40_40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_-40_40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_base_40_40",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_base_40_40"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_-20_-10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_-20_-10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_20_-10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_20_-10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_-20_10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_-20_10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_bolt_yaw_20_10",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_bolt_yaw_20_10"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_yaw",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_yaw"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_shoulder_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_shoulder_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_shoulder_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_shoulder_back"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_elbow",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_elbow"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_wrist_front",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_wrist_front"
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "fix_i_spacer_wrist_back",
+      "assemblyId": "arm",
+      "kind": "fixed",
+      "instanceId": "i_spacer_wrist_back"
+    }
+  ]
+}

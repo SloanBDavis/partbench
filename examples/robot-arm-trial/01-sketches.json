@@ -1,0 +1,446 @@
+{
+  "name": "cad.batch",
+  "arguments": {
+    "allowCommit": true,
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "commit",
+      "ops": [
+        {
+          "op": "document.updateUnits",
+          "units": "mm"
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_base",
+          "name": "100 mm mounting base",
+          "plane": "XY"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_base",
+          "id": "e_base",
+          "center": [0, 0],
+          "width": 100,
+          "height": 100
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_base",
+          "id": "h_base_0",
+          "center": [-40, -40],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_base",
+          "id": "h_base_1",
+          "center": [40, -40],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_base",
+          "id": "h_base_2",
+          "center": [-40, 40],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_base",
+          "id": "h_base_3",
+          "center": [40, 40],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_base",
+          "id": "h_base_4",
+          "center": [0, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_yaw",
+          "name": "Yaw platter",
+          "plane": "XY"
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_yaw",
+          "id": "e_yaw",
+          "center": [0, 0],
+          "radius": 34
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_yaw",
+          "id": "h_yaw_0",
+          "center": [0, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_yaw",
+          "id": "h_yaw_1",
+          "center": [-20, -10],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_yaw",
+          "id": "h_yaw_2",
+          "center": [20, -10],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_yaw",
+          "id": "h_yaw_3",
+          "center": [-20, 10],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_yaw",
+          "id": "h_yaw_4",
+          "center": [20, 10],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_shoulder",
+          "name": "Shoulder cheek",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_shoulder",
+          "id": "e_shoulder",
+          "center": [0, 25],
+          "width": 60,
+          "height": 50
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_shoulder",
+          "id": "h_shoulder_0",
+          "center": [0, 40],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_shoulder",
+          "id": "h_shoulder_1",
+          "center": [-20, 8],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_shoulder",
+          "id": "h_shoulder_2",
+          "center": [20, 8],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_upper",
+          "name": "Upper arm plate",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_upper",
+          "id": "e_upper",
+          "center": [0, 0],
+          "width": 190,
+          "height": 30
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_upper",
+          "id": "h_upper_0",
+          "center": [-80, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_upper",
+          "id": "h_upper_1",
+          "center": [80, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_forearm",
+          "name": "Forearm plate",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_forearm",
+          "id": "e_forearm",
+          "center": [0, 0],
+          "width": 170,
+          "height": 26
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_forearm",
+          "id": "h_forearm_0",
+          "center": [-70, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_forearm",
+          "id": "h_forearm_1",
+          "center": [70, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_wrist",
+          "name": "Wrist clevis cheek",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_wrist",
+          "id": "e_wrist",
+          "center": [20, 0],
+          "width": 64,
+          "height": 28
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_wrist",
+          "id": "h_wrist_0",
+          "center": [0, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_wrist",
+          "id": "h_wrist_1",
+          "center": [36, 7],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_wrist",
+          "id": "h_wrist_2",
+          "center": [36, -7],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_rail",
+          "name": "Gripper slide rail",
+          "plane": "XY"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_rail",
+          "id": "e_rail",
+          "center": [0, 0],
+          "width": 24,
+          "height": 70
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_rail",
+          "id": "h_rail_0",
+          "center": [-6, -26],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_rail",
+          "id": "h_rail_1",
+          "center": [6, -26],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_rail",
+          "id": "h_rail_2",
+          "center": [-6, 26],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_rail",
+          "id": "h_rail_3",
+          "center": [6, 26],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_finger",
+          "name": "Parallel gripper finger",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s_finger",
+          "id": "e_finger",
+          "center": [30, 0],
+          "width": 60,
+          "height": 14
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_finger",
+          "id": "h_finger_0",
+          "center": [8, 0],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_finger",
+          "id": "h_finger_1",
+          "center": [20, 0],
+          "radius": 2.25
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_pin8",
+          "name": "8 mm pivot pin",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_pin8",
+          "id": "e_pin8",
+          "center": [0, 0],
+          "radius": 4
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_bolt4",
+          "name": "4 mm plain fastener shank",
+          "plane": "XY"
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_bolt4",
+          "id": "e_bolt4",
+          "center": [0, 0],
+          "radius": 2
+        },
+        {
+          "op": "sketch.create",
+          "id": "s_spacer",
+          "name": "2 mm pivot clearance spacer",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_spacer",
+          "id": "e_spacer",
+          "center": [0, 0],
+          "radius": 7
+        },
+        {
+          "op": "sketch.addCircle",
+          "sketchId": "s_spacer",
+          "id": "h_spacer_0",
+          "center": [0, 0],
+          "radius": 4.1
+        },
+        {
+          "op": "parameter.create",
+          "id": "upper_span",
+          "name": "upper_span",
+          "value": 160
+        },
+        {
+          "op": "parameter.create",
+          "id": "upper_half",
+          "name": "upper_half",
+          "value": 80
+        },
+        {
+          "op": "parameter.setExpression",
+          "id": "upper_half",
+          "expression": "upper_span / 2"
+        },
+        {
+          "op": "parameter.create",
+          "id": "upper_length",
+          "name": "upper_length",
+          "value": 190
+        },
+        {
+          "op": "parameter.setExpression",
+          "id": "upper_length",
+          "expression": "upper_span + 30"
+        },
+        {
+          "op": "parameter.create",
+          "id": "gripper_opening",
+          "name": "gripper_opening",
+          "value": 20
+        },
+        {
+          "op": "sketch.dimension.create",
+          "id": "d_upper_length",
+          "name": "Upper overall length",
+          "sketchId": "s_upper",
+          "target": {
+            "kind": "entityScalar",
+            "entityId": "e_upper",
+            "entityKind": "rectangle",
+            "role": "width"
+          },
+          "parameterId": "upper_length"
+        },
+        {
+          "op": "sketch.dimension.create",
+          "id": "d_upper_pivot_0",
+          "name": "Upper pivot 0",
+          "sketchId": "s_upper",
+          "target": {
+            "kind": "pointPair",
+            "primary": {
+              "entityId": "e_upper",
+              "entityKind": "rectangle",
+              "role": "center"
+            },
+            "secondary": {
+              "entityId": "h_upper_0",
+              "entityKind": "circle",
+              "role": "center"
+            },
+            "measurement": "horizontal",
+            "direction": "negative"
+          },
+          "parameterId": "upper_half"
+        },
+        {
+          "op": "sketch.dimension.create",
+          "id": "d_upper_pivot_1",
+          "name": "Upper pivot 1",
+          "sketchId": "s_upper",
+          "target": {
+            "kind": "pointPair",
+            "primary": {
+              "entityId": "e_upper",
+              "entityKind": "rectangle",
+              "role": "center"
+            },
+            "secondary": {
+              "entityId": "h_upper_1",
+              "entityKind": "circle",
+              "role": "center"
+            },
+            "measurement": "horizontal",
+            "direction": "positive"
+          },
+          "parameterId": "upper_half"
+        }
+      ]
+    }
+  }
+}

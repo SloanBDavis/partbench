@@ -1,0 +1,350 @@
+{
+  "name": "cad.batch",
+  "arguments": {
+    "allowCommit": true,
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "commit",
+      "ops": [
+        {
+          "op": "feature.extrude",
+          "id": "f_base",
+          "name": "100 mm mounting base",
+          "bodyId": "b_base",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_base",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_base"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_base_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_base_1"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_base_2"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_base_3"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_base_4"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 8
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_yaw",
+          "name": "Yaw platter",
+          "bodyId": "b_yaw",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_yaw",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_yaw"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_yaw_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_yaw_1"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_yaw_2"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_yaw_3"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_yaw_4"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 10
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_shoulder",
+          "name": "Shoulder cheek",
+          "bodyId": "b_shoulder",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_shoulder",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_shoulder"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_shoulder_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_shoulder_1"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_shoulder_2"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 8
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_upper",
+          "name": "Upper arm plate",
+          "bodyId": "b_upper",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_upper",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_upper"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_upper_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_upper_1"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 8
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_forearm",
+          "name": "Forearm plate",
+          "bodyId": "b_forearm",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_forearm",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_forearm"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_forearm_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_forearm_1"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 8
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_wrist",
+          "name": "Wrist clevis cheek",
+          "bodyId": "b_wrist",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_wrist",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_wrist"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_wrist_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_wrist_1"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_wrist_2"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 8
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_rail",
+          "name": "Gripper slide rail",
+          "bodyId": "b_rail",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_rail",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_rail"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_rail_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_rail_1"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_rail_2"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_rail_3"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 14
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_finger",
+          "name": "Parallel gripper finger",
+          "bodyId": "b_finger",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_finger",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_finger"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_finger_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_finger_1"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 8
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_pin8",
+          "name": "8 mm pivot pin",
+          "bodyId": "b_pin8",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_pin8",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_pin8"
+                },
+                "holes": []
+              }
+            ]
+          },
+          "depth": 28,
+          "side": "symmetric"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_bolt4",
+          "name": "4 mm plain fastener shank",
+          "bodyId": "b_bolt4",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_bolt4",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_bolt4"
+                },
+                "holes": []
+              }
+            ]
+          },
+          "depth": 18
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_spacer",
+          "name": "2 mm pivot clearance spacer",
+          "bodyId": "b_spacer",
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_spacer",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_spacer"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_spacer_0"
+                  }
+                ]
+              }
+            ]
+          },
+          "depth": 2
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "cad.batch",
+  "arguments": {
+    "allowCommit": true,
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "commit",
+      "ops": [
+        {
+          "op": "assembly.mate.edit",
+          "mateId": "jaw_i_finger_lower",
+          "assemblyId": "arm",
+          "kind": "distance",
+          "primary": {
+            "instanceId": "i_rail",
+            "plane": "XZ"
+          },
+          "secondary": {
+            "instanceId": "i_finger_lower",
+            "plane": "XZ"
+          },
+          "distance": -24.5
+        },
+        {
+          "op": "assembly.mate.edit",
+          "mateId": "jaw_i_finger_upper",
+          "assemblyId": "arm",
+          "kind": "distance",
+          "primary": {
+            "instanceId": "i_rail",
+            "plane": "XZ"
+          },
+          "secondary": {
+            "instanceId": "i_finger_upper",
+            "plane": "XZ"
+          },
+          "distance": 24.5
+        }
+      ]
+    }
+  }
+}

@@ -8,7 +8,7 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Proof / close loop: [docs/verification.md](docs/verification.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Last completed user goal: [docs/agent-runtime.md](docs/agent-runtime.md). V22–V26 and agent runtime are complete. Do not reopen or invent V27. Next is a new user goal.
+- Last completed user goal: [docs/robot-arm-trial.md](docs/robot-arm-trial.md), an observed agent design experiment with open findings. V22–V26 and [agent runtime](docs/agent-runtime.md) are complete. Do not reopen or invent V27. Next is a new user goal.
 
 Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md, or per-gate markdown unless the current user-goal doc names them.
 

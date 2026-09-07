@@ -1,0 +1,382 @@
+{
+  "name": "cad.batch",
+  "arguments": {
+    "allowCommit": true,
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "commit",
+      "ops": [
+        {
+          "op": "feature.extrude",
+          "id": "f_base_extrude",
+          "name": "100 mm mounting base",
+          "bodyId": "b_base_raw",
+          "sketchId": "s_base",
+          "entityId": "e_base",
+          "depth": 8
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_base_hole0",
+          "bodyId": "b_base_h0",
+          "targetBodyId": "b_base_raw",
+          "sketchId": "s_base",
+          "circleEntityId": "h_base_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_base_hole1",
+          "bodyId": "b_base_h1",
+          "targetBodyId": "b_base_h0",
+          "sketchId": "s_base",
+          "circleEntityId": "h_base_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_base_hole2",
+          "bodyId": "b_base_h2",
+          "targetBodyId": "b_base_h1",
+          "sketchId": "s_base",
+          "circleEntityId": "h_base_2",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_base_hole3",
+          "bodyId": "b_base_h3",
+          "targetBodyId": "b_base_h2",
+          "sketchId": "s_base",
+          "circleEntityId": "h_base_3",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_base_hole4",
+          "bodyId": "b_base",
+          "targetBodyId": "b_base_h3",
+          "sketchId": "s_base",
+          "circleEntityId": "h_base_4",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_yaw_extrude",
+          "name": "Yaw platter",
+          "bodyId": "b_yaw_raw",
+          "sketchId": "s_yaw",
+          "entityId": "e_yaw",
+          "depth": 10
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_yaw_hole0",
+          "bodyId": "b_yaw_h0",
+          "targetBodyId": "b_yaw_raw",
+          "sketchId": "s_yaw",
+          "circleEntityId": "h_yaw_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_yaw_hole1",
+          "bodyId": "b_yaw_h1",
+          "targetBodyId": "b_yaw_h0",
+          "sketchId": "s_yaw",
+          "circleEntityId": "h_yaw_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_yaw_hole2",
+          "bodyId": "b_yaw_h2",
+          "targetBodyId": "b_yaw_h1",
+          "sketchId": "s_yaw",
+          "circleEntityId": "h_yaw_2",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_yaw_hole3",
+          "bodyId": "b_yaw_h3",
+          "targetBodyId": "b_yaw_h2",
+          "sketchId": "s_yaw",
+          "circleEntityId": "h_yaw_3",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_yaw_hole4",
+          "bodyId": "b_yaw",
+          "targetBodyId": "b_yaw_h3",
+          "sketchId": "s_yaw",
+          "circleEntityId": "h_yaw_4",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_shoulder_extrude",
+          "name": "Shoulder cheek",
+          "bodyId": "b_shoulder_raw",
+          "sketchId": "s_shoulder",
+          "entityId": "e_shoulder",
+          "depth": 8
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_shoulder_hole0",
+          "bodyId": "b_shoulder_h0",
+          "targetBodyId": "b_shoulder_raw",
+          "sketchId": "s_shoulder",
+          "circleEntityId": "h_shoulder_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_shoulder_hole1",
+          "bodyId": "b_shoulder_h1",
+          "targetBodyId": "b_shoulder_h0",
+          "sketchId": "s_shoulder",
+          "circleEntityId": "h_shoulder_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_shoulder_hole2",
+          "bodyId": "b_shoulder",
+          "targetBodyId": "b_shoulder_h1",
+          "sketchId": "s_shoulder",
+          "circleEntityId": "h_shoulder_2",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_upper_extrude",
+          "name": "Upper arm plate",
+          "bodyId": "b_upper_raw",
+          "sketchId": "s_upper",
+          "entityId": "e_upper",
+          "depth": 8
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_upper_hole0",
+          "bodyId": "b_upper_h0",
+          "targetBodyId": "b_upper_raw",
+          "sketchId": "s_upper",
+          "circleEntityId": "h_upper_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_upper_hole1",
+          "bodyId": "b_upper",
+          "targetBodyId": "b_upper_h0",
+          "sketchId": "s_upper",
+          "circleEntityId": "h_upper_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_forearm_extrude",
+          "name": "Forearm plate",
+          "bodyId": "b_forearm_raw",
+          "sketchId": "s_forearm",
+          "entityId": "e_forearm",
+          "depth": 8
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_forearm_hole0",
+          "bodyId": "b_forearm_h0",
+          "targetBodyId": "b_forearm_raw",
+          "sketchId": "s_forearm",
+          "circleEntityId": "h_forearm_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_forearm_hole1",
+          "bodyId": "b_forearm",
+          "targetBodyId": "b_forearm_h0",
+          "sketchId": "s_forearm",
+          "circleEntityId": "h_forearm_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_wrist_extrude",
+          "name": "Wrist clevis cheek",
+          "bodyId": "b_wrist_raw",
+          "sketchId": "s_wrist",
+          "entityId": "e_wrist",
+          "depth": 8
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_wrist_hole0",
+          "bodyId": "b_wrist_h0",
+          "targetBodyId": "b_wrist_raw",
+          "sketchId": "s_wrist",
+          "circleEntityId": "h_wrist_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_wrist_hole1",
+          "bodyId": "b_wrist_h1",
+          "targetBodyId": "b_wrist_h0",
+          "sketchId": "s_wrist",
+          "circleEntityId": "h_wrist_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_wrist_hole2",
+          "bodyId": "b_wrist",
+          "targetBodyId": "b_wrist_h1",
+          "sketchId": "s_wrist",
+          "circleEntityId": "h_wrist_2",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_rail_extrude",
+          "name": "Gripper slide rail",
+          "bodyId": "b_rail_raw",
+          "sketchId": "s_rail",
+          "entityId": "e_rail",
+          "depth": 14
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_rail_hole0",
+          "bodyId": "b_rail_h0",
+          "targetBodyId": "b_rail_raw",
+          "sketchId": "s_rail",
+          "circleEntityId": "h_rail_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_rail_hole1",
+          "bodyId": "b_rail_h1",
+          "targetBodyId": "b_rail_h0",
+          "sketchId": "s_rail",
+          "circleEntityId": "h_rail_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_rail_hole2",
+          "bodyId": "b_rail_h2",
+          "targetBodyId": "b_rail_h1",
+          "sketchId": "s_rail",
+          "circleEntityId": "h_rail_2",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_rail_hole3",
+          "bodyId": "b_rail",
+          "targetBodyId": "b_rail_h2",
+          "sketchId": "s_rail",
+          "circleEntityId": "h_rail_3",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_finger_extrude",
+          "name": "Parallel gripper finger",
+          "bodyId": "b_finger_raw",
+          "sketchId": "s_finger",
+          "entityId": "e_finger",
+          "depth": 8
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_finger_hole0",
+          "bodyId": "b_finger_h0",
+          "targetBodyId": "b_finger_raw",
+          "sketchId": "s_finger",
+          "circleEntityId": "h_finger_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_finger_hole1",
+          "bodyId": "b_finger",
+          "targetBodyId": "b_finger_h0",
+          "sketchId": "s_finger",
+          "circleEntityId": "h_finger_1",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_pin8_extrude",
+          "name": "8 mm pivot pin",
+          "bodyId": "b_pin8",
+          "sketchId": "s_pin8",
+          "entityId": "e_pin8",
+          "depth": 28,
+          "side": "symmetric"
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_bolt4_extrude",
+          "name": "4 mm plain fastener shank",
+          "bodyId": "b_bolt4",
+          "sketchId": "s_bolt4",
+          "entityId": "e_bolt4",
+          "depth": 18
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f_spacer_extrude",
+          "name": "2 mm pivot clearance spacer",
+          "bodyId": "b_spacer_raw",
+          "sketchId": "s_spacer",
+          "entityId": "e_spacer",
+          "depth": 2
+        },
+        {
+          "op": "feature.hole",
+          "id": "f_spacer_hole0",
+          "bodyId": "b_spacer",
+          "targetBodyId": "b_spacer_raw",
+          "sketchId": "s_spacer",
+          "circleEntityId": "h_spacer_0",
+          "depthMode": "throughAll",
+          "direction": "positive"
+        }
+      ]
+    }
+  }
+}

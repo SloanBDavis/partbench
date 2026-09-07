@@ -52,6 +52,7 @@ inspection, revision, native save/reopen, STEP export, and current limits.
 
 ## Documentation
 
+- [Robot arm agent trial: findings and next-work priorities](docs/robot-arm-trial.md)
 - [How we work](docs/how-we-work.md)
 - [Architecture](docs/architecture.md)
 - [Agent runtime goal](docs/agent-runtime.md)

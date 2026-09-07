@@ -1,0 +1,1461 @@
+{
+  "baseline": "d6498191c73e7b46b7c49ed1aea9c624782f8aa5",
+  "description": "Recorded baseline evidence, not expected passing outputs or a runnable test suite. Raw transcripts remain in .metrics/robot-arm-trial.",
+  "prerequisites": {
+    "sessionA": "Apply 01-sketches.json in a fresh headless session, then the recorded calls in order. Rejected batches roll back.",
+    "sessionB": "In another fresh session apply 04-xy-sketches.json, then 03-regions.json, then the recorded joint probe.",
+    "planeControls": "Each row was run in a new CadSession; compare kernel-derived mass properties with source-analytic body inspection.",
+    "parameterOnlyRevision": "Reopen the final native file in isolation and update upper_span from 180 to 200, without rebuilding instance transforms. The saved final was not changed."
+  },
+  "designerFailures": [
+    {
+      "ref": "2026-09-07T22-53-59.864Z/006",
+      "request": {
+        "name": "cad.sketch_profile_region_candidates",
+        "arguments": {
+          "sketchId": "s_upper"
+        }
+      },
+      "observed": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_ARGUMENTS",
+          "message": "cad.sketch_profile_region_candidates expects a sketchId and optional bounded entityIds, limit, afterCandidateKey, and sourceRevision."
+        }
+      }
+    },
+    {
+      "ref": "2026-09-07T22-53-59.864Z/007",
+      "request": {
+        "name": "cad.sketch_profile_region_candidates",
+        "arguments": {
+          "sketchId": "s_upper",
+          "limit": 10
+        }
+      },
+      "observed": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_ARGUMENTS",
+          "message": "cad.sketch_profile_region_candidates expects a sketchId and optional bounded entityIds, limit, afterCandidateKey, and sourceRevision."
+        }
+      }
+    },
+    {
+      "ref": "2026-09-07T22-53-59.864Z/008",
+      "request": {
+        "name": "cad.sketch_profile_region_candidates",
+        "arguments": {
+          "sketchId": "s_upper",
+          "entityIds": ["e_upper", "h_upper_0", "h_upper_1"],
+          "limit": 10
+        }
+      },
+      "observed": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_ARGUMENTS",
+          "message": "cad.sketch_profile_region_candidates expects a sketchId and optional bounded entityIds, limit, afterCandidateKey, and sourceRevision."
+        }
+      }
+    },
+    {
+      "ref": "2026-09-07T22-53-59.864Z/009",
+      "request": {
+        "file": "02-solids.json"
+      },
+      "observed": {
+        "ok": false,
+        "requestId": "mcp_jsonrpc_9",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "mode": "commit",
+        "error": {
+          "code": "UNSUPPORTED_FEATURE_OPERATION",
+          "message": "Exact geometry rejected this batch: Exact artifact build failed for body b_finger: EMPTY_RESULT: Hole tool has no positive-volume intersection with the target shape.",
+          "opIndex": 37,
+          "op": "feature.hole",
+          "path": "$.ops[37]",
+          "expected": "a valid exact result for every active body",
+          "received": "exact geometry preflight failed; source is unchanged"
+        },
+        "errors": [
+          {
+            "code": "UNSUPPORTED_FEATURE_OPERATION",
+            "message": "Exact geometry rejected this batch: Exact artifact build failed for body b_finger: EMPTY_RESULT: Hole tool has no positive-volume intersection with the target shape.",
+            "opIndex": 37,
+            "op": "feature.hole",
+            "path": "$.ops[37]",
+            "expected": "a valid exact result for every active body",
+            "received": "exact geometry preflight failed; source is unchanged"
+          }
+        ],
+        "createdIds": [],
+        "modifiedIds": [],
+        "deletedIds": [],
+        "warnings": [],
+        "audit": {
+          "source": "mcp",
+          "requestId": "mcp_jsonrpc_9",
+          "toolName": "cad.batch",
+          "intent": "commit",
+          "operationCount": 38
+        },
+        "review": {
+          "requestedMode": "commit",
+          "effectiveIntent": "commit",
+          "operationCount": 38,
+          "entityChanges": {
+            "objects": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketches": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchEntities": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "parameters": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchDimensions": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchConstraints": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "features": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "bodies": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "namedReferences": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            }
+          },
+          "operations": [
+            {
+              "index": 0,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_base_extrude from s_base/e_base",
+              "featureId": "f_base_extrude",
+              "bodyId": "b_base_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_base",
+              "sketchEntityId": "e_base"
+            },
+            {
+              "index": 1,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_base_hole0 from s_base/h_base_0 into b_base_raw",
+              "featureId": "f_base_hole0",
+              "bodyId": "b_base_h0",
+              "targetBodyId": "b_base_raw",
+              "sketchId": "s_base",
+              "sketchEntityId": "h_base_0"
+            },
+            {
+              "index": 2,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_base_hole1 from s_base/h_base_1 into b_base_h0",
+              "featureId": "f_base_hole1",
+              "bodyId": "b_base_h1",
+              "targetBodyId": "b_base_h0",
+              "sketchId": "s_base",
+              "sketchEntityId": "h_base_1"
+            },
+            {
+              "index": 3,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_base_hole2 from s_base/h_base_2 into b_base_h1",
+              "featureId": "f_base_hole2",
+              "bodyId": "b_base_h2",
+              "targetBodyId": "b_base_h1",
+              "sketchId": "s_base",
+              "sketchEntityId": "h_base_2"
+            },
+            {
+              "index": 4,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_base_hole3 from s_base/h_base_3 into b_base_h2",
+              "featureId": "f_base_hole3",
+              "bodyId": "b_base_h3",
+              "targetBodyId": "b_base_h2",
+              "sketchId": "s_base",
+              "sketchEntityId": "h_base_3"
+            },
+            {
+              "index": 5,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_base_hole4 from s_base/h_base_4 into b_base_h3",
+              "featureId": "f_base_hole4",
+              "bodyId": "b_base",
+              "targetBodyId": "b_base_h3",
+              "sketchId": "s_base",
+              "sketchEntityId": "h_base_4"
+            },
+            {
+              "index": 6,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_yaw_extrude from s_yaw/e_yaw",
+              "featureId": "f_yaw_extrude",
+              "bodyId": "b_yaw_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_yaw",
+              "sketchEntityId": "e_yaw"
+            },
+            {
+              "index": 7,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_yaw_hole0 from s_yaw/h_yaw_0 into b_yaw_raw",
+              "featureId": "f_yaw_hole0",
+              "bodyId": "b_yaw_h0",
+              "targetBodyId": "b_yaw_raw",
+              "sketchId": "s_yaw",
+              "sketchEntityId": "h_yaw_0"
+            },
+            {
+              "index": 8,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_yaw_hole1 from s_yaw/h_yaw_1 into b_yaw_h0",
+              "featureId": "f_yaw_hole1",
+              "bodyId": "b_yaw_h1",
+              "targetBodyId": "b_yaw_h0",
+              "sketchId": "s_yaw",
+              "sketchEntityId": "h_yaw_1"
+            },
+            {
+              "index": 9,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_yaw_hole2 from s_yaw/h_yaw_2 into b_yaw_h1",
+              "featureId": "f_yaw_hole2",
+              "bodyId": "b_yaw_h2",
+              "targetBodyId": "b_yaw_h1",
+              "sketchId": "s_yaw",
+              "sketchEntityId": "h_yaw_2"
+            },
+            {
+              "index": 10,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_yaw_hole3 from s_yaw/h_yaw_3 into b_yaw_h2",
+              "featureId": "f_yaw_hole3",
+              "bodyId": "b_yaw_h3",
+              "targetBodyId": "b_yaw_h2",
+              "sketchId": "s_yaw",
+              "sketchEntityId": "h_yaw_3"
+            },
+            {
+              "index": 11,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_yaw_hole4 from s_yaw/h_yaw_4 into b_yaw_h3",
+              "featureId": "f_yaw_hole4",
+              "bodyId": "b_yaw",
+              "targetBodyId": "b_yaw_h3",
+              "sketchId": "s_yaw",
+              "sketchEntityId": "h_yaw_4"
+            },
+            {
+              "index": 12,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_shoulder_extrude from s_shoulder/e_shoulder",
+              "featureId": "f_shoulder_extrude",
+              "bodyId": "b_shoulder_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_shoulder",
+              "sketchEntityId": "e_shoulder"
+            },
+            {
+              "index": 13,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_shoulder_hole0 from s_shoulder/h_shoulder_0 into b_shoulder_raw",
+              "featureId": "f_shoulder_hole0",
+              "bodyId": "b_shoulder_h0",
+              "targetBodyId": "b_shoulder_raw",
+              "sketchId": "s_shoulder",
+              "sketchEntityId": "h_shoulder_0"
+            },
+            {
+              "index": 14,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_shoulder_hole1 from s_shoulder/h_shoulder_1 into b_shoulder_h0",
+              "featureId": "f_shoulder_hole1",
+              "bodyId": "b_shoulder_h1",
+              "targetBodyId": "b_shoulder_h0",
+              "sketchId": "s_shoulder",
+              "sketchEntityId": "h_shoulder_1"
+            },
+            {
+              "index": 15,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_shoulder_hole2 from s_shoulder/h_shoulder_2 into b_shoulder_h1",
+              "featureId": "f_shoulder_hole2",
+              "bodyId": "b_shoulder",
+              "targetBodyId": "b_shoulder_h1",
+              "sketchId": "s_shoulder",
+              "sketchEntityId": "h_shoulder_2"
+            },
+            {
+              "index": 16,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_upper_extrude from s_upper/e_upper",
+              "featureId": "f_upper_extrude",
+              "bodyId": "b_upper_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_upper",
+              "sketchEntityId": "e_upper"
+            },
+            {
+              "index": 17,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_upper_hole0 from s_upper/h_upper_0 into b_upper_raw",
+              "featureId": "f_upper_hole0",
+              "bodyId": "b_upper_h0",
+              "targetBodyId": "b_upper_raw",
+              "sketchId": "s_upper",
+              "sketchEntityId": "h_upper_0"
+            },
+            {
+              "index": 18,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_upper_hole1 from s_upper/h_upper_1 into b_upper_h0",
+              "featureId": "f_upper_hole1",
+              "bodyId": "b_upper",
+              "targetBodyId": "b_upper_h0",
+              "sketchId": "s_upper",
+              "sketchEntityId": "h_upper_1"
+            },
+            {
+              "index": 19,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_forearm_extrude from s_forearm/e_forearm",
+              "featureId": "f_forearm_extrude",
+              "bodyId": "b_forearm_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_forearm",
+              "sketchEntityId": "e_forearm"
+            },
+            {
+              "index": 20,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_forearm_hole0 from s_forearm/h_forearm_0 into b_forearm_raw",
+              "featureId": "f_forearm_hole0",
+              "bodyId": "b_forearm_h0",
+              "targetBodyId": "b_forearm_raw",
+              "sketchId": "s_forearm",
+              "sketchEntityId": "h_forearm_0"
+            },
+            {
+              "index": 21,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_forearm_hole1 from s_forearm/h_forearm_1 into b_forearm_h0",
+              "featureId": "f_forearm_hole1",
+              "bodyId": "b_forearm",
+              "targetBodyId": "b_forearm_h0",
+              "sketchId": "s_forearm",
+              "sketchEntityId": "h_forearm_1"
+            },
+            {
+              "index": 22,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_wrist_extrude from s_wrist/e_wrist",
+              "featureId": "f_wrist_extrude",
+              "bodyId": "b_wrist_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_wrist",
+              "sketchEntityId": "e_wrist"
+            },
+            {
+              "index": 23,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_wrist_hole0 from s_wrist/h_wrist_0 into b_wrist_raw",
+              "featureId": "f_wrist_hole0",
+              "bodyId": "b_wrist_h0",
+              "targetBodyId": "b_wrist_raw",
+              "sketchId": "s_wrist",
+              "sketchEntityId": "h_wrist_0"
+            },
+            {
+              "index": 24,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_wrist_hole1 from s_wrist/h_wrist_1 into b_wrist_h0",
+              "featureId": "f_wrist_hole1",
+              "bodyId": "b_wrist_h1",
+              "targetBodyId": "b_wrist_h0",
+              "sketchId": "s_wrist",
+              "sketchEntityId": "h_wrist_1"
+            },
+            {
+              "index": 25,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_wrist_hole2 from s_wrist/h_wrist_2 into b_wrist_h1",
+              "featureId": "f_wrist_hole2",
+              "bodyId": "b_wrist",
+              "targetBodyId": "b_wrist_h1",
+              "sketchId": "s_wrist",
+              "sketchEntityId": "h_wrist_2"
+            },
+            {
+              "index": 26,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_rail_extrude from s_rail/e_rail",
+              "featureId": "f_rail_extrude",
+              "bodyId": "b_rail_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_rail",
+              "sketchEntityId": "e_rail"
+            },
+            {
+              "index": 27,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_rail_hole0 from s_rail/h_rail_0 into b_rail_raw",
+              "featureId": "f_rail_hole0",
+              "bodyId": "b_rail_h0",
+              "targetBodyId": "b_rail_raw",
+              "sketchId": "s_rail",
+              "sketchEntityId": "h_rail_0"
+            },
+            {
+              "index": 28,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_rail_hole1 from s_rail/h_rail_1 into b_rail_h0",
+              "featureId": "f_rail_hole1",
+              "bodyId": "b_rail_h1",
+              "targetBodyId": "b_rail_h0",
+              "sketchId": "s_rail",
+              "sketchEntityId": "h_rail_1"
+            },
+            {
+              "index": 29,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_rail_hole2 from s_rail/h_rail_2 into b_rail_h1",
+              "featureId": "f_rail_hole2",
+              "bodyId": "b_rail_h2",
+              "targetBodyId": "b_rail_h1",
+              "sketchId": "s_rail",
+              "sketchEntityId": "h_rail_2"
+            },
+            {
+              "index": 30,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_rail_hole3 from s_rail/h_rail_3 into b_rail_h2",
+              "featureId": "f_rail_hole3",
+              "bodyId": "b_rail",
+              "targetBodyId": "b_rail_h2",
+              "sketchId": "s_rail",
+              "sketchEntityId": "h_rail_3"
+            },
+            {
+              "index": 31,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_finger_extrude from s_finger/e_finger",
+              "featureId": "f_finger_extrude",
+              "bodyId": "b_finger_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_finger",
+              "sketchEntityId": "e_finger"
+            },
+            {
+              "index": 32,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_finger_hole0 from s_finger/h_finger_0 into b_finger_raw",
+              "featureId": "f_finger_hole0",
+              "bodyId": "b_finger_h0",
+              "targetBodyId": "b_finger_raw",
+              "sketchId": "s_finger",
+              "sketchEntityId": "h_finger_0"
+            },
+            {
+              "index": 33,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_finger_hole1 from s_finger/h_finger_1 into b_finger_h0",
+              "featureId": "f_finger_hole1",
+              "bodyId": "b_finger",
+              "targetBodyId": "b_finger_h0",
+              "sketchId": "s_finger",
+              "sketchEntityId": "h_finger_1"
+            },
+            {
+              "index": 34,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_pin8_extrude from s_pin8/e_pin8",
+              "featureId": "f_pin8_extrude",
+              "bodyId": "b_pin8",
+              "operationMode": "newBody",
+              "sketchId": "s_pin8",
+              "sketchEntityId": "e_pin8"
+            },
+            {
+              "index": 35,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_bolt4_extrude from s_bolt4/e_bolt4",
+              "featureId": "f_bolt4_extrude",
+              "bodyId": "b_bolt4",
+              "operationMode": "newBody",
+              "sketchId": "s_bolt4",
+              "sketchEntityId": "e_bolt4"
+            },
+            {
+              "index": 36,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_spacer_extrude from s_spacer/e_spacer",
+              "featureId": "f_spacer_extrude",
+              "bodyId": "b_spacer_raw",
+              "operationMode": "newBody",
+              "sketchId": "s_spacer",
+              "sketchEntityId": "e_spacer"
+            },
+            {
+              "index": 37,
+              "op": "feature.hole",
+              "intent": "create",
+              "label": "Create hole feature f_spacer_hole0 from s_spacer/h_spacer_0 into b_spacer_raw",
+              "featureId": "f_spacer_hole0",
+              "bodyId": "b_spacer",
+              "targetBodyId": "b_spacer_raw",
+              "sketchId": "s_spacer",
+              "sketchEntityId": "h_spacer_0"
+            }
+          ],
+          "audit": {
+            "source": "mcp",
+            "requestId": "mcp_jsonrpc_9",
+            "toolName": "cad.batch",
+            "intent": "commit",
+            "operationCount": 38,
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            }
+          },
+          "commitGate": {
+            "commitsRequireExplicitPermission": true,
+            "dryRunsRequirePermission": false,
+            "permissionProvided": true,
+            "blocked": false,
+            "message": "Commit requested and explicitly allowed by adapter permissions."
+          },
+          "hints": [],
+          "blockers": [
+            {
+              "code": "VALIDATION_ERROR",
+              "severity": "blocker",
+              "message": "UNSUPPORTED_FEATURE_OPERATION: Exact geometry rejected this batch: Exact artifact build failed for body b_finger: EMPTY_RESULT: Hole tool has no positive-volume intersection with the target shape.",
+              "opIndex": 37,
+              "op": "feature.hole",
+              "errorCode": "UNSUPPORTED_FEATURE_OPERATION",
+              "path": "$.ops[37]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "ref": "2026-09-07T22-53-59.864Z/010",
+      "request": {
+        "name": "cad.sketch_profile_region_validate",
+        "arguments": {
+          "profile": {
+            "kind": "regions",
+            "sketchId": "s_upper",
+            "regions": [
+              {
+                "outer": {
+                  "kind": "entity",
+                  "entityId": "e_upper"
+                },
+                "holes": [
+                  {
+                    "kind": "entity",
+                    "entityId": "h_upper_0"
+                  },
+                  {
+                    "kind": "entity",
+                    "entityId": "h_upper_1"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "observed": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_ARGUMENTS",
+          "message": "cad.sketch_profile_region_validate expects arguments shaped as { profile: SketchRegionsProfileRef }."
+        }
+      }
+    },
+    {
+      "ref": "2026-09-07T22-53-59.864Z/011",
+      "request": {
+        "file": "03-regions.json"
+      },
+      "observed": {
+        "ok": false,
+        "requestId": "mcp_jsonrpc_11",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "mode": "commit",
+        "error": {
+          "code": "UNSUPPORTED_FEATURE_OPERATION",
+          "message": "Exact geometry rejected this batch: Exact artifact build failed for body b_finger: SKETCH_REGION_RESULT_NOT_SINGLE_SOLID: Region cut must change the current solid by positive volume; received 0.",
+          "opIndex": 10,
+          "op": "feature.extrude",
+          "path": "$.ops[10]",
+          "expected": "a valid exact result for every active body",
+          "received": "exact geometry preflight failed; source is unchanged"
+        },
+        "errors": [
+          {
+            "code": "UNSUPPORTED_FEATURE_OPERATION",
+            "message": "Exact geometry rejected this batch: Exact artifact build failed for body b_finger: SKETCH_REGION_RESULT_NOT_SINGLE_SOLID: Region cut must change the current solid by positive volume; received 0.",
+            "opIndex": 10,
+            "op": "feature.extrude",
+            "path": "$.ops[10]",
+            "expected": "a valid exact result for every active body",
+            "received": "exact geometry preflight failed; source is unchanged"
+          }
+        ],
+        "createdIds": [],
+        "modifiedIds": [],
+        "deletedIds": [],
+        "warnings": [],
+        "audit": {
+          "source": "mcp",
+          "requestId": "mcp_jsonrpc_11",
+          "toolName": "cad.batch",
+          "intent": "commit",
+          "operationCount": 11
+        },
+        "review": {
+          "requestedMode": "commit",
+          "effectiveIntent": "commit",
+          "operationCount": 11,
+          "entityChanges": {
+            "objects": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketches": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchEntities": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "parameters": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchDimensions": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchConstraints": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "features": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "bodies": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "namedReferences": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            }
+          },
+          "operations": [
+            {
+              "index": 0,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_base from s_base explicit regions (1)",
+              "featureId": "f_base",
+              "bodyId": "b_base",
+              "operationMode": "newBody",
+              "sketchId": "s_base"
+            },
+            {
+              "index": 1,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_yaw from s_yaw explicit regions (1)",
+              "featureId": "f_yaw",
+              "bodyId": "b_yaw",
+              "operationMode": "newBody",
+              "sketchId": "s_yaw"
+            },
+            {
+              "index": 2,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_shoulder from s_shoulder explicit regions (1)",
+              "featureId": "f_shoulder",
+              "bodyId": "b_shoulder",
+              "operationMode": "newBody",
+              "sketchId": "s_shoulder"
+            },
+            {
+              "index": 3,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_upper from s_upper explicit regions (1)",
+              "featureId": "f_upper",
+              "bodyId": "b_upper",
+              "operationMode": "newBody",
+              "sketchId": "s_upper"
+            },
+            {
+              "index": 4,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_forearm from s_forearm explicit regions (1)",
+              "featureId": "f_forearm",
+              "bodyId": "b_forearm",
+              "operationMode": "newBody",
+              "sketchId": "s_forearm"
+            },
+            {
+              "index": 5,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_wrist from s_wrist explicit regions (1)",
+              "featureId": "f_wrist",
+              "bodyId": "b_wrist",
+              "operationMode": "newBody",
+              "sketchId": "s_wrist"
+            },
+            {
+              "index": 6,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_rail from s_rail explicit regions (1)",
+              "featureId": "f_rail",
+              "bodyId": "b_rail",
+              "operationMode": "newBody",
+              "sketchId": "s_rail"
+            },
+            {
+              "index": 7,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_finger from s_finger explicit regions (1)",
+              "featureId": "f_finger",
+              "bodyId": "b_finger",
+              "operationMode": "newBody",
+              "sketchId": "s_finger"
+            },
+            {
+              "index": 8,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_pin8 from s_pin8 explicit regions (1)",
+              "featureId": "f_pin8",
+              "bodyId": "b_pin8",
+              "operationMode": "newBody",
+              "sketchId": "s_pin8"
+            },
+            {
+              "index": 9,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_bolt4 from s_bolt4 explicit regions (1)",
+              "featureId": "f_bolt4",
+              "bodyId": "b_bolt4",
+              "operationMode": "newBody",
+              "sketchId": "s_bolt4"
+            },
+            {
+              "index": 10,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create new body extrude feature f_spacer from s_spacer explicit regions (1)",
+              "featureId": "f_spacer",
+              "bodyId": "b_spacer",
+              "operationMode": "newBody",
+              "sketchId": "s_spacer"
+            }
+          ],
+          "audit": {
+            "source": "mcp",
+            "requestId": "mcp_jsonrpc_11",
+            "toolName": "cad.batch",
+            "intent": "commit",
+            "operationCount": 11,
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            }
+          },
+          "commitGate": {
+            "commitsRequireExplicitPermission": true,
+            "dryRunsRequirePermission": false,
+            "permissionProvided": true,
+            "blocked": false,
+            "message": "Commit requested and explicitly allowed by adapter permissions."
+          },
+          "hints": [],
+          "blockers": [
+            {
+              "code": "VALIDATION_ERROR",
+              "severity": "blocker",
+              "message": "UNSUPPORTED_FEATURE_OPERATION: Exact geometry rejected this batch: Exact artifact build failed for body b_finger: SKETCH_REGION_RESULT_NOT_SINGLE_SOLID: Region cut must change the current solid by positive volume; received 0.",
+              "opIndex": 10,
+              "op": "feature.extrude",
+              "errorCode": "UNSUPPORTED_FEATURE_OPERATION",
+              "path": "$.ops[10]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "ref": "2026-09-07T22-58-28.947Z/009",
+      "request": {
+        "file": "05-joint-probe.json"
+      },
+      "observed": {
+        "ok": false,
+        "requestId": "mcp_jsonrpc_9",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "mode": "commit",
+        "error": {
+          "code": "ASSEMBLY_MATE_UNDERCONSTRAINED",
+          "message": "Concentric mate is underconstrained: ground one instance with a fixed mate before solving pose.",
+          "opIndex": 6,
+          "path": "$.ops[6].kind",
+          "expected": "one fixed/grounded instance in the mate pair",
+          "received": "neither instance fixed",
+          "op": "assembly.mate.create"
+        },
+        "errors": [
+          {
+            "code": "ASSEMBLY_MATE_UNDERCONSTRAINED",
+            "message": "Concentric mate is underconstrained: ground one instance with a fixed mate before solving pose.",
+            "opIndex": 6,
+            "path": "$.ops[6].kind",
+            "expected": "one fixed/grounded instance in the mate pair",
+            "received": "neither instance fixed",
+            "op": "assembly.mate.create"
+          }
+        ],
+        "createdIds": [],
+        "modifiedIds": [],
+        "deletedIds": [],
+        "warnings": [],
+        "audit": {
+          "source": "mcp",
+          "requestId": "mcp_jsonrpc_9",
+          "toolName": "cad.batch",
+          "intent": "commit",
+          "operationCount": 7
+        },
+        "review": {
+          "requestedMode": "commit",
+          "effectiveIntent": "commit",
+          "operationCount": 7,
+          "entityChanges": {
+            "objects": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketches": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchEntities": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "parameters": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchDimensions": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchConstraints": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "features": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "bodies": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "namedReferences": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            }
+          },
+          "operations": [
+            {
+              "index": 0,
+              "op": "assembly.create",
+              "intent": "create",
+              "label": "Create assembly arm"
+            },
+            {
+              "index": 1,
+              "op": "assembly.instance.insert",
+              "intent": "create",
+              "label": "Insert assembly instance i_base of b_base into arm"
+            },
+            {
+              "index": 2,
+              "op": "assembly.mate.create",
+              "intent": "create",
+              "label": "Create fixed mate m_base on i_base in arm"
+            },
+            {
+              "index": 3,
+              "op": "assembly.instance.insert",
+              "intent": "create",
+              "label": "Insert assembly instance i_yaw of b_yaw into arm"
+            },
+            {
+              "index": 4,
+              "op": "assembly.mate.create",
+              "intent": "create",
+              "label": "Create concentric mate m_yaw axes i_base/Z ~ i_yaw/Z in arm"
+            },
+            {
+              "index": 5,
+              "op": "assembly.instance.insert",
+              "intent": "create",
+              "label": "Insert assembly instance i_shoulder of b_shoulder into arm"
+            },
+            {
+              "index": 6,
+              "op": "assembly.mate.create",
+              "intent": "create",
+              "label": "Create concentric mate m_shoulder axes i_yaw/Y ~ i_shoulder/Z in arm"
+            }
+          ],
+          "audit": {
+            "source": "mcp",
+            "requestId": "mcp_jsonrpc_9",
+            "toolName": "cad.batch",
+            "intent": "commit",
+            "operationCount": 7,
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            }
+          },
+          "commitGate": {
+            "commitsRequireExplicitPermission": true,
+            "dryRunsRequirePermission": false,
+            "permissionProvided": true,
+            "blocked": false,
+            "message": "Commit requested and explicitly allowed by adapter permissions."
+          },
+          "hints": [],
+          "blockers": [
+            {
+              "code": "VALIDATION_ERROR",
+              "severity": "blocker",
+              "message": "ASSEMBLY_MATE_UNDERCONSTRAINED: Concentric mate is underconstrained: ground one instance with a fixed mate before solving pose.",
+              "opIndex": 6,
+              "op": "assembly.mate.create",
+              "errorCode": "ASSEMBLY_MATE_UNDERCONSTRAINED",
+              "path": "$.ops[6].kind"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "observerPlaneControls": [
+    {
+      "plane": "XY",
+      "ops": [
+        {
+          "op": "sketch.create",
+          "id": "s",
+          "name": "Plane probe",
+          "plane": "XY"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s",
+          "id": "r",
+          "center": [30, 0],
+          "width": 60,
+          "height": 14
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f",
+          "bodyId": "b",
+          "sketchId": "s",
+          "entityId": "r",
+          "depth": 8
+        }
+      ],
+      "exact": {
+        "bodyId": "b",
+        "density": 1,
+        "volume": 6720,
+        "surfaceArea": 2864,
+        "centerOfMass": [30, 1.1102230246251565e-16, 4],
+        "mass": 6720,
+        "units": "mm",
+        "momentsOfInertia": {
+          "xx": 145600,
+          "yy": 2051840,
+          "zz": 2125760,
+          "xy": -6.061817714453355e-13,
+          "xz": 0,
+          "yz": 0
+        },
+        "principalMoments": [145600, 2051839.999999999, 2125760.000000001],
+        "measurementSource": "kernel-derived",
+        "measurementConfidence": "kernel-derived",
+        "diagnostics": []
+      },
+      "analytic": {
+        "bodyId": "b",
+        "sourceFeatureId": "f",
+        "sourceSketchId": "s",
+        "sourceSketchEntityId": "r",
+        "profileKind": "rectangle",
+        "units": "mm",
+        "sketchPlane": "XY",
+        "side": "positive",
+        "depth": 8,
+        "measurementModel": "sourceAnalytic",
+        "localBounds": {
+          "min": [0, -7, 0],
+          "max": [60, 7, 8],
+          "size": [60, 14, 8],
+          "center": [30, 0, 4]
+        },
+        "localExtents": [60, 14, 8],
+        "centroid": [30, 0, 4],
+        "volume": 6720,
+        "surfaceArea": 2864
+      }
+    },
+    {
+      "plane": "XZ",
+      "ops": [
+        {
+          "op": "sketch.create",
+          "id": "s",
+          "name": "Plane probe",
+          "plane": "XZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s",
+          "id": "r",
+          "center": [30, 0],
+          "width": 60,
+          "height": 14
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f",
+          "bodyId": "b",
+          "sketchId": "s",
+          "entityId": "r",
+          "depth": 8
+        }
+      ],
+      "exact": {
+        "bodyId": "b",
+        "density": 1,
+        "volume": 6720,
+        "surfaceArea": 2863.9999999999995,
+        "centerOfMass": [30, 4, -14],
+        "mass": 6720,
+        "units": "mm",
+        "momentsOfInertia": {
+          "xx": 145600,
+          "yy": 2125760,
+          "zz": 2051840,
+          "xy": 0,
+          "xz": 0,
+          "yz": 0
+        },
+        "principalMoments": [145600, 2051840, 2125760],
+        "measurementSource": "kernel-derived",
+        "measurementConfidence": "kernel-derived",
+        "diagnostics": []
+      },
+      "analytic": {
+        "bodyId": "b",
+        "sourceFeatureId": "f",
+        "sourceSketchId": "s",
+        "sourceSketchEntityId": "r",
+        "profileKind": "rectangle",
+        "units": "mm",
+        "sketchPlane": "XZ",
+        "side": "positive",
+        "depth": 8,
+        "measurementModel": "sourceAnalytic",
+        "localBounds": {
+          "min": [0, -8, -7],
+          "max": [60, 0, 7],
+          "size": [60, 8, 14],
+          "center": [30, -4, 0]
+        },
+        "localExtents": [60, 8, 14],
+        "centroid": [30, -4, 0],
+        "volume": 6720,
+        "surfaceArea": 2864
+      }
+    },
+    {
+      "plane": "YZ",
+      "ops": [
+        {
+          "op": "sketch.create",
+          "id": "s",
+          "name": "Plane probe",
+          "plane": "YZ"
+        },
+        {
+          "op": "sketch.addRectangle",
+          "sketchId": "s",
+          "id": "r",
+          "center": [30, 0],
+          "width": 60,
+          "height": 14
+        },
+        {
+          "op": "feature.extrude",
+          "id": "f",
+          "bodyId": "b",
+          "sketchId": "s",
+          "entityId": "r",
+          "depth": 8
+        }
+      ],
+      "exact": {
+        "bodyId": "b",
+        "density": 1,
+        "volume": 6720,
+        "surfaceArea": 2863.9999999999995,
+        "centerOfMass": [4, 30, 6.158268339717665e-17],
+        "mass": 6720,
+        "units": "mm",
+        "momentsOfInertia": {
+          "xx": 2125760,
+          "yy": 145600,
+          "zz": 2051840,
+          "xy": 0,
+          "xz": 0,
+          "yz": 8.393286066166183e-13
+        },
+        "principalMoments": [145600, 2051839.9999999986, 2125760.0000000014],
+        "measurementSource": "kernel-derived",
+        "measurementConfidence": "kernel-derived",
+        "diagnostics": []
+      },
+      "analytic": {
+        "bodyId": "b",
+        "sourceFeatureId": "f",
+        "sourceSketchId": "s",
+        "sourceSketchEntityId": "r",
+        "profileKind": "rectangle",
+        "units": "mm",
+        "sketchPlane": "YZ",
+        "side": "positive",
+        "depth": 8,
+        "measurementModel": "sourceAnalytic",
+        "localBounds": {
+          "min": [0, 0, -7],
+          "max": [8, 60, 7],
+          "size": [8, 60, 14],
+          "center": [4, 30, 0]
+        },
+        "localExtents": [8, 60, 14],
+        "centroid": [4, 30, 0],
+        "volume": 6720,
+        "surfaceArea": 2864
+      }
+    }
+  ],
+  "observerRegionQuery": {
+    "request": {
+      "name": "cad.sketch_profile_region_candidates",
+      "arguments": {
+        "sketchId": "probe"
+      }
+    },
+    "synchronous": {
+      "ok": true,
+      "query": "sketch.profileRegionCandidates",
+      "cadOpsVersion": "cadops.v1",
+      "sketchId": "probe",
+      "status": "ready",
+      "sourceRevision": "partbench-source-v1:f2d3b661c3ca3794de7b8d7ba59e1ec6e0da3e4744528dd2df610ed0045dc626",
+      "sourceFingerprint": "partbench-source-v1:25ca9f86a5794f02f472914583b51af1e8216e05e36d4239f00691916cada5c0",
+      "candidateCount": 1,
+      "candidates": [
+        {
+          "candidateKey": "[\"region\",0,\"[\\\"entity\\\",\\\"outer\\\"]\",[]]",
+          "region": {
+            "outer": {
+              "kind": "entity",
+              "entityId": "outer"
+            },
+            "holes": []
+          },
+          "outerLoopKey": "[\"entity\",\"outer\"]",
+          "holeLoopKeys": [],
+          "outerEntityIds": ["outer"],
+          "holeEntityIds": [],
+          "signedArea": 200,
+          "materialArea": 200,
+          "containmentDepth": 0,
+          "status": "valid",
+          "diagnostics": []
+        }
+      ],
+      "hasMore": false,
+      "complexity": {
+        "regionCount": 1,
+        "loopCount": 1,
+        "segmentReferenceCount": 0,
+        "predicateVisitCount": 0
+      },
+      "diagnostics": [],
+      "requestId": "mcp_req_1",
+      "adapterVersion": "web-cad.agent-adapter.v1"
+    },
+    "asynchronous": {
+      "ok": false,
+      "error": {
+        "code": "INVALID_ARGUMENTS",
+        "message": "cad.sketch_profile_region_candidates expects a sketchId and optional bounded entityIds, limit, afterCandidateKey, and sourceRevision."
+      }
+    },
+    "asyncExecutionPortCalls": 0
+  },
+  "observerFinal": {
+    "baseline": "d6498191",
+    "native": ".metrics/robot-arm-trial/robot-arm-final.wcad",
+    "definitionCount": 11,
+    "instanceCount": 29,
+    "mateCount": 29,
+    "poseMaxError": 1.4210854715202004e-14,
+    "masses": [
+      {
+        "bodyId": "b_base",
+        "volume": 79068.58061006367
+      },
+      {
+        "bodyId": "b_yaw",
+        "volume": 35152.53683807763
+      },
+      {
+        "bodyId": "b_shoulder",
+        "volume": 23323.04961500447
+      },
+      {
+        "bodyId": "b_upper",
+        "volume": 49555.03723989049
+      },
+      {
+        "bodyId": "b_forearm",
+        "volume": 34515.03723989049
+      },
+      {
+        "bodyId": "b_wrist",
+        "volume": 13659.04961500447
+      },
+      {
+        "bodyId": "b_rail",
+        "volume": 22629.35848270729
+      },
+      {
+        "bodyId": "b_finger",
+        "volume": 6465.530995059227
+      },
+      {
+        "bodyId": "b_pin8",
+        "volume": 1407.433508808227
+      },
+      {
+        "bodyId": "b_bolt4",
+        "volume": 226.19467105846508
+      },
+      {
+        "bodyId": "b_spacer",
+        "volume": 202.2557350381109
+      }
+    ],
+    "stepSolidCount": 11,
+    "stepVolume": 266204.06455060147,
+    "expectedVolume": 266204.0645506025,
+    "parameterOnlyRevision": {
+      "span": 200,
+      "accepted": true,
+      "instancesUnchanged": true,
+      "matesUnchanged": true,
+      "beforeSketch": {
+        "ok": true,
+        "requestId": "observer",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "query": "sketch.get",
+        "sketch": {
+          "id": "s_upper",
+          "name": "Upper arm plate",
+          "plane": "XY",
+          "entities": [
+            {
+              "id": "e_upper",
+              "kind": "rectangle",
+              "center": [-1.1e-10, 0],
+              "width": 210,
+              "height": 30,
+              "construction": false
+            },
+            {
+              "id": "h_upper_0",
+              "kind": "circle",
+              "center": [-90.0000000001, 0],
+              "radius": 4.1,
+              "construction": false
+            },
+            {
+              "id": "h_upper_1",
+              "kind": "circle",
+              "center": [89.9999999999, 0],
+              "radius": 4.1,
+              "construction": false
+            }
+          ]
+        }
+      },
+      "afterSketch": {
+        "ok": true,
+        "requestId": "observer",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "query": "sketch.get",
+        "sketch": {
+          "id": "s_upper",
+          "name": "Upper arm plate",
+          "plane": "XY",
+          "entities": [
+            {
+              "id": "e_upper",
+              "kind": "rectangle",
+              "center": [-2.1e-10, 0],
+              "width": 230,
+              "height": 30,
+              "construction": false
+            },
+            {
+              "id": "h_upper_0",
+              "kind": "circle",
+              "center": [-100, 0],
+              "radius": 4.1,
+              "construction": false
+            },
+            {
+              "id": "h_upper_1",
+              "kind": "circle",
+              "center": [99.9999999998, 0],
+              "radius": 4.1,
+              "construction": false
+            }
+          ]
+        }
+      }
+    }
+  }
+}

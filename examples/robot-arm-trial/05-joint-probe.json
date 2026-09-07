@@ -1,0 +1,89 @@
+{
+  "name": "cad.batch",
+  "arguments": {
+    "allowCommit": true,
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "commit",
+      "ops": [
+        {
+          "op": "assembly.create",
+          "id": "arm",
+          "name": "Tabletop robot arm"
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "i_base",
+          "assemblyId": "arm",
+          "definition": {
+            "kind": "body",
+            "bodyId": "b_base"
+          }
+        },
+        {
+          "op": "assembly.mate.create",
+          "id": "m_base",
+          "assemblyId": "arm",
+          "kind": "fixed",
+          "instanceId": "i_base"
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "i_yaw",
+          "assemblyId": "arm",
+          "definition": {
+            "kind": "body",
+            "bodyId": "b_yaw"
+          },
+          "transform": {
+            "translation": [0, 0, 10],
+            "rotation": [0, 0, 0.4363323129985824]
+          }
+        },
+        {
+          "op": "assembly.mate.create",
+          "id": "m_yaw",
+          "assemblyId": "arm",
+          "kind": "concentric",
+          "primary": {
+            "instanceId": "i_base",
+            "axis": "Z"
+          },
+          "secondary": {
+            "instanceId": "i_yaw",
+            "axis": "Z"
+          }
+        },
+        {
+          "op": "assembly.instance.insert",
+          "id": "i_shoulder",
+          "assemblyId": "arm",
+          "definition": {
+            "kind": "body",
+            "bodyId": "b_shoulder"
+          },
+          "transform": {
+            "translation": [2.5357095704441965, -5.437846722219899, 20],
+            "rotation": [1.5707963267948966, 0, 0.4363323129985824]
+          }
+        },
+        {
+          "op": "assembly.mate.create",
+          "id": "m_shoulder",
+          "assemblyId": "arm",
+          "kind": "concentric",
+          "primary": {
+            "instanceId": "i_yaw",
+            "axis": "Y",
+            "origin": [0, 0, 50]
+          },
+          "secondary": {
+            "instanceId": "i_shoulder",
+            "axis": "Z",
+            "origin": [0, 40, 0]
+          }
+        }
+      ]
+    }
+  }
+}
