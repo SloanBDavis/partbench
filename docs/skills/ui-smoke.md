@@ -6,6 +6,7 @@ The script starts the real app (Vite, same as the dev script). Bun 1.4 chrome ba
 
 - `pnpm smoke:ui` — engine gate: `window.__PARTBENCH_UI_SMOKE__.applyOps` through live CadEngine Apply.
 - `pnpm smoke:ui-use` — Use path: clicks and typed fields from the scenario `use` array. Not applyOps.
+- `pnpm smoke:e2e` — two focused assembly journeys (distance/history and concentric/cancel).
 
 If you cannot demonstrate it in the running app, you are not done. See [verification.md](../verification.md).
 
@@ -38,7 +39,9 @@ Crash-recovery dialogs are skipped under the ui-smoke query flag.
 
 ## Use path (`smoke:ui-use`)
 
-A scenario may include `use` and `useBreak`: selectors + click/type/apply + wait-for-ready + screenshot name, then a break case.
+A scenario may include `use` and `useBreak`: selectors + click/type/apply + wait-for-ready + screenshot name, then a break case. Use `expectStructure` after Apply, Cancel, Undo, or Redo to wait for the expected `project.structure` subset; arrays must match in length as well as contents. This verifies pose and mate changes without waiting for a transient pending indicator.
+Button clicks and numeric typing use native Bun input. Select helpers require visible, enabled controls but set values through input/change events. Each scenario and break case uses a fresh tab, sharing one browser/server, without seed retries.
+
 First landing: drive the UI once and write that block from what worked. After that, the script is the hill-climb.
 Template: `scenarios/v25-feature-pattern-fillet.json`. Seed `applyOps` is setup so Use can operate the claimed feature; Use is the clicks that follow.
 

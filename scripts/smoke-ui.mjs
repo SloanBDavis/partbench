@@ -7,6 +7,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   findBrowserExecutable,
@@ -122,10 +123,11 @@ function selectScenarios(loaded, options) {
 
 function loadScenarios(filters) {
   if (filters.length === 0 && process.env.PARTBENCH_SMOKE_UI_PREFIX) {
-    filters = ["scenarios/" + process.env.PARTBENCH_SMOKE_UI_PREFIX + "-*.json"];
+    filters = [
+      "scenarios/" + process.env.PARTBENCH_SMOKE_UI_PREFIX + "-*.json"
+    ];
   }
   const requested =
-
     filters.length === 0
       ? globSync("scenarios/*.json", { cwd: repoRoot }).sort()
       : expandFilters(filters);
@@ -170,7 +172,11 @@ function expandFilters(filters) {
   return [...new Set(files)].sort();
 }
 async function startWorkbench(port) {
-  const { createServer } = await import(pathToFileURL(resolve(repoRoot, "apps/web/node_modules/vite/dist/node/index.js")).href);
+  const { createServer } = await import(
+    pathToFileURL(
+      resolve(repoRoot, "apps/web/node_modules/vite/dist/node/index.js")
+    ).href
+  );
   const server = await createServer({
     configFile: resolve(repoRoot, "apps/web/vite.config.ts"),
     root: resolve(repoRoot, "apps/web"),
@@ -242,21 +248,28 @@ function sanitizeFileToken(value) {
   return String(value).replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
-function matches(actual, expected) {
+function matches(actual, expected, exactArrays = false) {
   if (expected === null || typeof expected !== "object") {
     return Object.is(actual, expected);
   }
   if (Array.isArray(expected)) {
-    if (!Array.isArray(actual) || actual.length < expected.length) {
+    if (
+      !Array.isArray(actual) ||
+      (exactArrays
+        ? actual.length !== expected.length
+        : actual.length < expected.length)
+    ) {
       return false;
     }
-    return expected.every((item, index) => matches(actual[index], item));
+    return expected.every((item, index) =>
+      matches(actual[index], item, exactArrays)
+    );
   }
   if (actual === null || typeof actual !== "object") {
     return false;
   }
   return Object.entries(expected).every(([key, value]) =>
-    matches(actual[key], value)
+    matches(actual[key], value, exactArrays)
   );
 }
 function isExactDisplayReady(state, allowEmpty) {
@@ -290,11 +303,6 @@ function isExactDisplayReady(state, allowEmpty) {
   ) {
     return false;
   }
-  const consumed = new Set(
-    bodies
-      .filter((body) => body && body.consumedByFeatureId)
-      .map((body) => body.id)
-  );
   if (exactResults.length > 0) {
     for (const result of exactResults) {
       if (
@@ -350,7 +358,8 @@ async function waitForReady(view, options = {}) {
   let lastSig;
   while (Date.now() < deadline) {
     last = await getState(view);
-    const sig = (last && last.rebuildState) + "|" + ((last && last.diagnostic) || "");
+    const sig =
+      (last && last.rebuildState) + "|" + ((last && last.diagnostic) || "");
     if (sig !== lastSig) {
       lastSig = sig;
       console.log("wait", sig);
@@ -358,7 +367,10 @@ async function waitForReady(view, options = {}) {
     if (isExactDisplayReady(last, allowEmpty)) return last;
     if (isTerminalFailure(last)) {
       throw new Error(
-        "Workbench rebuild failed: " + last.rebuildState + ". " + last.diagnostic
+        "Workbench rebuild failed: " +
+          last.rebuildState +
+          ". " +
+          last.diagnostic
       );
     }
     await delay(250);
@@ -387,13 +399,12 @@ async function assertScenarioQueries(view, name, step) {
     if (queryCase.query?.query !== "project.structure" || !queryCase.expect) {
       continue;
     }
-    const actual =
-      state.structureQuery ?? {
-        ok: true,
-        query: "project.structure",
-        features: state.features,
-        bodies: state.bodies
-      };
+    const actual = state.structureQuery ?? {
+      ok: true,
+      query: "project.structure",
+      features: state.features,
+      bodies: state.bodies
+    };
     if (!matches(actual, queryCase.expect)) {
       throw new Error(
         name +
@@ -432,7 +443,11 @@ async function waitForOptionalSelector(view, selector, timeoutMs) {
 async function clickApplyCollector(view) {
   await waitForSelector(view, '[data-action-id="solid.box"]', 15_000);
   await view.click('[data-action-id="solid.box"]');
-  await waitForSelector(view, '[data-ui-smoke="apply"]:not([disabled])', 15_000);
+  await waitForSelector(
+    view,
+    '[data-ui-smoke="apply"]:not([disabled])',
+    15_000
+  );
   await view.click('[data-ui-smoke="apply"]');
   await waitForReady(view, { allowEmpty: false, timeoutMs: readyTimeoutMs });
   const state = await getState(view);
@@ -468,7 +483,7 @@ async function captureFailure(view, screenshotPath, id, message) {
       "rebuild=" + state.rebuildState,
       "error=" + (state.commandError ?? ""),
       "notice=" + (state.commandNotice ?? ""),
-      "alerts=" + ((state.alerts ?? []).join(" | ")),
+      "alerts=" + (state.alerts ?? []).join(" | "),
       state.diagnostic
     ]
       .filter(Boolean)
@@ -496,7 +511,9 @@ async function runCadopsScenario(view, name, scenario) {
     const seedResult = await applyOps(view, scenario.seed);
     console.log(name, "seed", JSON.stringify(seedResult));
     if (!seedResult.ok) {
-      throw new Error(name + " seed failed: " + formatApplyError(seedResult.error));
+      throw new Error(
+        name + " seed failed: " + formatApplyError(seedResult.error)
+      );
     }
     const seedBodies = seedResult.createdBodyIds ?? [];
     await waitForReady(view, {
@@ -507,7 +524,10 @@ async function runCadopsScenario(view, name, scenario) {
 
   for (const step of scenario.steps ?? []) {
     // Persist round-trips are proven by scenarios-run; engine smoke has no export/import hook.
-    if (step.persistRoundTrip && (!Array.isArray(step.ops) || step.ops.length === 0)) {
+    if (
+      step.persistRoundTrip &&
+      (!Array.isArray(step.ops) || step.ops.length === 0)
+    ) {
       continue;
     }
     const result = await applyOps(view, step.ops ?? []);
@@ -549,7 +569,11 @@ async function runCadopsScenario(view, name, scenario) {
     }
     if (!result.ok) {
       throw new Error(
-        name + " " + step.id + " apply failed: " + formatApplyError(result.error)
+        name +
+          " " +
+          step.id +
+          " apply failed: " +
+          formatApplyError(result.error)
       );
     }
     const createdBodies = result.createdBodyIds ?? [];
@@ -571,9 +595,11 @@ async function runPromotionScenario(view, name, scenario) {
     throw new Error(name + " promotion scenario is missing a seed batch.");
   }
   const seedResult = await applyOps(view, scenario.seed);
-    console.log(name, "seed", JSON.stringify(seedResult));
+  console.log(name, "seed", JSON.stringify(seedResult));
   if (!seedResult.ok) {
-    throw new Error(name + " seed failed: " + formatApplyError(seedResult.error));
+    throw new Error(
+      name + " seed failed: " + formatApplyError(seedResult.error)
+    );
   }
   await waitForReady(view, { timeoutMs: readyTimeoutMs });
   await assertNoErrorToast(view, name + " seed");
@@ -586,23 +612,10 @@ async function runPromotionScenario(view, name, scenario) {
 
 async function typeField(view, selector, text) {
   const value = String(text ?? "");
-  // Prefer a native value write: grip overlays and scrolled inspector fields
-  // often make Bun WebView click() report "not actionable" even when the input
-  // exists and React will accept a synthetic input/change.
-  const result = await evaluate(
-    view,
-    "(() => { const el = document.querySelector(" +
-      JSON.stringify(selector) +
-      "); if (!el) return { ok: false, error: 'missing' }; el.scrollIntoView({ block: 'center', inline: 'nearest' }); const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; setter.call(el, " +
-      JSON.stringify(value) +
-      "); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, value: el.value, disabled: Boolean(el.disabled) }; })()"
-  );
-  if (!result || !result.ok) {
-    throw new Error(
-      "type " + selector + " failed: " + JSON.stringify(result)
-    );
-  }
-  await delay(200);
+  await clickVisibleControl(view, selector);
+  await view.click(selector, { clickCount: 3, timeout: 5_000 });
+  await view.press("Backspace");
+  if (value) await view.type(value);
   const actual = await evaluate(
     view,
     "document.querySelector(" + JSON.stringify(selector) + ")?.value"
@@ -688,19 +701,25 @@ function collectorSelectSelector(spec) {
 }
 
 async function clickVisibleControl(view, selector) {
-  await waitForSelector(view, selector, 15_000);
-  const result = await evaluate(
-    view,
-    "(() => { const nodes = Array.from(document.querySelectorAll(" +
-      JSON.stringify(selector) +
-      ")); const live = nodes.filter((el) => !el.closest('.pb-mode-ribbon__measure')); const hidden = (el) => el.hidden || el.closest('[hidden]') || getComputedStyle(el).display === 'none' || getComputedStyle(el).visibility === 'hidden'; const shown = live.find((el) => !hidden(el)); if (shown) { shown.click(); return { ok: true, via: 'visible' }; } const overflow = live.find((el) => el.closest('details.pb-ribbon-overflow')); if (overflow) { const details = overflow.closest('details'); if (details) details.open = true; overflow.click(); return { ok: true, via: 'overflow' }; } if (live[0]) { live[0].click(); return { ok: true, via: 'first-live' }; } return { ok: false, count: nodes.length }; })()"
-  );
-  if (!result || !result.ok) {
-    throw new Error(
-      "Could not click visible " + selector + " (" + JSON.stringify(result) + ")"
-    );
+  // Exclude the ribbon's measurement-only duplicate. Open overflow via its real
+  // summary control, then let Bun enforce visibility, stability and hit testing.
+  const live =
+    ":is(" +
+    selector +
+    "):not([hidden], [hidden] *, .pb-mode-ribbon__measure *)";
+  await waitForSelector(view, live, 15_000);
+  const overflow =
+    "details.pb-ribbon-overflow:not([open]):has(" + live + ") > summary";
+  if (
+    await evaluate(
+      view,
+      "Boolean(document.querySelector(" + JSON.stringify(overflow) + "))"
+    )
+  ) {
+    await view.click(overflow, { timeout: 5_000 });
   }
-  return result;
+  await view.scrollTo(live, { block: "nearest", timeout: 5_000 });
+  await view.click(live, { timeout: 5_000 });
 }
 
 async function selectCollectorOption(view, spec) {
@@ -709,6 +728,7 @@ async function selectCollectorOption(view, spec) {
   if (!option) {
     throw new Error("select step needs option");
   }
+  await view.scrollTo(selector, { block: "nearest", timeout: 5_000 });
   const deadline = Date.now() + 15_000;
   let last;
   while (Date.now() < deadline) {
@@ -716,7 +736,7 @@ async function selectCollectorOption(view, spec) {
       view,
       "(() => { const el = document.querySelector(" +
         JSON.stringify(selector) +
-        "); if (!el || el.tagName !== 'SELECT') { return { ok: false, error: el ? 'not-select' : 'missing', options: [] }; } const options = Array.from(el.options).map((item) => ({ value: item.value, text: item.textContent.replace(/\\s+/g, ' ').trim() })); const needle = " +
+        "); if (!el || el.tagName !== 'SELECT') { return { ok: false, error: el ? 'not-select' : 'missing', options: [] }; } if (el.disabled || !el.checkVisibility() || !el.getClientRects().length) return { ok: false, error: 'not-actionable' }; const options = Array.from(el.options).map((item) => ({ value: item.value, text: item.textContent.replace(/\\s+/g, ' ').trim() })); const needle = " +
         JSON.stringify(option) +
         "; const match = Array.from(el.options).find((item) => item.value === needle || item.textContent.replace(/\\s+/g, ' ').trim().toLowerCase().includes(needle.toLowerCase())); if (!match) return { ok: false, error: 'no-option', options }; const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set; setter.call(el, match.value); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, value: el.value, options }; })()"
     );
@@ -734,7 +754,10 @@ async function selectCollectorOption(view, spec) {
 }
 
 function someMatches(actualList, expectedItem) {
-  return Array.isArray(actualList) && actualList.some((item) => matches(item, expectedItem));
+  return (
+    Array.isArray(actualList) &&
+    actualList.some((item) => matches(item, expectedItem))
+  );
 }
 
 async function applyUseSeedSetup(view, name, scenario) {
@@ -743,52 +766,39 @@ async function applyUseSeedSetup(view, name, scenario) {
   }
   // applyOps(seed) is workbench SETUP so Use can operate the claimed feature.
   // It is not Use. Use is the clicks/typed fields/Apply that follow.
-  let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    console.log(
-      name,
-      "use setup seed (engine applyOps, not Use) attempt",
-      attempt
+  const seedResult = await applyOps(view, scenario.seed);
+  if (!seedResult.ok)
+    throw new Error(
+      name + " seed failed: " + formatApplyError(seedResult.error)
     );
-    try {
-      if (attempt > 1) {
-        await resetWorkbench(view);
-      }
-      const seedResult = await applyOps(view, scenario.seed);
-      console.log(name, "seed", JSON.stringify(seedResult));
-      if (!seedResult.ok) {
-        throw new Error(
-          name + " use setup seed failed: " + formatApplyError(seedResult.error)
-        );
-      }
-      const seedBodies = seedResult.createdBodyIds ?? [];
-      await waitForReady(view, {
-        timeoutMs: readyTimeoutMs,
-        allowEmpty: seedBodies.length === 0
-      });
-      const state = await getState(view);
-      const exactResults = state.exactResults ?? [];
-      const failed = exactResults.filter((result) => result?.status === "failed");
-      if (failed.length > 0) {
-        throw new Error(
-          name + " use setup seed exact failed: " + JSON.stringify(failed)
-        );
-      }
-      return;
-    } catch (error) {
-      lastError = error;
-      console.log(
-        name,
-        "use setup seed attempt",
-        attempt,
-        "failed:",
-        error instanceof Error ? error.message : String(error)
-      );
+  await waitForReady(view, { timeoutMs: readyTimeoutMs, allowEmpty: false });
+  await assertNoErrorToast(view, name + " seed");
+}
+
+// Poll the observable result, not a transient Applying state that may finish
+// between samples. Exact array lengths catch duplicate mates and failed undo.
+async function expectStructure(view, name, expected) {
+  const deadline = Date.now() + 10_000;
+  let state;
+  do {
+    state = await getState(view);
+    if (state.commandError || isTerminalFailure(state)) {
+      throw new Error(name + " failed: " + JSON.stringify(state));
     }
-  }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(name + " use setup seed failed");
+    if (
+      isExactDisplayReady(state, false) &&
+      matches(state.structureQuery, expected, true)
+    )
+      return;
+    await delay(50);
+  } while (Date.now() < deadline);
+  throw new Error(
+    name +
+      " structure mismatch. Expected " +
+      JSON.stringify(expected) +
+      " actual " +
+      JSON.stringify(state.structureQuery)
+  );
 }
 
 async function assertUseOutcome(view, name, scenario, clicks) {
@@ -813,9 +823,7 @@ async function assertUseOutcome(view, name, scenario, clicks) {
     state.features ||
     [];
   const bodies =
-    (state.structureQuery && state.structureQuery.bodies) ||
-    state.bodies ||
-    [];
+    (state.structureQuery && state.structureQuery.bodies) || state.bodies || [];
   const assemblies =
     (state.structureQuery && state.structureQuery.assemblies) ||
     state.assemblies ||
@@ -844,50 +852,11 @@ async function assertUseOutcome(view, name, scenario, clicks) {
       );
     }
   }
-  const expectsAssemblies = (expectSpec.assemblies ?? []).length > 0;
-  const justBox =
-    !expectsAssemblies &&
-    features.some((feature) => feature && (feature.kind === "primitive" || feature.kind === "box")) &&
-    !features.some((feature) => feature && feature.kind === "linearPattern");
-  if (justBox) {
-    throw new Error(
-      name + " use state is a box, not a fillet pattern. " + JSON.stringify(features)
-    );
-  }
-  console.log(name, "use structure", JSON.stringify({ features, bodies, assemblies }));
-}
-
-
-async function waitForApplyStarted(view, timeoutMs = 8_000) {
-  const deadline = Date.now() + timeoutMs;
-  let last;
-  while (Date.now() < deadline) {
-    last = await evaluate(
-      view,
-      `(() => {
-        const state = window.__PARTBENCH_UI_SMOKE__.getState();
-        const apply = document.querySelector('[data-ui-smoke="apply"]');
-        const applyText = ((apply && apply.textContent) || '').replace(/\\s+/g, ' ').trim();
-        return {
-          commandPending: Boolean(state.commandPending),
-          rebuildState: state.rebuildState || '',
-          applyText,
-          applyDisabled: Boolean(apply && apply.disabled)
-        };
-      })()`
-    );
-    if (
-      last &&
-      (last.commandPending ||
-        String(last.rebuildState).includes("Updating") ||
-        /Applying/i.test(String(last.applyText || "")))
-    ) {
-      return last;
-    }
-    await delay(50);
-  }
-  // Soft: Apply can finish so fast that we never observe pending. Continue.
-  return last;
+  console.log(
+    name,
+    "use structure",
+    JSON.stringify({ features, bodies, assemblies })
+  );
 }
 
 async function runUseSteps(view, name, steps, label) {
@@ -923,13 +892,13 @@ async function runUseSteps(view, name, steps, label) {
     }
     if (step.apply) {
       const selector =
-        typeof step.apply === "string"
-          ? step.apply
-          : '[data-ui-smoke="apply"]';
+        typeof step.apply === "string" ? step.apply : '[data-ui-smoke="apply"]';
       await waitForSelector(view, selector + ":not([disabled])", 15_000);
       await clickVisibleControl(view, selector);
-      const started = await waitForApplyStarted(view);
-      console.log(name + " " + label + " apply started", JSON.stringify(started));
+      continue;
+    }
+    if (step.expectStructure) {
+      await expectStructure(view, name + " " + label, step.expectStructure);
       continue;
     }
     if (step.waitReady) {
@@ -940,12 +909,15 @@ async function runUseSteps(view, name, steps, label) {
       if (step.waitReady !== "empty") {
         const state = await getState(view);
         if (!state.bodies || state.bodies.length === 0) {
-          throw new Error(name + " " + label + " did not create a visible solid.");
+          throw new Error(
+            name + " " + label + " did not create a visible solid."
+          );
         }
       }
       continue;
     }
     if (step.screenshot) {
+      if (label === "use") await assertNoErrorToast(view, name + " " + label);
       await writeUseScreenshot(view, step.screenshot);
       sawScreenshot = true;
       continue;
@@ -977,7 +949,7 @@ async function runUseSteps(view, name, steps, label) {
   return { sawScreenshot, sawBreak, clicks };
 }
 
-async function runUsePath(view, name, scenario) {
+async function runUsePath(view, name, scenario, freshPage) {
   if (!hasUse(scenario)) {
     throw new Error(
       name +
@@ -997,7 +969,7 @@ async function runUsePath(view, name, scenario) {
     throw new Error(name + " use path needs a success screenshot.");
   }
   await assertUseOutcome(view, name, scenario, success.clicks);
-  await resetWorkbench(view);
+  view = await freshPage();
   await applyUseSeedSetup(view, name, scenario);
   const broken = await runUseSteps(view, name, scenario.useBreak, "useBreak");
   if (!broken.sawBreak) {
@@ -1008,10 +980,10 @@ async function runUsePath(view, name, scenario) {
   }
 }
 
-async function runScenario(view, loaded, useOnly) {
+async function runScenario(view, loaded, useOnly, freshPage) {
   const { scenario, name } = loaded;
   if (useOnly) {
-    await runUsePath(view, name, scenario);
+    await runUsePath(view, name, scenario, freshPage);
     return;
   }
   await resetWorkbench(view);
@@ -1036,12 +1008,18 @@ async function main() {
   const appUrl = "http://127.0.0.1:" + port + "/?ui-smoke=1";
   let view;
   let passed = 0;
-
-  try {
+  const freshPage = async () => {
+    if (view) view.close();
     view = createChromeWebView(chromePath);
     await view.navigate(appUrl);
     await waitForHook(view);
+    return view;
+  };
+
+  try {
+    await freshPage();
     const userAgent = await evaluate(view, "navigator.userAgent");
+    assertChromium(userAgent);
     console.log("chrome " + chromePath);
     console.log("backend chrome (" + userAgent + ")");
     console.log("app " + appUrl);
@@ -1052,11 +1030,21 @@ async function main() {
       await clickApplyCollector(view);
     }
 
-    for (const loaded of scenarios) {
+    for (const [index, loaded] of scenarios.entries()) {
       const id = loaded.scenario.id ?? loaded.name;
+      const started = performance.now();
       try {
-        await runScenario(view, loaded, cli.useOnly);
-        console.log("pass " + loaded.name + " " + id);
+        if (index > 0) await freshPage();
+        await runScenario(view, loaded, cli.useOnly, freshPage);
+        console.log(
+          "pass " +
+            loaded.name +
+            " " +
+            id +
+            " (" +
+            ((performance.now() - started) / 1000).toFixed(1) +
+            "s)"
+        );
         passed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

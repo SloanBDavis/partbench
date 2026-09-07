@@ -89,7 +89,8 @@
     "typecheck": "pnpm -r typecheck",
     "smoke:ui": "bun scripts/smoke-ui.mjs",
     "smoke:ui-use": "bun scripts/smoke-ui-use.mjs",
-    "verify": "pnpm typecheck && node scripts/scenarios-run.mjs"
+    "verify": "pnpm typecheck && node scripts/scenarios-run.mjs",
+    "smoke:e2e": "bun scripts/smoke-ui-use.mjs -- scenarios/v26-distance-mate.json scenarios/v26-concentric-pin.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

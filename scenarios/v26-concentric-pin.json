@@ -12,10 +12,7 @@
       "op": "sketch.addCircle",
       "sketchId": "sketch_pin",
       "id": "circle_pin",
-      "center": [
-        0,
-        0
-      ],
+      "center": [0, 0],
       "radius": 5
     },
     {
@@ -41,11 +38,7 @@
         "bodyId": "body_pin"
       },
       "transform": {
-        "translation": [
-          0,
-          0,
-          0
-        ]
+        "translation": [0, 0, 0]
       }
     },
     {
@@ -58,11 +51,7 @@
         "bodyId": "body_pin"
       },
       "transform": {
-        "translation": [
-          40,
-          10,
-          5
-        ]
+        "translation": [40, 10, 5]
       }
     },
     {
@@ -95,9 +84,7 @@
         }
       ],
       "expect": {
-        "ops": [
-          "assembly.mate.create"
-        ],
+        "ops": ["assembly.mate.create"],
         "diff": {
           "assemblies": {
             "matesCreated": [
@@ -139,11 +126,7 @@
                       "bodyId": "body_pin"
                     },
                     "transform": {
-                      "translation": [
-                        0,
-                        0,
-                        0
-                      ]
+                      "translation": [0, 0, 0]
                     }
                   },
                   {
@@ -153,11 +136,7 @@
                       "bodyId": "body_pin"
                     },
                     "transform": {
-                      "translation": [
-                        0,
-                        0,
-                        5
-                      ]
+                      "translation": [0, 0, 5]
                     }
                   }
                 ],
@@ -190,10 +169,7 @@
       "id": "persist-concentric-pin",
       "persistRoundTrip": true,
       "expect": {
-        "schemaVersionNot": [
-          "web-cad.project.v23",
-          "web-cad.project.v26"
-        ]
+        "schemaVersionNot": ["web-cad.project.v23", "web-cad.project.v26"]
       },
       "queries": [
         {
@@ -209,21 +185,13 @@
                   {
                     "id": "inst_bore",
                     "transform": {
-                      "translation": [
-                        0,
-                        0,
-                        0
-                      ]
+                      "translation": [0, 0, 0]
                     }
                   },
                   {
                     "id": "inst_pin",
                     "transform": {
-                      "translation": [
-                        0,
-                        0,
-                        5
-                      ]
+                      "translation": [0, 0, 5]
                     }
                   }
                 ],
@@ -285,13 +253,126 @@
       }
     },
     {
+      "click": ".pb-feature-editor__footer-actions button:not([data-ui-smoke])"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_pin",
+            "instances": [
+              {
+                "id": "inst_bore",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_pin",
+                "transform": {
+                  "translation": [40, 10, 5]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_bore"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "wait": "[data-action-id=\"solid.concentric-mate\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.concentric-mate\"]"
+    },
+    {
+      "wait": "#solid-concentric-mate-primary-instance"
+    },
+    {
+      "select": {
+        "selector": "#solid-concentric-mate-assembly",
+        "option": "asm_pin"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-concentric-mate-primary-instance",
+        "option": "inst_bore"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-concentric-mate-primary-axis",
+        "option": "Z"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-concentric-mate-secondary-instance",
+        "option": "inst_pin"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-concentric-mate-secondary-axis",
+        "option": "Z"
+      }
+    },
+    {
       "apply": true
     },
     {
-      "waitReady": true
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_pin",
+            "instances": [
+              {
+                "id": "inst_bore",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_pin",
+                "transform": {
+                  "translation": [0, 0, 5]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_bore"
+              },
+              {
+                "kind": "concentric",
+                "primary": {
+                  "instanceId": "inst_bore",
+                  "axis": "Z"
+                },
+                "secondary": {
+                  "instanceId": "inst_pin",
+                  "axis": "Z"
+                }
+              }
+            ]
+          }
+        ]
+      }
     },
     {
-      "screenshot": "v26-concentric-pin-use"
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "screenshot": "v26-concentric-cancel-apply-use"
     }
   ],
   "useBreak": [
@@ -326,16 +407,61 @@
       "expectDisabled": "[data-ui-smoke=\"apply\"]"
     },
     {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_pin",
+            "instances": [
+              {
+                "id": "inst_bore",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_pin",
+                "transform": {
+                  "translation": [40, 10, 5]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_bore"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
       "screenshot": "v26-concentric-pin-use-break"
     }
   ],
   "useExpect": {
-    "forbidClicks": [
-      "solid.box"
-    ],
+    "forbidClicks": ["solid.box"],
     "assemblies": [
       {
         "id": "asm_pin",
+        "instances": [
+          {
+            "id": "inst_bore",
+            "transform": {
+              "translation": [0, 0, 0]
+            }
+          },
+          {
+            "id": "inst_pin",
+            "transform": {
+              "translation": [0, 0, 5]
+            }
+          }
+        ],
         "mates": [
           {
             "kind": "fixed",

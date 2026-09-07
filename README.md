@@ -24,6 +24,12 @@ Verify (typecheck plus CADOps scenarios):
 pnpm verify
 ```
 
+Fast assembly E2E checks (Bun 1.4.2+ and Chrome required):
+
+```sh
+pnpm smoke:e2e
+```
+
 Connected local MCP session:
 
 ```sh

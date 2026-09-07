@@ -22,51 +22,48 @@
       "sketchId": "sketch_plate",
       "entityId": "circle_plate",
       "depth": 20
+    },
+    {
+      "op": "assembly.create",
+      "id": "asm_gap",
+      "name": "Gap assembly"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "inst_base",
+      "assemblyId": "asm_gap",
+      "name": "Base",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_plate"
+      },
+      "transform": {
+        "translation": [0, 0, 0]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "id": "inst_top",
+      "assemblyId": "asm_gap",
+      "name": "Top",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_plate"
+      },
+      "transform": {
+        "translation": [0, 0, 50]
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "id": "mate_ground",
+      "assemblyId": "asm_gap",
+      "name": "Ground",
+      "kind": "fixed",
+      "instanceId": "inst_base"
     }
   ],
   "steps": [
-    {
-      "id": "create-gap-assembly",
-      "ops": [
-        {
-          "op": "assembly.create",
-          "id": "asm_gap",
-          "name": "Gap assembly"
-        },
-        {
-          "op": "assembly.instance.insert",
-          "id": "inst_base",
-          "assemblyId": "asm_gap",
-          "name": "Base",
-          "definition": { "kind": "body", "bodyId": "body_plate" },
-          "transform": { "translation": [0, 0, 0] }
-        },
-        {
-          "op": "assembly.instance.insert",
-          "id": "inst_top",
-          "assemblyId": "asm_gap",
-          "name": "Top",
-          "definition": { "kind": "body", "bodyId": "body_plate" },
-          "transform": { "translation": [0, 0, 50] }
-        },
-        {
-          "op": "assembly.mate.create",
-          "id": "mate_ground",
-          "assemblyId": "asm_gap",
-          "name": "Ground",
-          "kind": "fixed",
-          "instanceId": "inst_base"
-        }
-      ],
-      "expect": {
-        "ops": [
-          "assembly.create",
-          "assembly.instance.insert",
-          "assembly.instance.insert",
-          "assembly.mate.create"
-        ]
-      }
-    },
     {
       "id": "distance-plane-gap",
       "ops": [
@@ -113,7 +110,9 @@
       },
       "queries": [
         {
-          "query": { "query": "project.structure" },
+          "query": {
+            "query": "project.structure"
+          },
           "expect": {
             "ok": true,
             "query": "project.structure",
@@ -124,13 +123,23 @@
                 "instances": [
                   {
                     "id": "inst_base",
-                    "definition": { "kind": "body", "bodyId": "body_plate" },
-                    "transform": { "translation": [0, 0, 0] }
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_plate"
+                    },
+                    "transform": {
+                      "translation": [0, 0, 0]
+                    }
                   },
                   {
                     "id": "inst_top",
-                    "definition": { "kind": "body", "bodyId": "body_plate" },
-                    "transform": { "translation": [0, 0, 30] }
+                    "definition": {
+                      "kind": "body",
+                      "bodyId": "body_plate"
+                    },
+                    "transform": {
+                      "translation": [0, 0, 30]
+                    }
                   }
                 ],
                 "mates": [
@@ -167,19 +176,38 @@
       },
       "queries": [
         {
-          "query": { "query": "project.structure" },
+          "query": {
+            "query": "project.structure"
+          },
           "expect": {
             "ok": true,
             "assemblies": [
               {
                 "id": "asm_gap",
                 "instances": [
-                  { "id": "inst_base", "transform": { "translation": [0, 0, 0] } },
-                  { "id": "inst_top", "transform": { "translation": [0, 0, 30] } }
+                  {
+                    "id": "inst_base",
+                    "transform": {
+                      "translation": [0, 0, 0]
+                    }
+                  },
+                  {
+                    "id": "inst_top",
+                    "transform": {
+                      "translation": [0, 0, 30]
+                    }
+                  }
                 ],
                 "mates": [
-                  { "id": "mate_ground", "kind": "fixed" },
-                  { "id": "mate_gap", "kind": "distance", "distance": 30 }
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  },
+                  {
+                    "id": "mate_gap",
+                    "kind": "distance",
+                    "distance": 30
+                  }
                 ]
               }
             ]
@@ -187,5 +215,270 @@
         }
       ]
     }
-  ]
+  ],
+  "use": [
+    {
+      "click": "[data-action-id=\"solid.distance-mate\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-distance-mate-assembly",
+        "option": "asm_gap"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-distance-mate-primary-instance",
+        "option": "inst_base"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-distance-mate-secondary-instance",
+        "option": "inst_top"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-distance-mate-distance",
+        "text": "30"
+      }
+    },
+    {
+      "apply": true
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_gap",
+            "instances": [
+              {
+                "id": "inst_base",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_top",
+                "transform": {
+                  "translation": [0, 0, 30]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_base"
+              },
+              {
+                "kind": "distance",
+                "distance": 30,
+                "primary": {
+                  "instanceId": "inst_base",
+                  "plane": "XY"
+                },
+                "secondary": {
+                  "instanceId": "inst_top",
+                  "plane": "XY"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_gap",
+            "instances": [
+              {
+                "id": "inst_base",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_top",
+                "transform": {
+                  "translation": [0, 0, 50]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_base"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_gap",
+            "instances": [
+              {
+                "id": "inst_base",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_top",
+                "transform": {
+                  "translation": [0, 0, 30]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_base"
+              },
+              {
+                "kind": "distance",
+                "distance": 30,
+                "primary": {
+                  "instanceId": "inst_base",
+                  "plane": "XY"
+                },
+                "secondary": {
+                  "instanceId": "inst_top",
+                  "plane": "XY"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "screenshot": "v26-distance-history-use"
+    }
+  ],
+  "useBreak": [
+    {
+      "click": "[data-action-id=\"solid.distance-mate\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-distance-mate-assembly",
+        "option": "asm_gap"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-distance-mate-primary-instance",
+        "option": "inst_base"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-distance-mate-secondary-instance",
+        "option": "inst_top"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-distance-mate-distance",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": "[data-ui-smoke=\"apply\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "asm_gap",
+            "instances": [
+              {
+                "id": "inst_base",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_top",
+                "transform": {
+                  "translation": [0, 0, 50]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_base"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "screenshot": "v26-distance-empty-use-break"
+    }
+  ],
+  "useExpect": {
+    "assemblies": [
+      {
+        "id": "asm_gap",
+        "instances": [
+          {
+            "id": "inst_base",
+            "transform": {
+              "translation": [0, 0, 0]
+            }
+          },
+          {
+            "id": "inst_top",
+            "transform": {
+              "translation": [0, 0, 30]
+            }
+          }
+        ],
+        "mates": [
+          {
+            "kind": "fixed",
+            "instanceId": "inst_base"
+          },
+          {
+            "kind": "distance",
+            "distance": 30,
+            "primary": {
+              "instanceId": "inst_base",
+              "plane": "XY"
+            },
+            "secondary": {
+              "instanceId": "inst_top",
+              "plane": "XY"
+            }
+          }
+        ]
+      }
+    ]
+  }
 }
