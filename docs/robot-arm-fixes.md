@@ -168,4 +168,4 @@ fix. Logs: `.metrics/robot-arm-workflow/browser-final.log`,
 `browser-engine-final.log`, `headless-final.log`, `core-final.log`,
 `scenarios-final.log`, and `typecheck-final.log`.
 
-Implementation commit: recorded in the closing documentation commit.
+Implementation commit: `6c48613f` — `fix: make robot arm revisions connected and portable`.
