@@ -16,6 +16,7 @@ import {
   pickWcadOpenFile,
   pickWcadSaveFile,
   readBytesFromWcadFile,
+  resolveWcadOpenFailure,
   summarizeWcadDiagnostics,
   writeBytesToWcadHandle,
   type WcadFileHandleLike
@@ -125,6 +126,44 @@ describe("project WCAD workflow helpers", () => {
     expect(formatWcadValidationIssue(diagnostic)).toContain(
       "WCAD_MISSING_MANIFEST"
     );
+  });
+
+  it("offers upload only for picker failures and preserves selected-file errors", () => {
+    expect(
+      resolveWcadOpenFailure(new Error("File picker unavailable"), {
+        fileSelected: false,
+        uploadAvailable: true
+      })
+    ).toMatchObject({ offerUpload: true, cancelled: false });
+    expect(
+      resolveWcadOpenFailure(new Error("Invalid project source"), {
+        fileSelected: true,
+        uploadAvailable: true
+      })
+    ).toEqual({
+      offerUpload: false,
+      cancelled: false,
+      detail: "Invalid project source",
+      message: "Could not open .wcad package: Invalid project source"
+    });
+    const abort = new Error("File read aborted");
+    abort.name = "AbortError";
+    expect(
+      resolveWcadOpenFailure(abort, {
+        fileSelected: false,
+        uploadAvailable: true
+      })
+    ).toMatchObject({ offerUpload: false, cancelled: true });
+    expect(
+      resolveWcadOpenFailure(abort, {
+        fileSelected: true,
+        uploadAvailable: true
+      })
+    ).toMatchObject({
+      offerUpload: false,
+      cancelled: false,
+      detail: "File read aborted"
+    });
   });
 
   it("wraps File System Access picker and handle operations without persisting handles", async () => {

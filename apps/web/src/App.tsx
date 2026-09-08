@@ -1,4 +1,8 @@
 import {
+  createAssemblyEditorRequest,
+  canEditAssemblyInstancePose
+} from "./modes/solid/assemblyEditorRequests";
+import {
   AsyncCadCommandExecutor,
   CadEngine,
   createCadProjectSourceIdentity,
@@ -116,6 +120,9 @@ import {
   buildAssemblyCoincidentMateOp,
   buildAssemblyConcentricMateOp,
   buildAssemblyDistanceMateOp,
+  buildAssemblyDistanceMateEditOp,
+  buildAssemblyRevoluteMateOp,
+  buildAssemblyInstancePoseOp,
   buildDatumAxisCreateOp,
   buildDatumPlaneCreateOp,
   buildCreateSketchOnFaceOp,
@@ -378,7 +385,7 @@ import {
 } from "./sketchPanelUi";
 import { type ViewportContextualCommandAction } from "./viewportContextualCommands";
 import {
-  createAssemblyInstanceExactDisplayMeshes,
+  createAssemblySceneView,
   createAssemblyInstanceRenderId,
   findAssemblyInstanceDefinitionBodyId
 } from "./assemblyInstanceExactDisplay";
@@ -485,6 +492,7 @@ import {
   getProjectFileDirtyLabel,
   getProjectFileNameLabel,
   isFilePickerAbort,
+  resolveWcadOpenFailure,
   pickWcadOpenFile,
   pickWcadSaveFile,
   readBytesFromWcadFile,
@@ -2240,6 +2248,9 @@ export function App() {
   const [selectedNamedReferenceName, setSelectedNamedReferenceName] = useState<
     string | undefined
   >();
+  const [assemblySceneView, setAssemblySceneView] = useState<
+    "assembly" | "parts"
+  >("assembly");
   const [selectedAssemblySelection, setSelectedAssemblySelection] = useState<
     | { readonly kind: "assembly"; readonly id: string }
     | {
@@ -3025,6 +3036,7 @@ export function App() {
         id: sketch.id,
         name: sketch.name,
         plane: sketch.plane,
+        datumId: sketch.datumId,
         attachment: sketch.attachment,
         entities: [...sketch.entities.values()]
       })),
@@ -3445,9 +3457,11 @@ export function App() {
         commandPending,
         commandFailed: commandError !== undefined,
         derivedGeometryEnabled,
-        derivedSourceCount: derivedGeometrySources.length,
+        derivedSourceIds: derivedGeometrySources.map((source) => source.id),
         derivedGeometry,
-        derivedExactSourceCount: currentExactMetadataSources.length,
+        derivedExactSourceIds: currentExactMetadataSources.map(
+          (source) => source.id
+        ),
         derivedExactMetadata,
         currentExactResults: currentExactResultProjections,
         projectHealthStatus: projectHealth.status
@@ -3458,9 +3472,9 @@ export function App() {
       commandPending,
       derivedGeometry,
       modelingUiRuntime,
-      derivedGeometrySources.length,
+      derivedGeometrySources,
       derivedExactMetadata,
-      currentExactMetadataSources.length,
+      currentExactMetadataSources,
       currentExactResultProjections,
       projectHealth.status
     ]
@@ -4897,77 +4911,19 @@ export function App() {
             })
       } as SolidEditorRequest;
     }
-    if (actionId === "solid.distance-mate") {
-      const assemblies = projectStructure.assemblies;
-      const assemblyChoices = assemblies.map((assembly) => ({
-        value: assembly.id,
-        key: assembly.id,
-        label: assembly.name,
-        kind: "assembly"
-      }));
-      const instanceChoices = assemblies.flatMap((assembly) =>
-        assembly.instances.map((instance) => ({
-          value: { assemblyId: assembly.id, instanceId: instance.id },
-          key: `${assembly.id}:${instance.id}`,
-          label: `${assembly.name} · ${instance.name}`,
-          kind: "assembly-instance"
-        }))
-      );
-      const preferredAssemblyId =
-        selectedAssemblySelection?.kind === "assembly"
-          ? selectedAssemblySelection.id
-          : selectedAssemblySelection?.kind === "assembly-instance" ||
-              selectedAssemblySelection?.kind === "assembly-mate"
-            ? selectedAssemblySelection.assemblyId
-            : (assemblies[0]?.id ?? "");
-      const preferredAssembly = assemblies.find(
-        (assembly) => assembly.id === preferredAssemblyId
-      );
-      const preferredPrimaryId =
-        selectedAssemblySelection?.kind === "assembly-instance"
-          ? selectedAssemblySelection.id
-          : (preferredAssembly?.instances[0]?.id ?? "");
-      const preferredSecondaryId =
-        preferredAssembly?.instances.find(
-          (instance) => instance.id !== preferredPrimaryId
-        )?.id ??
-        preferredAssembly?.instances[1]?.id ??
-        "";
-      const hasPair = assemblies.some((assembly) => assembly.instances.length >= 2);
-      return {
+    if (
+      actionId === "solid.distance-mate" ||
+      actionId === "solid.revolute-mate" ||
+      actionId === "solid.instance-pose"
+    ) {
+      return createAssemblyEditorRequest({
         key,
-        kind: "distanceMate",
-        title: "Create Distance Mate",
-        mode: "create",
-        initialDraft: {
-          id: "",
-          name: "Distance",
-          assemblyId: preferredAssemblyId,
-          primary: {
-            instanceId: preferredPrimaryId,
-            plane: "XY",
-            offset: 0,
-            flip: false
-          },
-          secondary: {
-            instanceId: preferredSecondaryId,
-            plane: "XY",
-            offset: 0,
-            flip: false
-          },
-          distance: 30
-        } satisfies AssemblyDistanceMateForm,
-        choices: {
-          assemblies: assemblyChoices,
-          assemblyInstances: instanceChoices
-        },
-        ...(hasPair
-          ? {}
-          : {
-              blockedReason:
-                "Create an assembly with at least two instances to mate."
-            })
-      } as SolidEditorRequest;
+        actionId,
+        assemblies: projectStructure.assemblies,
+        sketches,
+        parameters,
+        selection: selectedAssemblySelection
+      });
     }
     if (actionId === "solid.edit" && selectedFeature) {
       if (selectedFeature.kind === "primitive") {
@@ -5874,6 +5830,10 @@ export function App() {
     return undefined;
   }, [
     allSolidBodyChoices,
+    projectStructure.assemblies,
+    selectedAssemblySelection,
+    parameters,
+    sketches,
     activeSolidEditFeatureId,
     transactionHistory.length,
     modelingSelectionContext,
@@ -6859,18 +6819,13 @@ export function App() {
       sketches,
       sketchDisplayState.frames
     ) ?? { primitives: [], meshes: [] };
-    // V21 exact meshes use bodyId as mesh.id; instances reuse those meshes.
-    const definitionMeshesByBodyId = new Map(
-      base.meshes.map((mesh) => [mesh.id, mesh] as const)
-    );
-    const instanceMeshes = createAssemblyInstanceExactDisplayMeshes({
+    return createAssemblySceneView({
+      base,
       assemblies: projectStructure.assemblies,
-      definitionMeshesByBodyId
+      view: assemblySceneView
     });
-    return instanceMeshes.length === 0
-      ? base
-      : { ...base, meshes: [...base.meshes, ...instanceMeshes] };
   }, [
+    assemblySceneView,
     derivedGeometryBySourceId,
     derivedGeometrySources,
     modelingUiRuntime,
@@ -7141,6 +7096,7 @@ export function App() {
   }
 
   function applyObjectSelection(objectId: string | undefined) {
+    if (objectId) setAssemblySceneView("parts");
     setSolidCollectorSelectionOverride(undefined);
     setSelectedId(objectId);
     setSelectedAssemblySelection(undefined);
@@ -7826,6 +7782,7 @@ export function App() {
   }
 
   function focusSketch(sketchId: string, entityId?: string) {
+    setAssemblySceneView("parts");
     const selectionAction = getCurveEditSketchSelectionAction({
       curveEditorActive: workbenchUi.activeEditor?.kind === "sketch-curve-edit",
       dirty: workbenchUi.activeEditorDirty,
@@ -9101,10 +9058,12 @@ export function App() {
   }
 
   async function openProjectWcad(): Promise<boolean> {
+    let fileSelected = false;
     try {
       const handle = await pickWcadOpenFile(
         window as unknown as WcadFilePickerTargetLike
       );
+      fileSelected = true;
       const file = await handle.getFile();
       await importProjectWcadBytes(
         await readBytesFromWcadFile(file),
@@ -9112,43 +9071,31 @@ export function App() {
         "wcadHandle",
         handle
       );
-
       return true;
     } catch (error) {
-      if (isFilePickerAbort(error)) {
+      const failure = resolveWcadOpenFailure(error, {
+        fileSelected,
+        uploadAvailable: projectStorageCapabilities.wcadUploadAvailable
+      });
+      if (failure.cancelled) {
         setProjectFile((current) =>
           createProjectFileCancelledState(current, "open")
         );
-        setProjectMessage("Open .wcad was cancelled.");
+        setProjectMessage(failure.message);
         setProjectMessageTone("info");
         return true;
       }
-
-      if (projectStorageCapabilities.wcadUploadAvailable) {
-        setProjectFile((current) =>
-          createProjectFileFailureState(current, {
-            operation: "open",
-            message: "Direct open failed; use upload fallback.",
-            detail: error instanceof Error ? error.message : "Open failed."
-          })
-        );
-        setProjectMessage("Direct open failed; choose a .wcad file to upload.");
-        setProjectMessageTone("error");
-        return false;
-      }
-
       setProjectFile((current) =>
         createProjectFileFailureState(current, {
           operation: "open",
-          message: "Could not open .wcad package.",
-          detail: error instanceof Error ? error.message : "Open failed."
+          message: failure.message,
+          detail: failure.detail
         })
       );
-      setProjectMessage(
-        error instanceof Error ? error.message : "Could not open .wcad package."
-      );
+      setProjectMessage(failure.message);
       setProjectMessageTone("error");
-      return true;
+      if (!failure.offerUpload) setCommandError(failure.message);
+      return !failure.offerUpload;
     }
   }
 
@@ -9170,13 +9117,15 @@ export function App() {
     );
 
     if (!result.ok) {
-      setProjectMessage("Could not open .wcad package.");
+      const message = `Could not open .wcad package: ${result.issues[0]?.message ?? "Package validation failed."}`;
+      setCommandError(message);
+      setProjectMessage(message);
       setProjectMessageTone("error");
       return;
     }
 
-    resetModelWorkForProjectReplacement();
     engine.loadProject(result.project);
+    resetModelWorkForProjectReplacement();
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache(
       createWcadTopologyCheckpointPayloadInputCache(result.checkpointPayloads)
@@ -9692,6 +9641,13 @@ export function App() {
   }
 
   function selectDocumentTreeItem(selection: DocumentTreeSelection) {
+    if (
+      selection.kind === "assembly" ||
+      selection.kind === "assembly-instance" ||
+      selection.kind === "assembly-mate"
+    ) {
+      setAssemblySceneView("assembly");
+    }
     switch (selection.kind) {
       case "origin-plane":
         if (solidCollectorRequest?.collector === "mirrorPlane") {
@@ -10069,7 +10025,31 @@ export function App() {
         await createConcentricMate(submission.draft);
         return;
       case "distanceMate":
-        await createDistanceMate(submission.draft);
+        if (submission.draft.mateId !== undefined) {
+          await commitOps(
+            [
+              buildAssemblyDistanceMateEditOp({
+                ...submission.draft,
+                mateId: submission.draft.mateId
+              })
+            ],
+            () => undefined
+          );
+        } else {
+          await createDistanceMate(submission.draft);
+        }
+        return;
+      case "revoluteMate":
+        await commitOps(
+          [buildAssemblyRevoluteMateOp(submission.draft)],
+          () => undefined
+        );
+        return;
+      case "instancePose":
+        await commitOps(
+          [buildAssemblyInstancePoseOp(submission.draft)],
+          () => undefined
+        );
         return;
       case "transform":
         await updateSelectedTransform(submission.draft);
@@ -10328,6 +10308,8 @@ export function App() {
       case "solid.coincident-mate":
       case "solid.concentric-mate":
       case "solid.distance-mate":
+      case "solid.revolute-mate":
+      case "solid.instance-pose":
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
@@ -10968,6 +10950,21 @@ export function App() {
               status: "blocked" as const,
               message: UI_ACTION_AVAILABILITY_MESSAGES.solidDistanceMate
             },
+      "solid.revolute-mate": projectStructure.assemblies.some(
+        (assembly) =>
+          assembly.instances.filter((instance) =>
+            instance.transform.scale.every((scale) => scale === 1)
+          ).length >= 2
+      )
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRevoluteMate),
+      "solid.instance-pose": projectStructure.assemblies.some((assembly) =>
+        assembly.instances.some((instance) =>
+          canEditAssemblyInstancePose(assembly, instance.id)
+        )
+      )
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidInstancePose),
       "solid.edit":
         selectedObject ||
         (selectedFeature && selectedFeature.kind !== "importedBody")
@@ -11262,6 +11259,10 @@ export function App() {
         commandError,
         commandNotice,
         rebuildState: modelingResultState,
+        viewport: {
+          meshIds: renderScene.meshes.map((mesh) => mesh.id),
+          primitiveCount: renderScene.primitives.length
+        },
         alerts: dom.alerts,
         applyButton: dom.applyButton,
         pickButton: dom.pickButton,
@@ -11582,6 +11583,27 @@ export function App() {
               fallback={<p className="panel-loading">Loading viewport…</p>}
             >
               <ViewportCanvas
+                viewControls={
+                  projectStructure.assemblies.some(
+                    (assembly) => assembly.instances.length > 0
+                  ) ? (
+                    <label className="viewport-action-group">
+                      <span>View</span>
+                      <select
+                        aria-label="Model view"
+                        value={assemblySceneView}
+                        onChange={(event) =>
+                          setAssemblySceneView(
+                            event.currentTarget.value as "assembly" | "parts"
+                          )
+                        }
+                      >
+                        <option value="assembly">Assembly</option>
+                        <option value="parts">Parts</option>
+                      </select>
+                    </label>
+                  ) : undefined
+                }
                 clipPlane={
                   workbenchUi.mode === "inspect"
                     ? inspectSectionClipPlane(inspectSectionPlane)

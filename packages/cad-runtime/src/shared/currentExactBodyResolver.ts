@@ -1379,7 +1379,7 @@ function createRectangleEdgeEndpoints(
       case "XZ":
         uAxis = [1, 0, 0];
         vAxis = [0, 0, 1];
-        normalAxis = [0, 1, 0];
+        normalAxis = [0, -1, 0];
         break;
       case "YZ":
         uAxis = [0, 1, 0];

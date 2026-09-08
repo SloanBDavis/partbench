@@ -345,7 +345,7 @@ function getSketchPlaneCoordinates(
     case "XY":
       return [point[0], point[1], point[2]];
     case "XZ":
-      return [point[0], point[2], point[1]];
+      return [point[0], point[2], -point[1]];
     case "YZ":
       return [point[1], point[2], point[0]];
   }
@@ -455,7 +455,7 @@ function createSketchPlaneNormal(plane: SketchPlane): Vec3 {
     case "XY":
       return [0, 0, 1];
     case "XZ":
-      return [0, 1, 0];
+      return [0, -1, 0];
     case "YZ":
       return [1, 0, 0];
   }

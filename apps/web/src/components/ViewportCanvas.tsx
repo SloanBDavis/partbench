@@ -80,6 +80,7 @@ export function ViewportCanvas({
   sketchOverlay,
   status,
   suspendHoverPicking = false,
+  viewControls,
   visualStates
 }: {
   readonly clipPlane?: RenderExactPickClipPlane;
@@ -101,6 +102,7 @@ export function ViewportCanvas({
   }) => ReactNode;
   readonly status?: ViewportCanvasStatus;
   readonly suspendHoverPicking?: boolean;
+  readonly viewControls?: ReactNode;
   readonly visualStates?: readonly RenderVisualStateInput[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -488,6 +490,7 @@ export function ViewportCanvas({
       >
         <div className="viewport-head">
           <div className="viewport-actions" aria-label="Viewport controls">
+            {viewControls}
             <div
               className="viewport-action-group"
               aria-label="Viewport fit and zoom"

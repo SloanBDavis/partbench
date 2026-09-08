@@ -1,0 +1,893 @@
+{
+  "id": "robot-arm-revision",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "parameter.create",
+      "id": "span",
+      "name": "span",
+      "value": 160
+    },
+    {
+      "op": "parameter.create",
+      "id": "half_span",
+      "name": "half_span",
+      "value": 80
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "half_span",
+      "expression": "span / 2"
+    },
+    {
+      "op": "parameter.create",
+      "id": "shoulder_angle",
+      "name": "shoulder_angle",
+      "value": 60
+    },
+    {
+      "op": "sketch.create",
+      "id": "sketch_link",
+      "name": "Link pivots",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "sketch_link",
+      "id": "outline",
+      "center": [0, 0],
+      "width": 240,
+      "height": 30
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_link",
+      "id": "pivot_left",
+      "center": [-80, 0],
+      "radius": 4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "sketch_link",
+      "id": "pivot_right",
+      "center": [80, 0],
+      "radius": 4
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "dimension_left",
+      "name": "left pivot",
+      "sketchId": "sketch_link",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "outline",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "secondary": {
+          "entityId": "pivot_left",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "negative"
+      },
+      "parameterId": "half_span"
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "dimension_right",
+      "name": "right pivot",
+      "sketchId": "sketch_link",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "outline",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "secondary": {
+          "entityId": "pivot_right",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "parameterId": "half_span"
+    },
+    {
+      "op": "feature.extrude",
+      "id": "feature_link",
+      "bodyId": "body_link",
+      "sketchId": "sketch_link",
+      "entityId": "outline",
+      "depth": 8
+    },
+    {
+      "op": "assembly.create",
+      "id": "arm_revision",
+      "name": "Arm revision"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "arm_revision",
+      "id": "inst_root",
+      "name": "Root",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_link"
+      },
+      "transform": {
+        "translation": [0, 0, 0]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "arm_revision",
+      "id": "inst_upper",
+      "name": "Upper link",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_link"
+      },
+      "transform": {
+        "translation": [0, 60, 10]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "arm_revision",
+      "id": "inst_tip",
+      "name": "Tip link",
+      "definition": {
+        "kind": "body",
+        "bodyId": "body_link"
+      },
+      "transform": {
+        "translation": [0, 120, 20]
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "arm_revision",
+      "id": "mate_ground",
+      "name": "Ground",
+      "kind": "fixed",
+      "instanceId": "inst_root"
+    }
+  ],
+  "steps": [
+    {
+      "id": "create-connected-authored-pivots",
+      "ops": [
+        {
+          "op": "assembly.mate.create",
+          "assemblyId": "arm_revision",
+          "id": "mate_shoulder",
+          "name": "Shoulder",
+          "kind": "revolute",
+          "primary": {
+            "instanceId": "inst_root",
+            "frame": {
+              "kind": "local",
+              "origin": [0, 0, 0],
+              "xDirection": [1, 0, 0],
+              "zDirection": [0, 0, 1]
+            }
+          },
+          "secondary": {
+            "instanceId": "inst_upper",
+            "frame": {
+              "kind": "sketch",
+              "sketchId": "sketch_link",
+              "entityId": "pivot_left"
+            }
+          },
+          "angleParameterId": "shoulder_angle",
+          "offset": 10
+        },
+        {
+          "op": "assembly.mate.create",
+          "assemblyId": "arm_revision",
+          "id": "mate_elbow",
+          "name": "Elbow",
+          "kind": "revolute",
+          "primary": {
+            "instanceId": "inst_upper",
+            "frame": {
+              "kind": "sketch",
+              "sketchId": "sketch_link",
+              "entityId": "pivot_right"
+            }
+          },
+          "secondary": {
+            "instanceId": "inst_tip",
+            "frame": {
+              "kind": "sketch",
+              "sketchId": "sketch_link",
+              "entityId": "pivot_left"
+            }
+          },
+          "angleDegrees": -100,
+          "offset": 10
+        }
+      ],
+      "expect": {
+        "ops": ["assembly.mate.create", "assembly.mate.create"],
+        "diff": {
+          "assemblies": {
+            "instancesModified": [
+              {
+                "id": "inst_upper"
+              },
+              {
+                "id": "inst_tip"
+              }
+            ],
+            "matesCreated": [
+              {
+                "id": "mate_shoulder",
+                "angleDegrees": 60,
+                "angleParameterId": "shoulder_angle"
+              },
+              {
+                "id": "mate_elbow",
+                "angleDegrees": -100
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "revise-link-length-and-angle",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "span",
+          "value": 180
+        },
+        {
+          "op": "parameter.update",
+          "id": "shoulder_angle",
+          "value": 75
+        }
+      ],
+      "expect": {
+        "ops": ["parameter.update", "parameter.update"],
+        "diff": {
+          "assemblies": {
+            "instancesModified": [
+              {
+                "id": "inst_upper"
+              },
+              {
+                "id": "inst_tip"
+              }
+            ],
+            "matesModified": [
+              {
+                "id": "mate_shoulder",
+                "angleDegrees": 75,
+                "angleParameterId": "shoulder_angle"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "bodyCount": 1,
+            "assemblies": [
+              {
+                "id": "arm_revision",
+                "instances": [
+                  {
+                    "id": "inst_root"
+                  },
+                  {
+                    "id": "inst_upper"
+                  },
+                  {
+                    "id": "inst_tip"
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  },
+                  {
+                    "id": "mate_shoulder",
+                    "kind": "revolute",
+                    "angleParameterId": "shoulder_angle",
+                    "angleDegrees": 75,
+                    "offset": 10
+                  },
+                  {
+                    "id": "mate_elbow",
+                    "kind": "revolute",
+                    "angleDegrees": -100,
+                    "offset": 10
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "move-fixed-root-and-descendants",
+      "ops": [
+        {
+          "op": "assembly.instance.updateTransform",
+          "assemblyId": "arm_revision",
+          "instanceId": "inst_root",
+          "transform": {
+            "translation": [5, 7, 9],
+            "rotation": [0.2, 0.3, 0.4]
+          }
+        }
+      ],
+      "expect": {
+        "ops": ["assembly.instance.updateTransform"],
+        "diff": {
+          "assemblies": {
+            "instancesModified": [
+              {
+                "id": "inst_root"
+              },
+              {
+                "id": "inst_upper"
+              },
+              {
+                "id": "inst_tip"
+              }
+            ]
+          }
+        }
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "assemblies": [
+              {
+                "id": "arm_revision",
+                "instances": [
+                  {
+                    "id": "inst_root",
+                    "transform": {
+                      "translation": [5, 7, 9],
+                      "rotation": [0.2, 0.3, 0.4]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject-missing-authored-pivot",
+      "ops": [
+        {
+          "op": "assembly.mate.edit",
+          "assemblyId": "arm_revision",
+          "name": "Elbow",
+          "kind": "revolute",
+          "primary": {
+            "instanceId": "inst_upper",
+            "frame": {
+              "kind": "sketch",
+              "sketchId": "sketch_link",
+              "entityId": "pivot_right"
+            }
+          },
+          "secondary": {
+            "instanceId": "inst_tip",
+            "frame": {
+              "kind": "sketch",
+              "sketchId": "sketch_link",
+              "entityId": "missing_pivot"
+            }
+          },
+          "angleDegrees": -100,
+          "offset": 10,
+          "mateId": "mate_elbow"
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "INVALID_OPERATION",
+          "messageIncludes": "circle or point"
+        }
+      }
+    },
+    {
+      "id": "reopen-connected-revision",
+      "persistRoundTrip": true,
+      "expect": {
+        "schemaVersion": "web-cad.project.v22"
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "project.structure"
+          },
+          "expect": {
+            "ok": true,
+            "bodyCount": 1,
+            "assemblies": [
+              {
+                "id": "arm_revision",
+                "instances": [
+                  {
+                    "id": "inst_root"
+                  },
+                  {
+                    "id": "inst_upper"
+                  },
+                  {
+                    "id": "inst_tip"
+                  }
+                ],
+                "mates": [
+                  {
+                    "id": "mate_ground",
+                    "kind": "fixed"
+                  },
+                  {
+                    "id": "mate_shoulder",
+                    "kind": "revolute",
+                    "angleParameterId": "shoulder_angle",
+                    "angleDegrees": 75,
+                    "offset": 10
+                  },
+                  {
+                    "id": "mate_elbow",
+                    "kind": "revolute",
+                    "angleDegrees": -100,
+                    "offset": 10
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "use": [
+    {
+      "click": "[data-action-id=\"solid.revolute-mate\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-mate-assembly",
+        "option": "arm_revision"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-primary-instance",
+        "option": "inst_root"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-secondary-instance",
+        "option": "inst_upper"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-secondary-source",
+        "option": "sketch"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-secondary-pivot",
+        "option": "sketch_link:pivot_left"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-angle-source",
+        "option": "parameter"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-angle-parameter",
+        "option": "shoulder_angle"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-revolute-offset",
+        "text": "10"
+      }
+    },
+    {
+      "expectNoPreview": true
+    },
+    {
+      "apply": true
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "arm_revision",
+            "instances": [
+              {
+                "id": "inst_root",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_upper",
+                "transform": {
+                  "translation": [40, 69.2820323027551, 10]
+                }
+              },
+              {
+                "id": "inst_tip",
+                "transform": {
+                  "translation": [0, 120, 20]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_root"
+              },
+              {
+                "kind": "revolute",
+                "angleParameterId": "shoulder_angle",
+                "angleDegrees": 60,
+                "offset": 10,
+                "primary": {
+                  "instanceId": "inst_root"
+                },
+                "secondary": {
+                  "instanceId": "inst_upper",
+                  "frame": {
+                    "kind": "sketch",
+                    "sketchId": "sketch_link",
+                    "entityId": "pivot_left"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "[data-action-id=\"solid.instance-pose\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-instance-pose-instance",
+        "option": "arm_revision:inst_root"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-instance-pose-position-x",
+        "text": "5"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-instance-pose-rotation-z",
+        "text": "90"
+      }
+    },
+    {
+      "expectNoPreview": true
+    },
+    {
+      "apply": true
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "arm_revision",
+            "instances": [
+              {
+                "id": "inst_root",
+                "transform": {
+                  "translation": [5, 0, 0]
+                }
+              },
+              {
+                "id": "inst_upper",
+                "transform": {
+                  "translation": [-64.2820323027551, 40, 10]
+                }
+              },
+              {
+                "id": "inst_tip",
+                "transform": {
+                  "translation": [0, 120, 20]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_root"
+              },
+              {
+                "kind": "revolute",
+                "angleParameterId": "shoulder_angle",
+                "angleDegrees": 60,
+                "offset": 10,
+                "primary": {
+                  "instanceId": "inst_root"
+                },
+                "secondary": {
+                  "instanceId": "inst_upper",
+                  "frame": {
+                    "kind": "sketch",
+                    "sketchId": "sketch_link",
+                    "entityId": "pivot_left"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "arm_revision",
+            "instances": [
+              {
+                "id": "inst_root",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_upper",
+                "transform": {
+                  "translation": [40, 69.2820323027551, 10]
+                }
+              },
+              {
+                "id": "inst_tip",
+                "transform": {
+                  "translation": [0, 120, 20]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_root"
+              },
+              {
+                "kind": "revolute",
+                "angleParameterId": "shoulder_angle",
+                "angleDegrees": 60,
+                "offset": 10,
+                "primary": {
+                  "instanceId": "inst_root"
+                },
+                "secondary": {
+                  "instanceId": "inst_upper",
+                  "frame": {
+                    "kind": "sketch",
+                    "sketchId": "sketch_link",
+                    "entityId": "pivot_left"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "arm_revision",
+            "instances": [
+              {
+                "id": "inst_root",
+                "transform": {
+                  "translation": [5, 0, 0]
+                }
+              },
+              {
+                "id": "inst_upper",
+                "transform": {
+                  "translation": [-64.2820323027551, 40, 10]
+                }
+              },
+              {
+                "id": "inst_tip",
+                "transform": {
+                  "translation": [0, 120, 20]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_root"
+              },
+              {
+                "kind": "revolute",
+                "angleParameterId": "shoulder_angle",
+                "angleDegrees": 60,
+                "offset": 10,
+                "primary": {
+                  "instanceId": "inst_root"
+                },
+                "secondary": {
+                  "instanceId": "inst_upper",
+                  "frame": {
+                    "kind": "sketch",
+                    "sketchId": "sketch_link",
+                    "entityId": "pivot_left"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "screenshot": "robot-arm-joint-root-motion-use"
+    }
+  ],
+  "useBreak": [
+    {
+      "click": "[data-action-id=\"solid.instance-pose\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-instance-pose-instance",
+        "option": "arm_revision:inst_root"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-instance-pose-position-x",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": "[data-ui-smoke=\"apply\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 1,
+        "assemblies": [
+          {
+            "id": "arm_revision",
+            "instances": [
+              {
+                "id": "inst_root",
+                "transform": {
+                  "translation": [0, 0, 0]
+                }
+              },
+              {
+                "id": "inst_upper",
+                "transform": {
+                  "translation": [0, 60, 10]
+                }
+              },
+              {
+                "id": "inst_tip",
+                "transform": {
+                  "translation": [0, 120, 20]
+                }
+              }
+            ],
+            "mates": [
+              {
+                "kind": "fixed",
+                "instanceId": "inst_root"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "robot-arm-empty-pose-use-break"
+    }
+  ],
+  "useExpect": {
+    "bodyCount": 1,
+    "assemblies": [
+      {
+        "id": "arm_revision",
+        "instances": [
+          {
+            "id": "inst_root",
+            "transform": {
+              "translation": [5, 0, 0]
+            }
+          },
+          {
+            "id": "inst_upper",
+            "transform": {
+              "translation": [-64.2820323027551, 40, 10]
+            }
+          },
+          {
+            "id": "inst_tip",
+            "transform": {
+              "translation": [0, 120, 20]
+            }
+          }
+        ],
+        "mates": [
+          {
+            "kind": "fixed",
+            "instanceId": "inst_root"
+          },
+          {
+            "kind": "revolute",
+            "angleParameterId": "shoulder_angle",
+            "angleDegrees": 60,
+            "offset": 10,
+            "primary": {
+              "instanceId": "inst_root"
+            },
+            "secondary": {
+              "instanceId": "inst_upper",
+              "frame": {
+                "kind": "sketch",
+                "sketchId": "sketch_link",
+                "entityId": "pivot_left"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

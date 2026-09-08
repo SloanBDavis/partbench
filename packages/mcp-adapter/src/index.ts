@@ -245,8 +245,10 @@ export class CadMcpServer {
         ...listProjectFileTools(this.#projectFiles),
         ...CAD_MCP_TOOLS.filter(
           (tool) =>
-            !(this.#projectFiles?.exportProjectFile &&
-              tool.name === "cad.project_request_exact_export")
+            !(
+              this.#projectFiles?.exportProjectFile &&
+              tool.name === "cad.project_request_exact_export"
+            )
         )
       ]
     };
@@ -1431,28 +1433,28 @@ export class CadMcpServer {
       );
     }
 
+    let queryRequest: ReturnType<typeof parseCadOpsAgentQueryRequest>;
     try {
-      const response = this.#adapter.query(
-        parseCadOpsAgentQueryRequest({
-          requestId: request.requestId ?? this.#createRequestId(),
-          adapterVersion: ADAPTER_VERSION,
+      queryRequest = parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
           query: {
-            version: "cadops.v1",
-            query: {
-              ...request.arguments,
-              query
-            }
+            ...request.arguments,
+            query
           }
-        })
-      );
-
-      return createToolResult(request.name, response, !response.ok);
+        }
+      });
     } catch {
       return createInvalidArgumentsResult(
         request.name,
         invalidArgumentsMessage
       );
     }
+
+    const response = this.#adapter.query(queryRequest);
+    return createToolResult(request.name, response, !response.ok);
   }
 
   #callSketchEditReadiness(
@@ -2894,7 +2896,9 @@ const V19_BATCH_OP_SCHEMA = {
           type: "string",
           not: {
             enum: [
-              ...new Set(MODELING_OP_SCHEMAS.map((schema) => schema.properties.op.const)),
+              ...new Set(
+                MODELING_OP_SCHEMAS.map((schema) => schema.properties.op.const)
+              ),
               "sketch.offset",
               "sketch.addSlot",
               "sketch.addRoundedRectangle",
@@ -3023,7 +3027,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_structure",
     description:
-      "Returns the default part, primitive-derived features/bodies, authored sketch feature bodies, and source mappings.",
+      "Inspect part definitions, features/bodies, source mappings, and assemblies with instance IDs, definitions, resolved transforms and mates. Use this for assembly pose and constraint inspection; a full native project handoff is unnecessary for these fields.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

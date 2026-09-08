@@ -37,7 +37,8 @@ identity, capabilities, and short workflow. Use `tools/list` for tool schemas.
 
 1. Submit related modeling operations in one `cad.batch` transaction with
    caller-chosen IDs. These are the same CADOps submitted by the web UI.
-2. Inspect `cad.project_structure` for feature/body IDs. Use
+2. Inspect `cad.project_structure` for feature/body IDs, assembly instances,
+   resolved transforms, and mates. Use
    `cad.body_mass_properties` for exact volume, area, and center of mass of a
    finished body. `cad.body_measurements` is the older analytic extrude query.
 3. Revise with another batch using those IDs. `dryRun` evaluates a proposed
@@ -77,6 +78,117 @@ The complete representative operation lists are
 design brief, creation batch, revision, rejected edit, selected output bodies,
 and independent analytical expectations. The closer uses these through the real
 stdio transport.
+
+## Profiles and coordinate frames
+
+For a sketch with several loops, call `cad.sketch_profile_region_candidates`
+with `{"sketchId":"outline","entityIds":["outer","hole"],"limit":10}`.
+The entity filter is optional. Use each returned `region` in a
+`{"kind":"regions","sketchId":"outline","regions":[...]}` profile, validate
+it with `cad.sketch_profile_region_validate` using `{"profile":...}`, then
+submit that profile to `feature.extrude`. Candidates are derived suggestions;
+the explicit profile becomes source only when its modeling batch commits.
+For another page, pass both `nextAfterCandidateKey` as `afterCandidateKey` and
+the returned `sourceRevision`. Refresh discovery after editing the sketch.
+These queries work through both headless and connected-browser sessions.
+
+Sketch coordinates are local `[u,v]`. Standard planes map these to world
+coordinates as XY → `[u,v,0]`, XZ → `[u,0,v]`, and YZ → `[0,u,v]`. Their positive
+normals are +Z, −Y, and +X respectively. Extrude `side:"positive"` follows that
+normal. Check exact center of mass as well as volume when orientation matters.
+
+Assembly instance `transform` maps a body definition into assembly coordinates:
+scale the local point, rotate about X, then Y, then Z, then translate it.
+
+| Transform field | Units and behavior |
+| --- | --- |
+| `translation: [x,y,z]` | Document length units, normally millimeters; applied last. |
+| `rotation: [x,y,z]` | Euler angles in **radians**, applied X → Y → Z. A quarter-turn about Z is `[0,0,1.5707963267948966]`. |
+| `scale: [x,y,z]` | Dimensionless componentwise scale, applied first. Revolute-connected instances require `[1,1,1]`. |
+
+An inserted instance defaults to identity: zero translation/rotation and unit
+scale. A transform update preserves omitted fields. Numeric mate distances,
+frame origins and offsets use document length units. Revolute `angleDegrees`
+and the evaluated value of `angleParameterId` use **degrees**.
+
+## Connected assemblies
+
+Use the assembly variants inside the existing `cad.batch` schema. The complete
+command contracts are available in `tools/list`:
+
+| Operation | Required payload after `op` |
+| --- | --- |
+| `assembly.create` | None; optional `id`, `name`. |
+| `assembly.instance.insert` | `assemblyId`, `definition:{kind:"body",bodyId}`; optional `id`, `name`, `transform`. |
+| `assembly.instance.updateTransform` | `assemblyId`, `instanceId`, nonempty partial `transform`. |
+| `assembly.instance.replace` | `assemblyId`, `instanceId`, `definition:{kind:"body",bodyId}`. |
+| `assembly.instance.delete` | `assemblyId`, `instanceId`; referencing mates are cascade-deleted. |
+| `assembly.mate.create` | `assemblyId`, `kind` and that kind's fields; optional `id`, `name`. |
+| `assembly.mate.edit` | `assemblyId`, `mateId`, `kind` and complete replacement fields; omitted `name` is preserved. |
+| `assembly.mate.delete` | `assemblyId`, `mateId`. |
+
+Insert finished body definitions, fix one root with a `fixed` mate's
+`instanceId`, then connect its descendants. Connections form a rooted forest;
+cycles, conflicting roots, and multiple parents reject atomically. Move a free
+instance or fixed root with `assembly.instance.updateTransform`; connected
+descendants follow. Change a constrained child's pose by editing its mate.
+Definition replacement preserves the instance ID, name and transform, while
+validating retained references.
+
+`coincident` and `distance` use `primary` and `secondary` plane references:
+`{instanceId,plane:"XY"|"XZ"|"YZ",offset?,flip?}`. `distance` additionally
+requires exactly one of `distance` or `distanceParameterId`. `concentric` uses
+axis references `{instanceId,axis:"X"|"Y"|"Z",origin?:[x,y,z]}`. These partial
+constraints preserve the remaining degrees of freedom.
+
+Mate-plane normals preserve their original convention: XY → +Z, XZ → +Y,
+YZ → +X. Their `offset` follows the unflipped normal; `flip` reverses only the
+normal. Authored sketch frames use the sketch coordinate convention above,
+including XZ's −Y normal.
+
+A `revolute` mate connects complete joint frames. For example, after creating
+the indicated bodies, instances, sketches, and parameter, add this operation:
+
+```json
+{
+  "op": "assembly.mate.create",
+  "id": "elbow",
+  "assemblyId": "arm",
+  "kind": "revolute",
+  "primary": {"instanceId":"upper_link","frame":{"kind":"sketch","sketchId":"upper_outline","entityId":"tip_pivot"}},
+  "secondary": {"instanceId":"forearm","frame":{"kind":"sketch","sketchId":"forearm_outline","entityId":"base_pivot"}},
+  "angleParameterId": "elbow_angle",
+  "offset": 4
+}
+```
+
+The mate aligns joint frames, rotates about primary frame Z and offsets along
+that Z. Use exactly one of `angleDegrees` or `angleParameterId`, and at most one
+of `offset` or `offsetParameterId` (default zero). Parameters are numeric; each
+mate interprets its evaluated value in the units described above. Updating
+`elbow_angle` or a jaw's bound distance parameter re-solves the connected pose.
+To replace a binding with a literal, submit the mate's complete references and
+literal in `assembly.mate.edit`, omitting the old parameter ID.
+
+Sketch frames follow an authored circle center or point, including its
+evaluated dimensions. The unattached standard-plane sketch must belong to the
+instance body's source ancestry. Optional frame `offset` is measured along
+the unflipped sketch normal; `flip:true` reverses frame Z and Y while retaining
+X. For fixed numeric attachment coordinates, use
+`{kind:"local",origin:[x,y,z],xDirection:[x,y,z],zDirection:[x,y,z]}` instead.
+Those X/Z directions must be nonzero and orthogonal; the solver normalizes them.
+Numeric local origins do not follow a resized sketch.
+
+Inspect `cad.project_structure` after a revision or native reopen. Its
+`assemblies` include definitions, resolved instance transforms and mate values
+with parameter IDs. This is sufficient for checking identities, connected
+poses and constraints; request a full native handoff only when the complete
+serialized source is actually needed. `.wcad` preserves these connections.
+
+The [connected robot arm example](../examples/robot-arm-workflow/README.md)
+combines 11 definitions into 29 instances and revises length, gripper clearance
+and shoulder angle with three parameter updates. Its README links the
+reproducible commands and current verification status.
 
 ## Shared execution and host responsibilities
 

@@ -93,7 +93,9 @@
     "smoke:e2e": "bun scripts/smoke-ui-use.mjs -- scenarios/v26-distance-mate.json scenarios/v26-concentric-pin.json",
     "smoke:agent-runtime": "pnpm --filter @web-cad/mcp-stdio-server build && node scripts/smoke-agent-runtime.mjs",
     "benchmark:cad-runtime": "node scripts/benchmark-cad-runtime.mjs",
-    "smoke:agent-runtime:browser": "bun scripts/smoke-ui-use.mjs -- examples/agent-runtime/browser-use.json"
+    "smoke:agent-runtime:browser": "bun scripts/smoke-ui-use.mjs -- examples/agent-runtime/browser-use.json",
+    "smoke:robot-arm": "pnpm --filter @web-cad/mcp-stdio-server build && node scripts/smoke-robot-arm.mjs",
+    "smoke:robot-arm:browser": "bun scripts/smoke-ui-use.mjs -- scenarios/robot-arm-revision.json examples/robot-arm-workflow/browser-use.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

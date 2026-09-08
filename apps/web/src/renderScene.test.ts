@@ -332,6 +332,43 @@ describe("renderScene", () => {
     ]);
   });
 
+  it("places XZ rectangle and circle fallbacks along the sketch's minus-Y normal", () => {
+    const sources: DerivedExtrudeGeometrySource[] = [
+      "positive",
+      "negative",
+      "symmetric"
+    ].flatMap((side) =>
+      ["rectangle", "circle"].map((kind) => ({
+        ...createExtrudeSource(
+          `${side}_${kind}`,
+          side as "positive" | "negative" | "symmetric"
+        ),
+        sketchPlane: "XZ" as const,
+        depth: 8,
+        profile:
+          kind === "rectangle"
+            ? {
+                kind: "rectangle" as const,
+                center: [30, 7] as const,
+                width: 60,
+                height: 14
+              }
+            : { kind: "circle" as const, center: [30, 7] as const, radius: 5 }
+      }))
+    );
+    const scene = createRenderSceneInputs([], new Map(), sources);
+    expect(
+      scene.primitives.map((primitive) => primitive.transform.translation)
+    ).toEqual([
+      [30, -4, 7],
+      [30, -4, 7],
+      [30, 4, 7],
+      [30, 4, 7],
+      [30, -0, 7],
+      [30, -0, 7]
+    ]);
+  });
+
   it("uses an aligned mesh fallback for attached extrude sources", () => {
     const source: DerivedExtrudeGeometrySource = {
       ...createExtrudeSource("body_attached", "positive"),

@@ -523,7 +523,16 @@ import {
   evaluateCadBodyDependencies,
   type CadDownstreamBodyPolicyProjection
 } from "./downstreamBodyPolicy";
-import { computeAlignPose, computeConcentricAxisPose, computeDistancePlanePose } from "./alignTransform";
+import { computeAlignPose } from "./alignTransform";
+import {
+  AssemblySolveError,
+  assemblyScalar,
+  assemblyTransformsEqual,
+  assertAssemblyTransformEditable,
+  isAssemblyMateFrameRef,
+  isAssemblyScalarSource,
+  solveAssembly
+} from "./assemblySolver";
 import { computeDraftGeometry } from "./draftGeometry";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import {
@@ -2441,32 +2450,39 @@ export class CadEngine {
         const rebuildValidation =
           sourceFeature?.kind === "extrude" &&
           structure.bodies.some(
-            (body) => body.id === sourceFeature.bodyId && body.consumedByFeatureId
+            (body) =>
+              body.id === sourceFeature.bodyId && body.consumedByFeatureId
           )
             ? this.executeBatch({
                 version: request.version,
                 mode: "dryRun",
-                ops: [{
-                  op: "feature.updateExtrude",
-                  id: sourceFeature.id,
-                  depth: sourceFeature.depth
-                }]
+                ops: [
+                  {
+                    op: "feature.updateExtrude",
+                    id: sourceFeature.id,
+                    depth: sourceFeature.depth
+                  }
+                ]
               })
             : undefined;
         const proposal = request.query.proposedEdit;
         const proposedRebuildValidation =
-          rebuildValidation?.ok && sourceFeature?.kind === "extrude" &&
-          proposal?.kind === "extrude" && proposal.profile
+          rebuildValidation?.ok &&
+          sourceFeature?.kind === "extrude" &&
+          proposal?.kind === "extrude" &&
+          proposal.profile
             ? this.executeBatch({
                 version: request.version,
                 mode: "dryRun",
-                ops: [{
-                  op: "feature.updateExtrude",
-                  id: sourceFeature.id,
-                  profile: proposal.profile,
-                  depth: proposal.depth ?? sourceFeature.depth,
-                  side: proposal.side ?? sourceFeature.side
-                }]
+                ops: [
+                  {
+                    op: "feature.updateExtrude",
+                    id: sourceFeature.id,
+                    profile: proposal.profile,
+                    depth: proposal.depth ?? sourceFeature.depth,
+                    side: proposal.side ?? sourceFeature.side
+                  }
+                ]
               })
             : undefined;
 
@@ -6635,18 +6651,17 @@ function applyOperation(
     }
 
     case "assembly.instance.insert": {
-      applyAssemblyInstanceInsert(
-        state,
-        op,
-        diff,
-        createInstanceId,
-        opIndex
-      );
+      applyAssemblyInstanceInsert(state, op, diff, createInstanceId, opIndex);
       return;
     }
 
     case "assembly.mate.create": {
       applyAssemblyMateCreate(state, op, diff, createMateId, opIndex);
+      return;
+    }
+
+    case "assembly.instance.updateTransform": {
+      applyAssemblyInstanceUpdateTransform(state, op, diff, opIndex);
       return;
     }
 
@@ -8447,6 +8462,7 @@ function isCadOperationKind(value: string): boolean {
     case "datum.axis.create":
     case "assembly.create":
     case "assembly.instance.insert":
+    case "assembly.instance.updateTransform":
     case "assembly.instance.replace":
     case "assembly.instance.delete":
     case "assembly.mate.create":
@@ -14197,649 +14213,156 @@ function applyAssemblyMateCreate(
   createMateId: () => MateId,
   opIndex: number
 ): void {
-  const assembly = state.assemblies.get(op.assemblyId);
-  if (!assembly) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly does not exist: ${op.assemblyId}`,
-      opIndex,
-      path: operationPath(opIndex, "assemblyId"),
-      expected: "existing assembly id",
-      received: op.assemblyId
-    });
-  }
-
-  const existingMates = assembly.mates ?? [];
+  const assembly = getAssemblyOrThrow(state, op.assemblyId, opIndex);
   const mateId = op.id ?? createMateId();
-  assertUniqueAssemblyMateId(state, existingMates, mateId, opIndex);
-
-  switch (op.kind) {
-    case "fixed":
-      applyAssemblyFixedMateCreate(
-        state,
-        assembly,
-        existingMates,
-        mateId,
-        op,
-        diff,
-        opIndex
-      );
-      return;
-    case "coincident":
-      applyAssemblyCoincidentMateCreate(
-        state,
-        assembly,
-        existingMates,
-        mateId,
-        op,
-        diff,
-        opIndex
-      );
-      return;
-    case "concentric":
-      applyAssemblyConcentricMateCreate(
-        state,
-        assembly,
-        existingMates,
-        mateId,
-        op,
-        diff,
-        opIndex
-      );
-      return;
-    case "distance":
-      applyAssemblyDistanceMateCreate(
-        state,
-        assembly,
-        existingMates,
-        mateId,
-        op,
-        diff,
-        opIndex
-      );
-      return;
-    default:
-      throwValidationError({
-        code: "INVALID_OPERATION",
-        message: `assembly.mate.create kind ${(op as { kind: string }).kind} is not available; use fixed, coincident, concentric, or distance.`,
-        opIndex,
-        path: operationPath(opIndex, "kind"),
-        expected: "fixed | coincident | concentric | distance",
-        received: (op as { kind: string }).kind
-      });
-  }
-}
-
-function assertUniqueAssemblyMateId(
-  state: MutableDocumentState,
-  existingMates: readonly AssemblyMateSnapshot[],
-  mateId: MateId,
-  opIndex: number
-): void {
-  if (existingMates.some((mate) => mate.id === mateId)) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly mate already exists: ${mateId}`,
-      opIndex,
-      path: operationPath(opIndex, "id"),
-      expected: "unique mate id",
-      received: mateId
-    });
-  }
-  for (const other of state.assemblies.values()) {
-    if ((other.mates ?? []).some((mate) => mate.id === mateId)) {
-      throwValidationError({
-        code: "INVALID_OPERATION",
-        message: `Assembly mate already exists: ${mateId}`,
-        opIndex,
-        path: operationPath(opIndex, "id"),
-        expected: "unique mate id",
-        received: mateId
-      });
-    }
-  }
-}
-
-function applyAssemblyFixedMateCreate(
-  state: MutableDocumentState,
-  assembly: AssemblySnapshot,
-  existingMates: readonly AssemblyMateSnapshot[],
-  mateId: MateId,
-  op: Extract<CadOp, { readonly op: "assembly.mate.create"; readonly kind: "fixed" }>,
-  diff: MutableSemanticDiff,
-  opIndex: number
-): void {
-  const instance = assembly.instances.find(
-    (candidate) => candidate.id === op.instanceId
-  );
-  if (!instance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${op.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "instanceId"),
-      expected: "existing instance id in assembly",
-      received: op.instanceId
-    });
-  }
-
   if (
-    existingMates.some(
-      (mate) => mate.kind === "fixed" && mate.instanceId === op.instanceId
+    [...state.assemblies.values()].some((a) =>
+      (a.mates ?? []).some((m) => m.id === mateId)
     )
   ) {
     throwValidationError({
       code: "INVALID_OPERATION",
-      message: `Assembly instance already has a fixed mate: ${op.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "instanceId"),
-      expected: "ungrounded instance id",
-      received: op.instanceId
+      message: `Assembly mate already exists: ${mateId}`,
+      opIndex
     });
   }
-
-  const mate: AssemblyMateSnapshot = {
+  const base = {
     id: mateId,
-    name: normalizeAssemblyName(op.name, opIndex, mateId),
-    kind: "fixed",
-    instanceId: op.instanceId
+    name: normalizeAssemblyName(op.name, opIndex, mateId)
   };
-  const updated: AssemblySnapshot = {
-    ...assembly,
-    mates: [...existingMates, mate]
-  };
+  let mate: AssemblyMateSnapshot;
+  if (op.kind === "fixed")
+    mate = { ...base, kind: "fixed", instanceId: op.instanceId };
+  else if (op.kind === "revolute")
+    mate = {
+      ...base,
+      kind: "revolute",
+      primary: cloneJsonSource(op.primary),
+      secondary: cloneJsonSource(op.secondary),
+      angleDegrees: assemblyScalar(state, op.angleDegrees, op.angleParameterId),
+      offset: assemblyScalar(state, op.offset, op.offsetParameterId, 0),
+      ...(op.angleParameterId ? { angleParameterId: op.angleParameterId } : {}),
+      ...(op.offsetParameterId
+        ? { offsetParameterId: op.offsetParameterId }
+        : {})
+    };
+  else if (op.kind === "distance")
+    mate = {
+      ...base,
+      kind: "distance",
+      primary: cloneAssemblyMatePlaneRef(op.primary),
+      secondary: cloneAssemblyMatePlaneRef(op.secondary),
+      distance: assemblyScalar(state, op.distance, op.distanceParameterId),
+      ...(op.distanceParameterId
+        ? { distanceParameterId: op.distanceParameterId }
+        : {})
+    };
+  else if (op.kind === "concentric")
+    mate = {
+      ...base,
+      kind: "concentric",
+      primary: cloneAssemblyMateAxisRef(op.primary),
+      secondary: cloneAssemblyMateAxisRef(op.secondary)
+    };
+  else
+    mate = {
+      ...base,
+      kind: "coincident",
+      primary: cloneAssemblyMatePlaneRef(op.primary),
+      secondary: cloneAssemblyMatePlaneRef(op.secondary)
+    };
+  const updated = { ...assembly, mates: [...(assembly.mates ?? []), mate] };
   state.assemblies.set(assembly.id, updated);
   pushAssemblyModified(diff, assemblyRef(updated));
   pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
 }
 
-function applyAssemblyCoincidentMateCreate(
+function getAssemblyOrThrow(
   state: MutableDocumentState,
-  assembly: AssemblySnapshot,
-  existingMates: readonly AssemblyMateSnapshot[],
-  mateId: MateId,
-  op: Extract<
-    CadOp,
-    { readonly op: "assembly.mate.create"; readonly kind: "coincident" }
-  >,
-  diff: MutableSemanticDiff,
+  id: AssemblyId,
   opIndex: number
-): void {
-  const primaryRef = op.primary;
-  const secondaryRef = op.secondary;
-  if (!isAssemblyMatePlaneRefShape(primaryRef)) {
+): AssemblySnapshot {
+  const assembly = state.assemblies.get(id);
+  if (!assembly)
     throwValidationError({
       code: "INVALID_OPERATION",
-      message: "assembly.mate.create coincident requires primary plane ref.",
+      message: `Assembly does not exist: ${id}`,
       opIndex,
-      path: operationPath(opIndex, "primary"),
-      expected: "instanceId + plane (XY|XZ|YZ) with optional offset/flip",
-      received: describeReceived(primaryRef)
+      path: operationPath(opIndex, "assemblyId")
     });
-  }
-  if (!isAssemblyMatePlaneRefShape(secondaryRef)) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.mate.create coincident requires secondary plane ref.",
-      opIndex,
-      path: operationPath(opIndex, "secondary"),
-      expected: "instanceId + plane (XY|XZ|YZ) with optional offset/flip",
-      received: describeReceived(secondaryRef)
-    });
-  }
-
-  const primaryInstance = assembly.instances.find(
-    (candidate) => candidate.id === primaryRef.instanceId
-  );
-  if (!primaryInstance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${primaryRef.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "primary.instanceId"),
-      expected: "existing instance id in assembly",
-      received: primaryRef.instanceId
-    });
-  }
-  const secondaryInstance = assembly.instances.find(
-    (candidate) => candidate.id === secondaryRef.instanceId
-  );
-  if (!secondaryInstance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${secondaryRef.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "secondary.instanceId"),
-      expected: "existing instance id in assembly",
-      received: secondaryRef.instanceId
-    });
-  }
-  if (primaryRef.instanceId === secondaryRef.instanceId) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "Coincident mate requires two different instances.",
-      opIndex,
-      path: operationPath(opIndex, "secondary.instanceId"),
-      expected: "instance id different from primary",
-      received: secondaryRef.instanceId
-    });
-  }
-
-  const fixedInstanceIds = new Set(
-    existingMates
-      .filter((mate) => mate.kind === "fixed")
-      .map((mate) => mate.instanceId)
-  );
-  const primaryFixed = fixedInstanceIds.has(primaryRef.instanceId);
-  const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
-  if (primaryFixed && secondaryFixed) {
-    throwValidationError({
-      code: "ASSEMBLY_MATE_CONFLICTING",
-      message:
-        "Coincident mate conflicts: both instances are fixed/grounded and cannot move.",
-      opIndex,
-      path: operationPath(opIndex, "kind"),
-      expected: "at most one fixed instance in the mate pair",
-      received: `${primaryRef.instanceId}, ${secondaryRef.instanceId}`
-    });
-  }
-  if (!primaryFixed && !secondaryFixed) {
-    throwValidationError({
-      code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
-      message:
-        "Coincident mate is underconstrained: ground one instance with a fixed mate before solving pose.",
-      opIndex,
-      path: operationPath(opIndex, "kind"),
-      expected: "one fixed/grounded instance in the mate pair",
-      received: "neither instance fixed"
-    });
-  }
-
-  const movingIsSecondary = !secondaryFixed;
-  const stationaryInstance = movingIsSecondary
-    ? primaryInstance
-    : secondaryInstance;
-  const movingInstance = movingIsSecondary
-    ? secondaryInstance
-    : primaryInstance;
-  const stationaryPlaneRef = movingIsSecondary ? primaryRef : secondaryRef;
-  const movingPlaneRef = movingIsSecondary ? secondaryRef : primaryRef;
-
-  const stationaryPlane = resolveAssemblyMatePlaneWorld(
-    stationaryInstance,
-    stationaryPlaneRef
-  );
-  const movingPlane = resolveAssemblyMatePlaneWorld(
-    movingInstance,
-    movingPlaneRef
-  );
-  const aligned = computeAlignPose(movingPlane, {
-    kind: "plane",
-    plane: stationaryPlane
-  });
-  const nextMovingTransform = applyAlignPoseToInstanceTransform(
-    movingInstance.transform,
-    aligned.transform
-  );
-
-  const mate: AssemblyMateSnapshot = {
-    id: mateId,
-    name: normalizeAssemblyName(op.name, opIndex, mateId),
-    kind: "coincident",
-    primary: cloneAssemblyMatePlaneRef(primaryRef),
-    secondary: cloneAssemblyMatePlaneRef(secondaryRef)
-  };
-
-  const nextInstances = assembly.instances.map((instance) =>
-    instance.id === movingInstance.id
-      ? { ...instance, transform: nextMovingTransform }
-      : instance
-  );
-  const updated: AssemblySnapshot = {
-    ...assembly,
-    instances: nextInstances,
-    mates: [...existingMates, mate]
-  };
-  state.assemblies.set(assembly.id, updated);
-  pushAssemblyModified(diff, assemblyRef(updated));
-  const updatedMoving = nextInstances.find(
-    (instance) => instance.id === movingInstance.id
-  )!;
-  pushAssemblyInstanceModified(
-    diff,
-    assemblyInstanceRef(assembly.id, updatedMoving)
-  );
-  pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
+  return assembly;
 }
 
-function applyAssemblyConcentricMateCreate(
+function applyAssemblyInstanceUpdateTransform(
   state: MutableDocumentState,
-  assembly: AssemblySnapshot,
-  existingMates: readonly AssemblyMateSnapshot[],
-  mateId: MateId,
-  op: Extract<
-    CadOp,
-    { readonly op: "assembly.mate.create"; readonly kind: "concentric" }
-  >,
+  op: Extract<CadOp, { op: "assembly.instance.updateTransform" }>,
   diff: MutableSemanticDiff,
   opIndex: number
 ): void {
-  const primaryRef = op.primary;
-  const secondaryRef = op.secondary;
-  if (!isAssemblyMateAxisRefShape(primaryRef)) {
+  const assembly = getAssemblyOrThrow(state, op.assemblyId, opIndex);
+  const instance = assembly.instances.find((i) => i.id === op.instanceId);
+  if (!instance)
     throwValidationError({
       code: "INVALID_OPERATION",
-      message: "assembly.mate.create concentric requires primary axis ref.",
+      message: `Assembly instance does not exist: ${op.instanceId}`,
       opIndex,
-      path: operationPath(opIndex, "primary"),
-      expected: "instanceId + axis (X|Y|Z) with optional origin",
-      received: describeReceived(primaryRef)
+      path: operationPath(opIndex, "instanceId")
     });
-  }
-  if (!isAssemblyMateAxisRefShape(secondaryRef)) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.mate.create concentric requires secondary axis ref.",
-      opIndex,
-      path: operationPath(opIndex, "secondary"),
-      expected: "instanceId + axis (X|Y|Z) with optional origin",
-      received: describeReceived(secondaryRef)
-    });
-  }
-
-  const primaryInstance = assembly.instances.find(
-    (candidate) => candidate.id === primaryRef.instanceId
-  );
-  if (!primaryInstance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${primaryRef.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "primary.instanceId"),
-      expected: "existing instance id in assembly",
-      received: primaryRef.instanceId
-    });
-  }
-  const secondaryInstance = assembly.instances.find(
-    (candidate) => candidate.id === secondaryRef.instanceId
-  );
-  if (!secondaryInstance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${secondaryRef.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "secondary.instanceId"),
-      expected: "existing instance id in assembly",
-      received: secondaryRef.instanceId
-    });
-  }
-  if (primaryRef.instanceId === secondaryRef.instanceId) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "Concentric mate requires two different instances.",
-      opIndex,
-      path: operationPath(opIndex, "secondary.instanceId"),
-      expected: "instance id different from primary",
-      received: secondaryRef.instanceId
-    });
-  }
-
-  const fixedInstanceIds = new Set(
-    existingMates
-      .filter((mate) => mate.kind === "fixed")
-      .map((mate) => mate.instanceId)
-  );
-  const primaryFixed = fixedInstanceIds.has(primaryRef.instanceId);
-  const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
-  if (primaryFixed && secondaryFixed) {
-    throwValidationError({
-      code: "ASSEMBLY_MATE_CONFLICTING",
-      message:
-        "Concentric mate conflicts: both instances are fixed/grounded and cannot move.",
-      opIndex,
-      path: operationPath(opIndex, "kind"),
-      expected: "at most one fixed instance in the mate pair",
-      received: `${primaryRef.instanceId}, ${secondaryRef.instanceId}`
-    });
-  }
-  if (!primaryFixed && !secondaryFixed) {
-    throwValidationError({
-      code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
-      message:
-        "Concentric mate is underconstrained: ground one instance with a fixed mate before solving pose.",
-      opIndex,
-      path: operationPath(opIndex, "kind"),
-      expected: "one fixed/grounded instance in the mate pair",
-      received: "neither instance fixed"
-    });
-  }
-
-  const movingIsSecondary = !secondaryFixed;
-  const stationaryInstance = movingIsSecondary
-    ? primaryInstance
-    : secondaryInstance;
-  const movingInstance = movingIsSecondary
-    ? secondaryInstance
-    : primaryInstance;
-  const stationaryAxisRef = movingIsSecondary ? primaryRef : secondaryRef;
-  const movingAxisRef = movingIsSecondary ? secondaryRef : primaryRef;
-
-  const stationaryAxis = resolveAssemblyMateAxisWorld(
-    stationaryInstance,
-    stationaryAxisRef
-  );
-  const movingAxis = resolveAssemblyMateAxisWorld(
-    movingInstance,
-    movingAxisRef
-  );
-  const aligned = computeConcentricAxisPose(movingAxis, stationaryAxis);
-  const nextMovingTransform = applyAlignPoseToInstanceTransform(
-    movingInstance.transform,
-    aligned.transform
-  );
-
-  const mate: AssemblyMateSnapshot = {
-    id: mateId,
-    name: normalizeAssemblyName(op.name, opIndex, mateId),
-    kind: "concentric",
-    primary: cloneAssemblyMateAxisRef(primaryRef),
-    secondary: cloneAssemblyMateAxisRef(secondaryRef)
+  assertAssemblyTransformEditable(assembly, instance.id);
+  const updatedInstance = {
+    ...instance,
+    transform: mergeTransform({ ...instance.transform, ...op.transform })
   };
-
-  const nextInstances = assembly.instances.map((instance) =>
-    instance.id === movingInstance.id
-      ? { ...instance, transform: nextMovingTransform }
-      : instance
-  );
-  const updated: AssemblySnapshot = {
+  const updated = {
     ...assembly,
-    instances: nextInstances,
-    mates: [...existingMates, mate]
+    instances: assembly.instances.map((i) =>
+      i.id === instance.id ? updatedInstance : i
+    )
   };
   state.assemblies.set(assembly.id, updated);
   pushAssemblyModified(diff, assemblyRef(updated));
-  const updatedMoving = nextInstances.find(
-    (instance) => instance.id === movingInstance.id
-  )!;
   pushAssemblyInstanceModified(
     diff,
-    assemblyInstanceRef(assembly.id, updatedMoving)
+    assemblyInstanceRef(assembly.id, updatedInstance)
   );
-  pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
 }
 
-function applyAssemblyDistanceMateCreate(
+function solveDocumentAssemblies(
   state: MutableDocumentState,
-  assembly: AssemblySnapshot,
-  existingMates: readonly AssemblyMateSnapshot[],
-  mateId: MateId,
-  op: Extract<
-    CadOp,
-    { readonly op: "assembly.mate.create"; readonly kind: "distance" }
-  >,
   diff: MutableSemanticDiff,
-  opIndex: number
+  previous: ReadonlyMap<AssemblyId, AssemblySnapshot>
 ): void {
-  const primaryRef = op.primary;
-  const secondaryRef = op.secondary;
-  if (!isAssemblyMatePlaneRefShape(primaryRef)) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.mate.create distance requires primary plane ref.",
-      opIndex,
-      path: operationPath(opIndex, "primary"),
-      expected: "instanceId + plane (XY|XZ|YZ) with optional offset/flip",
-      received: describeReceived(primaryRef)
-    });
+  // Reusing a public ID after deletion creates a new authored pose/connection.
+  // Only retained instances and mates inherit motion from the previous solve.
+  const inserted = new Set(diff.assemblies?.instancesCreated.map((i) => i.id));
+  const createdMates = new Set(diff.assemblies?.matesCreated.map((m) => m.id));
+  for (const assembly of state.assemblies.values()) {
+    const oldAssembly = previous.get(assembly.id);
+    const retained = oldAssembly
+      ? {
+          ...oldAssembly,
+          instances: oldAssembly.instances.filter((i) => !inserted.has(i.id)),
+          mates: oldAssembly.mates?.filter((m) => !createdMates.has(m.id))
+        }
+      : undefined;
+    const solved = solveAssembly(state, assembly, retained);
+    for (const instance of solved.instances) {
+      const old = assembly.instances.find((i) => i.id === instance.id)!;
+      if (!assemblyTransformsEqual(instance.transform, old.transform)) {
+        pushAssemblyInstanceModified(
+          diff,
+          assemblyInstanceRef(assembly.id, instance)
+        );
+        pushAssemblyModified(diff, assemblyRef(solved));
+      }
+    }
+    for (const mate of solved.mates ?? []) {
+      const old = assembly.mates?.find((m) => m.id === mate.id);
+      if (JSON.stringify(mate) !== JSON.stringify(old))
+        pushAssemblyMateModified(diff, assemblyMateRef(assembly.id, mate));
+    }
+    state.assemblies.set(assembly.id, solved);
   }
-  if (!isAssemblyMatePlaneRefShape(secondaryRef)) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.mate.create distance requires secondary plane ref.",
-      opIndex,
-      path: operationPath(opIndex, "secondary"),
-      expected: "instanceId + plane (XY|XZ|YZ) with optional offset/flip",
-      received: describeReceived(secondaryRef)
-    });
-  }
-  if (typeof op.distance !== "number" || !Number.isFinite(op.distance)) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.mate.create distance requires a finite distance.",
-      opIndex,
-      path: operationPath(opIndex, "distance"),
-      expected: "finite number",
-      received: describeReceived(op.distance)
-    });
-  }
-
-  const primaryInstance = assembly.instances.find(
-    (candidate) => candidate.id === primaryRef.instanceId
-  );
-  if (!primaryInstance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${primaryRef.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "primary.instanceId"),
-      expected: "existing instance id in assembly",
-      received: primaryRef.instanceId
-    });
-  }
-  const secondaryInstance = assembly.instances.find(
-    (candidate) => candidate.id === secondaryRef.instanceId
-  );
-  if (!secondaryInstance) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: `Assembly instance does not exist: ${secondaryRef.instanceId}`,
-      opIndex,
-      path: operationPath(opIndex, "secondary.instanceId"),
-      expected: "existing instance id in assembly",
-      received: secondaryRef.instanceId
-    });
-  }
-  if (primaryRef.instanceId === secondaryRef.instanceId) {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "Distance mate requires two different instances.",
-      opIndex,
-      path: operationPath(opIndex, "secondary.instanceId"),
-      expected: "instance id different from primary",
-      received: secondaryRef.instanceId
-    });
-  }
-
-  const fixedInstanceIds = new Set(
-    existingMates
-      .filter((mate) => mate.kind === "fixed")
-      .map((mate) => mate.instanceId)
-  );
-  const primaryFixed = fixedInstanceIds.has(primaryRef.instanceId);
-  const secondaryFixed = fixedInstanceIds.has(secondaryRef.instanceId);
-  if (primaryFixed && secondaryFixed) {
-    throwValidationError({
-      code: "ASSEMBLY_MATE_CONFLICTING",
-      message:
-        "Distance mate conflicts: both instances are fixed/grounded and cannot move.",
-      opIndex,
-      path: operationPath(opIndex, "kind"),
-      expected: "at most one fixed instance in the mate pair",
-      received: `${primaryRef.instanceId}, ${secondaryRef.instanceId}`
-    });
-  }
-  if (!primaryFixed && !secondaryFixed) {
-    throwValidationError({
-      code: "ASSEMBLY_MATE_UNDERCONSTRAINED",
-      message:
-        "Distance mate is underconstrained: ground one instance with a fixed mate before solving pose.",
-      opIndex,
-      path: operationPath(opIndex, "kind"),
-      expected: "one fixed/grounded instance in the mate pair",
-      received: "neither instance fixed"
-    });
-  }
-
-  const movingIsSecondary = !secondaryFixed;
-  const stationaryInstance = movingIsSecondary
-    ? primaryInstance
-    : secondaryInstance;
-  const movingInstance = movingIsSecondary
-    ? secondaryInstance
-    : primaryInstance;
-  const stationaryPlaneRef = movingIsSecondary ? primaryRef : secondaryRef;
-  const movingPlaneRef = movingIsSecondary ? secondaryRef : primaryRef;
-  // When the secondary is grounded, invert the signed separation so the
-  // stored distance still measures primary→secondary along primary's normal.
-  const signedDistance = movingIsSecondary ? op.distance : -op.distance;
-
-  const stationaryPlane = resolveAssemblyMatePlaneWorld(
-    stationaryInstance,
-    stationaryPlaneRef
-  );
-  const movingPlane = resolveAssemblyMatePlaneWorld(
-    movingInstance,
-    movingPlaneRef
-  );
-  const aligned = computeDistancePlanePose(
-    movingPlane,
-    stationaryPlane,
-    signedDistance
-  );
-  const nextMovingTransform = applyAlignPoseToInstanceTransform(
-    movingInstance.transform,
-    aligned.transform
-  );
-
-  const mate: AssemblyMateSnapshot = {
-    id: mateId,
-    name: normalizeAssemblyName(op.name, opIndex, mateId),
-    kind: "distance",
-    primary: cloneAssemblyMatePlaneRef(primaryRef),
-    secondary: cloneAssemblyMatePlaneRef(secondaryRef),
-    distance: op.distance
-  };
-
-  const nextInstances = assembly.instances.map((instance) =>
-    instance.id === movingInstance.id
-      ? { ...instance, transform: nextMovingTransform }
-      : instance
-  );
-  const updated: AssemblySnapshot = {
-    ...assembly,
-    instances: nextInstances,
-    mates: [...existingMates, mate]
-  };
-  state.assemblies.set(assembly.id, updated);
-  pushAssemblyModified(diff, assemblyRef(updated));
-  const updatedMoving = nextInstances.find(
-    (instance) => instance.id === movingInstance.id
-  )!;
-  pushAssemblyInstanceModified(
-    diff,
-    assemblyInstanceRef(assembly.id, updatedMoving)
-  );
-  pushAssemblyMateCreated(diff, assemblyMateRef(assembly.id, mate));
 }
 
 function mateReferencesInstance(
@@ -14923,7 +14446,10 @@ function applyAssemblyInstanceReplace(
   };
   state.assemblies.set(assembly.id, updated);
   pushAssemblyModified(diff, assemblyRef(updated));
-  pushAssemblyInstanceModified(diff, assemblyInstanceRef(assembly.id, replaced));
+  pushAssemblyInstanceModified(
+    diff,
+    assemblyInstanceRef(assembly.id, replaced)
+  );
 }
 
 function applyAssemblyInstanceDelete(
@@ -14978,6 +14504,7 @@ function applyAssemblyInstanceDelete(
     const { mates: _removed, ...withoutMates } = updated as AssemblySnapshot & {
       mates?: readonly AssemblyMateSnapshot[];
     };
+    void _removed;
     state.assemblies.set(assembly.id, withoutMates);
   } else {
     state.assemblies.set(assembly.id, updated);
@@ -15034,6 +14561,7 @@ function applyAssemblyMateDelete(
     } as AssemblySnapshot & {
       mates?: readonly AssemblyMateSnapshot[];
     };
+    void _removed;
     state.assemblies.set(assembly.id, {
       id: withoutMates.id,
       name: withoutMates.name,
@@ -15088,15 +14616,22 @@ function applyAssemblyMateEdit(
     ...(withoutMate.length > 0 ? { mates: withoutMate } : { mates: [] })
   });
 
-  const createOp = assemblyMateEditToCreateOp(op);
-  applyAssemblyMateCreate(
-    state,
-    createOp,
-    diff,
-    () => op.mateId,
-    opIndex
-  );
+  const createOp = assemblyMateEditToCreateOp({
+    ...op,
+    name: op.name ?? existingMates[mateIndex]!.name
+  });
+  applyAssemblyMateCreate(state, createOp, diff, () => op.mateId, opIndex);
 
+  const editedAssembly = state.assemblies.get(assembly.id)!;
+  const editedMate = editedAssembly.mates!.find(
+    (candidate) => candidate.id === op.mateId
+  )!;
+  state.assemblies.set(assembly.id, {
+    ...editedAssembly,
+    mates: existingMates.map((candidate, index) =>
+      index === mateIndex ? editedMate : candidate
+    )
+  });
   const assemblyDiff = ensureAssemblyDiff(diff);
   const created = assemblyDiff.matesCreated.pop();
   if (created) {
@@ -15107,53 +14642,11 @@ function applyAssemblyMateEdit(
 function assemblyMateEditToCreateOp(
   op: Extract<CadOp, { readonly op: "assembly.mate.edit" }>
 ): Extract<CadOp, { readonly op: "assembly.mate.create" }> {
-  if (op.kind === "fixed") {
-    return {
-      op: "assembly.mate.create",
-      id: op.mateId,
-      assemblyId: op.assemblyId,
-      name: op.name,
-      kind: "fixed",
-      instanceId: op.instanceId
-    };
-  }
-  if (op.kind === "coincident") {
-    return {
-      op: "assembly.mate.create",
-      id: op.mateId,
-      assemblyId: op.assemblyId,
-      name: op.name,
-      kind: "coincident",
-      primary: op.primary,
-      secondary: op.secondary
-    };
-  }
-  if (op.kind === "concentric") {
-    return {
-      op: "assembly.mate.create",
-      id: op.mateId,
-      assemblyId: op.assemblyId,
-      name: op.name,
-      kind: "concentric",
-      primary: op.primary,
-      secondary: op.secondary
-    };
-  }
-  return {
-    op: "assembly.mate.create",
-    id: op.mateId,
-    assemblyId: op.assemblyId,
-    name: op.name,
-    kind: "distance",
-    primary: op.primary,
-    secondary: op.secondary,
-    distance: op.distance
-  };
+  const { mateId, ...fields } = op;
+  return { ...fields, op: "assembly.mate.create", id: mateId };
 }
 
-function isAssemblyMatePlaneRefShape(
-  value: unknown
-): value is {
+function isAssemblyMatePlaneRefShape(value: unknown): value is {
   readonly instanceId: string;
   readonly plane: "XY" | "XZ" | "YZ";
   readonly offset?: number;
@@ -15196,41 +14689,7 @@ function cloneAssemblyMatePlaneRef(ref: {
   };
 }
 
-function resolveAssemblyMatePlaneLocal(ref: {
-  readonly plane: "XY" | "XZ" | "YZ";
-  readonly offset?: number;
-  readonly flip?: boolean;
-}): { readonly point: Vec3; readonly normal: Vec3 } {
-  const offset = ref.offset ?? 0;
-  const flip = ref.flip === true ? -1 : 1;
-  switch (ref.plane) {
-    case "XY":
-      return { point: [0, 0, offset], normal: [0, 0, flip] };
-    case "XZ":
-      return { point: [0, offset, 0], normal: [0, flip, 0] };
-    case "YZ":
-      return { point: [offset, 0, 0], normal: [flip, 0, 0] };
-  }
-}
-
-function resolveAssemblyMatePlaneWorld(
-  instance: AssemblyInstanceSnapshot,
-  ref: {
-    readonly plane: "XY" | "XZ" | "YZ";
-    readonly offset?: number;
-    readonly flip?: boolean;
-  }
-): { readonly point: Vec3; readonly normal: Vec3 } {
-  const local = resolveAssemblyMatePlaneLocal(ref);
-  const point = transformPoint(local.point, instance.transform);
-  const normal = rotateEuler(local.normal, instance.transform.rotation);
-  return { point, normal };
-}
-
-
-function isAssemblyMateAxisRefShape(
-  value: unknown
-): value is {
+function isAssemblyMateAxisRefShape(value: unknown): value is {
   readonly instanceId: string;
   readonly axis: "X" | "Y" | "Z";
   readonly origin?: Vec3;
@@ -15265,134 +14724,6 @@ function cloneAssemblyMateAxisRef(ref: {
   };
 }
 
-function resolveAssemblyMateAxisLocal(ref: {
-  readonly axis: "X" | "Y" | "Z";
-  readonly origin?: Vec3;
-}): { readonly origin: Vec3; readonly direction: Vec3 } {
-  const origin: Vec3 = ref.origin
-    ? [ref.origin[0], ref.origin[1], ref.origin[2]]
-    : [0, 0, 0];
-  switch (ref.axis) {
-    case "X":
-      return { origin, direction: [1, 0, 0] };
-    case "Y":
-      return { origin, direction: [0, 1, 0] };
-    case "Z":
-      return { origin, direction: [0, 0, 1] };
-  }
-}
-
-function resolveAssemblyMateAxisWorld(
-  instance: AssemblyInstanceSnapshot,
-  ref: {
-    readonly axis: "X" | "Y" | "Z";
-    readonly origin?: Vec3;
-  }
-): { readonly origin: Vec3; readonly direction: Vec3 } {
-  const local = resolveAssemblyMateAxisLocal(ref);
-  const origin = transformPoint(local.origin, instance.transform);
-  const direction = rotateEuler(local.direction, instance.transform.rotation);
-  return { origin, direction };
-}
-
-function applyAlignPoseToInstanceTransform(
-  transform: Transform,
-  pose: FeatureAlignTransform
-): Transform {
-  // Translation-only update keeps existing Euler rotation / scale. Align pose
-  // rotation is applied when non-zero by composing Euler from the axis-angle.
-  const translation: Vec3 = [
-    transform.translation[0] + pose.translation[0],
-    transform.translation[1] + pose.translation[1],
-    transform.translation[2] + pose.translation[2]
-  ];
-  if (Math.abs(pose.rotationDegrees) <= 1e-12) {
-    return {
-      translation,
-      rotation: [...transform.rotation] as Vec3,
-      scale: [...transform.scale] as Vec3
-    };
-  }
-  // Compose axis-angle onto the instance origin, then re-express as Euler XYZ.
-  const composedRotation = composeEulerWithAxisAngle(
-    transform.rotation,
-    pose.rotationAxis,
-    pose.rotationDegrees
-  );
-  return {
-    translation,
-    rotation: composedRotation,
-    scale: [...transform.scale] as Vec3
-  };
-}
-
-function composeEulerWithAxisAngle(
-  euler: Vec3,
-  axis: Vec3,
-  degrees: number
-): Vec3 {
-  // Rotate three basis vectors through existing Euler then axis-angle; recover
-  // XYZ Euler from the resulting basis (sufficient for mate pose updates).
-  const basis: Vec3[] = [
-    rotateEuler([1, 0, 0], euler),
-    rotateEuler([0, 1, 0], euler),
-    rotateEuler([0, 0, 1], euler)
-  ];
-  const rotated = basis.map((vector) =>
-    rotateVectorByAxisAngle(vector, axis, degrees)
-  );
-  return eulerFromBasis(rotated[0]!, rotated[1]!, rotated[2]!);
-}
-
-function rotateVectorByAxisAngle(
-  vector: Vec3,
-  axis: Vec3,
-  degrees: number
-): Vec3 {
-  const radians = (degrees * Math.PI) / 180;
-  const axisLength = Math.hypot(axis[0], axis[1], axis[2]);
-  if (axisLength <= 1e-12 || Math.abs(degrees) <= 1e-12) {
-    return [...vector] as Vec3;
-  }
-  const ux = axis[0] / axisLength;
-  const uy = axis[1] / axisLength;
-  const uz = axis[2] / axisLength;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  const dot = vector[0] * ux + vector[1] * uy + vector[2] * uz;
-  return [
-    vector[0] * cos +
-      (uy * vector[2] - uz * vector[1]) * sin +
-      ux * dot * (1 - cos),
-    vector[1] * cos +
-      (uz * vector[0] - ux * vector[2]) * sin +
-      uy * dot * (1 - cos),
-    vector[2] * cos +
-      (ux * vector[1] - uy * vector[0]) * sin +
-      uz * dot * (1 - cos)
-  ];
-}
-
-function eulerFromBasis(xAxis: Vec3, yAxis: Vec3, zAxis: Vec3): Vec3 {
-  // XYZ intrinsic: R = Rz * Ry * Rx. Extract from matrix columns.
-  const r20 = zAxis[0];
-  const sy = Math.max(-1, Math.min(1, -r20));
-  const cy = Math.sqrt(Math.max(0, 1 - sy * sy));
-  let rx: number;
-  let ry: number;
-  let rz: number;
-  if (cy > 1e-8) {
-    rx = Math.atan2(zAxis[1], zAxis[2]);
-    ry = Math.asin(sy);
-    rz = Math.atan2(yAxis[0], xAxis[0]);
-  } else {
-    rx = Math.atan2(-yAxis[2], yAxis[1]);
-    ry = Math.asin(sy);
-    rz = 0;
-  }
-  return [rx, ry, rz];
-}
-
 function assemblyRef(assembly: AssemblySnapshot): CadAssemblyRef {
   return { id: assembly.id, name: assembly.name };
 }
@@ -15414,44 +14745,7 @@ function assemblyMateRef(
   assemblyId: AssemblyId,
   mate: AssemblyMateSnapshot
 ): CadAssemblyMateRef {
-  if (mate.kind === "fixed") {
-    return {
-      id: mate.id,
-      assemblyId,
-      name: mate.name,
-      kind: "fixed",
-      instanceId: mate.instanceId
-    };
-  }
-  if (mate.kind === "coincident") {
-    return {
-      id: mate.id,
-      assemblyId,
-      name: mate.name,
-      kind: "coincident",
-      primary: cloneAssemblyMatePlaneRef(mate.primary),
-      secondary: cloneAssemblyMatePlaneRef(mate.secondary)
-    };
-  }
-  if (mate.kind === "concentric") {
-    return {
-      id: mate.id,
-      assemblyId,
-      name: mate.name,
-      kind: "concentric",
-      primary: cloneAssemblyMateAxisRef(mate.primary),
-      secondary: cloneAssemblyMateAxisRef(mate.secondary)
-    };
-  }
-  return {
-    id: mate.id,
-    assemblyId,
-    name: mate.name,
-    kind: "distance",
-    primary: cloneAssemblyMatePlaneRef(mate.primary),
-    secondary: cloneAssemblyMatePlaneRef(mate.secondary),
-    distance: mate.distance
-  };
+  return { ...cloneJsonSource(mate), assemblyId };
 }
 
 function normalizeAssemblyName(
@@ -15533,9 +14827,10 @@ function sketchPlaneFromDatum(
   const resolution = resolveMirrorPlaneFrame(state, datum.plane);
   if (!resolution.ok) {
     throwValidationError({
-      code: resolution.code === "MIRROR_OFFSET_INVALID"
-        ? "INVALID_DATUM"
-        : "INVALID_DATUM",
+      code:
+        resolution.code === "MIRROR_OFFSET_INVALID"
+          ? "INVALID_DATUM"
+          : "INVALID_DATUM",
       message: `Datum ${datum.id} does not resolve to a sketch plane: ${resolution.message}`,
       opIndex,
       datumId: datum.id,
@@ -15592,9 +14887,10 @@ function validateDatumAxisSource(
       return reference;
     }
     throwValidationError({
-      code: resolution.code === "PATTERN_AXIS_UNRESOLVED"
-        ? "INVALID_DATUM"
-        : "INVALID_DATUM",
+      code:
+        resolution.code === "PATTERN_AXIS_UNRESOLVED"
+          ? "INVALID_DATUM"
+          : "INVALID_DATUM",
       message: `datum.axis.create axis does not resolve: ${resolution.message}`,
       opIndex,
       path: operationPath(opIndex, "axis"),
@@ -15625,7 +14921,8 @@ function validateDatumPlaneSource(
         "datum.plane.create offsets from world XY/XZ/YZ or a planar face, not another datum.",
       opIndex,
       path: operationPath(opIndex, "plane"),
-      expected: "standardPlane, generatedFace, namedReference, or topologyAnchor",
+      expected:
+        "standardPlane, generatedFace, namedReference, or topologyAnchor",
       received: describeReceived(plane)
     });
   }
@@ -16956,7 +16253,9 @@ function updateOffsetFeature(
         ? feature.distance
         : validateOffsetDistance(op.distance, opIndex),
     side:
-      op.side === undefined ? feature.side : validateOffsetSide(op.side, opIndex)
+      op.side === undefined
+        ? feature.side
+        : validateOffsetSide(op.side, opIndex)
   };
 
   if (updated.targetBodyId) {
@@ -19255,7 +18554,10 @@ function validateOffsetDistance(value: unknown, opIndex?: number): number {
   });
 }
 
-function validateOffsetSide(value: unknown, opIndex?: number): FeatureOffsetSide {
+function validateOffsetSide(
+  value: unknown,
+  opIndex?: number
+): FeatureOffsetSide {
   if (value === "inward" || value === "outward") {
     return value;
   }
@@ -19342,7 +18644,12 @@ function validateAlignInputs(
     seedBodyId
   );
   const target = validateAlignTarget(state, op.target, opIndex, seedBodyId);
-  const sourceFrame = resolveAlignFacePlane(state, sourceFace, opIndex, "sourceFace");
+  const sourceFrame = resolveAlignFacePlane(
+    state,
+    sourceFace,
+    opIndex,
+    "sourceFace"
+  );
   const pose =
     target.kind === "datumAxis"
       ? computeAlignPose(sourceFrame, {
@@ -19381,12 +18688,23 @@ function validateAlignTarget(
   }
 
   if (value.kind === "planarFace") {
-    const face = validateAlignFaceRef(state, value.face, opIndex, "target.face");
-    const targetBodyId = resolveAlignFaceBodyId(state, face, opIndex, "target.face");
+    const face = validateAlignFaceRef(
+      state,
+      value.face,
+      opIndex,
+      "target.face"
+    );
+    const targetBodyId = resolveAlignFaceBodyId(
+      state,
+      face,
+      opIndex,
+      "target.face"
+    );
     if (targetBodyId === seedBodyId) {
       throwValidationError({
         code: "INVALID_FEATURE",
-        message: "feature.align cannot align a body onto a face of the same body.",
+        message:
+          "feature.align cannot align a body onto a face of the same body.",
         opIndex,
         bodyId: seedBodyId,
         path: operationPath(opIndex, "target.face"),
@@ -19412,7 +18730,8 @@ function validateAlignTarget(
     if (datum.kind !== "plane") {
       throwValidationError({
         code: "INVALID_DATUM",
-        message: "feature.align datumPlane target must resolve to a datum plane.",
+        message:
+          "feature.align datumPlane target must resolve to a datum plane.",
         opIndex,
         datumId: value.datumId,
         path: operationPath(opIndex, "target.datumId"),
@@ -19625,7 +18944,8 @@ function validateDraftInputs(
   if (!Array.isArray(op.faces) || op.faces.length === 0) {
     throwValidationError({
       code: "INVALID_OPERATION",
-      message: "feature.draft requires a non-empty planar or planar-adjacent face set.",
+      message:
+        "feature.draft requires a non-empty planar or planar-adjacent face set.",
       opIndex,
       bodyId: targetBodyId,
       path: operationPath(opIndex, "faces"),
@@ -19724,7 +19044,8 @@ function validateDraftNeutralPlane(
   if (!isFeatureDraftNeutralPlaneShape(value)) {
     throwValidationError({
       code: "INVALID_OPERATION",
-      message: "feature.draft neutralPlane must be a planar face or datum plane.",
+      message:
+        "feature.draft neutralPlane must be a planar face or datum plane.",
       opIndex,
       path: operationPath(opIndex, "neutralPlane"),
       expected: "planarFace or datumPlane",
@@ -19802,16 +19123,22 @@ function createDraftFaceInput(
           : "",
     units: state.units,
     ownerPartId: DEFAULT_PART_ID,
-    bodyExists: (candidateBodyId) => cadDocumentBodyExists(state, candidateBodyId)
+    bodyExists: (candidateBodyId) =>
+      cadDocumentBodyExists(state, candidateBodyId)
   });
-  const body = createBodyMeasurements(state, bodyId, state.units, DEFAULT_PART_ID);
+  const body = createBodyMeasurements(
+    state,
+    bodyId,
+    state.units,
+    DEFAULT_PART_ID
+  );
   const faceSize =
     measurements.ok && measurements.measurements.kind === "face"
       ? measurements.measurements.bounds.size
       : undefined;
   const spanAlongPull = faceSize
     ? Math.max(faceSize[0], faceSize[1], faceSize[2])
-    : body?.depth ?? 0;
+    : (body?.depth ?? 0);
   const centroid = body?.centroid;
   const materialExtent = centroid
     ? Math.abs(
@@ -19932,8 +19259,7 @@ function validateOffsetFaceRef(
     ) {
       throwValidationError({
         code: "INVALID_OPERATION",
-        message:
-          "feature.offset generatedFace requires bodyId and stableId.",
+        message: "feature.offset generatedFace requires bodyId and stableId.",
         opIndex,
         path: operationPath(opIndex, "source.face"),
         expected: "generatedFace ref with bodyId and stableId",
@@ -19958,7 +19284,11 @@ function validateOffsetFaceRef(
         received: describeReceived(value)
       });
     }
-    const name = normalizeNamedReferenceName(value.name, opIndex, "namedReference");
+    const name = normalizeNamedReferenceName(
+      value.name,
+      opIndex,
+      "namedReference"
+    );
     const reference = state.namedReferences.get(name);
     if (!reference) {
       throwValidationError({
@@ -20786,10 +20116,7 @@ function getTargetConsumingFeatureBodyId(
   feature: TargetConsumingFeature,
   features: ReadonlyMap<FeatureId, Feature>
 ): BodyId {
-  if (
-    feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
-  ) {
+  if (feature.kind === "linearPattern" || feature.kind === "circularPattern") {
     return getPatternConsumedBodyId(feature, features);
   }
   if (feature.kind === "mirror") {
@@ -20797,7 +20124,9 @@ function getTargetConsumingFeatureBodyId(
   }
   if (feature.kind === "offset") {
     if (!feature.targetBodyId) {
-      throw new Error(`Offset feature ${feature.id} is missing a face target body.`);
+      throw new Error(
+        `Offset feature ${feature.id} is missing a face target body.`
+      );
     }
     return feature.targetBodyId;
   }
@@ -22109,7 +21438,12 @@ function createTopologyAnchorProofCommandOperations(
   }
 
   if (proof.kind === "axisAlignedPlanarFace") {
-    return ["feature.shell", "feature.offset", "feature.align", "feature.draft"];
+    return [
+      "feature.shell",
+      "feature.offset",
+      "feature.align",
+      "feature.draft"
+    ];
   }
 
   if (proof.kind !== "axisAlignedLinearEdge") {
@@ -27351,40 +26685,7 @@ function cloneAssembly(assembly: AssemblySnapshot): AssemblySnapshot {
 }
 
 function cloneAssemblyMate(mate: AssemblyMateSnapshot): AssemblyMateSnapshot {
-  if (mate.kind === "fixed") {
-    return {
-      id: mate.id,
-      name: mate.name,
-      kind: "fixed",
-      instanceId: mate.instanceId
-    };
-  }
-  if (mate.kind === "coincident") {
-    return {
-      id: mate.id,
-      name: mate.name,
-      kind: "coincident",
-      primary: cloneAssemblyMatePlaneRef(mate.primary),
-      secondary: cloneAssemblyMatePlaneRef(mate.secondary)
-    };
-  }
-  if (mate.kind === "concentric") {
-    return {
-      id: mate.id,
-      name: mate.name,
-      kind: "concentric",
-      primary: cloneAssemblyMateAxisRef(mate.primary),
-      secondary: cloneAssemblyMateAxisRef(mate.secondary)
-    };
-  }
-  return {
-    id: mate.id,
-    name: mate.name,
-    kind: "distance",
-    primary: cloneAssemblyMatePlaneRef(mate.primary),
-    secondary: cloneAssemblyMatePlaneRef(mate.secondary),
-    distance: mate.distance
-  };
+  return cloneJsonSource(mate);
 }
 
 function cloneAssemblyInstance(
@@ -29120,7 +28421,10 @@ function createConsumedBodyMap(
       continue;
     }
     if (isTargetConsumingFeature(feature)) {
-      consumed.set(getTargetConsumingFeatureBodyId(feature, features), feature.id);
+      consumed.set(
+        getTargetConsumingFeatureBodyId(feature, features),
+        feature.id
+      );
     }
   }
 
@@ -31334,6 +30638,7 @@ function runOperations(
     deleted: []
   };
   const appliedOps: CadOp[] = [];
+  const assemblyMateOperationIndexes = new Map<MateId, number>();
 
   for (const [opIndex, op] of ops.entries()) {
     try {
@@ -31543,7 +30848,24 @@ function runOperations(
         opIndex
       );
       appliedOps.push(op);
+      if (op.op === "assembly.mate.create") {
+        const mateId =
+          op.id ??
+          diff.assemblies?.matesCreated[diff.assemblies.matesCreated.length - 1]
+            ?.id;
+        if (mateId) assemblyMateOperationIndexes.set(mateId, opIndex);
+      } else if (op.op === "assembly.mate.edit") {
+        assemblyMateOperationIndexes.set(op.mateId, opIndex);
+      }
     } catch (error) {
+      if (error instanceof AssemblySolveError)
+        throwValidationError({
+          code: error.code,
+          message: error.message,
+          opIndex,
+          op: op.op,
+          path: operationPath(opIndex)
+        });
       if (error instanceof BatchValidationFailure) {
         throwValidationError({
           ...error.validationError,
@@ -31557,6 +30879,25 @@ function runOperations(
     }
   }
 
+  try {
+    solveDocumentAssemblies(state, diff, document.assemblies);
+  } catch (error) {
+    if (error instanceof AssemblySolveError) {
+      const index = error.mateId
+        ? assemblyMateOperationIndexes.get(error.mateId)
+        : undefined;
+      // A source/parameter edit can invalidate an existing relation. Do not
+      // blame an unrelated last operation when no originating mate op is known.
+      throwValidationError({
+        code: error.code,
+        message: error.message,
+        ...(index !== undefined
+          ? { opIndex: index, op: ops[index]?.op, path: operationPath(index) }
+          : {})
+      });
+    }
+    throw error;
+  }
   const resultDocument = createCadDocument(
     state.objects,
     state.units,
@@ -31979,18 +31320,15 @@ function toDatumDiffIds(datums: DatumSemanticDiff | undefined): {
   }
 
   return {
-    ...nonEmptyIdList(
-      "createdDatumIds",
-      [...new Set((datums.created ?? []).map((datum) => datum.id))]
-    ),
-    ...nonEmptyIdList(
-      "modifiedDatumIds",
-      [...new Set((datums.modified ?? []).map((datum) => datum.id))]
-    ),
-    ...nonEmptyIdList(
-      "deletedDatumIds",
-      [...new Set((datums.deleted ?? []).map((datum) => datum.id))]
-    )
+    ...nonEmptyIdList("createdDatumIds", [
+      ...new Set((datums.created ?? []).map((datum) => datum.id))
+    ]),
+    ...nonEmptyIdList("modifiedDatumIds", [
+      ...new Set((datums.modified ?? []).map((datum) => datum.id))
+    ]),
+    ...nonEmptyIdList("deletedDatumIds", [
+      ...new Set((datums.deleted ?? []).map((datum) => datum.id))
+    ])
   };
 }
 
@@ -32580,6 +31918,7 @@ function createProjectState(project: CadProject): {
     readonly document: CadDocument;
     readonly entries: TransactionEntry[];
     readonly counters: CadDocumentIdCounters;
+    readonly assemblyPoseSources: AssemblyReplayPoseSources;
   };
   let redoEntriesInApplyOrder: {
     readonly document: CadDocument;
@@ -32613,7 +31952,8 @@ function createProjectState(project: CadProject): {
     assertProjectDocumentMatchesReplay(
       projectForReplay,
       historyState.document,
-      historyState.counters
+      historyState.counters,
+      historyState.assemblyPoseSources
     );
   }
 
@@ -32628,7 +31968,8 @@ function createProjectState(project: CadProject): {
       projectForReplay.document.nextSketchDimensionNumber,
       projectForReplay.document.nextSketchConstraintNumber,
       projectForReplay.document.nextFeatureNumber,
-      projectForReplay.document.nextBodyNumber
+      projectForReplay.document.nextBodyNumber,
+      historyState.assemblyPoseSources
     );
   } catch (error) {
     throwProjectTransactionHistoryError("$.redoStack", error);
@@ -32812,11 +32153,13 @@ function createTransactionEntries(
     initialDocument
   ),
   initialFeatureNumber = inferNextFeatureNumber(initialDocument),
-  initialBodyNumber = inferNextBodyNumber(initialDocument)
+  initialBodyNumber = inferNextBodyNumber(initialDocument),
+  initialAssemblyPoseSources: AssemblyReplayPoseSources = new Map()
 ): {
   readonly document: CadDocument;
   readonly entries: TransactionEntry[];
   readonly counters: CadDocumentIdCounters;
+  readonly assemblyPoseSources: AssemblyReplayPoseSources;
 } {
   let document = cloneDocument(initialDocument);
   let nextObjectNumber = initialObjectNumber;
@@ -32828,6 +32171,7 @@ function createTransactionEntries(
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
   const entries: TransactionEntry[] = [];
+  let assemblyPoseSources = initialAssemblyPoseSources;
 
   for (const transaction of transactions) {
     const before = cloneDocument(document);
@@ -32868,16 +32212,28 @@ function createTransactionEntries(
     nextFeatureNumber = run.nextFeatureNumber;
     nextBodyNumber = run.nextBodyNumber;
 
+    const nextAssemblyPoseSources = advanceAssemblyReplayPoseSources(
+      assemblyPoseSources,
+      replayTransaction.ops,
+      run.diff,
+      document
+    );
     if (
-      !stableJsonEqual(
-        canonicalizeSemanticDiffForReplay(transaction.diff),
-        canonicalizeSemanticDiffForReplay(run.diff)
+      !semanticDiffsEqualForReplay(
+        transaction.diff,
+        run.diff,
+        assemblyPoseSources,
+        nextAssemblyPoseSources,
+        replayTransaction.ops,
+        before,
+        document
       )
     ) {
       throw new Error(
         `Saved transaction diff does not match replayed operations for ${transaction.id}.`
       );
     }
+    assemblyPoseSources = nextAssemblyPoseSources;
 
     entries.push({
       transaction: { ...transaction },
@@ -32900,6 +32256,7 @@ function createTransactionEntries(
   return {
     document,
     entries,
+    assemblyPoseSources,
     counters: {
       nextObjectNumber,
       nextSketchNumber,
@@ -32916,12 +32273,13 @@ function createTransactionEntries(
 function assertProjectDocumentMatchesReplay(
   project: CadProject,
   replayedDocument: CadDocument,
-  replayedCounters: CadDocumentIdCounters
+  replayedCounters: CadDocumentIdCounters,
+  assemblyPoseSources: AssemblyReplayPoseSources
 ): void {
   const projectDocument = createCadDocumentFromSnapshot(project.document);
 
   if (
-    cadDocumentsEqual(projectDocument, replayedDocument) &&
+    cadDocumentsEqual(projectDocument, replayedDocument, assemblyPoseSources) &&
     (!project.historyBaseline ||
       stableJsonEqual(
         getCadDocumentSnapshotIdCounters(project.document),
@@ -32941,7 +32299,11 @@ function assertProjectDocumentMatchesReplay(
   ]);
 }
 
-function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
+function cadDocumentsEqual(
+  left: CadDocument,
+  right: CadDocument,
+  assemblyPoseSources: AssemblyReplayPoseSources
+): boolean {
   if (
     left.units !== right.units ||
     left.objects.size !== right.objects.size ||
@@ -32951,6 +32313,7 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     left.sketchConstraints.size !== right.sketchConstraints.size ||
     left.features.size !== right.features.size ||
     left.namedReferences.size !== right.namedReferences.size ||
+    left.assemblies.size !== right.assemblies.size ||
     !stableJsonEqual(
       left.topologyIdentity ?? null,
       right.topologyIdentity ?? null
@@ -33022,6 +32385,34 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     ) {
       return false;
     }
+  }
+
+  for (const [id, leftAssembly] of left.assemblies) {
+    const rightAssembly = right.assemblies.get(id);
+    if (
+      !rightAssembly ||
+      !stableJsonEqual(
+        {
+          ...leftAssembly,
+          // Legacy mate edits removed/reinserted the relation. Its array
+          // position is not authored constraint data; compare identity/content
+          // without changing the saved order or accepting duplicate IDs.
+          mates: [...(leftAssembly.mates ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
+          instances: leftAssembly.instances.map((instance, index) =>
+            reconcileAssemblyReplayPose(
+              instance,
+              rightAssembly.instances[index],
+              assemblyPoseSources
+            )
+          )
+        },
+        {
+          ...rightAssembly,
+          mates: [...(rightAssembly.mates ?? [])].sort((a, b) => a.id.localeCompare(b.id))
+        }
+      )
+    )
+      return false;
   }
 
   return true;
@@ -33176,7 +32567,9 @@ function sketchEntitiesEqual(left: SketchEntity, right: SketchEntity): boolean {
       left.degree === right.degree &&
       left.closed === right.closed &&
       left.points.length === right.points.length &&
-      left.points.every((point, index) => vec2Equal(point, right.points[index]!))
+      left.points.every((point, index) =>
+        vec2Equal(point, right.points[index]!)
+      )
     );
   }
 
@@ -33946,6 +33339,227 @@ function normalizeCadOpSnapshot(op: CadOp): CadOp {
   return op;
 }
 
+type AssemblyReplayPoseSources = ReadonlyMap<
+  InstanceId,
+  { readonly translation: boolean; readonly rotation: boolean }
+>;
+
+function advanceAssemblyReplayPoseSources(
+  previous: AssemblyReplayPoseSources,
+  ops: readonly CadOp[],
+  diff: SemanticDiff,
+  document: CadDocument
+): AssemblyReplayPoseSources {
+  const next = new Map(previous);
+  for (const instance of diff.assemblies?.instancesDeleted ?? [])
+    next.delete(instance.id);
+  for (const instance of diff.assemblies?.instancesCreated ?? [])
+    next.delete(instance.id);
+  for (const op of ops) {
+    if (op.op !== "assembly.instance.updateTransform") continue;
+    const inherited = next.get(op.instanceId);
+    if (inherited)
+      next.set(op.instanceId, {
+        translation:
+          inherited.translation && op.transform.translation === undefined,
+        rotation: inherited.rotation && op.transform.rotation === undefined
+      });
+  }
+  for (const assembly of document.assemblies.values()) {
+    const fixed = new Set(
+      assembly.mates?.flatMap((m) => (m.kind === "fixed" ? [m.instanceId] : []))
+    );
+    for (const mate of assembly.mates ?? []) {
+      if (mate.kind === "fixed") continue;
+      for (const id of [mate.primary.instanceId, mate.secondary.instanceId])
+        if (!fixed.has(id)) next.set(id, { translation: true, rotation: true });
+    }
+  }
+  return next;
+}
+
+function replayPoseVectorClose(
+  left: Vec3,
+  right: Vec3,
+  absolute: number
+): boolean {
+  return (
+    left.length === 3 &&
+    right.length === 3 &&
+    left.every((value, index) => {
+      const other = right[index]!;
+      return (
+        Number.isFinite(value) &&
+        Number.isFinite(other) &&
+        Math.abs(value - other) <=
+          absolute +
+            64 * Number.EPSILON * Math.max(Math.abs(value), Math.abs(other))
+      );
+    })
+  );
+}
+
+function reconcileAssemblyReplayPose<
+  T extends { readonly id: InstanceId; readonly transform: Transform }
+>(saved: T, replayed: T | undefined, sources: AssemblyReplayPoseSources): T {
+  const derived = sources.get(saved.id);
+  if (!derived || !replayed || saved.id !== replayed.id) return saved;
+  // ECMAScript permits implementation-dependent trig rounding. Reconcile only
+  // solver-derived translations (document units) and rotations (radians), never
+  // authored pose fields, scale, joint values, or other document/source data.
+  return {
+    ...saved,
+    transform: {
+      ...saved.transform,
+      translation:
+        derived.translation &&
+        replayPoseVectorClose(
+          saved.transform.translation,
+          replayed.transform.translation,
+          1e-10
+        )
+          ? replayed.transform.translation
+          : saved.transform.translation,
+      rotation:
+        derived.rotation &&
+        replayPoseVectorClose(
+          saved.transform.rotation,
+          replayed.transform.rotation,
+          1e-12
+        )
+          ? replayed.transform.rotation
+          : saved.transform.rotation
+    }
+  };
+}
+
+function semanticDiffsEqualForReplay(
+  saved: SemanticDiff,
+  replayed: SemanticDiff,
+  beforeSources: AssemblyReplayPoseSources,
+  afterSources: AssemblyReplayPoseSources,
+  ops: readonly CadOp[],
+  before: CadDocument,
+  after: CadDocument
+): boolean {
+  const normalize = (diff: SemanticDiff) =>
+    normalizeLegacyAssemblyReplayNoops(
+      canonicalizeSemanticDiffForReplay(diff),
+      replayed,
+      ops,
+      before,
+      after,
+      afterSources
+    );
+  const left = normalize(saved);
+  const right = normalize(replayed);
+  return stableJsonEqual(
+    left.assemblies && right.assemblies
+      ? {
+          ...left,
+          assemblies: {
+            ...left.assemblies,
+            instancesModified: left.assemblies.instancesModified?.map(
+              (instance, index) =>
+                reconcileAssemblyReplayPose(
+                  instance,
+                  right.assemblies!.instancesModified?.[index],
+                  afterSources
+                )
+            ),
+            instancesDeleted: left.assemblies.instancesDeleted?.map(
+              (instance, index) =>
+                reconcileAssemblyReplayPose(
+                  instance,
+                  right.assemblies!.instancesDeleted?.[index],
+                  beforeSources
+                )
+            )
+          }
+        }
+      : left,
+    right
+  );
+}
+
+function normalizeLegacyAssemblyReplayNoops(
+  diff: SemanticDiff,
+  replayed: SemanticDiff,
+  ops: readonly CadOp[],
+  before: CadDocument,
+  after: CadDocument,
+  sources: AssemblyReplayPoseSources
+): SemanticDiff {
+  if (!diff.assemblies) return diff;
+  const candidates = new Set<InstanceId>();
+  for (const op of ops) {
+    if (
+      (op.op !== "assembly.mate.create" && op.op !== "assembly.mate.edit") ||
+      op.kind === "fixed" ||
+      op.kind === "revolute"
+    )
+      continue;
+    const assembly = after.assemblies.get(op.assemblyId);
+    const fixed = new Set(
+      assembly?.mates?.flatMap((m) =>
+        m.kind === "fixed" ? [m.instanceId] : []
+      )
+    );
+    const a = op.primary.instanceId,
+      b = op.secondary.instanceId;
+    if (fixed.has(a) && !fixed.has(b)) candidates.add(b);
+    if (fixed.has(b) && !fixed.has(a)) candidates.add(a);
+  }
+  const isProvenNoop = (ref: CadAssemblyInstanceRef): boolean => {
+    if (!candidates.has(ref.id)) return false;
+    const finalInstance = after.assemblies
+      .get(ref.assemblyId)
+      ?.instances.find((i) => i.id === ref.id);
+    const initialInstance = before.assemblies
+      .get(ref.assemblyId)
+      ?.instances.find((i) => i.id === ref.id);
+    const initial =
+      replayed.assemblies?.instancesCreated?.find(
+        (i) => i.id === ref.id && i.assemblyId === ref.assemblyId
+      ) ??
+      (initialInstance
+        ? assemblyInstanceRef(ref.assemblyId, initialInstance)
+        : undefined);
+    const final = finalInstance
+      ? assemblyInstanceRef(ref.assemblyId, finalInstance)
+      : undefined;
+    return (
+      !!initial &&
+      !!final &&
+      stableJsonEqual(
+        reconcileAssemblyReplayPose(ref, initial, sources),
+        initial
+      ) &&
+      stableJsonEqual(reconcileAssemblyReplayPose(ref, final, sources), final)
+    );
+  };
+  // The old one-pair solver emitted an instance modification even for an
+  // already-satisfied mate. Accept that redundant row only when both the
+  // authored/pre-transaction and final states prove it is a no-op. Do not drop
+  // unmatched rows, metadata changes, or changes outside derived pose roundoff.
+  const summaries = new Set<string>();
+  return {
+    ...diff,
+    assemblies: {
+      ...diff.assemblies,
+      modified: diff.assemblies.modified?.filter((ref) => {
+        const key = stableJsonStringify(ref);
+        if (summaries.has(key)) return false;
+        summaries.add(key);
+        return true;
+      }),
+      instancesModified: diff.assemblies.instancesModified?.filter(
+        (ref) => !isProvenNoop(ref)
+      )
+    }
+  };
+}
+
 export function canonicalizeSemanticDiffForReplay(
   diff: SemanticDiff
 ): SemanticDiff {
@@ -34364,6 +33978,58 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion
   );
 
+  if (issues.length === 0) {
+    for (const [key, snapshot] of [
+      ["document", value.document],
+      ["historyBaseline", value.historyBaseline]
+    ] as const) {
+      if (snapshot === undefined) continue;
+      try {
+        const document = createCadDocumentFromSnapshot(
+          snapshot as unknown as CadDocumentSnapshot
+        );
+        for (const assembly of document.assemblies.values()) {
+          const solved = solveAssembly(document, assembly);
+          if (
+            solved.instances.some(
+              (instance, index) =>
+                !assemblyTransformsEqual(
+                  instance.transform,
+                  assembly.instances[index]!.transform
+                )
+            )
+          )
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `$.${key}.assemblies`,
+              "Assembly instance poses do not satisfy their current mate references and parameter values."
+            );
+          if (
+            (solved.mates ?? []).some(
+              (mate, index) =>
+                JSON.stringify(mate) !== JSON.stringify(assembly.mates?.[index])
+            )
+          )
+            addProjectIssue(
+              issues,
+              "INVALID_DOCUMENT",
+              `$.${key}.assemblies`,
+              "Assembly mate scalar values do not match their parameter bindings."
+            );
+        }
+      } catch (error) {
+        if (error instanceof AssemblySolveError)
+          addProjectIssue(
+            issues,
+            "INVALID_DOCUMENT",
+            `$.${key}.assemblies`,
+            error.message
+          );
+        else throw error;
+      }
+    }
+  }
   return issues;
 }
 
@@ -35220,7 +34886,6 @@ function validateSketchAttachmentSnapshot(
   return valid;
 }
 
-
 function validateAssemblySnapshots(
   value: unknown,
   path: string,
@@ -35324,7 +34989,7 @@ function validateAssemblySnapshots(
           issues,
           "INVALID_DOCUMENT",
           `${instancePath}.definition`,
-          "Assembly instance definition must be { kind: \"body\", bodyId }."
+          'Assembly instance definition must be { kind: "body", bodyId }.'
         );
       }
       if (
@@ -35353,7 +35018,9 @@ function validateAssemblySnapshots(
         const seenMateIds = new Set<string>();
         const instanceIds = new Set(
           assembly.instances
-            .filter((entry): entry is Record<string, unknown> => isRecord(entry))
+            .filter((entry): entry is Record<string, unknown> =>
+              isRecord(entry)
+            )
             .map((entry) => entry.id)
             .filter((id): id is string => typeof id === "string")
         );
@@ -35397,17 +35064,62 @@ function validateAssemblySnapshots(
             mate.kind !== "fixed" &&
             mate.kind !== "coincident" &&
             mate.kind !== "concentric" &&
-            mate.kind !== "distance"
+            mate.kind !== "distance" &&
+            mate.kind !== "revolute"
           ) {
             addProjectIssue(
               issues,
               "INVALID_DOCUMENT",
               `${matePath}.kind`,
-              'Assembly mate kind must be "fixed", "coincident", "concentric", or "distance" in the current schema.'
+              'Assembly mate kind must be "fixed", "coincident", "concentric", "distance", or "revolute" in the current schema.'
             );
           }
+          if (mate.kind === "revolute") {
+            for (const side of ["primary", "secondary"] as const) {
+              const ref = mate[side];
+              if (
+                !isAssemblyMateFrameRef(ref) ||
+                !instanceIds.has(ref.instanceId)
+              )
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${matePath}.${side}`,
+                  "Revolute mate requires a valid frame reference to an instance in this assembly."
+                );
+            }
+            if (
+              typeof mate.angleDegrees !== "number" ||
+              !Number.isFinite(mate.angleDegrees) ||
+              typeof mate.offset !== "number" ||
+              !Number.isFinite(mate.offset)
+            )
+              addProjectIssue(
+                issues,
+                "INVALID_DOCUMENT",
+                matePath,
+                "Revolute mate resolved angleDegrees and offset must be finite numbers."
+              );
+            for (const field of [
+              "angleParameterId",
+              "offsetParameterId"
+            ] as const)
+              if (
+                mate[field] !== undefined &&
+                (typeof mate[field] !== "string" || mate[field].length === 0)
+              )
+                addProjectIssue(
+                  issues,
+                  "INVALID_DOCUMENT",
+                  `${matePath}.${field}`,
+                  "Mate parameter ID must be a nonempty string."
+                );
+          }
           if (mate.kind === "fixed") {
-            if (typeof mate.instanceId !== "string" || mate.instanceId.length === 0) {
+            if (
+              typeof mate.instanceId !== "string" ||
+              mate.instanceId.length === 0
+            ) {
               addProjectIssue(
                 issues,
                 "INVALID_DOCUMENT",
@@ -35542,7 +35254,21 @@ function validateAssemblySnapshots(
               }
             }
           } else if (mate.kind === "distance") {
-            if (typeof mate.distance !== "number" || !Number.isFinite(mate.distance)) {
+            if (
+              mate.distanceParameterId !== undefined &&
+              (typeof mate.distanceParameterId !== "string" ||
+                mate.distanceParameterId.length === 0)
+            )
+              addProjectIssue(
+                issues,
+                "INVALID_DOCUMENT",
+                `${matePath}.distanceParameterId`,
+                "Mate parameter ID must be a nonempty string."
+              );
+            if (
+              typeof mate.distance !== "number" ||
+              !Number.isFinite(mate.distance)
+            ) {
               addProjectIssue(
                 issues,
                 "INVALID_DOCUMENT",
@@ -38570,7 +38296,8 @@ function collectValidAuthoredFeatureByBodyId(
     typeof value.distance === "number" &&
     isPositiveFiniteNumber(value.distance) &&
     (value.side === "inward" || value.side === "outward") &&
-    (value.targetBodyId === undefined || typeof value.targetBodyId === "string") &&
+    (value.targetBodyId === undefined ||
+      typeof value.targetBodyId === "string") &&
     typeof value.bodyId === "string"
   ) {
     featuresByBodyId.set(value.bodyId, {
@@ -41976,7 +41703,10 @@ function validateCombineFeatureSnapshotFields(
     );
   }
 
-  if (typeof value.targetBodyId !== "string" || value.targetBodyId.length === 0) {
+  if (
+    typeof value.targetBodyId !== "string" ||
+    value.targetBodyId.length === 0
+  ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
@@ -42041,7 +41771,10 @@ function validateOffsetFeatureSnapshotFields(
     );
   }
 
-  if (typeof value.distance !== "number" || !isPositiveFiniteNumber(value.distance)) {
+  if (
+    typeof value.distance !== "number" ||
+    !isPositiveFiniteNumber(value.distance)
+  ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
@@ -43162,6 +42895,19 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "assembly.instance.updateTransform") {
+    return (
+      typeof value.assemblyId === "string" &&
+      typeof value.instanceId === "string" &&
+      isRecord(value.transform) &&
+      Object.keys(value.transform).length > 0 &&
+      Object.keys(value.transform).every((key) =>
+        ["translation", "rotation", "scale"].includes(key)
+      ) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
   if (value.op === "assembly.mate.create") {
     if (
       !(
@@ -43191,10 +42937,16 @@ function isCadOp(value: unknown): value is CadOp {
       return (
         isAssemblyMatePlaneRefShape(value.primary) &&
         isAssemblyMatePlaneRefShape(value.secondary) &&
-        typeof value.distance === "number" &&
-        Number.isFinite(value.distance)
+        isAssemblyScalarSource(value, "distance", "distanceParameterId")
       );
     }
+    if (value.kind === "revolute")
+      return (
+        isAssemblyMateFrameRef(value.primary) &&
+        isAssemblyMateFrameRef(value.secondary) &&
+        isAssemblyScalarSource(value, "angleDegrees", "angleParameterId") &&
+        isAssemblyScalarSource(value, "offset", "offsetParameterId", true)
+      );
     return false;
   }
 
@@ -43208,7 +42960,8 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "assembly.instance.delete") {
     return (
-      typeof value.assemblyId === "string" && typeof value.instanceId === "string"
+      typeof value.assemblyId === "string" &&
+      typeof value.instanceId === "string"
     );
   }
 
@@ -43241,15 +42994,23 @@ function isCadOp(value: unknown): value is CadOp {
       return (
         isAssemblyMatePlaneRefShape(value.primary) &&
         isAssemblyMatePlaneRefShape(value.secondary) &&
-        typeof value.distance === "number" &&
-        Number.isFinite(value.distance)
+        isAssemblyScalarSource(value, "distance", "distanceParameterId")
       );
     }
+    if (value.kind === "revolute")
+      return (
+        isAssemblyMateFrameRef(value.primary) &&
+        isAssemblyMateFrameRef(value.secondary) &&
+        isAssemblyScalarSource(value, "angleDegrees", "angleParameterId") &&
+        isAssemblyScalarSource(value, "offset", "offsetParameterId", true)
+      );
     return false;
   }
 
   if (value.op === "assembly.mate.delete") {
-    return typeof value.assemblyId === "string" && typeof value.mateId === "string";
+    return (
+      typeof value.assemblyId === "string" && typeof value.mateId === "string"
+    );
   }
 
   if (value.op === "sketch.createOnFace") {
@@ -44635,7 +44396,8 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       typeof value.distance === "number" &&
       isPositiveFiniteNumber(value.distance) &&
       (value.side === "inward" || value.side === "outward") &&
-      (value.targetBodyId === undefined || typeof value.targetBodyId === "string")
+      (value.targetBodyId === undefined ||
+        typeof value.targetBodyId === "string")
     );
   }
 
@@ -45104,7 +44866,11 @@ function isSketchEntityUpdateInput(
 }
 
 function isSketchSplineDefinition(value: unknown): boolean {
-  if (!isRecord(value) || !Array.isArray(value.points) || value.points.length === 0) {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.points) ||
+    value.points.length === 0
+  ) {
     return false;
   }
   if (!value.points.every((point) => isVec2(point))) {
@@ -45613,7 +45379,11 @@ function isFeatureDraftNeutralPlaneShape(
   if (value.kind === "planarFace") {
     return isFeatureDraftFaceRefShape(value.face);
   }
-  return value.kind === "datumPlane" && typeof value.datumId === "string" && value.datumId.length > 0;
+  return (
+    value.kind === "datumPlane" &&
+    typeof value.datumId === "string" &&
+    value.datumId.length > 0
+  );
 }
 
 function isFeatureDraftedFaceRecordShape(
@@ -45654,17 +45424,19 @@ function isFeatureAlignTransformShape(
   );
 }
 
-function isFeatureAlignPlaneShape(
-  value: unknown
-): value is FeatureAlignPlane {
-  return isRecord(value) && isVec3Shape(value.point) && isVec3Shape(value.normal);
+function isFeatureAlignPlaneShape(value: unknown): value is FeatureAlignPlane {
+  return (
+    isRecord(value) && isVec3Shape(value.point) && isVec3Shape(value.normal)
+  );
 }
 
 function isVec3Shape(value: unknown): value is Vec3 {
   return (
     Array.isArray(value) &&
     value.length === 3 &&
-    value.every((component) => typeof component === "number" && Number.isFinite(component))
+    value.every(
+      (component) => typeof component === "number" && Number.isFinite(component)
+    )
   );
 }
 

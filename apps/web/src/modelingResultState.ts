@@ -5,7 +5,7 @@ export interface ModelingResultStateInput {
   readonly commandPending: boolean;
   readonly commandFailed: boolean;
   readonly derivedGeometryEnabled: boolean;
-  readonly derivedSourceCount: number;
+  readonly derivedSourceIds: readonly string[];
   readonly derivedGeometry: {
     readonly entries: readonly {
       readonly status:
@@ -19,7 +19,7 @@ export interface ModelingResultStateInput {
     readonly pendingCount: number;
     readonly cancelledCount?: number;
   };
-  readonly derivedExactSourceCount?: number;
+  readonly derivedExactSourceIds?: readonly string[];
   readonly derivedExactMetadata?: {
     readonly entries: readonly {
       readonly status:
@@ -45,15 +45,19 @@ export function createModelingResultState({
   commandPending,
   commandFailed,
   derivedGeometryEnabled,
-  derivedSourceCount,
+  derivedSourceIds,
   derivedGeometry,
   derivedExactMetadata,
-  derivedExactSourceCount,
+  derivedExactSourceIds,
   projectHealthStatus,
   currentExactResults
 }: ModelingResultStateInput): string {
-  const exactSourceCount =
-    derivedExactSourceCount ?? derivedExactMetadata?.entries.length ?? 0;
+  // Artifact evidence replaces a runtime entry with the same source identity.
+  // Multiple source records therefore describe one expected result.
+  const derivedSourceCount = new Set(derivedSourceIds).size;
+  const exactSourceCount = derivedExactSourceIds
+    ? new Set(derivedExactSourceIds).size
+    : (derivedExactMetadata?.entries.length ?? 0);
 
   if (commandPending) return "Updating";
   if (commandFailed) return "Update failed";

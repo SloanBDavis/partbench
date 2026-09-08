@@ -356,7 +356,7 @@ function toRectangleExtrudePrimitive(
         kind: "box",
         dimensions: { width, height: source.depth, depth: height },
         transform: {
-          translation: [center[0], normalOffset, center[1]],
+          translation: [center[0], -normalOffset, center[1]],
           rotation: [0, 0, 0],
           scale: [1, 1, 1]
         }
@@ -403,8 +403,8 @@ function toCircleExtrudePrimitive(
         kind: "cylinder",
         dimensions: { radius, height: source.depth },
         transform: {
-          translation: [center[0], normalOffset, center[1]],
-          rotation: [-Math.PI / 2, 0, 0],
+          translation: [center[0], -normalOffset, center[1]],
+          rotation: [Math.PI / 2, 0, 0],
           scale: [1, 1, 1]
         }
       };

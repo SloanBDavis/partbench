@@ -248,7 +248,18 @@ function sanitizeFileToken(value) {
   return String(value).replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
-function matches(actual, expected, exactArrays = false) {
+function matches(actual, expected, exactArrays = false, numberTolerance = 0) {
+  if (
+    numberTolerance > 0 &&
+    typeof actual === "number" &&
+    typeof expected === "number"
+  ) {
+    return (
+      Number.isFinite(actual) &&
+      Number.isFinite(expected) &&
+      Math.abs(actual - expected) <= numberTolerance
+    );
+  }
   if (expected === null || typeof expected !== "object") {
     return Object.is(actual, expected);
   }
@@ -262,14 +273,14 @@ function matches(actual, expected, exactArrays = false) {
       return false;
     }
     return expected.every((item, index) =>
-      matches(actual[index], item, exactArrays)
+      matches(actual[index], item, exactArrays, numberTolerance)
     );
   }
   if (actual === null || typeof actual !== "object") {
     return false;
   }
   return Object.entries(expected).every(([key, value]) =>
-    matches(actual[key], value, exactArrays)
+    matches(actual[key], value, exactArrays, numberTolerance)
   );
 }
 function isExactDisplayReady(state, allowEmpty) {
@@ -304,27 +315,24 @@ function isExactDisplayReady(state, allowEmpty) {
     return false;
   }
   if (exactResults.length > 0) {
-    for (const result of exactResults) {
+    // Consumed construction bodies may be blocked; every displayed final body
+    // must have its own ready exact result. Unsupported is not readiness.
+    for (const body of liveBodies) {
       if (
-        result.status === "pending" ||
-        result.status === "stale" ||
-        result.status === "failed"
+        !exactResults.some(
+          (result) => result.bodyId === body.id && result.status === "ready"
+        )
       ) {
         return false;
       }
     }
   } else {
-    if (
-      exact.some(
-        (status) =>
-          status === "pending" || status === "stale" || status === "failed"
-      )
-    ) {
+    if (exact.some((status) => status !== "ready")) {
       return false;
     }
   }
   const display = state.displayStatuses ?? [];
-  if (display.some((status) => status === "pending")) {
+  if (display.some((status) => status !== "ready")) {
     return false;
   }
   return true;
@@ -787,7 +795,7 @@ async function expectStructure(view, name, expected) {
     }
     if (
       isExactDisplayReady(state, false) &&
-      matches(state.structureQuery, expected, true)
+      matches(state.structureQuery, expected, true, 1e-7)
     )
       return;
     await delay(50);
@@ -842,7 +850,11 @@ async function assertUseOutcome(view, name, scenario, clicks) {
     }
   }
   for (const expectedAssembly of expectSpec.assemblies ?? []) {
-    if (!someMatches(assemblies, expectedAssembly)) {
+    if (
+      !assemblies.some((assembly) =>
+        matches(assembly, expectedAssembly, true, 1e-7)
+      )
+    ) {
       throw new Error(
         name +
           " use did not produce " +
@@ -1010,6 +1022,33 @@ async function runUseSteps(view, name, steps, label) {
     }
     if (step.expectStructure) {
       await expectStructure(view, name + " " + label, step.expectStructure);
+      continue;
+    }
+    if (step.expectViewport) {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: false
+      });
+      const deadline = Date.now() + 10_000;
+      let state;
+      do {
+        state = await getState(view);
+        if (state.commandError || isTerminalFailure(state))
+          throw new Error(name + " viewport failed: " + state.diagnostic);
+        if (
+          isExactDisplayReady(state, false) &&
+          matches(state.viewport, step.expectViewport, true)
+        )
+          break;
+        await delay(50);
+      } while (Date.now() < deadline);
+      if (
+        !isExactDisplayReady(state, false) ||
+        !matches(state.viewport, step.expectViewport, true)
+      )
+        throw new Error(
+          name + " viewport mismatch: " + JSON.stringify(state.viewport)
+        );
       continue;
     }
     if (step.waitReady) {

@@ -40,6 +40,34 @@ describe("agent assembly inspection", () => {
         assemblyId: "assembly",
         kind: "fixed",
         instanceId: "instance"
+      },
+      {
+        op: "parameter.create",
+        id: "joint_angle",
+        name: "Joint angle",
+        value: 30
+      },
+      {
+        op: "assembly.instance.insert",
+        id: "child",
+        assemblyId: "assembly",
+        definition: { kind: "body", bodyId: "part" }
+      },
+      {
+        op: "assembly.mate.create",
+        id: "joint",
+        assemblyId: "assembly",
+        kind: "revolute",
+        primary: {
+          instanceId: "instance",
+          frame: { kind: "sketch", sketchId: "outline", entityId: "circle" }
+        },
+        secondary: {
+          instanceId: "child",
+          frame: { kind: "sketch", sketchId: "outline", entityId: "circle" }
+        },
+        angleParameterId: "joint_angle",
+        offset: 2
       }
     ]);
     const reopened = importCadProject(exportCadProject(engine));
@@ -53,8 +81,34 @@ describe("agent assembly inspection", () => {
     ).toMatchObject([
       {
         id: "assembly",
-        instances: [{ id: "instance", transform: { translation: [5, 6, 7] } }],
-        mates: [{ id: "ground", kind: "fixed" }]
+        instances: [
+          { id: "instance", transform: { translation: [5, 6, 7] } },
+          {
+            id: "child",
+            transform: {
+              translation: [5, 6, 9],
+              rotation: [
+                expect.closeTo(0),
+                expect.closeTo(0),
+                expect.closeTo(Math.PI / 6)
+              ]
+            }
+          }
+        ],
+        mates: [
+          { id: "ground", kind: "fixed" },
+          {
+            id: "joint",
+            kind: "revolute",
+            angleDegrees: 30,
+            angleParameterId: "joint_angle",
+            offset: 2,
+            primary: {
+              instanceId: "instance",
+              frame: { kind: "sketch", sketchId: "outline", entityId: "circle" }
+            }
+          }
+        ]
       }
     ]);
     expect(

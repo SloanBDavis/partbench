@@ -1,3 +1,4 @@
+import { getOcctStandardSketchFrame } from "./occtAxes";
 import type {
   OpenCascadeInstance,
   TopoDS_Edge,
@@ -617,29 +618,7 @@ function getExtrudeFrame(
     };
   }
 
-  switch (source.sketchPlane) {
-    case "XY":
-      return {
-        origin: [0, 0, 0],
-        uAxis: [1, 0, 0],
-        vAxis: [0, 1, 0],
-        normalAxis: [0, 0, 1]
-      };
-    case "XZ":
-      return {
-        origin: [0, 0, 0],
-        uAxis: [1, 0, 0],
-        vAxis: [0, 0, 1],
-        normalAxis: [0, 1, 0]
-      };
-    case "YZ":
-      return {
-        origin: [0, 0, 0],
-        uAxis: [0, 1, 0],
-        vAxis: [0, 0, 1],
-        normalAxis: [1, 0, 0]
-      };
-  }
+  return getOcctStandardSketchFrame(source.sketchPlane);
 }
 
 function mapFramePoint(

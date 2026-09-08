@@ -11,9 +11,18 @@ and used 89 operations to revise the arm length and opening while preserving
 the pose. These workarounds are part of the finding, not evidence that the
 original workflow is complete.
 
-Product code stayed at the baseline throughout. The defects below remain open.
+Product code stayed at the baseline throughout this experiment. At its close,
+the defects below remained open.
 This delivery contains the observed findings and reproducible authored inputs,
 not a new product release or a claim of superiority to another CAD tool.
+
+Historical follow-up: the user subsequently authorized
+[robot arm workflow fixes](./robot-arm-fixes.md). The
+[connected example](../examples/robot-arm-workflow/README.md) now demonstrates
+a three-operation length/opening/angle revision, compared with this trial's
+89-operation reconstruction. The follow-up passed headless,
+browser, native compatibility and STEP verification. The findings below
+remain the record of the original baseline and are not rewritten as successes.
 
 ## Result and next work
 

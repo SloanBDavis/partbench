@@ -14,6 +14,30 @@ const positive = { type: "number", exclusiveMinimum: 0 };
 const axes = { enum: ["x", "y", "z"] };
 const planes = { enum: ["XY", "XZ", "YZ"] };
 const vec3 = { type: "array", minItems: 3, maxItems: 3, items: number };
+const transform = {
+  ...object(
+    {
+      translation: {
+        ...vec3,
+        description:
+          "[x,y,z] translation in document length units, applied last; default [0,0,0]."
+      },
+      rotation: {
+        ...vec3,
+        description:
+          "[x,y,z] Euler angles in radians, applied X then Y then Z; default [0,0,0]."
+      },
+      scale: {
+        ...vec3,
+        description:
+          "Dimensionless [x,y,z] scale, applied before rotation; default [1,1,1]. Revolute-connected instances require [1,1,1]."
+      }
+    },
+    []
+  ),
+  description:
+    "Definition-local point → componentwise scale → X, Y, Z rotations (radians) → translation in assembly coordinates. Insert defaults missing fields to identity; update preserves them."
+};
 const featureFields = { id, bodyId: id, name: id };
 const targetFields = { targetBodyId: id, targetTopologyAnchorId: id };
 const proof = {
@@ -146,9 +170,21 @@ export function createModelingOpSchemas(
   const planeRef = object(
     {
       instanceId: id,
-      plane: planes,
-      offset: number,
-      flip: { type: "boolean" }
+      plane: {
+        ...planes,
+        description:
+          "Definition-local mate plane; unflipped normals are +Z for XY, +Y for XZ, and +X for YZ."
+      },
+      offset: {
+        ...number,
+        description:
+          "Offset in document units along the unflipped mate-plane normal; default 0."
+      },
+      flip: {
+        type: "boolean",
+        description:
+          "Reverse the mate-plane normal, retaining its offset point; default false."
+      }
     },
     ["instanceId", "plane"]
   );
@@ -156,6 +192,46 @@ export function createModelingOpSchemas(
     { instanceId: id, axis: { enum: ["X", "Y", "Z"] }, origin: vec3 },
     ["instanceId", "axis"]
   );
+  const definition = object({ kind: { const: "body" }, bodyId: id });
+  const frameRef = object({
+    instanceId: id,
+    frame: {
+      oneOf: [
+        {
+          ...object({
+            kind: { const: "local" },
+            origin: vec3,
+            xDirection: vec3,
+            zDirection: vec3
+          }),
+          description:
+            "Complete definition-local frame. Origin uses document units; nonzero orthogonal X/Z directions are normalized. Numeric origins do not follow sketch edits."
+        },
+        {
+          ...object(
+            {
+              kind: { const: "sketch" },
+              sketchId: id,
+              entityId: id,
+              offset: {
+                ...number,
+                description:
+                  "Distance along the unflipped sketch normal in document units; default 0."
+              },
+              flip: {
+                type: "boolean",
+                description:
+                  "Reverse frame Z and Y, retaining X; default false."
+              }
+            },
+            ["kind", "sketchId", "entityId"]
+          ),
+          description:
+            "Frame at an authored circle center or point. The unattached XY/XZ/YZ sketch must be in the instance body's source ancestry. Tracks evaluated sketch edits and dimensions."
+        }
+      ]
+    }
+  });
 
   return [
     op(
@@ -301,13 +377,38 @@ export function createModelingOpSchemas(
         id,
         assemblyId: id,
         name: id,
-        definition: object({ kind: { const: "body" }, bodyId: id }),
-        transform: object(
-          { translation: vec3, rotation: vec3, scale: vec3 },
-          []
-        )
+        definition,
+        transform
       },
       "Insert an instance of a finished body without duplicating its geometry. Transform defaults to identity."
+    ),
+    op(
+      "assembly.instance.updateTransform",
+      ["assemblyId", "instanceId", "transform"],
+      {
+        assemblyId: id,
+        instanceId: id,
+        transform: { ...transform, minProperties: 1 }
+      },
+      "Update a free instance or fixed root's pose in place, preserving omitted fields and propagating connected descendants. Edit a constrained child's mate to change its pose."
+    ),
+    op(
+      "assembly.instance.replace",
+      ["assemblyId", "instanceId", "definition"],
+      { assemblyId: id, instanceId: id, definition },
+      "Replace an instance's body definition while preserving its ID, name and transform. Retained mate references must remain valid."
+    ),
+    op(
+      "assembly.instance.delete",
+      ["assemblyId", "instanceId"],
+      { assemblyId: id, instanceId: id },
+      "Delete an instance and cascade-delete its referencing mates."
+    ),
+    op(
+      "assembly.mate.delete",
+      ["assemblyId", "mateId"],
+      { assemblyId: id, mateId: id },
+      "Delete a mate while retaining its instances."
     ),
     ...["create", "edit"].flatMap((action) => {
       const fields = {
@@ -317,32 +418,81 @@ export function createModelingOpSchemas(
       };
       const required =
         action === "create" ? ["assemblyId"] : ["assemblyId", "mateId"];
+      const editNote =
+        action === "edit"
+          ? " Full replacement: include kind, references and value/binding fields; omitted name is preserved."
+          : "";
       return [
         op(
           `assembly.mate.${action}`,
           [...required, "kind", "instanceId"],
           { ...fields, kind: { const: "fixed" }, instanceId: id },
-          "Ground one instance before adding relational mates."
+          `Ground one instance before adding relational mates. Connected constraints form a rooted forest; conflicting roots, cycles and multiple parents reject.${editNote}`
         ),
         ...["coincident", "concentric", "distance"].map((kind) =>
           op(
             `assembly.mate.${action}`,
-            [
-              ...required,
-              "kind",
-              "primary",
-              "secondary",
-              ...(kind === "distance" ? ["distance"] : [])
-            ],
+            [...required, "kind", "primary", "secondary"],
             {
               ...fields,
               kind: { const: kind },
               primary: kind === "concentric" ? axisRef : planeRef,
               secondary: kind === "concentric" ? axisRef : planeRef,
-              ...(kind === "distance" ? { distance: number } : {})
+              ...(kind === "distance"
+                ? {
+                    distance: {
+                      ...number,
+                      description:
+                        "Signed plane separation in document units; mutually exclusive with distanceParameterId."
+                    },
+                    distanceParameterId: {
+                      ...id,
+                      description:
+                        "Parameter ID; its evaluated numeric value drives plane separation in document units."
+                    }
+                  }
+                : {})
             },
-            "Constrain two instances. One side must already be grounded; references are definition-local standard planes or axes."
+            `Constrain two instances connected to a fixed root. References are definition-local standard planes or axes; the unconstrained degrees of freedom are preserved.${editNote}`,
+            kind === "distance"
+              ? exactlyOne("distance", "distanceParameterId")
+              : {}
           )
+        ),
+        op(
+          `assembly.mate.${action}`,
+          [...required, "kind", "primary", "secondary"],
+          {
+            ...fields,
+            kind: { const: "revolute" },
+            primary: frameRef,
+            secondary: frameRef,
+            angleDegrees: {
+              ...number,
+              description:
+                "Signed rotation about primary frame Z, in degrees; mutually exclusive with angleParameterId."
+            },
+            angleParameterId: {
+              ...id,
+              description:
+                "Parameter ID; its evaluated numeric value is interpreted in degrees."
+            },
+            offset: {
+              ...number,
+              description:
+                "Signed separation along primary frame Z in document units; default 0, mutually exclusive with offsetParameterId."
+            },
+            offsetParameterId: {
+              ...id,
+              description:
+                "Parameter ID; its evaluated numeric value sets separation along primary frame Z in document units."
+            }
+          },
+          `Connect complete joint frames and solve the child pose at an angle about primary Z. Instances require unit scale. Sketch frames follow authored geometry; local frames retain numeric coordinates.${editNote}`,
+          {
+            ...exactlyOne("angleDegrees", "angleParameterId"),
+            not: { required: ["offset", "offsetParameterId"] }
+          }
         )
       ];
     })

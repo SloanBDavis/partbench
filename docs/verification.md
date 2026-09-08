@@ -56,6 +56,18 @@ through headless sessions and a browser Open/edit journey.
 
 ## Passing record
 
+The [robot arm fixes record](./robot-arm-fixes.md#verification-record) documents
+the connected assembly closer, focused CADOps scenario, browser controls and
+native/STEP evidence. Run `pnpm smoke:robot-arm` before
+`pnpm smoke:robot-arm:browser`; the browser command uses the generated WCAD.
+The two fast journeys in `smoke:e2e` remain separate from this fuller closer.
+
+Robot-arm browser assertions require a ready exact result for every active
+body and ready display entries. Consumed intermediate bodies are excluded.
+Pose comparisons allow `1e-7` numeric tolerance; expected arrays retain strict
+length checks. `expectViewport` checks the rendered mesh identities, so extra
+definition meshes cannot pass merely because the document is correct.
+
 2026-09-02 1:08 AM PT. `pnpm smoke:ui-use -- scenarios/v25-feature-pattern-fillet.json`. chrome /usr/bin/google-chrome. backend HeadlessChrome/151.0.0.0 (not WebKit). Template Use is box Apply (open Box, type width 20, Apply, solid). Break: width 0 -> Apply disabled (blocked control, not a freeze). Screenshot `.metrics/ui-smoke/v25-feature-pattern-fillet-use.png`.
 
 2026-09-04 PT. Fixed mate Apply Use on v26-fixed-root. Chromium not WebKit. Break: empty instance Apply disabled. Success screenshot under ui-smoke for fixed-root-use.

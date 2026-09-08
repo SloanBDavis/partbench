@@ -130,7 +130,10 @@ function runCadopsScenario(name, scenario) {
   for (const step of scenario.steps) {
     if (step.persistRoundTrip) {
       const exported = exportCadProject(engine);
-      if (step.expect?.schemaVersion && exported.schemaVersion !== step.expect.schemaVersion) {
+      if (
+        step.expect?.schemaVersion &&
+        exported.schemaVersion !== step.expect.schemaVersion
+      ) {
         fail(
           `${name} ${step.id} schemaVersion mismatch.\nexpected ${step.expect.schemaVersion}\nactual ${exported.schemaVersion}`
         );
@@ -148,11 +151,7 @@ function runCadopsScenario(name, scenario) {
         });
         assertPublicJson(response, `${name} ${step.id} query`);
         if (queryCase.expect) {
-          assertMatch(
-            response,
-            queryCase.expect,
-            `${name} ${step.id} query`
-          );
+          assertMatch(response, queryCase.expect, `${name} ${step.id} query`);
         }
       }
       continue;
@@ -168,10 +167,12 @@ function runCadopsScenario(name, scenario) {
       if (!thrown) {
         fail(`${name} ${step.id} expected a structured error.`);
       }
-      const message =
-        thrown instanceof Error ? thrown.message : String(thrown);
+      const message = thrown instanceof Error ? thrown.message : String(thrown);
       const validationError = thrown?.validationError;
-      if (step.expect.error.code && validationError?.code !== step.expect.error.code) {
+      if (
+        step.expect.error.code &&
+        validationError?.code !== step.expect.error.code
+      ) {
         fail(
           `${name} ${step.id} error code mismatch.\nexpected ${step.expect.error.code}\nactual ${validationError?.code ?? message}`
         );
@@ -190,11 +191,7 @@ function runCadopsScenario(name, scenario) {
     const result = engine.applyBatch(step.ops);
     const appliedOps = result.transaction.ops.map((op) => op.op);
     if (step.expect?.ops) {
-      assertMatch(
-        appliedOps,
-        step.expect.ops,
-        `${name} ${step.id} ops`
-      );
+      assertMatch(appliedOps, step.expect.ops, `${name} ${step.id} ops`);
     }
     if (step.expect?.diff) {
       assertMatch(
@@ -210,11 +207,7 @@ function runCadopsScenario(name, scenario) {
       });
       assertPublicJson(response, `${name} ${step.id} query`);
       if (queryCase.expect) {
-        assertMatch(
-          response,
-          queryCase.expect,
-          `${name} ${step.id} query`
-        );
+        assertMatch(response, queryCase.expect, `${name} ${step.id} query`);
       }
     }
   }
@@ -264,12 +257,16 @@ function runCase(scenario, testCase) {
 }
 
 async function loadScenarios() {
-  const names = (await readdir(scenariosDir))
-    .filter((name) => name.endsWith(".json"))
-    .sort();
+  const selected = process.argv.slice(2).filter((name) => name !== "--");
+  const names = selected.length
+    ? selected.map((name) => resolve(repoRoot, name))
+    : (await readdir(scenariosDir))
+        .filter((name) => name.endsWith(".json"))
+        .sort()
+        .map((name) => resolve(scenariosDir, name));
   const loaded = [];
   for (const name of names) {
-    const raw = await readFile(resolve(scenariosDir, name), "utf8");
+    const raw = await readFile(name, "utf8");
     loaded.push({ name, scenario: JSON.parse(raw) });
   }
   return loaded;

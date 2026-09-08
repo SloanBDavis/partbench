@@ -36,6 +36,10 @@ import type {
   FeatureOffsetSide,
   FeatureOffsetSource,
   FeatureUpdateOffsetOp,
+  AssemblyMateFrameRef,
+  AssemblyInstanceUpdateTransformOp,
+  AssemblyRevoluteMateCreateOp,
+  AssemblyRevoluteMateEditOp,
   AssemblyMateCreateOp,
   AssemblyMateEditOp,
   AssemblyMateDeleteOp,
@@ -226,11 +230,38 @@ export interface AssemblyConcentricMateForm {
 
 export interface AssemblyDistanceMateForm {
   readonly id: string;
+  readonly mateId?: string;
   readonly name: string;
   readonly assemblyId: string;
   readonly primary: AssemblyCoincidentMatePlaneForm;
   readonly secondary: AssemblyCoincidentMatePlaneForm;
   readonly distance: number;
+  readonly distanceParameterId?: string;
+}
+
+export interface AssemblyRevoluteMateForm {
+  readonly id: string;
+  readonly mateId?: string;
+  readonly name: string;
+  readonly assemblyId: string;
+  readonly primary: AssemblyMateFrameRef;
+  readonly secondary: AssemblyMateFrameRef;
+  readonly angleDegrees: number;
+  readonly angleParameterId?: string;
+  readonly offset: number;
+  readonly offsetParameterId?: string;
+}
+
+/** Rotation inputs are degrees; CADOps transforms use radians. */
+export interface AssemblyInstancePoseForm {
+  readonly assemblyId: string;
+  readonly instanceId: string;
+  readonly translationX: number;
+  readonly translationY: number;
+  readonly translationZ: number;
+  readonly rotationX: number;
+  readonly rotationY: number;
+  readonly rotationZ: number;
 }
 
 export interface AssemblyInstanceReplaceForm {
@@ -251,6 +282,7 @@ export interface AssemblyDistanceMateEditForm {
   readonly primary: AssemblyCoincidentMatePlaneForm;
   readonly secondary: AssemblyCoincidentMatePlaneForm;
   readonly distance: number;
+  readonly distanceParameterId?: string;
 }
 
 export interface AssemblyMateDeleteForm {
@@ -854,7 +886,46 @@ export function buildAssemblyDistanceMateOp(
       ...(form.secondary.offset !== 0 ? { offset: form.secondary.offset } : {}),
       ...(form.secondary.flip ? { flip: true } : {})
     },
-    distance: form.distance
+    ...(form.distanceParameterId !== undefined
+      ? { distanceParameterId: form.distanceParameterId.trim() }
+      : { distance: form.distance })
+  };
+}
+
+export function buildAssemblyRevoluteMateOp(
+  form: AssemblyRevoluteMateForm
+): AssemblyRevoluteMateCreateOp | AssemblyRevoluteMateEditOp {
+  return {
+    ...(form.mateId !== undefined
+      ? { op: "assembly.mate.edit" as const, mateId: form.mateId.trim() }
+      : { op: "assembly.mate.create" as const, id: normalizeOptionalId(form.id) }),
+    assemblyId: form.assemblyId.trim(),
+    name: form.name.trim() || undefined,
+    kind: "revolute",
+    primary: form.primary,
+    secondary: form.secondary,
+    ...(form.angleParameterId !== undefined
+      ? { angleParameterId: form.angleParameterId.trim() }
+      : { angleDegrees: form.angleDegrees }),
+    ...(form.offsetParameterId !== undefined
+      ? { offsetParameterId: form.offsetParameterId.trim() }
+      : { offset: form.offset })
+  };
+}
+
+export function buildAssemblyInstancePoseOp(
+  form: AssemblyInstancePoseForm
+): AssemblyInstanceUpdateTransformOp {
+  return {
+    op: "assembly.instance.updateTransform",
+    assemblyId: form.assemblyId.trim(),
+    instanceId: form.instanceId.trim(),
+    transform: {
+      translation: [form.translationX, form.translationY, form.translationZ],
+      rotation: [form.rotationX, form.rotationY, form.rotationZ].map(
+        (degrees) => degrees * Math.PI / 180
+      ) as [number, number, number]
+    }
   };
 }
 
@@ -900,7 +971,9 @@ export function buildAssemblyDistanceMateEditOp(
       ...(form.secondary.offset !== 0 ? { offset: form.secondary.offset } : {}),
       ...(form.secondary.flip ? { flip: true } : {})
     },
-    distance: form.distance
+    ...(form.distanceParameterId !== undefined
+      ? { distanceParameterId: form.distanceParameterId.trim() }
+      : { distance: form.distance })
   };
 }
 

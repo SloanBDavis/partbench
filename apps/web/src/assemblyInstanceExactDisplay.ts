@@ -3,7 +3,11 @@ import type {
   AssemblySnapshot,
   Transform
 } from "@web-cad/cad-protocol";
-import type { RenderTransform, RenderTriangleMesh } from "@web-cad/renderer";
+import type {
+  RenderPrimitive,
+  RenderTransform,
+  RenderTriangleMesh
+} from "@web-cad/renderer";
 import { documentTreeSelectionKey } from "./workbench/documentTreeProjection";
 
 export interface AssemblyInstanceExactDisplayRef {
@@ -16,6 +20,32 @@ export interface AssemblyInstanceExactDisplayRef {
 }
 
 const ASSEMBLY_INSTANCE_RENDER_ID_PREFIX = "assembly-instance:";
+
+/** Select a derived view without changing definitions or assembly source. */
+export function createAssemblySceneView(input: {
+  readonly base: {
+    readonly primitives: readonly RenderPrimitive[];
+    readonly meshes: readonly RenderTriangleMesh[];
+  };
+  readonly assemblies: readonly AssemblySnapshot[];
+  readonly view: "assembly" | "parts";
+}) {
+  if (
+    input.view === "parts" ||
+    !input.assemblies.some((assembly) => assembly.instances.length > 0)
+  ) {
+    return input.base;
+  }
+  return {
+    primitives: [],
+    meshes: createAssemblyInstanceExactDisplayMeshes({
+      assemblies: input.assemblies,
+      definitionMeshesByBodyId: new Map(
+        input.base.meshes.map((mesh) => [mesh.id, mesh])
+      )
+    })
+  };
+}
 
 export function createAssemblyInstanceRenderId(
   assemblyId: string,

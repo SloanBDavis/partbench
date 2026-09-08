@@ -9,6 +9,11 @@ headless exact sessions. Host-independent exact source resolution, checkpoint
 handling, and STEP execution live in `cad-runtime`; browser and Node hosts
 retain their own worker/display and file delivery adapters.
 
+The [robot arm workflow](./robot-arm-fixes.md) extends authored assemblies with
+connected joints, source-linked frames and parameter-driven poses. cad-core
+solves these constraints transactionally; browser instance meshes remain
+derived views of exact part definitions.
+
 ## Authorities
 
 CADOps is the center. cad-core is the document authority. OCCT/WASM is the

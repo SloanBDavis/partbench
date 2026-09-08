@@ -460,6 +460,32 @@ export function ensureWcadFileExtension(fileName: string): string {
     : `${base}${WCAD_PACKAGE_EXTENSION}`;
 }
 
+/** Upload fallback addresses picker access, never a failure in a selected project. */
+export function resolveWcadOpenFailure(
+  error: unknown,
+  input: { readonly fileSelected: boolean; readonly uploadAvailable: boolean }
+): {
+  readonly cancelled: boolean;
+  readonly offerUpload: boolean;
+  readonly message: string;
+  readonly detail: string;
+} {
+  const detail = error instanceof Error ? error.message : "Open failed.";
+  const cancelled = !input.fileSelected && isFilePickerAbort(error);
+  const offerUpload =
+    !cancelled && !input.fileSelected && input.uploadAvailable;
+  return {
+    cancelled,
+    offerUpload,
+    detail,
+    message: cancelled
+      ? "Open .wcad was cancelled."
+      : offerUpload
+        ? `Direct open failed: ${detail} Choose a .wcad file to upload.`
+        : `Could not open .wcad package: ${detail}`
+  };
+}
+
 export function isFilePickerAbort(error: unknown): boolean {
   return (
     typeof error === "object" &&

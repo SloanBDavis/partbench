@@ -17,6 +17,20 @@ contracts and an async executor helper so the browser can use its current
 `CadEngine` and shared `AsyncCadCommandExecutor`; document authority does not
 move into this package.
 
+Assembly edits use the same CADOps batch parser and operation review as other
+modeling commands: `assembly.instance.updateTransform`, definition replacement,
+and fixed/coincident/concentric/distance/revolute mate creation and editing.
+Joint frames and numeric parameter bindings remain public source references;
+cad-core validates ancestry, constraints and connected pose propagation.
+`project.structure` returns assemblies, resolved instance transforms and mates
+with their parameter IDs, without requesting a full project handoff.
+
+Instance transforms scale a definition-local point, rotate X then Y then Z in
+**radians**, and translate in document length units. Revolute mate angles are
+**degrees**; mate distances and frame offsets use document length units.
+See the [public usage guide](../../docs/agent-runtime-usage.md#connected-assemblies)
+for complete command shapes and authored sketch frames that follow revisions.
+
 V21 projects cad-core's exact-export plan and bounded current artifact evidence
 through the existing read/query path. It reports readiness, diagnostics, units,
 names, order, and identities only; it never returns B-rep/STEP bytes, file

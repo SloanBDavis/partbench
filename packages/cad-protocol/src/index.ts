@@ -194,7 +194,9 @@ export interface CadTransactionAuditMetadata {
 }
 
 export interface Transform {
+  /** Translation in document units. */
   readonly translation: Vec3;
+  /** Radians, applied about X then Y then Z: R = Rz * Ry * Rx. */
   readonly rotation: Vec3;
   readonly scale: Vec3;
 }
@@ -565,6 +567,7 @@ export type CadOp =
   | DatumAxisCreateOp
   | AssemblyCreateOp
   | AssemblyInstanceInsertOp
+  | AssemblyInstanceUpdateTransformOp
   | AssemblyInstanceReplaceOp
   | AssemblyInstanceDeleteOp
   | AssemblyMateCreateOp
@@ -1711,12 +1714,56 @@ export interface AssemblyInstanceInsertOp {
   readonly transform?: Partial<Transform>;
 }
 
+/** Move a free instance or grounded root; constrained descendants follow. */
+export interface AssemblyInstanceUpdateTransformOp {
+  readonly op: "assembly.instance.updateTransform";
+  readonly assemblyId: AssemblyId;
+  readonly instanceId: InstanceId;
+  readonly transform: Partial<Transform>;
+}
+
 /** V26 mate kinds. Slices B–E: fixed + coincident + concentric + distance. */
 export type AssemblyMateKind =
   | "coincident"
   | "concentric"
   | "distance"
+  | "revolute"
   | "fixed";
+
+/** A definition-local complete joint frame; no derived topology identities. */
+export interface AssemblyMateFrameRef {
+  readonly instanceId: InstanceId;
+  readonly frame:
+    | {
+        readonly kind: "local";
+        readonly origin: Vec3;
+        /** Nonzero orthogonal directions, normalized by the solver. */
+        readonly xDirection: Vec3;
+        readonly zDirection: Vec3;
+      }
+    | {
+        readonly kind: "sketch";
+        readonly sketchId: SketchId;
+        /** An authored circle center or point on a standard-plane sketch. */
+        readonly entityId: SketchEntityId;
+        /** Offset along the unflipped sketch normal, in document units. */
+        readonly offset?: number;
+        /** Reverse frame Z (and Y), retaining frame X. */
+        readonly flip?: boolean;
+      };
+}
+
+export type AssemblyMateDistanceValue =
+  | { readonly distance: number; readonly distanceParameterId?: never }
+  | { readonly distance?: never; readonly distanceParameterId: ParameterId };
+
+export type AssemblyMateAngleValue =
+  | { readonly angleDegrees: number; readonly angleParameterId?: never }
+  | { readonly angleDegrees?: never; readonly angleParameterId: ParameterId };
+
+export type AssemblyMateOffsetValue =
+  | { readonly offset?: number; readonly offsetParameterId?: never }
+  | { readonly offset?: never; readonly offsetParameterId: ParameterId };
 
 /** Instance-local standard plane for coincident (definition space). */
 export type AssemblyMatePlaneName = FeatureMirrorPlane;
@@ -1751,7 +1798,8 @@ export type AssemblyMateCreateOp =
   | AssemblyFixedMateCreateOp
   | AssemblyCoincidentMateCreateOp
   | AssemblyConcentricMateCreateOp
-  | AssemblyDistanceMateCreateOp;
+  | AssemblyDistanceMateCreateOp
+  | AssemblyRevoluteMateCreateOp;
 
 export interface AssemblyFixedMateCreateOp {
   readonly op: "assembly.mate.create";
@@ -1783,7 +1831,7 @@ export interface AssemblyConcentricMateCreateOp {
   readonly secondary: AssemblyMateAxisRef;
 }
 
-export interface AssemblyDistanceMateCreateOp {
+export type AssemblyDistanceMateCreateOp = AssemblyMateDistanceValue & {
   readonly op: "assembly.mate.create";
   readonly id?: MateId;
   readonly assemblyId: AssemblyId;
@@ -1791,9 +1839,19 @@ export interface AssemblyDistanceMateCreateOp {
   readonly kind: "distance";
   readonly primary: AssemblyMatePlaneRef;
   readonly secondary: AssemblyMatePlaneRef;
-  /** Signed separation along the stationary plane normal after pose solve. */
-  readonly distance: number;
-}
+};
+
+/** Full child pose: align joint frames, rotate about primary Z, offset on Z. */
+export type AssemblyRevoluteMateCreateOp = AssemblyMateAngleValue &
+  AssemblyMateOffsetValue & {
+    readonly op: "assembly.mate.create";
+    readonly id?: MateId;
+    readonly assemblyId: AssemblyId;
+    readonly name?: string;
+    readonly kind: "revolute";
+    readonly primary: AssemblyMateFrameRef;
+    readonly secondary: AssemblyMateFrameRef;
+  };
 
 /** Replace an instance's part definition (keep id, name, transform). */
 export interface AssemblyInstanceReplaceOp {
@@ -1818,7 +1876,8 @@ export type AssemblyMateEditOp =
   | AssemblyFixedMateEditOp
   | AssemblyCoincidentMateEditOp
   | AssemblyConcentricMateEditOp
-  | AssemblyDistanceMateEditOp;
+  | AssemblyDistanceMateEditOp
+  | AssemblyRevoluteMateEditOp;
 
 export interface AssemblyFixedMateEditOp {
   readonly op: "assembly.mate.edit";
@@ -1849,7 +1908,7 @@ export interface AssemblyConcentricMateEditOp {
   readonly secondary: AssemblyMateAxisRef;
 }
 
-export interface AssemblyDistanceMateEditOp {
+export type AssemblyDistanceMateEditOp = AssemblyMateDistanceValue & {
   readonly op: "assembly.mate.edit";
   readonly assemblyId: AssemblyId;
   readonly mateId: MateId;
@@ -1857,8 +1916,19 @@ export interface AssemblyDistanceMateEditOp {
   readonly kind: "distance";
   readonly primary: AssemblyMatePlaneRef;
   readonly secondary: AssemblyMatePlaneRef;
-  readonly distance: number;
-}
+};
+
+/** Full replacement of refs/value bindings; omitted name preserves the name. */
+export type AssemblyRevoluteMateEditOp = AssemblyMateAngleValue &
+  AssemblyMateOffsetValue & {
+    readonly op: "assembly.mate.edit";
+    readonly assemblyId: AssemblyId;
+    readonly mateId: MateId;
+    readonly name?: string;
+    readonly kind: "revolute";
+    readonly primary: AssemblyMateFrameRef;
+    readonly secondary: AssemblyMateFrameRef;
+  };
 
 export interface AssemblyMateDeleteOp {
   readonly op: "assembly.mate.delete";
@@ -2142,16 +2212,18 @@ export interface FeatureMirrorOp {
   readonly name?: string;
 }
 
-export const FEATURE_COMBINE_MODES = ["union", "subtract", "intersect"] as const;
+export const FEATURE_COMBINE_MODES = [
+  "union",
+  "subtract",
+  "intersect"
+] as const;
 
 export type FeatureCombineMode = (typeof FEATURE_COMBINE_MODES)[number];
 
 export function isFeatureCombineMode(
   value: unknown
 ): value is FeatureCombineMode {
-  return (
-    value === "union" || value === "subtract" || value === "intersect"
-  );
+  return value === "union" || value === "subtract" || value === "intersect";
 }
 
 export interface FeatureCombineOp {
@@ -2519,7 +2591,9 @@ export type CadAssemblyMateRef =
       readonly primary: AssemblyMatePlaneRef;
       readonly secondary: AssemblyMatePlaneRef;
       readonly distance: number;
-    };
+      readonly distanceParameterId?: ParameterId;
+    }
+  | (AssemblyRevoluteMateSnapshot & { readonly assemblyId: AssemblyId });
 
 export interface CadSketchEntityRef {
   readonly sketchId: SketchId;
@@ -2706,9 +2780,7 @@ export interface CadDraftFeatureRef {
   readonly draftedFaces: readonly FeatureDraftedFaceRecord[];
 }
 
-export type CadSweepFeatureRef =
-  | SweepFeatureSnapshot
-  | SweepFeatureV21;
+export type CadSweepFeatureRef = SweepFeatureSnapshot | SweepFeatureV21;
 export type CadLoftFeatureRef = LoftFeatureSnapshot;
 
 export interface CadShellFeatureRef {
@@ -4394,13 +4466,28 @@ export interface AssemblyDistanceMateSnapshot {
   readonly primary: AssemblyMatePlaneRef;
   readonly secondary: AssemblyMatePlaneRef;
   readonly distance: number;
+  readonly distanceParameterId?: ParameterId;
+}
+
+export interface AssemblyRevoluteMateSnapshot {
+  readonly id: MateId;
+  readonly name: string;
+  readonly kind: "revolute";
+  readonly primary: AssemblyMateFrameRef;
+  readonly secondary: AssemblyMateFrameRef;
+  /** Resolved degrees; parameter binding, when present, is authoritative. */
+  readonly angleDegrees: number;
+  readonly angleParameterId?: ParameterId;
+  readonly offset: number;
+  readonly offsetParameterId?: ParameterId;
 }
 
 export type AssemblyMateSnapshot =
   | AssemblyFixedMateSnapshot
   | AssemblyCoincidentMateSnapshot
   | AssemblyConcentricMateSnapshot
-  | AssemblyDistanceMateSnapshot;
+  | AssemblyDistanceMateSnapshot
+  | AssemblyRevoluteMateSnapshot;
 
 export interface AssemblySnapshot {
   readonly id: AssemblyId;

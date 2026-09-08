@@ -73,6 +73,18 @@ interface ExactState {
   readonly evidence: CadOpsAgentCurrentExactEvidence;
 }
 
+class ExactBodyEvaluationError extends Error {
+  constructor(
+    readonly bodyId: string,
+    readonly featureId: string | undefined,
+    readonly sourceKey: string | undefined,
+    cause: unknown
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "ExactBodyEvaluationError";
+  }
+}
+
 /** A serialized document session; all authored changes remain CADOps transactions. */
 export class CadSession {
   readonly engine: CadEngine;
@@ -314,14 +326,26 @@ export class CadSession {
       await this.#evaluate(candidate, true);
       return response;
     } catch (cause) {
-      const opIndex = Math.max(0, request.batch.ops.length - 1);
-      const op = request.batch.ops[opIndex];
+      const bodyFailure =
+        cause instanceof ExactBodyEvaluationError ? cause : undefined;
+      const opIndex = bodyFailure
+        ? findBodySourceOperation(
+            request,
+            bodyFailure.bodyId,
+            bodyFailure.sourceKey,
+            this.#checkpointPayloads
+          )
+        : undefined;
+      const op = opIndex === undefined ? undefined : request.batch.ops[opIndex];
       const error: CadBatchValidationError = {
         code: "UNSUPPORTED_FEATURE_OPERATION",
         message: `Exact geometry rejected this batch: ${cause instanceof Error ? cause.message : String(cause)}`,
-        opIndex,
-        ...(op ? { op: op.op } : {}),
-        path: `$.ops[${opIndex}]`,
+        ...(bodyFailure
+          ? { bodyId: bodyFailure.bodyId, featureId: bodyFailure.featureId }
+          : {}),
+        ...(opIndex !== undefined && op
+          ? { opIndex, op: op.op, path: `$.ops[${opIndex}]` }
+          : {}),
         expected: "a valid exact result for every active body",
         received: "exact geometry preflight failed; source is unchanged"
       };
@@ -347,26 +371,10 @@ export class CadSession {
 
   async #evaluate(engine: CadEngine, strict: boolean): Promise<ExactState> {
     const epoch = engine.getSourceAuthorityEpoch();
-    const source = readDocumentSources(engine);
-    const geometrySources = createDerivedGeometrySourcesFromDocument(
-      source.document,
-      source.features,
-      source.faces,
-      source.signatures,
-      true
+    const { source, resolutions } = resolveDocumentExactSources(
+      engine,
+      this.#checkpointPayloads
     );
-    const resolutions = resolveCurrentExactBodies({
-      document: source.document,
-      bodies: source.bodies,
-      features: source.features,
-      geometrySources: removeConsumedDerivedGeometrySources(
-        geometrySources,
-        source.features
-      ),
-      artifactGeometrySources: geometrySources,
-      sourceIdentitySignaturesByBodyId: source.signatures,
-      checkpointPayloads: this.#checkpointPayloads
-    });
     const active = new Set(
       source.bodies
         .filter((body) => !body.consumedByFeatureId)
@@ -400,11 +408,15 @@ export class CadSession {
         }
       }
       if (strict && !artifact) {
-        throw (
+        throw new ExactBodyEvaluationError(
+          resolution.bodyId,
+          source.bodies.find((body) => body.id === resolution.bodyId)
+            ?.featureId,
+          exactSourceKey(resolution),
           failure ??
-          new Error(
-            resolution.diagnostics.map(({ message }) => message).join(" ")
-          )
+            new Error(
+              resolution.diagnostics.map(({ message }) => message).join(" ")
+            )
         );
       }
       if (artifact && resolution.status === "ready") {
@@ -582,6 +594,81 @@ export class CadSession {
 
 export function createCadSession(options: CadSessionOptions = {}): CadSession {
   return new CadSession(options);
+}
+
+/**
+ * Locate the last operation that changed the failing body's source, including
+ * upstream edits. Inspect at most 16 prefixes, backwards from the known failed
+ * result; diagnostic work must not become a quadratic replay of a long batch.
+ * No exact rebuild or live mutation. If attribution exceeds that budget, or a
+ * prefix is independently invalid, report body/feature without a guessed index.
+ */
+function findBodySourceOperation(
+  request: CadWorkerRequest,
+  bodyId: string,
+  failedSourceKey: string | undefined,
+  checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[]
+): number | undefined {
+  const signature = (engine: CadEngine) => {
+    const result = resolveDocumentExactSources(
+      engine,
+      checkpointPayloads
+    ).resolutions.find((resolution) => resolution.bodyId === bodyId);
+    // The artifact cache key covers the entire dependency graph; a body's
+    // local topology signature alone misses edits to its upstream features.
+    return exactSourceKey(result);
+  };
+  const stop = Math.max(0, request.batch.ops.length - 16);
+  for (let index = request.batch.ops.length - 1; index >= stop; index--) {
+    const prefix = CadEngine.fromProject(request.project!);
+    const response =
+      index === 0
+        ? { ok: true }
+        : prefix.executeBatch({
+            ...request.batch,
+            mode: "commit",
+            ops: request.batch.ops.slice(0, index),
+            ...(request.batch.audit
+              ? { audit: { ...request.batch.audit, intent: "commit" } }
+              : {})
+          });
+    if (!response.ok) return undefined;
+    if (signature(prefix) !== failedSourceKey) return index;
+  }
+  return undefined;
+}
+
+function exactSourceKey(resolution: CurrentExactBodyResolution | undefined) {
+  return resolution?.status === "ready"
+    ? resolution.cacheKeySha256
+    : JSON.stringify(resolution);
+}
+
+function resolveDocumentExactSources(
+  engine: CadEngine,
+  checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[]
+) {
+  const source = readDocumentSources(engine);
+  const geometrySources = createDerivedGeometrySourcesFromDocument(
+    source.document,
+    source.features,
+    source.faces,
+    source.signatures,
+    true
+  );
+  const resolutions = resolveCurrentExactBodies({
+    document: source.document,
+    bodies: source.bodies,
+    features: source.features,
+    geometrySources: removeConsumedDerivedGeometrySources(
+      geometrySources,
+      source.features
+    ),
+    artifactGeometrySources: geometrySources,
+    sourceIdentitySignaturesByBodyId: source.signatures,
+    checkpointPayloads
+  });
+  return { source, resolutions };
 }
 
 function readDocumentSources(engine: CadEngine) {

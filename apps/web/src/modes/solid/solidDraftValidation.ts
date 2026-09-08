@@ -1,3 +1,4 @@
+import type { AssemblyMateFrameRef } from "@web-cad/cad-protocol";
 import { CAD_PATTERN_COMMAND_INSTANCE_LIMIT } from "@web-cad/cad-core";
 import type {
   FeatureCircularPatternForm,
@@ -23,6 +24,8 @@ import type {
   AssemblyCoincidentMateForm,
   AssemblyConcentricMateForm,
   AssemblyDistanceMateForm,
+  AssemblyRevoluteMateForm,
+  AssemblyInstancePoseForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -161,10 +164,23 @@ export function validateSolidDraft(
     )) {
       return blocked("Choose XY, XZ, or YZ planes.");
     }
-    if (![form.primary.offset, form.secondary.offset, form.distance].every(Number.isFinite)) {
+    if (![form.primary.offset, form.secondary.offset].every(Number.isFinite) || !validAssemblyScalar(form.distance, form.distanceParameterId)) {
       return blocked("Plane offsets and distance must be finite numbers.");
     }
     return ready();
+  }
+  if (kind === "revoluteMate") {
+    const form = draft as AssemblyRevoluteMateForm;
+    if (!form.assemblyId.trim() || (form.mateId !== undefined && !form.mateId.trim())) return blocked("Choose an assembly and valid joint.");
+    if (!form.primary.instanceId.trim() || !form.secondary.instanceId.trim() || form.primary.instanceId === form.secondary.instanceId) return blocked("Choose two different instances.");
+    if (!validAssemblyFrame(form.primary) || !validAssemblyFrame(form.secondary)) return blocked("Choose sketch pivots or finite local frames with nonzero perpendicular X and Z directions.");
+    if (!validAssemblyScalar(form.angleDegrees, form.angleParameterId) || !validAssemblyScalar(form.offset, form.offsetParameterId)) return blocked("Enter finite angle and offset values or choose their parameters.");
+    return ready();
+  }
+  if (kind === "instancePose") {
+    const form = draft as AssemblyInstancePoseForm;
+    return form.assemblyId.trim() && form.instanceId.trim() && [form.translationX, form.translationY, form.translationZ, form.rotationX, form.rotationY, form.rotationZ].every(Number.isFinite)
+      ? ready() : blocked("Choose a free or grounded instance and enter finite position and rotation values.");
   }
   if (kind === "transform") {
     const form = draft as TransformCommandForm;
@@ -370,4 +386,18 @@ function blocked(message: string): FeatureEditorValidation {
 
 function collecting(message: string): FeatureEditorValidation {
   return { status: "collecting", message };
+}
+
+function validAssemblyScalar(value: number, parameterId?: string): boolean {
+  return parameterId !== undefined ? parameterId.trim().length > 0 : Number.isFinite(value);
+}
+
+function validAssemblyFrame(ref: AssemblyMateFrameRef): boolean {
+  const frame = ref.frame;
+  if (frame.kind === "sketch") return Boolean(frame.sketchId.trim() && frame.entityId.trim()) && Number.isFinite(frame.offset ?? 0);
+  if (![...frame.origin, ...frame.xDirection, ...frame.zDirection].every(Number.isFinite)) return false;
+  const xLength = Math.hypot(...frame.xDirection);
+  const zLength = Math.hypot(...frame.zDirection);
+  const dot = frame.xDirection.reduce((sum, value, index) => sum + value * frame.zDirection[index]!, 0);
+  return xLength > 1e-9 && zLength > 1e-9 && Math.abs(dot / xLength / zLength) < 1e-8;
 }

@@ -14,11 +14,32 @@ import {
   createGeneratedFaceReferenceKey,
   createSketchDisplayState,
   createSketchDisplayFrameNormal,
+  createDefaultSketchDisplayFrame,
   mapSketchPlanePointToDisplayFrame,
   mapSketchPointToDisplayFrame
 } from "./sketchDisplayFrames";
 
 describe("sketch display frames", () => {
+  it("preserves physical coordinates through every standard plane frame", () => {
+    for (const plane of ["XY", "XZ", "YZ"] as const) {
+      const frame = createDefaultSketchDisplayFrame(plane);
+      expect(
+        mapSketchPlanePointToDisplayFrame(frame, plane, [3, -4, 7])
+      ).toEqual([3, -4, 7]);
+    }
+  });
+
+  it("places an XZ end-cap attachment at the extruded minus-Y face", () => {
+    const sketch = createAttachedSketch("attached", "endCap", "XZ");
+    const face = createRectangleFace({
+      role: "endCap",
+      normal: [0, -1, 0],
+      depth: 8,
+      sourcePlane: "XZ"
+    });
+    const frame = createAttachedSketchGeometryFrame(sketch, face);
+    expect(frame?.origin).toEqual([0, -8, 0]);
+  });
   it("derives a display frame for an attached rectangle end cap sketch", () => {
     const sketch = createAttachedSketch("sketch_face_1", "endCap", "XY");
     const face = createRectangleFace({
@@ -218,6 +239,7 @@ function createRectangleFace({
   normal,
   role,
   side = "positive",
+  sourcePlane = "XY",
   width = 4
 }: {
   readonly depth: number;
@@ -225,6 +247,7 @@ function createRectangleFace({
   readonly normal: Vec3;
   readonly role: CadGeneratedExtrudeFaceRole;
   readonly side?: FeatureExtrudeSide;
+  readonly sourcePlane?: SketchPlane;
   readonly width?: number;
 }): CadGeneratedFaceReference {
   return {
@@ -251,7 +274,7 @@ function createRectangleFace({
     role,
     geometricSignature: {
       profileKind: "rectangle",
-      sketchPlane: "XY",
+      sketchPlane: sourcePlane,
       extrudeSide: side,
       depth,
       profile: {

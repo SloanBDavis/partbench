@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createCadSession } from "./index";
+import { CadEngine } from "@web-cad/cad-core";
 import type { CadOp } from "@web-cad/cad-protocol";
 
 const plate: readonly CadOp[] = [
@@ -36,6 +37,84 @@ const batch = (
 ) => ({ version: "cadops.v1" as const, mode, ops });
 
 describe("exact CAD session", () => {
+  it("attributes exact failures to their source edit before unrelated operations", async () => {
+    const session = createCadSession();
+    try {
+      expect(await session.executeBatch(batch(plate))).toMatchObject({
+        ok: true
+      });
+      const before = session.engine.exportProject();
+      for (const edit of [
+        { op: "feature.updateFillet", id: "round", radius: 100 },
+        { op: "feature.updateExtrude", id: "extrude", depth: 0.1 }
+      ] as const) {
+        for (const mode of ["dryRun", "commit"] as const) {
+          const result = await session.executeBatch(
+            batch(
+              [
+                edit,
+                {
+                  op: "sketch.create",
+                  id: "unrelated",
+                  name: "Unrelated",
+                  plane: "XY"
+                }
+              ],
+              mode
+            )
+          );
+          expect(result).toMatchObject({
+            ok: false,
+            error: {
+              opIndex: 0,
+              op: edit.op,
+              path: "$.ops[0]",
+              bodyId: "plate",
+              featureId: "round"
+            }
+          });
+          expect(session.engine.exportProject()).toEqual(before);
+        }
+      }
+    } finally {
+      session.dispose();
+    }
+  }, 30_000);
+
+  it("does not blame an unrelated operation for an already invalid exact body", async () => {
+    const engine = new CadEngine();
+    expect(engine.executeBatch(batch(plate))).toMatchObject({ ok: true });
+    expect(
+      engine.executeBatch(
+        batch([{ op: "feature.updateFillet", id: "round", radius: 100 }])
+      )
+    ).toMatchObject({ ok: true });
+    const session = createCadSession({ project: engine.exportProject() });
+    try {
+      const result = await session.executeBatch(
+        batch([
+          {
+            op: "sketch.create",
+            id: "unrelated",
+            name: "Unrelated",
+            plane: "XY"
+          }
+        ])
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error: { bodyId: "plate", featureId: "round" }
+      });
+      if (!result.ok) {
+        expect(result.error.opIndex).toBeUndefined();
+        expect(result.error.path).toBeUndefined();
+      }
+      expect(session.engine.exportProject()).toEqual(engine.exportProject());
+    } finally {
+      session.dispose();
+    }
+  }, 30_000);
+
   it("builds actual geometry, rejects an impossible edit atomically in both modes, and reopens portable geometry", async () => {
     const session = createCadSession();
     const reopened = createCadSession();

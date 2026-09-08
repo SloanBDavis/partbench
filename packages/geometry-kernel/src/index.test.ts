@@ -2374,8 +2374,8 @@ describe("geometry-kernel facade", () => {
       expect(circle.mesh.triangleCount).toBeGreaterThan(0);
       expect(circleBounds.min[0]).toBeCloseTo(-2, 6);
       expect(circleBounds.max[0]).toBeCloseTo(2, 6);
-      expect(circleBounds.min[1]).toBeCloseTo(0, 6);
-      expect(circleBounds.max[1]).toBeCloseTo(6, 6);
+      expect(circleBounds.min[1]).toBeCloseTo(-6, 6);
+      expect(circleBounds.max[1]).toBeCloseTo(0, 6);
       expect(circleBounds.min[2]).toBeGreaterThanOrEqual(-2);
       expect(circleBounds.max[2]).toBeLessThanOrEqual(2);
       expect(circleBounds.min[2] + circleBounds.max[2]).toBeCloseTo(0, 6);

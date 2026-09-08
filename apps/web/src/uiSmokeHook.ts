@@ -38,6 +38,10 @@ export interface UiSmokeState {
   readonly features: readonly Record<string, unknown>[];
   readonly bodies: readonly Record<string, unknown>[];
   readonly structureQuery: Record<string, unknown>;
+  readonly viewport?: {
+    readonly meshIds: readonly string[];
+    readonly primitiveCount: number;
+  };
   readonly exactStatuses: readonly string[];
   readonly exactResults: readonly {
     readonly bodyId: string;

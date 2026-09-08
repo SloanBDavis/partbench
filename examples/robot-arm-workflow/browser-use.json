@@ -1,0 +1,1591 @@
+{
+  "id": "robot-arm-native-revision",
+  "kind": "cadops",
+  "seed": [],
+  "steps": [],
+  "use": [
+    {
+      "openWcad": ".metrics/robot-arm-workflow/robot-arm.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "expectViewport": {
+        "meshIds": [
+          "assembly-instance:arm:i_base",
+          "assembly-instance:arm:i_yaw",
+          "assembly-instance:arm:i_shoulder_front",
+          "assembly-instance:arm:i_shoulder_back",
+          "assembly-instance:arm:i_upper",
+          "assembly-instance:arm:i_forearm",
+          "assembly-instance:arm:i_wrist_front",
+          "assembly-instance:arm:i_wrist_back",
+          "assembly-instance:arm:i_rail",
+          "assembly-instance:arm:i_finger_lower",
+          "assembly-instance:arm:i_finger_upper",
+          "assembly-instance:arm:i_pin_yaw",
+          "assembly-instance:arm:i_pin_shoulder",
+          "assembly-instance:arm:i_pin_elbow",
+          "assembly-instance:arm:i_pin_wrist",
+          "assembly-instance:arm:i_bolt_base_0",
+          "assembly-instance:arm:i_bolt_base_1",
+          "assembly-instance:arm:i_bolt_base_2",
+          "assembly-instance:arm:i_bolt_base_3",
+          "assembly-instance:arm:i_bolt_yaw_0",
+          "assembly-instance:arm:i_bolt_yaw_1",
+          "assembly-instance:arm:i_bolt_yaw_2",
+          "assembly-instance:arm:i_bolt_yaw_3",
+          "assembly-instance:arm:i_spacer_yaw",
+          "assembly-instance:arm:i_spacer_shoulder_front",
+          "assembly-instance:arm:i_spacer_shoulder_back",
+          "assembly-instance:arm:i_spacer_elbow",
+          "assembly-instance:arm:i_spacer_wrist_front",
+          "assembly-instance:arm:i_spacer_wrist_back"
+        ],
+        "primitiveCount": 0
+      }
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Model view\"]",
+        "option": "parts"
+      }
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "arm",
+            "instances": [
+              {
+                "id": "i_base"
+              },
+              {
+                "id": "i_yaw"
+              },
+              {
+                "id": "i_shoulder_front"
+              },
+              {
+                "id": "i_shoulder_back"
+              },
+              {
+                "id": "i_upper",
+                "transform": {
+                  "translation": [
+                    19.4208013939196, 13.46958009334195, 146.93332436601617
+                  ]
+                }
+              },
+              {
+                "id": "i_forearm",
+                "transform": {
+                  "translation": [
+                    93.80345955642389, 59.188562418068024, 204.28337041018335
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_front",
+                "transform": {
+                  "translation": [
+                    155.52720851285974, 76.93704005686575, 174.70009208833437
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_back"
+              },
+              {
+                "id": "i_rail"
+              },
+              {
+                "id": "i_finger_lower"
+              },
+              {
+                "id": "i_finger_upper"
+              },
+              {
+                "id": "i_pin_yaw"
+              },
+              {
+                "id": "i_pin_shoulder"
+              },
+              {
+                "id": "i_pin_elbow"
+              },
+              {
+                "id": "i_pin_wrist"
+              },
+              {
+                "id": "i_bolt_base_0"
+              },
+              {
+                "id": "i_bolt_base_1"
+              },
+              {
+                "id": "i_bolt_base_2"
+              },
+              {
+                "id": "i_bolt_base_3"
+              },
+              {
+                "id": "i_bolt_yaw_0"
+              },
+              {
+                "id": "i_bolt_yaw_1"
+              },
+              {
+                "id": "i_bolt_yaw_2"
+              },
+              {
+                "id": "i_bolt_yaw_3"
+              },
+              {
+                "id": "i_spacer_yaw"
+              },
+              {
+                "id": "i_spacer_shoulder_front"
+              },
+              {
+                "id": "i_spacer_shoulder_back"
+              },
+              {
+                "id": "i_spacer_elbow"
+              },
+              {
+                "id": "i_spacer_wrist_front"
+              },
+              {
+                "id": "i_spacer_wrist_back"
+              }
+            ],
+            "mates": [
+              {
+                "id": "ground",
+                "kind": "fixed"
+              },
+              {
+                "id": "joint_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_shoulder",
+                "kind": "revolute",
+                "angleDegrees": 75
+              },
+              {
+                "id": "joint_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_wrist_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_rail",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_lower",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_upper",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_shoulder",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_back",
+                "kind": "revolute"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Model view\"]",
+        "option": "assembly"
+      }
+    },
+    {
+      "click": "[data-action-id=\"solid.revolute-mate\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-mate-existing",
+        "option": "joint_shoulder"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-angle-source",
+        "option": "literal"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-revolute-angle",
+        "text": "90"
+      }
+    },
+    {
+      "expectNoPreview": true
+    },
+    {
+      "apply": true
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "arm",
+            "instances": [
+              {
+                "id": "i_base"
+              },
+              {
+                "id": "i_yaw"
+              },
+              {
+                "id": "i_shoulder_front"
+              },
+              {
+                "id": "i_shoulder_back"
+              },
+              {
+                "id": "i_upper",
+                "transform": {
+                  "translation": [-1.6904730469627927, 3.625231148146602, 150]
+                }
+              },
+              {
+                "id": "i_forearm",
+                "transform": {
+                  "translation": [
+                    56.56106980586231, 41.82215086938795, 227.84462756331487
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_front",
+                "transform": {
+                  "translation": [
+                    123.26497789350141, 61.89291484989628, 215.68925512662975
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_back"
+              },
+              {
+                "id": "i_rail"
+              },
+              {
+                "id": "i_finger_lower"
+              },
+              {
+                "id": "i_finger_upper"
+              },
+              {
+                "id": "i_pin_yaw"
+              },
+              {
+                "id": "i_pin_shoulder"
+              },
+              {
+                "id": "i_pin_elbow"
+              },
+              {
+                "id": "i_pin_wrist"
+              },
+              {
+                "id": "i_bolt_base_0"
+              },
+              {
+                "id": "i_bolt_base_1"
+              },
+              {
+                "id": "i_bolt_base_2"
+              },
+              {
+                "id": "i_bolt_base_3"
+              },
+              {
+                "id": "i_bolt_yaw_0"
+              },
+              {
+                "id": "i_bolt_yaw_1"
+              },
+              {
+                "id": "i_bolt_yaw_2"
+              },
+              {
+                "id": "i_bolt_yaw_3"
+              },
+              {
+                "id": "i_spacer_yaw"
+              },
+              {
+                "id": "i_spacer_shoulder_front"
+              },
+              {
+                "id": "i_spacer_shoulder_back"
+              },
+              {
+                "id": "i_spacer_elbow"
+              },
+              {
+                "id": "i_spacer_wrist_front"
+              },
+              {
+                "id": "i_spacer_wrist_back"
+              }
+            ],
+            "mates": [
+              {
+                "id": "ground",
+                "kind": "fixed"
+              },
+              {
+                "id": "joint_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_shoulder",
+                "kind": "revolute",
+                "angleDegrees": 90
+              },
+              {
+                "id": "joint_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_wrist_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_rail",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_lower",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_upper",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_shoulder",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_back",
+                "kind": "revolute"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "arm",
+            "instances": [
+              {
+                "id": "i_base"
+              },
+              {
+                "id": "i_yaw"
+              },
+              {
+                "id": "i_shoulder_front"
+              },
+              {
+                "id": "i_shoulder_back"
+              },
+              {
+                "id": "i_upper",
+                "transform": {
+                  "translation": [
+                    19.4208013939196, 13.46958009334195, 146.93332436601617
+                  ]
+                }
+              },
+              {
+                "id": "i_forearm",
+                "transform": {
+                  "translation": [
+                    93.80345955642389, 59.188562418068024, 204.28337041018335
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_front",
+                "transform": {
+                  "translation": [
+                    155.52720851285974, 76.93704005686575, 174.70009208833437
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_back"
+              },
+              {
+                "id": "i_rail"
+              },
+              {
+                "id": "i_finger_lower"
+              },
+              {
+                "id": "i_finger_upper"
+              },
+              {
+                "id": "i_pin_yaw"
+              },
+              {
+                "id": "i_pin_shoulder"
+              },
+              {
+                "id": "i_pin_elbow"
+              },
+              {
+                "id": "i_pin_wrist"
+              },
+              {
+                "id": "i_bolt_base_0"
+              },
+              {
+                "id": "i_bolt_base_1"
+              },
+              {
+                "id": "i_bolt_base_2"
+              },
+              {
+                "id": "i_bolt_base_3"
+              },
+              {
+                "id": "i_bolt_yaw_0"
+              },
+              {
+                "id": "i_bolt_yaw_1"
+              },
+              {
+                "id": "i_bolt_yaw_2"
+              },
+              {
+                "id": "i_bolt_yaw_3"
+              },
+              {
+                "id": "i_spacer_yaw"
+              },
+              {
+                "id": "i_spacer_shoulder_front"
+              },
+              {
+                "id": "i_spacer_shoulder_back"
+              },
+              {
+                "id": "i_spacer_elbow"
+              },
+              {
+                "id": "i_spacer_wrist_front"
+              },
+              {
+                "id": "i_spacer_wrist_back"
+              }
+            ],
+            "mates": [
+              {
+                "id": "ground",
+                "kind": "fixed"
+              },
+              {
+                "id": "joint_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_shoulder",
+                "kind": "revolute",
+                "angleDegrees": 75
+              },
+              {
+                "id": "joint_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_wrist_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_rail",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_lower",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_upper",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_shoulder",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_back",
+                "kind": "revolute"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "arm",
+            "instances": [
+              {
+                "id": "i_base"
+              },
+              {
+                "id": "i_yaw"
+              },
+              {
+                "id": "i_shoulder_front"
+              },
+              {
+                "id": "i_shoulder_back"
+              },
+              {
+                "id": "i_upper",
+                "transform": {
+                  "translation": [-1.6904730469627927, 3.625231148146602, 150]
+                }
+              },
+              {
+                "id": "i_forearm",
+                "transform": {
+                  "translation": [
+                    56.56106980586231, 41.82215086938795, 227.84462756331487
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_front",
+                "transform": {
+                  "translation": [
+                    123.26497789350141, 61.89291484989628, 215.68925512662975
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_back"
+              },
+              {
+                "id": "i_rail"
+              },
+              {
+                "id": "i_finger_lower"
+              },
+              {
+                "id": "i_finger_upper"
+              },
+              {
+                "id": "i_pin_yaw"
+              },
+              {
+                "id": "i_pin_shoulder"
+              },
+              {
+                "id": "i_pin_elbow"
+              },
+              {
+                "id": "i_pin_wrist"
+              },
+              {
+                "id": "i_bolt_base_0"
+              },
+              {
+                "id": "i_bolt_base_1"
+              },
+              {
+                "id": "i_bolt_base_2"
+              },
+              {
+                "id": "i_bolt_base_3"
+              },
+              {
+                "id": "i_bolt_yaw_0"
+              },
+              {
+                "id": "i_bolt_yaw_1"
+              },
+              {
+                "id": "i_bolt_yaw_2"
+              },
+              {
+                "id": "i_bolt_yaw_3"
+              },
+              {
+                "id": "i_spacer_yaw"
+              },
+              {
+                "id": "i_spacer_shoulder_front"
+              },
+              {
+                "id": "i_spacer_shoulder_back"
+              },
+              {
+                "id": "i_spacer_elbow"
+              },
+              {
+                "id": "i_spacer_wrist_front"
+              },
+              {
+                "id": "i_spacer_wrist_back"
+              }
+            ],
+            "mates": [
+              {
+                "id": "ground",
+                "kind": "fixed"
+              },
+              {
+                "id": "joint_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_shoulder",
+                "kind": "revolute",
+                "angleDegrees": 90
+              },
+              {
+                "id": "joint_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_wrist_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_rail",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_lower",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_upper",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_shoulder",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_back",
+                "kind": "revolute"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "expectText": {
+        "selector": ".pb-project-table tbody tr:first-child td:first-of-type",
+        "text": "180"
+      }
+    },
+    {
+      "click": ".pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": "200"
+      }
+    },
+    {
+      "click": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "arm",
+            "instances": [
+              {
+                "id": "i_base"
+              },
+              {
+                "id": "i_yaw"
+              },
+              {
+                "id": "i_shoulder_front"
+              },
+              {
+                "id": "i_shoulder_back"
+              },
+              {
+                "id": "i_upper",
+                "transform": {
+                  "translation": [-1.6904730469627922, 3.6252311481466024, 160]
+                }
+              },
+              {
+                "id": "i_forearm",
+                "transform": {
+                  "translation": [
+                    56.56106980586231, 41.82215086938795, 247.84462756331487
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_front",
+                "transform": {
+                  "translation": [
+                    123.26497789350141, 61.89291484989628, 235.68925512662975
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_back"
+              },
+              {
+                "id": "i_rail"
+              },
+              {
+                "id": "i_finger_lower"
+              },
+              {
+                "id": "i_finger_upper"
+              },
+              {
+                "id": "i_pin_yaw"
+              },
+              {
+                "id": "i_pin_shoulder"
+              },
+              {
+                "id": "i_pin_elbow"
+              },
+              {
+                "id": "i_pin_wrist"
+              },
+              {
+                "id": "i_bolt_base_0"
+              },
+              {
+                "id": "i_bolt_base_1"
+              },
+              {
+                "id": "i_bolt_base_2"
+              },
+              {
+                "id": "i_bolt_base_3"
+              },
+              {
+                "id": "i_bolt_yaw_0"
+              },
+              {
+                "id": "i_bolt_yaw_1"
+              },
+              {
+                "id": "i_bolt_yaw_2"
+              },
+              {
+                "id": "i_bolt_yaw_3"
+              },
+              {
+                "id": "i_spacer_yaw"
+              },
+              {
+                "id": "i_spacer_shoulder_front"
+              },
+              {
+                "id": "i_spacer_shoulder_back"
+              },
+              {
+                "id": "i_spacer_elbow"
+              },
+              {
+                "id": "i_spacer_wrist_front"
+              },
+              {
+                "id": "i_spacer_wrist_back"
+              }
+            ],
+            "mates": [
+              {
+                "id": "ground",
+                "kind": "fixed"
+              },
+              {
+                "id": "joint_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_shoulder",
+                "kind": "revolute",
+                "angleDegrees": 90
+              },
+              {
+                "id": "joint_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_wrist_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_rail",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_lower",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_upper",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_shoulder",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_back",
+                "kind": "revolute"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "b_upper",
+        "volume": 54355.03723989049
+      }
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "expectViewport": {
+        "meshIds": [
+          "assembly-instance:arm:i_base",
+          "assembly-instance:arm:i_yaw",
+          "assembly-instance:arm:i_shoulder_front",
+          "assembly-instance:arm:i_shoulder_back",
+          "assembly-instance:arm:i_upper",
+          "assembly-instance:arm:i_forearm",
+          "assembly-instance:arm:i_wrist_front",
+          "assembly-instance:arm:i_wrist_back",
+          "assembly-instance:arm:i_rail",
+          "assembly-instance:arm:i_finger_lower",
+          "assembly-instance:arm:i_finger_upper",
+          "assembly-instance:arm:i_pin_yaw",
+          "assembly-instance:arm:i_pin_shoulder",
+          "assembly-instance:arm:i_pin_elbow",
+          "assembly-instance:arm:i_pin_wrist",
+          "assembly-instance:arm:i_bolt_base_0",
+          "assembly-instance:arm:i_bolt_base_1",
+          "assembly-instance:arm:i_bolt_base_2",
+          "assembly-instance:arm:i_bolt_base_3",
+          "assembly-instance:arm:i_bolt_yaw_0",
+          "assembly-instance:arm:i_bolt_yaw_1",
+          "assembly-instance:arm:i_bolt_yaw_2",
+          "assembly-instance:arm:i_bolt_yaw_3",
+          "assembly-instance:arm:i_spacer_yaw",
+          "assembly-instance:arm:i_spacer_shoulder_front",
+          "assembly-instance:arm:i_spacer_shoulder_back",
+          "assembly-instance:arm:i_spacer_elbow",
+          "assembly-instance:arm:i_spacer_wrist_front",
+          "assembly-instance:arm:i_spacer_wrist_back"
+        ],
+        "primitiveCount": 0
+      }
+    },
+    {
+      "screenshot": "robot-arm-connected-revision"
+    }
+  ],
+  "useBreak": [
+    {
+      "openWcad": ".metrics/robot-arm-workflow/robot-arm.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.revolute-mate\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-mate-existing",
+        "option": "joint_shoulder"
+      }
+    },
+    {
+      "select": {
+        "selector": "#solid-revolute-angle-source",
+        "option": "literal"
+      }
+    },
+    {
+      "type": {
+        "selector": "#solid-revolute-angle",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": "[data-ui-smoke=\"apply\"]"
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "arm",
+            "instances": [
+              {
+                "id": "i_base"
+              },
+              {
+                "id": "i_yaw"
+              },
+              {
+                "id": "i_shoulder_front"
+              },
+              {
+                "id": "i_shoulder_back"
+              },
+              {
+                "id": "i_upper",
+                "transform": {
+                  "translation": [
+                    19.4208013939196, 13.46958009334195, 146.93332436601617
+                  ]
+                }
+              },
+              {
+                "id": "i_forearm",
+                "transform": {
+                  "translation": [
+                    93.80345955642389, 59.188562418068024, 204.28337041018335
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_front",
+                "transform": {
+                  "translation": [
+                    155.52720851285974, 76.93704005686575, 174.70009208833437
+                  ]
+                }
+              },
+              {
+                "id": "i_wrist_back"
+              },
+              {
+                "id": "i_rail"
+              },
+              {
+                "id": "i_finger_lower"
+              },
+              {
+                "id": "i_finger_upper"
+              },
+              {
+                "id": "i_pin_yaw"
+              },
+              {
+                "id": "i_pin_shoulder"
+              },
+              {
+                "id": "i_pin_elbow"
+              },
+              {
+                "id": "i_pin_wrist"
+              },
+              {
+                "id": "i_bolt_base_0"
+              },
+              {
+                "id": "i_bolt_base_1"
+              },
+              {
+                "id": "i_bolt_base_2"
+              },
+              {
+                "id": "i_bolt_base_3"
+              },
+              {
+                "id": "i_bolt_yaw_0"
+              },
+              {
+                "id": "i_bolt_yaw_1"
+              },
+              {
+                "id": "i_bolt_yaw_2"
+              },
+              {
+                "id": "i_bolt_yaw_3"
+              },
+              {
+                "id": "i_spacer_yaw"
+              },
+              {
+                "id": "i_spacer_shoulder_front"
+              },
+              {
+                "id": "i_spacer_shoulder_back"
+              },
+              {
+                "id": "i_spacer_elbow"
+              },
+              {
+                "id": "i_spacer_wrist_front"
+              },
+              {
+                "id": "i_spacer_wrist_back"
+              }
+            ],
+            "mates": [
+              {
+                "id": "ground",
+                "kind": "fixed"
+              },
+              {
+                "id": "joint_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_shoulder",
+                "kind": "revolute",
+                "angleDegrees": 75
+              },
+              {
+                "id": "joint_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "joint_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_wrist_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "mount_rail",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_lower",
+                "kind": "revolute"
+              },
+              {
+                "id": "jaw_upper",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_shoulder",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "pin_wrist",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_base_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_0",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_1",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_2",
+                "kind": "revolute"
+              },
+              {
+                "id": "bolt_yaw_3",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_yaw",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_shoulder_back",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_elbow",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_front",
+                "kind": "revolute"
+              },
+              {
+                "id": "spacer_wrist_back",
+                "kind": "revolute"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "robot-arm-connected-invalid-angle"
+    }
+  ]
+}

@@ -35,6 +35,10 @@ current-selection calls. The connected stdio launcher supplies its browser
 relay as that port; existing in-memory callers remain the default. Tool schemas,
 validation, and response shaping are shared in both paths.
 
+Sketch region candidates, region validation and curve-edit readiness all use
+that same awaitable query path. Argument parsing errors return `INVALID_ARGUMENTS`;
+document diagnostics and execution failures retain their own meaning.
+
 Project health/readiness results include exact export plans and bounded derived
 evidence. Browser export remains browser-owned through
 `cad.project_request_exact_export`.
@@ -56,6 +60,17 @@ clearly labeled fallback schema; it does not promise support for invented
 operation names. Geometry-dependent eligibility is still validated by the
 shared command/runtime path. `cad.body_mass_properties` exposes the existing
 exact mass-properties query for inspection of final result bodies.
+
+Assembly schemas cover create, insert, in-place pose update, definition
+replacement, deletion, and every fixed/coincident/concentric/distance/revolute
+mate create/edit/delete shape. They include authored sketch or numeric local
+joint frames and parameter bindings. Transform rotations are radians applied
+X, then Y, then Z; scale precedes rotation and translation follows it. Revolute
+angles use degrees. Lengths use document units. See the
+[public assembly guide](../../docs/agent-runtime-usage.md#connected-assemblies)
+for frames, constraints and examples. `cad.project_structure` already includes
+assembly instances, resolved transforms and mates; pose inspection needs no
+full native handoff.
 
 ## Local Client Shape
 

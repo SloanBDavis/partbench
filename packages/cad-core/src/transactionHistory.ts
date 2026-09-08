@@ -487,8 +487,8 @@ function createOperationSummaries(
               : op.kind === "concentric"
                 ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
                 : op.kind === "distance"
-                  ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`
-                  : `kind ${String((op as { kind: string }).kind)}`;
+                  ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distanceParameterId ? `parameter ${op.distanceParameterId}` : op.distance}`
+                  : `frames ${op.primary.instanceId} ~ ${op.secondary.instanceId} @ ${op.angleParameterId ? `parameter ${op.angleParameterId}` : `${op.angleDegrees} degrees`}`;
         return {
           op: op.op,
           label: `Create ${op.kind} mate ${mateId ?? "with generated ID"} ${target} in ${op.assemblyId}`
@@ -503,6 +503,12 @@ function createOperationSummaries(
           label: `Replace assembly instance ${instanceId} definition with ${op.definition.bodyId} in ${op.assemblyId}`
         };
       }
+
+      case "assembly.instance.updateTransform":
+        return {
+          op: op.op,
+          label: `Move assembly instance ${op.instanceId} in ${op.assemblyId}`
+        };
 
       case "assembly.instance.delete": {
         const instanceId =
@@ -523,8 +529,8 @@ function createOperationSummaries(
               : op.kind === "concentric"
                 ? `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`
                 : op.kind === "distance"
-                  ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`
-                  : `kind ${String((op as { kind: string }).kind)}`;
+                  ? `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distanceParameterId ? `parameter ${op.distanceParameterId}` : op.distance}`
+                  : `frames ${op.primary.instanceId} ~ ${op.secondary.instanceId} @ ${op.angleParameterId ? `parameter ${op.angleParameterId}` : `${op.angleDegrees} degrees`}`;
         return {
           op: op.op,
           label: `Edit ${op.kind} mate ${mateId ?? "with generated ID"} ${target} in ${op.assemblyId}`

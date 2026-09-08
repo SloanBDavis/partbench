@@ -425,9 +425,11 @@ const ACTION_AUDIT_BY_ID = {
     "Distance mate",
     "createDistanceMate",
     "assembly/instance/plane selection",
-    "buildAssemblyDistanceMateOp",
-    "cadCommands.test.ts"
+    "buildAssemblyDistanceMateOp / buildAssemblyDistanceMateEditOp",
+    "modes/solid/assemblyEditors.test.tsx"
   ),
+  "solid.revolute-mate": featureAudit("Revolute mate", "executeSolidEditorSubmission", "assembly/instance/local frame or sketch pivot", "buildAssemblyRevoluteMateOp", "modes/solid/assemblyEditors.test.tsx"),
+  "solid.instance-pose": featureAudit("Instance pose", "executeSolidEditorSubmission", "free or grounded instance", "buildAssemblyInstancePoseOp", "modes/solid/assemblyEditors.test.tsx"),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
     "selection + edit callback",

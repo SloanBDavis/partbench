@@ -3303,7 +3303,7 @@ function mapPlanePoint(
     case "XY":
       return [profileX, profileY, normal];
     case "XZ":
-      return [profileX, normal, profileY];
+      return [profileX, -normal, profileY];
     case "YZ":
       return [normal, profileX, profileY];
   }

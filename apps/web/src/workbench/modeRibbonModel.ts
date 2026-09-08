@@ -186,6 +186,8 @@ export function getActionIcon(id: UiActionId, group?: string): IconName {
     "coincident-mate": "constraint",
     "concentric-mate": "constraint",
     "distance-mate": "constraint",
+    "revolute-mate": "constraint",
+    "instance-pose": "transform",
     edit: "edit",
     rename: "edit",
     delete: "delete",

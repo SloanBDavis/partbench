@@ -1,3 +1,4 @@
+import { getOcctStandardSketchFrame } from "./occtAxes";
 import type {
   OpenCascadeInstance,
   TopoDS_Face,
@@ -677,29 +678,13 @@ function getExtrudeFrame(source: OcctBooleanExtrudePrimitiveSource): {
       normalAxis: normalize(cross(uAxis, vAxis))
     };
   }
-  switch (source.sketchPlane) {
-    case "XY":
-      return {
-        origin: { x: 0, y: 0, z: 0 },
-        uAxis: { x: 1, y: 0, z: 0 },
-        vAxis: { x: 0, y: 1, z: 0 },
-        normalAxis: { x: 0, y: 0, z: 1 }
-      };
-    case "XZ":
-      return {
-        origin: { x: 0, y: 0, z: 0 },
-        uAxis: { x: 1, y: 0, z: 0 },
-        vAxis: { x: 0, y: 0, z: 1 },
-        normalAxis: { x: 0, y: 1, z: 0 }
-      };
-    case "YZ":
-      return {
-        origin: { x: 0, y: 0, z: 0 },
-        uAxis: { x: 0, y: 1, z: 0 },
-        vAxis: { x: 0, y: 0, z: 1 },
-        normalAxis: { x: 1, y: 0, z: 0 }
-      };
-  }
+  const frame = getOcctStandardSketchFrame(source.sketchPlane);
+  return {
+    origin: toVec3(frame.origin),
+    uAxis: toVec3(frame.uAxis),
+    vAxis: toVec3(frame.vAxis),
+    normalAxis: toVec3(frame.normalAxis)
+  };
 }
 
 function toVec3(value: readonly [number, number, number]): Vec3 {

@@ -19,7 +19,7 @@ describe("modeling result state", () => {
         commandPending: false,
         commandFailed: false,
         derivedGeometryEnabled: false,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: { entries: [], errorCount: 0, pendingCount: 0 },
         projectHealthStatus: "healthy"
       })
@@ -31,7 +31,7 @@ describe("modeling result state", () => {
       commandPending: false,
       commandFailed: false,
       derivedGeometryEnabled: true,
-      derivedSourceCount: 1,
+      derivedSourceIds: ["body"],
       projectHealthStatus: "healthy" as const
     };
 
@@ -79,7 +79,7 @@ describe("modeling result state", () => {
         commandPending: false,
         commandFailed: false,
         derivedGeometryEnabled: true,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: readyGeometry,
         projectHealthStatus: "under-defined"
       })
@@ -89,7 +89,7 @@ describe("modeling result state", () => {
         commandPending: false,
         commandFailed: false,
         derivedGeometryEnabled: true,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: readyGeometry,
         projectHealthStatus: "missing-source"
       })
@@ -101,9 +101,9 @@ describe("modeling result state", () => {
       commandPending: false,
       commandFailed: false,
       derivedGeometryEnabled: true,
-      derivedSourceCount: 1,
+      derivedSourceIds: ["body"],
       derivedGeometry: readyGeometry,
-      derivedExactSourceCount: 1,
+      derivedExactSourceIds: ["body"],
       projectHealthStatus: "healthy" as const
     };
 
@@ -127,9 +127,9 @@ describe("modeling result state", () => {
       commandPending: false,
       commandFailed: false,
       derivedGeometryEnabled: true,
-      derivedSourceCount: 1,
+      derivedSourceIds: ["body"],
       derivedGeometry: readyGeometry,
-      derivedExactSourceCount: 1,
+      derivedExactSourceIds: ["body"],
       projectHealthStatus: "healthy" as const
     };
 
@@ -172,9 +172,9 @@ describe("modeling result state", () => {
         commandPending: false,
         commandFailed: false,
         derivedGeometryEnabled: true,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: readyGeometry,
-        derivedExactSourceCount: 1,
+        derivedExactSourceIds: ["body"],
         derivedExactMetadata: readyExactMetadata,
         projectHealthStatus: "healthy"
       })
@@ -184,9 +184,9 @@ describe("modeling result state", () => {
         commandPending: false,
         commandFailed: false,
         derivedGeometryEnabled: true,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: readyGeometry,
-        derivedExactSourceCount: 1,
+        derivedExactSourceIds: ["body"],
         derivedExactMetadata: readyExactMetadata,
         projectHealthStatus: "under-defined"
       })
@@ -198,9 +198,9 @@ describe("modeling result state", () => {
       commandPending: false,
       commandFailed: false,
       derivedGeometryEnabled: true,
-      derivedSourceCount: 1,
+      derivedSourceIds: ["body"],
       derivedGeometry: readyGeometry,
-      derivedExactSourceCount: 1,
+      derivedExactSourceIds: ["body"],
       derivedExactMetadata: readyExactMetadata,
       projectHealthStatus: "healthy" as const
     };
@@ -230,9 +230,9 @@ describe("modeling result state", () => {
       commandPending: false,
       commandFailed: false,
       derivedGeometryEnabled: true,
-      derivedSourceCount: 1,
+      derivedSourceIds: ["body"],
       derivedGeometry: readyGeometry,
-      derivedExactSourceCount: 1,
+      derivedExactSourceIds: ["body"],
       derivedExactMetadata: readyExactMetadata,
       projectHealthStatus: "healthy" as const
     };
@@ -266,13 +266,52 @@ describe("modeling result state", () => {
     ).toBe("Building exact results");
   });
 
+  it("counts each active body once when exact artifacts replace runtime results", () => {
+    const activeBodyIds = Array.from(
+      { length: 11 },
+      (_, index) => `body-${index}`
+    );
+    const sourcesWithArtifactEvidence = [...activeBodyIds, ...activeBodyIds];
+    const settled = {
+      entries: activeBodyIds.map(() => ({ status: "ready" as const })),
+      errorCount: 0,
+      pendingCount: 0
+    };
+    const base = {
+      commandPending: false,
+      commandFailed: false,
+      derivedGeometryEnabled: true,
+      derivedSourceIds: sourcesWithArtifactEvidence,
+      derivedExactSourceIds: sourcesWithArtifactEvidence,
+      derivedGeometry: settled,
+      derivedExactMetadata: settled,
+      currentExactResults: activeBodyIds.map(() => ({
+        status: "ready" as const
+      })),
+      projectHealthStatus: "healthy" as const
+    };
+    expect(createModelingResultState(base)).toBe("Ready");
+    expect(
+      createModelingResultState({
+        ...base,
+        derivedSourceIds: [...sourcesWithArtifactEvidence, "new-body"]
+      })
+    ).toBe("Building results");
+    expect(
+      createModelingResultState({
+        ...base,
+        derivedExactSourceIds: [...sourcesWithArtifactEvidence, "new-body"]
+      })
+    ).toBe("Display ready · Building exact results");
+  });
+
   it("prioritizes live command state and command failure", () => {
     expect(
       createModelingResultState({
         commandPending: true,
         commandFailed: true,
         derivedGeometryEnabled: true,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: readyGeometry,
         projectHealthStatus: "healthy"
       })
@@ -282,7 +321,7 @@ describe("modeling result state", () => {
         commandPending: false,
         commandFailed: true,
         derivedGeometryEnabled: true,
-        derivedSourceCount: 1,
+        derivedSourceIds: ["body"],
         derivedGeometry: readyGeometry,
         projectHealthStatus: "healthy"
       })

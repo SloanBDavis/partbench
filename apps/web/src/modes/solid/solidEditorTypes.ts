@@ -32,6 +32,8 @@ import type {
   AssemblyCoincidentMateForm,
   AssemblyConcentricMateForm,
   AssemblyDistanceMateForm,
+  AssemblyRevoluteMateForm,
+  AssemblyInstancePoseForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
@@ -71,7 +73,9 @@ export type SolidEditorKind =
   | "fixedMate"
   | "coincidentMate"
   | "concentricMate"
-  | "distanceMate";
+  | "distanceMate"
+  | "revoluteMate"
+  | "instancePose";
 
 export interface SolidDraftByKind {
   readonly box: PrimitiveCommandForm;
@@ -105,6 +109,8 @@ export interface SolidDraftByKind {
   readonly coincidentMate: AssemblyCoincidentMateForm;
   readonly concentricMate: AssemblyConcentricMateForm;
   readonly distanceMate: AssemblyDistanceMateForm;
+  readonly revoluteMate: AssemblyRevoluteMateForm;
+  readonly instancePose: AssemblyInstancePoseForm;
 }
 
 export type SolidDraft = SolidDraftByKind[SolidEditorKind];
@@ -160,6 +166,14 @@ export interface SolidEditorChoices {
   readonly mirrorPlanes?: readonly SolidChoice<MirrorPlaneRef>[];
   readonly datums?: readonly SolidChoice<string>[];
   readonly openFaces?: readonly SolidChoice<FeatureShellOpenFaceRef>[];
+  readonly parameters?: readonly SolidChoice<string>[];
+  readonly distanceMates?: readonly SolidChoice<AssemblyDistanceMateForm>[];
+  readonly revoluteMates?: readonly SolidChoice<AssemblyRevoluteMateForm>[];
+  readonly assemblyPoseInstances?: readonly SolidChoice<AssemblyInstancePoseForm>[];
+  readonly assemblySketchFrames?: readonly SolidChoice<{
+    readonly sketchId: string;
+    readonly entityId: string;
+  }>[];
   readonly assemblies?: readonly SolidChoice<string>[];
   readonly assemblyInstances?: readonly SolidChoice<{
     readonly assemblyId: string;
@@ -230,6 +244,8 @@ export function isSolidFeatureEditorKind(kind: SolidEditorKind): boolean {
     kind === "coincidentMate" ||
     kind === "concentricMate" ||
     kind === "distanceMate" ||
+    kind === "revoluteMate" ||
+    kind === "instancePose" ||
     kind === "transform"
   );
 }

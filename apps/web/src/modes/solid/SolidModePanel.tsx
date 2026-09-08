@@ -1,4 +1,4 @@
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   FeatureShellOpenFaceRef,
   LoftSection,
@@ -31,12 +31,13 @@ import type {
   AssemblyCoincidentMateForm,
   AssemblyConcentricMateForm,
   AssemblyDistanceMateForm,
+  AssemblyRevoluteMateForm,
+  AssemblyInstancePoseForm,
   DatumAxisCreateForm,
   DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
 import {
-  EditorFieldRow,
   FeatureEditorShell
 } from "../../editors/FeatureEditorShell";
 import { SelectionCollectorRow } from "../../editors/SelectionCollectorRow";
@@ -46,7 +47,8 @@ import type {
 } from "../../editors/featureEditorState";
 import type { SelectionCollectorTarget } from "../../editors/selectionCollectorState";
 import { Button } from "../../ui/Button";
-import { NumericInput } from "../../ui/NumericInput";
+import { NumberField, TextField, SelectField } from "./solidFormFields";
+import { RevoluteMateFields, InstancePoseFields, AssemblyScalarFields } from "./AssemblyEditorFields";
 import { applyExactFeaturePreviewGripValue } from "../../exactFeaturePreviewGrips";
 import type {
   EdgeChoiceValue,
@@ -315,6 +317,8 @@ function SolidDraftEditor({
     const callback = previewCallbackRef.current;
     if (!callback) return;
     if (
+      request.kind.endsWith("Mate") ||
+      request.kind === "instancePose" ||
       previewSuppressedRef.current ||
       disabled ||
       deleting ||
@@ -629,9 +633,15 @@ function SolidDraftFields({
           draft={draft as AssemblyDistanceMateForm}
           assemblyChoices={request.choices?.assemblies ?? []}
           instanceChoices={request.choices?.assemblyInstances ?? []}
+          mateChoices={request.choices?.distanceMates ?? []}
+          parameterChoices={request.choices?.parameters ?? []}
           onChange={onChange}
         />
       );
+    case "revoluteMate":
+      return <RevoluteMateFields draft={draft as AssemblyRevoluteMateForm} choices={request.choices} onChange={onChange} />;
+    case "instancePose":
+      return <InstancePoseFields draft={draft as AssemblyInstancePoseForm} choices={request.choices} onChange={onChange} />;
     case "transform":
       return (
         <TransformFields
@@ -1505,9 +1515,13 @@ function DistanceMateFields({
   draft,
   assemblyChoices,
   instanceChoices,
+  parameterChoices,
+  mateChoices,
   onChange
 }: {
   readonly draft: AssemblyDistanceMateForm;
+  readonly mateChoices: readonly SolidChoice<AssemblyDistanceMateForm>[];
+  readonly parameterChoices: readonly SolidChoice<string>[];
   readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
   readonly instanceChoices: readonly {
     readonly value: { readonly assemblyId: string; readonly instanceId: string };
@@ -1525,6 +1539,9 @@ function DistanceMateFields({
   ];
   return (
     <>
+      <SelectField label="Mate" name="distance-mate-existing" value={draft.mateId ?? ""}
+        options={[{ value: "", label: "Create new mate" }, ...mateChoices.filter((choice) => choice.value.assemblyId === draft.assemblyId).map((choice) => ({ value: choice.value.mateId!, label: choice.label }))]}
+        onChange={(mateId) => onChange(mateChoices.find((choice) => choice.value.assemblyId === draft.assemblyId && choice.value.mateId === mateId)?.value ?? { ...draft, mateId: undefined, name: "Distance" })} />
       <TextField
         label="Name"
         name="distance-mate-name"
@@ -1546,6 +1563,7 @@ function DistanceMateFields({
           onChange({
             ...draft,
             assemblyId,
+            mateId: undefined,
             primary: {
               ...draft.primary,
               instanceId:
@@ -1679,12 +1697,8 @@ function DistanceMateFields({
           })
         }
       />
-      <NumberField
-        label="Distance"
-        name="distance-mate-distance"
-        value={draft.distance}
-        onChange={(distance) => onChange({ ...draft, distance })}
-      />
+      <AssemblyScalarFields label="Distance" name="distance-mate-distance" value={draft.distance} parameterId={draft.distanceParameterId} parameters={parameterChoices}
+        onChange={(distance, distanceParameterId) => onChange({ ...draft, distance, distanceParameterId })} />
     </>
   );
 }
@@ -3412,106 +3426,6 @@ function MultiChoiceCollector<Value>({
   );
 }
 
-function NumberField({
-  label,
-  name,
-  value,
-  unit,
-  min,
-  step = "any",
-  onChange
-}: {
-  readonly label: string;
-  readonly name: string;
-  readonly value: number;
-  readonly unit?: string;
-  readonly min?: number;
-  readonly step?: number | "any";
-  readonly onChange: (value: number) => void;
-}) {
-  const id = `solid-${name}`;
-  return (
-    <EditorFieldRow label={label} htmlFor={id} unit={unit} required>
-      <NumericInput
-        id={id}
-        className="pb-field pb-numeric"
-        value={value}
-        min={min}
-        step={step}
-        onValueChange={onChange}
-      />
-    </EditorFieldRow>
-  );
-}
-
-function TextField({
-  label,
-  name,
-  value,
-  disabled = false,
-  onChange
-}: {
-  readonly label: string;
-  readonly name: string;
-  readonly value: string;
-  readonly disabled?: boolean;
-  readonly onChange: (value: string) => void;
-}) {
-  const id = `solid-${name}`;
-  return (
-    <EditorFieldRow label={label} htmlFor={id}>
-      <input
-        id={id}
-        className="pb-field"
-        type="text"
-        disabled={disabled}
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
-    </EditorFieldRow>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  value,
-  options,
-  disabled = false,
-  onChange
-}: {
-  readonly label: string;
-  readonly name: string;
-  readonly value: string;
-  readonly options: readonly {
-    readonly value: string;
-    readonly label: string;
-  }[];
-  readonly disabled?: boolean;
-  readonly onChange: (value: string) => void;
-}) {
-  const id = `solid-${name}`;
-  return (
-    <EditorFieldRow label={label} htmlFor={id}>
-      <select
-        id={id}
-        className="pb-field"
-        disabled={disabled}
-        value={value}
-        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-          onChange(event.currentTarget.value)
-        }
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </EditorFieldRow>
-  );
-}
-
 function phaseForValidation(
   validation: FeatureEditorValidation
 ): FeatureEditorPhase {
@@ -3559,7 +3473,10 @@ function formatEditorKind(kind: SolidEditorKind): string {
         compositeRevolve: "Revolve",
         compositeSweep: "Sweep",
         linearPattern: "Linear pattern",
-        circularPattern: "Circular pattern"
+        circularPattern: "Circular pattern",
+        revoluteMate: "Revolute mate",
+        instancePose: "Instance pose",
+        distanceMate: "Distance mate"
       } as Partial<Record<SolidEditorKind, string>>
     )[kind] ?? `${kind[0]?.toUpperCase()}${kind.slice(1)}`
   );

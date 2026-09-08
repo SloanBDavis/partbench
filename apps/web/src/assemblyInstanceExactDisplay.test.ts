@@ -3,6 +3,7 @@ import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
   createAssemblyInstanceExactDisplayMeshes,
+  createAssemblySceneView,
   createAssemblyInstanceRenderId,
   findAssemblyInstanceDefinitionBodyId,
   listAssemblyInstanceExactDisplayRefs,
@@ -125,6 +126,39 @@ describe("assemblyInstanceExactDisplay", () => {
       definitionMeshesByBodyId: new Map()
     });
     expect(meshes).toEqual([]);
+  });
+
+  it("shows only posed instances in assembly view and restores definitions in parts view", () => {
+    const base = {
+      primitives: [],
+      meshes: [
+        createMesh("body_bolt"),
+        createMesh("sketch:bolt"),
+        createMesh("loose_part")
+      ]
+    };
+    const assemblyView = createAssemblySceneView({
+      base,
+      assemblies,
+      view: "assembly"
+    });
+    expect(assemblyView.meshes.map((mesh) => mesh.id)).toEqual([
+      "assembly-instance:asm_bolts:inst_a",
+      "assembly-instance:asm_bolts:inst_b"
+    ]);
+    expect(createAssemblySceneView({ base, assemblies, view: "parts" })).toBe(
+      base
+    );
+    expect(
+      createAssemblySceneView({ base, assemblies: [], view: "assembly" })
+    ).toBe(base);
+    expect(
+      createAssemblySceneView({
+        base: { primitives: [], meshes: [] },
+        assemblies,
+        view: "assembly"
+      }).meshes
+    ).toEqual([]);
   });
 });
 

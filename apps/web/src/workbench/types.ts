@@ -37,6 +37,8 @@ export type FeatureEditorKind =
   | "coincident-mate"
   | "concentric-mate"
   | "distance-mate"
+  | "revolute-mate"
+  | "instance-pose"
   | "named-reference"
   | "named-reference-repair";
 

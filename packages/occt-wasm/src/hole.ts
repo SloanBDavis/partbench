@@ -1,5 +1,5 @@
 import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
-import { createOcctAxes } from "./occtAxes";
+import { createOcctAxes, getOcctStandardSketchFrame } from "./occtAxes";
 import {
   makeBooleanExtrudeShape,
   type OcctBooleanExtrudeSource,
@@ -460,29 +460,7 @@ function getSketchFrame(
     };
   }
 
-  switch (sketchPlane) {
-    case "XY":
-      return {
-        origin: [0, 0, 0],
-        uAxis: [1, 0, 0],
-        vAxis: [0, 1, 0],
-        normalAxis: [0, 0, 1]
-      };
-    case "XZ":
-      return {
-        origin: [0, 0, 0],
-        uAxis: [1, 0, 0],
-        vAxis: [0, 0, 1],
-        normalAxis: [0, 1, 0]
-      };
-    case "YZ":
-      return {
-        origin: [0, 0, 0],
-        uAxis: [0, 1, 0],
-        vAxis: [0, 0, 1],
-        normalAxis: [1, 0, 0]
-      };
-  }
+  return getOcctStandardSketchFrame(sketchPlane);
 }
 
 function mapFramePoint(

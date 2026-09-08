@@ -394,6 +394,8 @@ export function createDocumentTreeProjection(
               ? `Coincident · ${mate.primary.instanceId}/${mate.primary.plane} ~ ${mate.secondary.instanceId}/${mate.secondary.plane}`
               : mate.kind === "concentric"
                 ? `Concentric · ${mate.primary.instanceId}/${mate.primary.axis} ~ ${mate.secondary.instanceId}/${mate.secondary.axis}`
+                : mate.kind === "revolute"
+                  ? `Revolute · ${mate.primary.instanceId} ~ ${mate.secondary.instanceId} @ ${mate.angleDegrees}°${mate.angleParameterId ? ` (${mate.angleParameterId})` : ""}`
                 : `Distance · ${mate.primary.instanceId}/${mate.primary.plane} ~ ${mate.secondary.instanceId}/${mate.secondary.plane} @ ${mate.distance}`,
         icon: "constraint" as const,
         selection: mateSelection,

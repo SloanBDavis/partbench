@@ -2415,6 +2415,14 @@ function createOperationReview(
         `Insert assembly instance ${op.id ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
       );
 
+    case "assembly.instance.updateTransform":
+      return operationReviewBase(
+        index,
+        op,
+        "modify",
+        `Update assembly instance ${op.instanceId} pose and connected descendants in ${op.assemblyId}`
+      );
+
     case "assembly.mate.create": {
       let target: string;
       if (op.kind === "fixed") {
@@ -2423,8 +2431,10 @@ function createOperationReview(
         target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`;
       } else if (op.kind === "concentric") {
         target = `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`;
+      } else if (op.kind === "distance") {
+        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance ?? `parameter ${op.distanceParameterId}`}`;
       } else {
-        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`;
+        target = `frames ${op.primary.instanceId} ~ ${op.secondary.instanceId} @ ${op.angleDegrees ?? `parameter ${op.angleParameterId}`} degrees`;
       }
       return operationReviewBase(
         index,
@@ -2458,8 +2468,10 @@ function createOperationReview(
         target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane}`;
       } else if (op.kind === "concentric") {
         target = `axes ${op.primary.instanceId}/${op.primary.axis} ~ ${op.secondary.instanceId}/${op.secondary.axis}`;
+      } else if (op.kind === "distance") {
+        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance ?? `parameter ${op.distanceParameterId}`}`;
       } else {
-        target = `planes ${op.primary.instanceId}/${op.primary.plane} ~ ${op.secondary.instanceId}/${op.secondary.plane} @ ${op.distance}`;
+        target = `frames ${op.primary.instanceId} ~ ${op.secondary.instanceId} @ ${op.angleDegrees ?? `parameter ${op.angleParameterId}`} degrees`;
       }
       return operationReviewBase(
         index,
@@ -5859,6 +5871,87 @@ function isAssemblyMateAxisRefShape(value: unknown): boolean {
   return true;
 }
 
+function isFiniteVec3(value: unknown): boolean {
+  return isVec3(value) && value.every(Number.isFinite);
+}
+
+function isAssemblyMateFrameRefShape(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["instanceId", "frame"]) ||
+    !isNonEmptyString(value.instanceId) ||
+    !isRecord(value.frame)
+  ) {
+    return false;
+  }
+  const frame = value.frame;
+  if (frame.kind === "local") {
+    return (
+      hasExactKeys(frame, ["kind", "origin", "xDirection", "zDirection"]) &&
+      isFiniteVec3(frame.origin) &&
+      isFiniteVec3(frame.xDirection) &&
+      isFiniteVec3(frame.zDirection)
+    );
+  }
+  return (
+    frame.kind === "sketch" &&
+    hasExactKeys(frame, ["kind", "sketchId", "entityId"], ["offset", "flip"]) &&
+    isNonEmptyString(frame.sketchId) &&
+    isNonEmptyString(frame.entityId) &&
+    (frame.offset === undefined ||
+      (typeof frame.offset === "number" && Number.isFinite(frame.offset))) &&
+    (frame.flip === undefined || typeof frame.flip === "boolean")
+  );
+}
+
+function isAssemblyMateValueShape(
+  value: Record<string, unknown>,
+  literalKey: string,
+  parameterKey: string,
+  optional = false
+): boolean {
+  const literal = value[literalKey];
+  const parameter = value[parameterKey];
+  if (parameter !== undefined) {
+    return literal === undefined && isNonEmptyString(parameter);
+  }
+  return (
+    (optional && literal === undefined) ||
+    (typeof literal === "number" && Number.isFinite(literal))
+  );
+}
+
+function isAssemblyRelationalMateShape(
+  value: Record<string, unknown>
+): boolean {
+  if (value.kind === "coincident") {
+    return (
+      isAssemblyMatePlaneRefShape(value.primary) &&
+      isAssemblyMatePlaneRefShape(value.secondary)
+    );
+  }
+  if (value.kind === "concentric") {
+    return (
+      isAssemblyMateAxisRefShape(value.primary) &&
+      isAssemblyMateAxisRefShape(value.secondary)
+    );
+  }
+  if (value.kind === "distance") {
+    return (
+      isAssemblyMatePlaneRefShape(value.primary) &&
+      isAssemblyMatePlaneRefShape(value.secondary) &&
+      isAssemblyMateValueShape(value, "distance", "distanceParameterId")
+    );
+  }
+  return (
+    value.kind === "revolute" &&
+    isAssemblyMateFrameRefShape(value.primary) &&
+    isAssemblyMateFrameRefShape(value.secondary) &&
+    isAssemblyMateValueShape(value, "angleDegrees", "angleParameterId") &&
+    isAssemblyMateValueShape(value, "offset", "offsetParameterId", true)
+  );
+}
+
 function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
@@ -6047,6 +6140,18 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "assembly.instance.updateTransform") {
+    return (
+      hasExactKeys(value, ["op", "assemblyId", "instanceId", "transform"]) &&
+      isNonEmptyString(value.assemblyId) &&
+      isNonEmptyString(value.instanceId) &&
+      isRecord(value.transform) &&
+      hasExactKeys(value.transform, [], ["translation", "rotation", "scale"]) &&
+      Object.keys(value.transform).length > 0 &&
+      Object.values(value.transform).every(isFiniteVec3)
+    );
+  }
+
   if (value.op === "assembly.mate.create") {
     if (
       !(
@@ -6060,27 +6165,7 @@ function isCadOp(value: unknown): value is CadOp {
     if (value.kind === "fixed") {
       return typeof value.instanceId === "string";
     }
-    if (value.kind === "coincident") {
-      return (
-        isAssemblyMatePlaneRefShape(value.primary) &&
-        isAssemblyMatePlaneRefShape(value.secondary)
-      );
-    }
-    if (value.kind === "concentric") {
-      return (
-        isAssemblyMateAxisRefShape(value.primary) &&
-        isAssemblyMateAxisRefShape(value.secondary)
-      );
-    }
-    if (value.kind === "distance") {
-      return (
-        isAssemblyMatePlaneRefShape(value.primary) &&
-        isAssemblyMatePlaneRefShape(value.secondary) &&
-        typeof value.distance === "number" &&
-        Number.isFinite(value.distance)
-      );
-    }
-    return false;
+    return isAssemblyRelationalMateShape(value);
   }
 
   if (value.op === "assembly.instance.replace") {
@@ -6113,27 +6198,7 @@ function isCadOp(value: unknown): value is CadOp {
     if (value.kind === "fixed") {
       return typeof value.instanceId === "string";
     }
-    if (value.kind === "coincident") {
-      return (
-        isAssemblyMatePlaneRefShape(value.primary) &&
-        isAssemblyMatePlaneRefShape(value.secondary)
-      );
-    }
-    if (value.kind === "concentric") {
-      return (
-        isAssemblyMateAxisRefShape(value.primary) &&
-        isAssemblyMateAxisRefShape(value.secondary)
-      );
-    }
-    if (value.kind === "distance") {
-      return (
-        isAssemblyMatePlaneRefShape(value.primary) &&
-        isAssemblyMatePlaneRefShape(value.secondary) &&
-        typeof value.distance === "number" &&
-        Number.isFinite(value.distance)
-      );
-    }
-    return false;
+    return isAssemblyRelationalMateShape(value);
   }
 
   if (value.op === "assembly.mate.delete") {
