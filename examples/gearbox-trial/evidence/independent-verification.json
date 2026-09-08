@@ -1,0 +1,644 @@
+{
+  "baseline": "adab4e078fd592e149b2d408996e978c4d0e86c5",
+  "revisions": [
+    {
+      "ratio": 2,
+      "profiles": [
+        {
+          "bodyId": "pinion",
+          "teeth": 20,
+          "segments": 620,
+          "rootRadius": 13.125,
+          "tipRadius": 16.5,
+          "boreRadius": 4.05,
+          "expectedVolume": 6326.062941168192,
+          "exactVolume": 6326.062941168177,
+          "measurementSource": "kernel-derived"
+        },
+        {
+          "bodyId": "wheel",
+          "teeth": 40,
+          "segments": 1240,
+          "rootRadius": 28.125,
+          "tipRadius": 31.5,
+          "boreRadius": 4.05,
+          "expectedVolume": 27399.920507731484,
+          "exactVolume": 27399.920507731433,
+          "measurementSource": "kernel-derived"
+        }
+      ],
+      "motion": [
+        {
+          "inputDegrees": 0,
+          "outputDegrees": 4.5,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -2.4492935982947064e-16
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              45,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              0.07853981633974486
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 90,
+          "outputDegrees": -40.5,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              1.5707963267948966
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              45,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -0.7068583470577035
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 180,
+          "outputDegrees": -85.5,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              3.141592653589793
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              45,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -1.4922565104551517
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 270,
+          "outputDegrees": -130.5,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -1.570796326794897
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              45,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -2.2776546738526
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 360,
+          "outputDegrees": -175.5,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -2.4492935982947064e-16
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              45,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -3.0630528372500483
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        }
+      ],
+      "step": [
+        {
+          "path": "pinion-3to1.step",
+          "solidCount": 1,
+          "volume": 6326.062941163583
+        },
+        {
+          "path": "wheel-40t.step",
+          "solidCount": 1,
+          "volume": 27399.920507731153
+        }
+      ],
+      "sampledPlanarOverlap": {
+        "poseCount": 73,
+        "stepDegrees": 5,
+        "overlappingInputs": [],
+        "scope": "Authored polygon outlines at ideal prescribed poses; no contact dynamics or continuous collision proof."
+      },
+      "sourceIdentity": {
+        "algorithm": "partbench-source-v1",
+        "sha256": "e2804d983fb787809882f58a0407693cf6158732c2403ed7aa2be75d046b7426"
+      },
+      "activeDefinitions": 8,
+      "calls": [
+        {
+          "name": "cad.project_open",
+          "milliseconds": 1691.1422080000002,
+          "responseBytes": 788
+        },
+        {
+          "name": "cad.session_info",
+          "milliseconds": 55.01270900000054,
+          "responseBytes": 3260
+        },
+        {
+          "name": "cad.body_mass_properties",
+          "milliseconds": 30826.2285,
+          "responseBytes": 1848
+        },
+        {
+          "name": "cad.body_mass_properties",
+          "milliseconds": 28.603457999997772,
+          "responseBytes": 1836
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 23.946666999996523,
+          "responseBytes": 1044242
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 1503.4459579999966,
+          "responseBytes": 4753
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 10.765958000003593,
+          "responseBytes": 1044242
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 1471.9796669999996,
+          "responseBytes": 16539
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 10.605999999999767,
+          "responseBytes": 1044210
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 1551.1991669999989,
+          "responseBytes": 16539
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 12.255291000001307,
+          "responseBytes": 1044204
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 1568.5619579999984,
+          "responseBytes": 16525
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 9.99141700000473,
+          "responseBytes": 1044190
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 1401.6829170000055,
+          "responseBytes": 16589
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 10.426958000003651,
+          "responseBytes": 1044254
+        }
+      ]
+    },
+    {
+      "ratio": 3,
+      "profiles": [
+        {
+          "bodyId": "pinion",
+          "teeth": 20,
+          "segments": 620,
+          "rootRadius": 13.125,
+          "tipRadius": 16.5,
+          "boreRadius": 4.05,
+          "expectedVolume": 6326.062941168192,
+          "exactVolume": 6326.062941168177,
+          "measurementSource": "kernel-derived"
+        },
+        {
+          "bodyId": "wheel",
+          "teeth": 60,
+          "segments": 1740,
+          "rootRadius": 43.125,
+          "tipRadius": 46.5,
+          "boreRadius": 4.05,
+          "expectedVolume": 62613.57587453365,
+          "exactVolume": 62613.57587453369,
+          "measurementSource": "kernel-derived"
+        }
+      ],
+      "motion": [
+        {
+          "inputDegrees": 0,
+          "outputDegrees": 3,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -2.4492935982947064e-16
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              60,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              0.0523598775598299
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 90,
+          "outputDegrees": -27,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              1.5707963267948966
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              60,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -0.47123889803846897
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 180,
+          "outputDegrees": -57,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              3.141592653589793
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              60,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -0.9948376736367678
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 270,
+          "outputDegrees": -87,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -1.570796326794897
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              60,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -1.5184364492350666
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "inputDegrees": 360,
+          "outputDegrees": -117,
+          "inputPose": {
+            "translation": [
+              0,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -2.4492935982947064e-16
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "outputPose": {
+            "translation": [
+              60,
+              0,
+              19
+            ],
+            "rotation": [
+              0,
+              0,
+              -2.0420352248333655
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          }
+        }
+      ],
+      "step": [
+        {
+          "path": "pinion-3to1.step",
+          "solidCount": 1,
+          "volume": 6326.062941163583
+        },
+        {
+          "path": "wheel-3to1.step",
+          "solidCount": 1,
+          "volume": 62613.575874490794
+        }
+      ],
+      "sampledPlanarOverlap": {
+        "poseCount": 73,
+        "stepDegrees": 5,
+        "overlappingInputs": [],
+        "scope": "Authored polygon outlines at ideal prescribed poses; no contact dynamics or continuous collision proof."
+      },
+      "sourceIdentity": {
+        "algorithm": "partbench-source-v1",
+        "sha256": "bbff8610abd549098f5b1b55881045f217b7c3c741901c7373f2d369a98c2510"
+      },
+      "activeDefinitions": 8,
+      "calls": [
+        {
+          "name": "cad.project_open",
+          "milliseconds": 5563.717375000007,
+          "responseBytes": 788
+        },
+        {
+          "name": "cad.session_info",
+          "milliseconds": 160.18904199999815,
+          "responseBytes": 3260
+        },
+        {
+          "name": "cad.body_mass_properties",
+          "milliseconds": 50762.375083000006,
+          "responseBytes": 1848
+        },
+        {
+          "name": "cad.body_mass_properties",
+          "milliseconds": 29.574625000008382,
+          "responseBytes": 1844
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 15.842583000019658,
+          "responseBytes": 1331452
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 3092.257333000016,
+          "responseBytes": 4753
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 11.619917000003625,
+          "responseBytes": 1331452
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 2690.1991250000137,
+          "responseBytes": 16543
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 13.203083000000333,
+          "responseBytes": 1331434
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 2644.471375000023,
+          "responseBytes": 16535
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 13.076124999992317,
+          "responseBytes": 1331420
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 2941.8996669999906,
+          "responseBytes": 16543
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 10.09541700000409,
+          "responseBytes": 1331428
+        },
+        {
+          "name": "cad.batch",
+          "milliseconds": 2485.7053750000196,
+          "responseBytes": 16585
+        },
+        {
+          "name": "cad.project_structure",
+          "milliseconds": 10.002750000014203,
+          "responseBytes": 1331470
+        }
+      ]
+    }
+  ],
+  "passed": true
+}

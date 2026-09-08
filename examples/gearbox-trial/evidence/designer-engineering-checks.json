@@ -1,0 +1,186 @@
+{
+  "method": "Independent authored polygon cross-section checks, not an OCCT contact/dynamics simulation.",
+  "parameters": {
+    "module": 1.5,
+    "pressureAngleDegrees": 20,
+    "inputTeeth": 20,
+    "outputTeethInitial": 40,
+    "outputTeethFinal": 60,
+    "faceWidth": 10,
+    "gearBore": 8.1,
+    "shaftDiameter": 8,
+    "shaftLength": 50,
+    "bearingBore": 8.3,
+    "backlashTotal": 0.16,
+    "baseWidth": 170,
+    "baseDepth": 115,
+    "baseThickness": 6,
+    "bridgeDepth": 18,
+    "bridgeThickness": 6,
+    "gearZ": 19,
+    "bottomBridgeZ": 6,
+    "topBridgeZ": 36,
+    "standoffLength": 24,
+    "flankSegments": 10
+  },
+  "pairs": [
+    {
+      "teeth": [
+        20,
+        40
+      ],
+      "centerDistance": 45,
+      "pitchDiameters": [
+        30,
+        60
+      ],
+      "outerDiameters": [
+        33,
+        63
+      ],
+      "rootDiameters": [
+        26.25,
+        56.25
+      ],
+      "nominalTipRootClearance": 0.375,
+      "theoreticalContactRatio": 1.635185963571461,
+      "analyticPolygonVolumes": [
+        6326.062941168192,
+        27399.920507731484
+      ],
+      "outlineSegmentCounts": [
+        620,
+        1240
+      ],
+      "sampleCount": 361,
+      "overlapPoses": [],
+      "minBoundaryDistance": 0.07555442779901345,
+      "maxBoundaryDistance": 0.07869906936802841
+    },
+    {
+      "teeth": [
+        20,
+        60
+      ],
+      "centerDistance": 60,
+      "pitchDiameters": [
+        30,
+        90
+      ],
+      "outerDiameters": [
+        33,
+        93
+      ],
+      "rootDiameters": [
+        26.25,
+        86.25
+      ],
+      "nominalTipRootClearance": 0.375,
+      "theoreticalContactRatio": 1.6707764325273948,
+      "analyticPolygonVolumes": [
+        6326.062941168192,
+        62613.57587453365
+      ],
+      "outlineSegmentCounts": [
+        620,
+        1740
+      ],
+      "sampleCount": 361,
+      "overlapPoses": [],
+      "minBoundaryDistance": 0.07562701256972829,
+      "maxBoundaryDistance": 0.07674359460132338
+    }
+  ],
+  "assemblyClearances": {
+    "gearBoreRadial": 0.05,
+    "shaftBearingRadial": 0.15,
+    "spacerEndAxial": 0.1,
+    "gearFacesZ": [
+      19,
+      29
+    ],
+    "bridgeFacesZ": [
+      [
+        6,
+        12
+      ],
+      [
+        36,
+        42
+      ]
+    ],
+    "spacerFacesZ": [
+      [
+        12.1,
+        18.9
+      ],
+      [
+        29.1,
+        35.9
+      ]
+    ],
+    "finalWheelTipToRightStandoffMinimumRadial": 4.5,
+    "inputTipToLeftStandoffMinimumRadial": 4.5,
+    "finalWheelTipToBaseEdgeY": 11
+  },
+  "occtVolumeCrossChecks": {
+    "pinion": {
+      "analytical": 6326.062941168192,
+      "occt": 6326.062941168177,
+      "absoluteError": 1.546140993013978e-11,
+      "pass": true
+    },
+    "wheel": {
+      "analytical": 62613.57587453365,
+      "occt": 62613.57587453369,
+      "absoluteError": 4.3655745685100555e-11,
+      "pass": true
+    },
+    "base": {
+      "analytical": 116752.60889603852,
+      "occt": 116752.60889603848,
+      "absoluteError": 4.3655745685100555e-11,
+      "pass": true
+    },
+    "bridge": {
+      "analytical": 16016.2633449621,
+      "occt": 16016.263344962099,
+      "absoluteError": 1.8189894035458565e-12,
+      "pass": true
+    },
+    "shaft": {
+      "analytical": 2513.2741228718346,
+      "occt": 2513.2741228718346,
+      "absoluteError": 0,
+      "pass": true
+    },
+    "spacer": {
+      "analytical": 401.1405411589198,
+      "occt": 401.14054115891975,
+      "absoluteError": 5.684341886080802e-14,
+      "pass": true
+    },
+    "standoff": {
+      "analytical": 841.4441763374903,
+      "occt": 841.4441763374899,
+      "absoluteError": 3.410605131648481e-13,
+      "pass": true
+    },
+    "bolt_finished": {
+      "analytical": 698.6548245743669,
+      "occt": 698.6548245743668,
+      "absoluteError": 1.1368683772161603e-13,
+      "pass": true
+    }
+  },
+  "nativeHealth": {
+    "status": "unsupported",
+    "issueCount": 14,
+    "notes": "Under-defined sketches and unproven generated reference correspondence for two composite wire extrudes; mass properties and exports are separate exact evidence."
+  },
+  "maxInvoluteChordDeviation": {
+    "20": 0.003769008331035364,
+    "40": 0.004145496777824261,
+    "60": 0.001554581980016387
+  }
+}

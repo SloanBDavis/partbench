@@ -1,0 +1,2027 @@
+{
+  "source": "Exact successful requests extracted from the independent designer trial",
+  "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-trial/replay",
+  "revisions": [
+    {
+      "ratio": 2,
+      "assemblies": [
+        {
+          "id": "gearbox",
+          "name": "Tabletop involute gearbox",
+          "instances": [
+            {
+              "id": "base_i",
+              "name": "base_i",
+              "definition": {
+                "kind": "body",
+                "bodyId": "base"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  0
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bridge_bottom",
+              "name": "bridge_bottom",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bridge"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  6
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bridge_top",
+              "name": "bridge_top",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bridge"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  36
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_shaft",
+              "name": "input_shaft",
+              "definition": {
+                "kind": "body",
+                "bodyId": "shaft"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  6
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_shaft",
+              "name": "output_shaft",
+              "definition": {
+                "kind": "body",
+                "bodyId": "shaft"
+              },
+              "transform": {
+                "translation": [
+                  45,
+                  0,
+                  6
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.07853981633974484
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_gear",
+              "name": "input_gear",
+              "definition": {
+                "kind": "body",
+                "bodyId": "pinion"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  19
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_gear",
+              "name": "output_gear",
+              "definition": {
+                "kind": "body",
+                "bodyId": "wheel"
+              },
+              "transform": {
+                "translation": [
+                  45,
+                  0,
+                  19
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.07853981633974486
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_spacer_low",
+              "name": "input_spacer_low",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  12.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_spacer_high",
+              "name": "input_spacer_high",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  29.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_spacer_low",
+              "name": "output_spacer_low",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  45,
+                  0,
+                  12.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.07853981633974486
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_spacer_high",
+              "name": "output_spacer_high",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  45,
+                  0,
+                  29.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.07853981633974486
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "standoff_0",
+              "name": "standoff_0",
+              "definition": {
+                "kind": "body",
+                "bodyId": "standoff"
+              },
+              "transform": {
+                "translation": [
+                  -25,
+                  0,
+                  12
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bolt_0",
+              "name": "bolt_0",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bolt_finished"
+              },
+              "transform": {
+                "translation": [
+                  -25,
+                  0,
+                  42
+                ],
+                "rotation": [
+                  3.141592653589793,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "standoff_1",
+              "name": "standoff_1",
+              "definition": {
+                "kind": "body",
+                "bodyId": "standoff"
+              },
+              "transform": {
+                "translation": [
+                  100,
+                  0,
+                  12
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bolt_1",
+              "name": "bolt_1",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bolt_finished"
+              },
+              "transform": {
+                "translation": [
+                  100,
+                  0,
+                  42
+                ],
+                "rotation": [
+                  3.141592653589793,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            }
+          ],
+          "mates": [
+            {
+              "id": "base_fixed",
+              "name": "Assembly base_fixed",
+              "kind": "fixed",
+              "instanceId": "base_i"
+            },
+            {
+              "id": "bridge_bottom_mount",
+              "name": "bridge_bottom_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "bridge_bottom",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "bridge_top_mount",
+              "name": "bridge_top_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    36
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "bridge_top",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "input_rotation",
+              "name": "input_rotation",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0,
+              "angleParameterId": "input_angle"
+            },
+            {
+              "id": "output_rotation",
+              "name": "output_rotation",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    45,
+                    0,
+                    6
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 4.5,
+              "offset": 0,
+              "angleParameterId": "output_angle"
+            },
+            {
+              "id": "pinion_shaft_attachment",
+              "name": "pinion_shaft_attachment",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    13
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_gear",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "wheel_shaft_attachment",
+              "name": "wheel_shaft_attachment",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    13
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_gear",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "input_spacer_low_mount",
+              "name": "input_spacer_low_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_spacer_low",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "input_spacer_high_mount",
+              "name": "input_spacer_high_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    23.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_spacer_high",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "output_spacer_low_mount",
+              "name": "output_spacer_low_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_spacer_low",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "output_spacer_high_mount",
+              "name": "output_spacer_high_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    23.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_spacer_high",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "standoff_mount_0",
+              "name": "standoff_mount_0",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    -25,
+                    0,
+                    12
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "standoff_0",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "bolt_fixed_0",
+              "name": "Assembly bolt_fixed_0",
+              "kind": "fixed",
+              "instanceId": "bolt_0"
+            },
+            {
+              "id": "standoff_mount_1",
+              "name": "standoff_mount_1",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    100,
+                    0,
+                    12
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "standoff_1",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "bolt_fixed_1",
+              "name": "Assembly bolt_fixed_1",
+              "kind": "fixed",
+              "instanceId": "bolt_1"
+            }
+          ]
+        }
+      ],
+      "sourceIdentity": {
+        "algorithm": "partbench-source-v1",
+        "sha256": "f6f2b8d22bfe6cbdec09eb65ceca39a576fa793a88ea45b6ccd48ab5229eba9e"
+      },
+      "masses": {
+        "pinion": 6326.062941168177,
+        "wheel": 27399.920507731433,
+        "base": 116752.6088960385,
+        "bridge": 14396.2633449621,
+        "shaft": 2513.2741228718346,
+        "spacer": 401.14054115891975,
+        "standoff": 841.4441763374899,
+        "bolt_finished": 698.6548245743668
+      }
+    },
+    {
+      "ratio": 3,
+      "assemblies": [
+        {
+          "id": "gearbox",
+          "name": "Tabletop involute gearbox",
+          "instances": [
+            {
+              "id": "base_i",
+              "name": "base_i",
+              "definition": {
+                "kind": "body",
+                "bodyId": "base"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  0
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bridge_bottom",
+              "name": "bridge_bottom",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bridge"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  6
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bridge_top",
+              "name": "bridge_top",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bridge"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  36
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_shaft",
+              "name": "input_shaft",
+              "definition": {
+                "kind": "body",
+                "bodyId": "shaft"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  6
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_shaft",
+              "name": "output_shaft",
+              "definition": {
+                "kind": "body",
+                "bodyId": "shaft"
+              },
+              "transform": {
+                "translation": [
+                  60,
+                  0,
+                  6
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.05235987755982989
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_gear",
+              "name": "input_gear",
+              "definition": {
+                "kind": "body",
+                "bodyId": "pinion"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  19
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_gear",
+              "name": "output_gear",
+              "definition": {
+                "kind": "body",
+                "bodyId": "wheel"
+              },
+              "transform": {
+                "translation": [
+                  60,
+                  0,
+                  19
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.0523598775598299
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_spacer_low",
+              "name": "input_spacer_low",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  12.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "input_spacer_high",
+              "name": "input_spacer_high",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  0,
+                  0,
+                  29.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_spacer_low",
+              "name": "output_spacer_low",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  60,
+                  0,
+                  12.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.0523598775598299
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "output_spacer_high",
+              "name": "output_spacer_high",
+              "definition": {
+                "kind": "body",
+                "bodyId": "spacer"
+              },
+              "transform": {
+                "translation": [
+                  60,
+                  0,
+                  29.1
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0.0523598775598299
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "standoff_0",
+              "name": "standoff_0",
+              "definition": {
+                "kind": "body",
+                "bodyId": "standoff"
+              },
+              "transform": {
+                "translation": [
+                  -25,
+                  0,
+                  12
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bolt_0",
+              "name": "bolt_0",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bolt_finished"
+              },
+              "transform": {
+                "translation": [
+                  -25,
+                  0,
+                  42
+                ],
+                "rotation": [
+                  3.141592653589793,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "standoff_1",
+              "name": "standoff_1",
+              "definition": {
+                "kind": "body",
+                "bodyId": "standoff"
+              },
+              "transform": {
+                "translation": [
+                  115,
+                  0,
+                  12
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            {
+              "id": "bolt_1",
+              "name": "bolt_1",
+              "definition": {
+                "kind": "body",
+                "bodyId": "bolt_finished"
+              },
+              "transform": {
+                "translation": [
+                  115,
+                  0,
+                  42
+                ],
+                "rotation": [
+                  3.141592653589793,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            }
+          ],
+          "mates": [
+            {
+              "id": "base_fixed",
+              "name": "Assembly base_fixed",
+              "kind": "fixed",
+              "instanceId": "base_i"
+            },
+            {
+              "id": "bridge_bottom_mount",
+              "name": "bridge_bottom_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "bridge_bottom",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "bridge_top_mount",
+              "name": "bridge_top_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    36
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "bridge_top",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "input_rotation",
+              "name": "input_rotation",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0,
+              "angleParameterId": "input_angle"
+            },
+            {
+              "id": "output_rotation",
+              "name": "output_rotation",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    60,
+                    0,
+                    6
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 3,
+              "offset": 0,
+              "angleParameterId": "output_angle"
+            },
+            {
+              "id": "pinion_shaft_attachment",
+              "name": "pinion_shaft_attachment",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    13
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_gear",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "wheel_shaft_attachment",
+              "name": "wheel_shaft_attachment",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    13
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_gear",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "input_spacer_low_mount",
+              "name": "input_spacer_low_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_spacer_low",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "input_spacer_high_mount",
+              "name": "input_spacer_high_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "input_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    23.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "input_spacer_high",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "output_spacer_low_mount",
+              "name": "output_spacer_low_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    6.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_spacer_low",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "output_spacer_high_mount",
+              "name": "output_spacer_high_mount",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "output_shaft",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    23.1
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "output_spacer_high",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "standoff_mount_0",
+              "name": "standoff_mount_0",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    -25,
+                    0,
+                    12
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "standoff_0",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "bolt_fixed_0",
+              "name": "Assembly bolt_fixed_0",
+              "kind": "fixed",
+              "instanceId": "bolt_0"
+            },
+            {
+              "id": "standoff_mount_1",
+              "name": "standoff_mount_1",
+              "kind": "revolute",
+              "primary": {
+                "instanceId": "base_i",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    115,
+                    0,
+                    12
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "secondary": {
+                "instanceId": "standoff_1",
+                "frame": {
+                  "kind": "local",
+                  "origin": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "xDirection": [
+                    1,
+                    0,
+                    0
+                  ],
+                  "zDirection": [
+                    0,
+                    0,
+                    1
+                  ]
+                }
+              },
+              "angleDegrees": 0,
+              "offset": 0
+            },
+            {
+              "id": "bolt_fixed_1",
+              "name": "Assembly bolt_fixed_1",
+              "kind": "fixed",
+              "instanceId": "bolt_1"
+            }
+          ]
+        }
+      ],
+      "sourceIdentity": {
+        "algorithm": "partbench-source-v1",
+        "sha256": "4b13079d4b37c2cdaafa3263e608dac23ce3dc82342bc2498941754e61ce4566"
+      },
+      "masses": {
+        "pinion": 6326.062941168177,
+        "wheel": 62613.57587453369,
+        "base": 116752.60889603848,
+        "bridge": 16016.263344962099,
+        "shaft": 2513.2741228718346,
+        "spacer": 401.14054115891975,
+        "standoff": 841.4441763374899,
+        "bolt_finished": 698.6548245743668
+      }
+    }
+  ],
+  "passed": true
+}

@@ -56,6 +56,7 @@ inspection, revision, native save/reopen, STEP export, and current limits.
 - [Connected robot arm: example and revision workflow](examples/robot-arm-workflow/README.md)
 - [Robot arm workflow fixes and verification](docs/robot-arm-fixes.md)
 - [Robot arm agent trial: findings and next-work priorities](docs/robot-arm-trial.md)
+- [Independent gearbox trial: motion, revision, and workflow findings](docs/gearbox-trial.md)
 - [How we work](docs/how-we-work.md)
 - [Architecture](docs/architecture.md)
 - [Agent runtime goal](docs/agent-runtime.md)

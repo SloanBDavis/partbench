@@ -1,0 +1,1663 @@
+{
+  "cases": [
+    {
+      "kind": "wire",
+      "cut": {
+        "ok": false,
+        "requestId": "mcp_jsonrpc_4",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "mode": "commit",
+        "error": {
+          "code": "UNSUPPORTED_FEATURE_OPERATION",
+          "message": "This cut extrude target is unsupported.",
+          "opIndex": 0,
+          "bodyId": "blank_body",
+          "path": "$.ops[0].operationMode",
+          "expected": "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target",
+          "received": "{\"operationMode\":\"cut\",\"profileKind\":\"circle\",\"targetBodyId\":\"blank_body\",\"targetOperationMode\":\"newBody\",\"targetFeatureKind\":\"extrude\"}",
+          "op": "feature.extrude"
+        },
+        "errors": [
+          {
+            "code": "UNSUPPORTED_FEATURE_OPERATION",
+            "message": "This cut extrude target is unsupported.",
+            "opIndex": 0,
+            "bodyId": "blank_body",
+            "path": "$.ops[0].operationMode",
+            "expected": "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target",
+            "received": "{\"operationMode\":\"cut\",\"profileKind\":\"circle\",\"targetBodyId\":\"blank_body\",\"targetOperationMode\":\"newBody\",\"targetFeatureKind\":\"extrude\"}",
+            "op": "feature.extrude"
+          }
+        ],
+        "createdIds": [],
+        "modifiedIds": [],
+        "deletedIds": [],
+        "warnings": [],
+        "audit": {
+          "source": "mcp",
+          "requestId": "mcp_jsonrpc_4",
+          "toolName": "cad.batch",
+          "intent": "commit",
+          "operationCount": 1
+        },
+        "review": {
+          "requestedMode": "commit",
+          "effectiveIntent": "commit",
+          "operationCount": 1,
+          "entityChanges": {
+            "objects": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketches": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchEntities": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "parameters": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchDimensions": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchConstraints": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "features": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "bodies": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "namedReferences": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            }
+          },
+          "operations": [
+            {
+              "index": 0,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create cut extrude feature bored from bore/circle",
+              "featureId": "bored",
+              "bodyId": "bored_body",
+              "targetBodyId": "blank_body",
+              "operationMode": "cut",
+              "sketchId": "bore",
+              "sketchEntityId": "circle"
+            }
+          ],
+          "audit": {
+            "source": "mcp",
+            "requestId": "mcp_jsonrpc_4",
+            "toolName": "cad.batch",
+            "intent": "commit",
+            "operationCount": 1,
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            }
+          },
+          "commitGate": {
+            "commitsRequireExplicitPermission": true,
+            "dryRunsRequirePermission": false,
+            "permissionProvided": true,
+            "blocked": false,
+            "message": "Commit requested and explicitly allowed by adapter permissions."
+          },
+          "hints": [],
+          "blockers": [
+            {
+              "code": "VALIDATION_ERROR",
+              "severity": "blocker",
+              "message": "UNSUPPORTED_FEATURE_OPERATION: This cut extrude target is unsupported.",
+              "opIndex": 0,
+              "op": "feature.extrude",
+              "errorCode": "UNSUPPORTED_FEATURE_OPERATION",
+              "path": "$.ops[0].operationMode"
+            }
+          ]
+        }
+      },
+      "requests": [
+        {
+          "name": "cad.batch",
+          "arguments": {
+            "allowCommit": true,
+            "batch": {
+              "version": "cadops.v1",
+              "mode": "commit",
+              "ops": [
+                {
+                  "op": "sketch.create",
+                  "id": "outline",
+                  "name": "Square",
+                  "plane": "XY"
+                },
+                {
+                  "op": "sketch.addLine",
+                  "sketchId": "outline",
+                  "id": "edge_0",
+                  "start": [
+                    -10,
+                    -10
+                  ],
+                  "end": [
+                    10,
+                    -10
+                  ]
+                },
+                {
+                  "op": "sketch.addLine",
+                  "sketchId": "outline",
+                  "id": "edge_1",
+                  "start": [
+                    10,
+                    -10
+                  ],
+                  "end": [
+                    10,
+                    10
+                  ]
+                },
+                {
+                  "op": "sketch.addLine",
+                  "sketchId": "outline",
+                  "id": "edge_2",
+                  "start": [
+                    10,
+                    10
+                  ],
+                  "end": [
+                    -10,
+                    10
+                  ]
+                },
+                {
+                  "op": "sketch.addLine",
+                  "sketchId": "outline",
+                  "id": "edge_3",
+                  "start": [
+                    -10,
+                    10
+                  ],
+                  "end": [
+                    -10,
+                    -10
+                  ]
+                },
+                {
+                  "op": "feature.extrude",
+                  "id": "blank",
+                  "bodyId": "blank_body",
+                  "depth": 10,
+                  "profile": {
+                    "kind": "wire",
+                    "sketchId": "outline",
+                    "segments": [
+                      {
+                        "entityId": "edge_0",
+                        "orientation": "forward"
+                      },
+                      {
+                        "entityId": "edge_1",
+                        "orientation": "forward"
+                      },
+                      {
+                        "entityId": "edge_2",
+                        "orientation": "forward"
+                      },
+                      {
+                        "entityId": "edge_3",
+                        "orientation": "forward"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "sketch.create",
+                  "id": "bore",
+                  "name": "Bore",
+                  "plane": "XY"
+                },
+                {
+                  "op": "sketch.addCircle",
+                  "sketchId": "bore",
+                  "id": "circle",
+                  "center": [
+                    0,
+                    0
+                  ],
+                  "radius": 3
+                }
+              ]
+            }
+          },
+          "response": {
+            "ok": true,
+            "requestId": "mcp_jsonrpc_2",
+            "adapterVersion": "web-cad.agent-adapter.v1",
+            "cadOpsVersion": "cadops.v1",
+            "mode": "commit",
+            "semanticDiff": {
+              "created": [],
+              "modified": [],
+              "deleted": [],
+              "sketches": {
+                "created": [
+                  {
+                    "id": "outline",
+                    "plane": "XY"
+                  },
+                  {
+                    "id": "bore",
+                    "plane": "XY"
+                  }
+                ],
+                "modified": [],
+                "deleted": [],
+                "entitiesCreated": [
+                  {
+                    "sketchId": "outline",
+                    "id": "edge_0",
+                    "kind": "line"
+                  },
+                  {
+                    "sketchId": "outline",
+                    "id": "edge_1",
+                    "kind": "line"
+                  },
+                  {
+                    "sketchId": "outline",
+                    "id": "edge_2",
+                    "kind": "line"
+                  },
+                  {
+                    "sketchId": "outline",
+                    "id": "edge_3",
+                    "kind": "line"
+                  },
+                  {
+                    "sketchId": "bore",
+                    "id": "circle",
+                    "kind": "circle"
+                  }
+                ],
+                "entitiesModified": [],
+                "entitiesDeleted": [],
+                "entityChanges": [
+                  {
+                    "sketchId": "outline",
+                    "entityId": "edge_0",
+                    "action": "added",
+                    "entityKind": "line",
+                    "changedFields": [
+                      "start",
+                      "end",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  },
+                  {
+                    "sketchId": "outline",
+                    "entityId": "edge_1",
+                    "action": "added",
+                    "entityKind": "line",
+                    "changedFields": [
+                      "start",
+                      "end",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  },
+                  {
+                    "sketchId": "outline",
+                    "entityId": "edge_2",
+                    "action": "added",
+                    "entityKind": "line",
+                    "changedFields": [
+                      "start",
+                      "end",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  },
+                  {
+                    "sketchId": "outline",
+                    "entityId": "edge_3",
+                    "action": "added",
+                    "entityKind": "line",
+                    "changedFields": [
+                      "start",
+                      "end",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  },
+                  {
+                    "sketchId": "bore",
+                    "entityId": "circle",
+                    "action": "added",
+                    "entityKind": "circle",
+                    "changedFields": [
+                      "center",
+                      "radius",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  }
+                ]
+              },
+              "features": {
+                "created": [
+                  {
+                    "id": "blank",
+                    "kind": "extrude",
+                    "bodyId": "blank_body",
+                    "sketchId": "outline",
+                    "profile": {
+                      "kind": "wire",
+                      "sketchId": "outline",
+                      "segments": [
+                        {
+                          "entityId": "edge_0",
+                          "orientation": "forward"
+                        },
+                        {
+                          "entityId": "edge_1",
+                          "orientation": "forward"
+                        },
+                        {
+                          "entityId": "edge_2",
+                          "orientation": "forward"
+                        },
+                        {
+                          "entityId": "edge_3",
+                          "orientation": "forward"
+                        }
+                      ]
+                    },
+                    "depth": 10,
+                    "side": "positive",
+                    "operationMode": "newBody"
+                  }
+                ],
+                "modified": [],
+                "deleted": [],
+                "bodiesCreated": [
+                  {
+                    "id": "blank_body",
+                    "kind": "solid",
+                    "featureId": "blank"
+                  }
+                ],
+                "bodiesModified": [],
+                "bodiesDeleted": [],
+                "referenceEffects": [],
+                "lifecycleEffects": [],
+                "inputReferences": [
+                  {
+                    "featureId": "blank",
+                    "inputKind": "profile",
+                    "after": {
+                      "kind": "wire",
+                      "sketchId": "outline",
+                      "segments": [
+                        {
+                          "entityId": "edge_0",
+                          "orientation": "forward"
+                        },
+                        {
+                          "entityId": "edge_1",
+                          "orientation": "forward"
+                        },
+                        {
+                          "entityId": "edge_2",
+                          "orientation": "forward"
+                        },
+                        {
+                          "entityId": "edge_3",
+                          "orientation": "forward"
+                        }
+                      ]
+                    },
+                    "affectedSketchIds": [
+                      "outline"
+                    ],
+                    "affectedEntityIds": [
+                      "edge_0",
+                      "edge_1",
+                      "edge_2",
+                      "edge_3"
+                    ]
+                  }
+                ]
+              }
+            },
+            "createdIds": [],
+            "modifiedIds": [],
+            "deletedIds": [],
+            "createdSketchIds": [
+              "outline",
+              "bore"
+            ],
+            "createdSketchEntityIds": [
+              "edge_0",
+              "edge_1",
+              "edge_2",
+              "edge_3",
+              "circle"
+            ],
+            "createdFeatureIds": [
+              "blank"
+            ],
+            "createdBodyIds": [
+              "blank_body"
+            ],
+            "warnings": [],
+            "transactionId": "txn_1",
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            },
+            "audit": {
+              "intent": "commit",
+              "operationCount": 8,
+              "source": "mcp",
+              "requestId": "mcp_jsonrpc_2",
+              "toolName": "cad.batch"
+            },
+            "review": {
+              "requestedMode": "commit",
+              "effectiveIntent": "commit",
+              "operationCount": 8,
+              "entityChanges": {
+                "objects": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketches": {
+                  "created": 2,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchEntities": {
+                  "created": 5,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "parameters": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchDimensions": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchConstraints": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "features": {
+                  "created": 1,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "bodies": {
+                  "created": 1,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "namedReferences": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                }
+              },
+              "operations": [
+                {
+                  "index": 0,
+                  "op": "sketch.create",
+                  "intent": "create",
+                  "label": "Create sketch outline on XY",
+                  "sketchId": "outline"
+                },
+                {
+                  "index": 1,
+                  "op": "sketch.addLine",
+                  "intent": "create",
+                  "label": "Add line edge_0 to outline",
+                  "sketchId": "outline",
+                  "sketchEntityId": "edge_0"
+                },
+                {
+                  "index": 2,
+                  "op": "sketch.addLine",
+                  "intent": "create",
+                  "label": "Add line edge_1 to outline",
+                  "sketchId": "outline",
+                  "sketchEntityId": "edge_1"
+                },
+                {
+                  "index": 3,
+                  "op": "sketch.addLine",
+                  "intent": "create",
+                  "label": "Add line edge_2 to outline",
+                  "sketchId": "outline",
+                  "sketchEntityId": "edge_2"
+                },
+                {
+                  "index": 4,
+                  "op": "sketch.addLine",
+                  "intent": "create",
+                  "label": "Add line edge_3 to outline",
+                  "sketchId": "outline",
+                  "sketchEntityId": "edge_3"
+                },
+                {
+                  "index": 5,
+                  "op": "feature.extrude",
+                  "intent": "create",
+                  "label": "Create new body extrude feature blank from outline composite wire",
+                  "featureId": "blank",
+                  "bodyId": "blank_body",
+                  "operationMode": "newBody",
+                  "sketchId": "outline"
+                },
+                {
+                  "index": 6,
+                  "op": "sketch.create",
+                  "intent": "create",
+                  "label": "Create sketch bore on XY",
+                  "sketchId": "bore"
+                },
+                {
+                  "index": 7,
+                  "op": "sketch.addCircle",
+                  "intent": "create",
+                  "label": "Add circle circle to bore",
+                  "sketchId": "bore",
+                  "sketchEntityId": "circle"
+                }
+              ],
+              "audit": {
+                "source": "mcp",
+                "requestId": "mcp_jsonrpc_2",
+                "toolName": "cad.batch",
+                "intent": "commit",
+                "operationCount": 8,
+                "actor": {
+                  "type": "agent",
+                  "id": "mcp",
+                  "name": "MCP Client"
+                }
+              },
+              "commitGate": {
+                "commitsRequireExplicitPermission": true,
+                "dryRunsRequirePermission": false,
+                "permissionProvided": true,
+                "blocked": false,
+                "message": "Commit requested and explicitly allowed by adapter permissions."
+              },
+              "hints": [],
+              "blockers": []
+            }
+          }
+        },
+        {
+          "name": "cad.session_info",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "result": {
+              "runtime": "partbench.cad-runtime.v1",
+              "host": "headless",
+              "geometryAuthority": "OCCT/WASM",
+              "commandVersion": "cadops.v1",
+              "units": "mm",
+              "sourceIdentity": {
+                "algorithm": "partbench-source-v1",
+                "sha256": "d41bd75a08416b4e685843f76c5bd9ebc3c2c9af2ce899ef51e98bb1986570a7"
+              },
+              "sourceAuthorityEpoch": 1,
+              "capabilities": {
+                "exactGeometry": true,
+                "nativeOpenSave": true,
+                "stepExport": true,
+                "displayMesh": false
+              },
+              "cache": {
+                "entryCount": 1,
+                "byteLength": 2077,
+                "hits": 0,
+                "maxEntries": 128,
+                "maxBytes": 67108864
+              },
+              "geometry": {
+                "artifactBuilds": 1,
+                "milliseconds": 2073.628041
+              },
+              "mode": "headless",
+              "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-trial/observer",
+              "fileAccess": "workspace-only",
+              "fileTools": [
+                "cad.project_open",
+                "cad.project_save",
+                "cad.project_export_file"
+              ],
+              "workflow": [
+                "Use cad.batch with version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise several related operations in one transaction.",
+                "Inspect cad.project_structure for body/feature IDs and cad.body_mass_properties for exact measurements. Use reference/readiness queries before topology-dependent edits.",
+                "Use mode dryRun to validate a proposed batch without committing. A rejected batch preserves the project.",
+                "Save .wcad with cad.project_save, reopen with cad.project_open, and export real STEP with cad.project_export_file. All file paths stay within this workspace."
+              ]
+            }
+          }
+        },
+        {
+          "name": "cad.batch",
+          "arguments": {
+            "allowCommit": true,
+            "batch": {
+              "version": "cadops.v1",
+              "mode": "commit",
+              "ops": [
+                {
+                  "op": "feature.extrude",
+                  "id": "bored",
+                  "bodyId": "bored_body",
+                  "sketchId": "bore",
+                  "entityId": "circle",
+                  "depth": 10,
+                  "operationMode": "cut",
+                  "targetBodyId": "blank_body"
+                }
+              ]
+            }
+          },
+          "response": {
+            "ok": false,
+            "requestId": "mcp_jsonrpc_4",
+            "adapterVersion": "web-cad.agent-adapter.v1",
+            "cadOpsVersion": "cadops.v1",
+            "mode": "commit",
+            "error": {
+              "code": "UNSUPPORTED_FEATURE_OPERATION",
+              "message": "This cut extrude target is unsupported.",
+              "opIndex": 0,
+              "bodyId": "blank_body",
+              "path": "$.ops[0].operationMode",
+              "expected": "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target",
+              "received": "{\"operationMode\":\"cut\",\"profileKind\":\"circle\",\"targetBodyId\":\"blank_body\",\"targetOperationMode\":\"newBody\",\"targetFeatureKind\":\"extrude\"}",
+              "op": "feature.extrude"
+            },
+            "errors": [
+              {
+                "code": "UNSUPPORTED_FEATURE_OPERATION",
+                "message": "This cut extrude target is unsupported.",
+                "opIndex": 0,
+                "bodyId": "blank_body",
+                "path": "$.ops[0].operationMode",
+                "expected": "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target",
+                "received": "{\"operationMode\":\"cut\",\"profileKind\":\"circle\",\"targetBodyId\":\"blank_body\",\"targetOperationMode\":\"newBody\",\"targetFeatureKind\":\"extrude\"}",
+                "op": "feature.extrude"
+              }
+            ],
+            "createdIds": [],
+            "modifiedIds": [],
+            "deletedIds": [],
+            "warnings": [],
+            "audit": {
+              "source": "mcp",
+              "requestId": "mcp_jsonrpc_4",
+              "toolName": "cad.batch",
+              "intent": "commit",
+              "operationCount": 1
+            },
+            "review": {
+              "requestedMode": "commit",
+              "effectiveIntent": "commit",
+              "operationCount": 1,
+              "entityChanges": {
+                "objects": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketches": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchEntities": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "parameters": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchDimensions": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchConstraints": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "features": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "bodies": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "namedReferences": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                }
+              },
+              "operations": [
+                {
+                  "index": 0,
+                  "op": "feature.extrude",
+                  "intent": "create",
+                  "label": "Create cut extrude feature bored from bore/circle",
+                  "featureId": "bored",
+                  "bodyId": "bored_body",
+                  "targetBodyId": "blank_body",
+                  "operationMode": "cut",
+                  "sketchId": "bore",
+                  "sketchEntityId": "circle"
+                }
+              ],
+              "audit": {
+                "source": "mcp",
+                "requestId": "mcp_jsonrpc_4",
+                "toolName": "cad.batch",
+                "intent": "commit",
+                "operationCount": 1,
+                "actor": {
+                  "type": "agent",
+                  "id": "mcp",
+                  "name": "MCP Client"
+                }
+              },
+              "commitGate": {
+                "commitsRequireExplicitPermission": true,
+                "dryRunsRequirePermission": false,
+                "permissionProvided": true,
+                "blocked": false,
+                "message": "Commit requested and explicitly allowed by adapter permissions."
+              },
+              "hints": [],
+              "blockers": [
+                {
+                  "code": "VALIDATION_ERROR",
+                  "severity": "blocker",
+                  "message": "UNSUPPORTED_FEATURE_OPERATION: This cut extrude target is unsupported.",
+                  "opIndex": 0,
+                  "op": "feature.extrude",
+                  "errorCode": "UNSUPPORTED_FEATURE_OPERATION",
+                  "path": "$.ops[0].operationMode"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "cad.session_info",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "result": {
+              "runtime": "partbench.cad-runtime.v1",
+              "host": "headless",
+              "geometryAuthority": "OCCT/WASM",
+              "commandVersion": "cadops.v1",
+              "units": "mm",
+              "sourceIdentity": {
+                "algorithm": "partbench-source-v1",
+                "sha256": "d41bd75a08416b4e685843f76c5bd9ebc3c2c9af2ce899ef51e98bb1986570a7"
+              },
+              "sourceAuthorityEpoch": 1,
+              "capabilities": {
+                "exactGeometry": true,
+                "nativeOpenSave": true,
+                "stepExport": true,
+                "displayMesh": false
+              },
+              "cache": {
+                "entryCount": 1,
+                "byteLength": 2077,
+                "hits": 0,
+                "maxEntries": 128,
+                "maxBytes": 67108864
+              },
+              "geometry": {
+                "artifactBuilds": 1,
+                "milliseconds": 2073.628041
+              },
+              "mode": "headless",
+              "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-trial/observer",
+              "fileAccess": "workspace-only",
+              "fileTools": [
+                "cad.project_open",
+                "cad.project_save",
+                "cad.project_export_file"
+              ],
+              "workflow": [
+                "Use cad.batch with version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise several related operations in one transaction.",
+                "Inspect cad.project_structure for body/feature IDs and cad.body_mass_properties for exact measurements. Use reference/readiness queries before topology-dependent edits.",
+                "Use mode dryRun to validate a proposed batch without committing. A rejected batch preserves the project.",
+                "Save .wcad with cad.project_save, reopen with cad.project_open, and export real STEP with cad.project_export_file. All file paths stay within this workspace."
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "rectangle",
+      "cut": {
+        "ok": true,
+        "requestId": "mcp_jsonrpc_4",
+        "adapterVersion": "web-cad.agent-adapter.v1",
+        "cadOpsVersion": "cadops.v1",
+        "mode": "commit",
+        "semanticDiff": {
+          "created": [],
+          "modified": [],
+          "deleted": [],
+          "features": {
+            "created": [
+              {
+                "id": "bored",
+                "kind": "extrude",
+                "bodyId": "bored_body",
+                "sketchId": "bore",
+                "entityId": "circle",
+                "profileKind": "circle",
+                "depth": 10,
+                "side": "positive",
+                "operationMode": "cut",
+                "targetBodyId": "blank_body"
+              }
+            ],
+            "modified": [],
+            "deleted": [],
+            "bodiesCreated": [
+              {
+                "id": "bored_body",
+                "kind": "solid",
+                "featureId": "bored"
+              }
+            ],
+            "bodiesModified": [],
+            "bodiesDeleted": [],
+            "referenceEffects": [],
+            "lifecycleEffects": [],
+            "inputReferences": []
+          }
+        },
+        "createdIds": [],
+        "modifiedIds": [],
+        "deletedIds": [],
+        "createdFeatureIds": [
+          "bored"
+        ],
+        "createdBodyIds": [
+          "bored_body"
+        ],
+        "warnings": [],
+        "transactionId": "txn_2",
+        "actor": {
+          "type": "agent",
+          "id": "mcp",
+          "name": "MCP Client"
+        },
+        "audit": {
+          "intent": "commit",
+          "operationCount": 1,
+          "source": "mcp",
+          "requestId": "mcp_jsonrpc_4",
+          "toolName": "cad.batch"
+        },
+        "review": {
+          "requestedMode": "commit",
+          "effectiveIntent": "commit",
+          "operationCount": 1,
+          "entityChanges": {
+            "objects": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketches": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchEntities": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "parameters": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchDimensions": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "sketchConstraints": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            },
+            "features": {
+              "created": 1,
+              "modified": 0,
+              "deleted": 0
+            },
+            "bodies": {
+              "created": 1,
+              "modified": 0,
+              "deleted": 0
+            },
+            "namedReferences": {
+              "created": 0,
+              "modified": 0,
+              "deleted": 0
+            }
+          },
+          "operations": [
+            {
+              "index": 0,
+              "op": "feature.extrude",
+              "intent": "create",
+              "label": "Create cut extrude feature bored from bore/circle",
+              "featureId": "bored",
+              "bodyId": "bored_body",
+              "targetBodyId": "blank_body",
+              "operationMode": "cut",
+              "sketchId": "bore",
+              "sketchEntityId": "circle"
+            }
+          ],
+          "audit": {
+            "source": "mcp",
+            "requestId": "mcp_jsonrpc_4",
+            "toolName": "cad.batch",
+            "intent": "commit",
+            "operationCount": 1,
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            }
+          },
+          "commitGate": {
+            "commitsRequireExplicitPermission": true,
+            "dryRunsRequirePermission": false,
+            "permissionProvided": true,
+            "blocked": false,
+            "message": "Commit requested and explicitly allowed by adapter permissions."
+          },
+          "hints": [],
+          "blockers": []
+        }
+      },
+      "requests": [
+        {
+          "name": "cad.batch",
+          "arguments": {
+            "allowCommit": true,
+            "batch": {
+              "version": "cadops.v1",
+              "mode": "commit",
+              "ops": [
+                {
+                  "op": "sketch.create",
+                  "id": "outline",
+                  "name": "Square",
+                  "plane": "XY"
+                },
+                {
+                  "op": "sketch.addRectangle",
+                  "sketchId": "outline",
+                  "id": "rectangle",
+                  "center": [
+                    0,
+                    0
+                  ],
+                  "width": 20,
+                  "height": 20
+                },
+                {
+                  "op": "feature.extrude",
+                  "id": "blank",
+                  "bodyId": "blank_body",
+                  "depth": 10,
+                  "sketchId": "outline",
+                  "entityId": "rectangle"
+                },
+                {
+                  "op": "sketch.create",
+                  "id": "bore",
+                  "name": "Bore",
+                  "plane": "XY"
+                },
+                {
+                  "op": "sketch.addCircle",
+                  "sketchId": "bore",
+                  "id": "circle",
+                  "center": [
+                    0,
+                    0
+                  ],
+                  "radius": 3
+                }
+              ]
+            }
+          },
+          "response": {
+            "ok": true,
+            "requestId": "mcp_jsonrpc_2",
+            "adapterVersion": "web-cad.agent-adapter.v1",
+            "cadOpsVersion": "cadops.v1",
+            "mode": "commit",
+            "semanticDiff": {
+              "created": [],
+              "modified": [],
+              "deleted": [],
+              "sketches": {
+                "created": [
+                  {
+                    "id": "outline",
+                    "plane": "XY"
+                  },
+                  {
+                    "id": "bore",
+                    "plane": "XY"
+                  }
+                ],
+                "modified": [],
+                "deleted": [],
+                "entitiesCreated": [
+                  {
+                    "sketchId": "outline",
+                    "id": "rectangle",
+                    "kind": "rectangle"
+                  },
+                  {
+                    "sketchId": "bore",
+                    "id": "circle",
+                    "kind": "circle"
+                  }
+                ],
+                "entitiesModified": [],
+                "entitiesDeleted": [],
+                "entityChanges": [
+                  {
+                    "sketchId": "outline",
+                    "entityId": "rectangle",
+                    "action": "added",
+                    "entityKind": "rectangle",
+                    "changedFields": [
+                      "center",
+                      "width",
+                      "height",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  },
+                  {
+                    "sketchId": "bore",
+                    "entityId": "circle",
+                    "action": "added",
+                    "entityKind": "circle",
+                    "changedFields": [
+                      "center",
+                      "radius",
+                      "construction"
+                    ],
+                    "constructionAfter": false
+                  }
+                ]
+              },
+              "features": {
+                "created": [
+                  {
+                    "id": "blank",
+                    "kind": "extrude",
+                    "bodyId": "blank_body",
+                    "sketchId": "outline",
+                    "entityId": "rectangle",
+                    "profileKind": "rectangle",
+                    "depth": 10,
+                    "side": "positive",
+                    "operationMode": "newBody"
+                  }
+                ],
+                "modified": [],
+                "deleted": [],
+                "bodiesCreated": [
+                  {
+                    "id": "blank_body",
+                    "kind": "solid",
+                    "featureId": "blank"
+                  }
+                ],
+                "bodiesModified": [],
+                "bodiesDeleted": [],
+                "referenceEffects": [],
+                "lifecycleEffects": [],
+                "inputReferences": []
+              }
+            },
+            "createdIds": [],
+            "modifiedIds": [],
+            "deletedIds": [],
+            "createdSketchIds": [
+              "outline",
+              "bore"
+            ],
+            "createdSketchEntityIds": [
+              "rectangle",
+              "circle"
+            ],
+            "createdFeatureIds": [
+              "blank"
+            ],
+            "createdBodyIds": [
+              "blank_body"
+            ],
+            "warnings": [],
+            "transactionId": "txn_1",
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            },
+            "audit": {
+              "intent": "commit",
+              "operationCount": 5,
+              "source": "mcp",
+              "requestId": "mcp_jsonrpc_2",
+              "toolName": "cad.batch"
+            },
+            "review": {
+              "requestedMode": "commit",
+              "effectiveIntent": "commit",
+              "operationCount": 5,
+              "entityChanges": {
+                "objects": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketches": {
+                  "created": 2,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchEntities": {
+                  "created": 2,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "parameters": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchDimensions": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchConstraints": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "features": {
+                  "created": 1,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "bodies": {
+                  "created": 1,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "namedReferences": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                }
+              },
+              "operations": [
+                {
+                  "index": 0,
+                  "op": "sketch.create",
+                  "intent": "create",
+                  "label": "Create sketch outline on XY",
+                  "sketchId": "outline"
+                },
+                {
+                  "index": 1,
+                  "op": "sketch.addRectangle",
+                  "intent": "create",
+                  "label": "Add rectangle rectangle to outline",
+                  "sketchId": "outline",
+                  "sketchEntityId": "rectangle"
+                },
+                {
+                  "index": 2,
+                  "op": "feature.extrude",
+                  "intent": "create",
+                  "label": "Create new body extrude feature blank from outline/rectangle",
+                  "featureId": "blank",
+                  "bodyId": "blank_body",
+                  "operationMode": "newBody",
+                  "sketchId": "outline",
+                  "sketchEntityId": "rectangle"
+                },
+                {
+                  "index": 3,
+                  "op": "sketch.create",
+                  "intent": "create",
+                  "label": "Create sketch bore on XY",
+                  "sketchId": "bore"
+                },
+                {
+                  "index": 4,
+                  "op": "sketch.addCircle",
+                  "intent": "create",
+                  "label": "Add circle circle to bore",
+                  "sketchId": "bore",
+                  "sketchEntityId": "circle"
+                }
+              ],
+              "audit": {
+                "source": "mcp",
+                "requestId": "mcp_jsonrpc_2",
+                "toolName": "cad.batch",
+                "intent": "commit",
+                "operationCount": 5,
+                "actor": {
+                  "type": "agent",
+                  "id": "mcp",
+                  "name": "MCP Client"
+                }
+              },
+              "commitGate": {
+                "commitsRequireExplicitPermission": true,
+                "dryRunsRequirePermission": false,
+                "permissionProvided": true,
+                "blocked": false,
+                "message": "Commit requested and explicitly allowed by adapter permissions."
+              },
+              "hints": [],
+              "blockers": []
+            }
+          }
+        },
+        {
+          "name": "cad.session_info",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "result": {
+              "runtime": "partbench.cad-runtime.v1",
+              "host": "headless",
+              "geometryAuthority": "OCCT/WASM",
+              "commandVersion": "cadops.v1",
+              "units": "mm",
+              "sourceIdentity": {
+                "algorithm": "partbench-source-v1",
+                "sha256": "cc61cf4564058ad996a6f405529567f9821e8dde225a811c941db16d135fb106"
+              },
+              "sourceAuthorityEpoch": 1,
+              "capabilities": {
+                "exactGeometry": true,
+                "nativeOpenSave": true,
+                "stepExport": true,
+                "displayMesh": false
+              },
+              "cache": {
+                "entryCount": 1,
+                "byteLength": 2633,
+                "hits": 0,
+                "maxEntries": 128,
+                "maxBytes": 67108864
+              },
+              "geometry": {
+                "artifactBuilds": 1,
+                "milliseconds": 1697.767875
+              },
+              "mode": "headless",
+              "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-trial/observer",
+              "fileAccess": "workspace-only",
+              "fileTools": [
+                "cad.project_open",
+                "cad.project_save",
+                "cad.project_export_file"
+              ],
+              "workflow": [
+                "Use cad.batch with version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise several related operations in one transaction.",
+                "Inspect cad.project_structure for body/feature IDs and cad.body_mass_properties for exact measurements. Use reference/readiness queries before topology-dependent edits.",
+                "Use mode dryRun to validate a proposed batch without committing. A rejected batch preserves the project.",
+                "Save .wcad with cad.project_save, reopen with cad.project_open, and export real STEP with cad.project_export_file. All file paths stay within this workspace."
+              ]
+            }
+          }
+        },
+        {
+          "name": "cad.batch",
+          "arguments": {
+            "allowCommit": true,
+            "batch": {
+              "version": "cadops.v1",
+              "mode": "commit",
+              "ops": [
+                {
+                  "op": "feature.extrude",
+                  "id": "bored",
+                  "bodyId": "bored_body",
+                  "sketchId": "bore",
+                  "entityId": "circle",
+                  "depth": 10,
+                  "operationMode": "cut",
+                  "targetBodyId": "blank_body"
+                }
+              ]
+            }
+          },
+          "response": {
+            "ok": true,
+            "requestId": "mcp_jsonrpc_4",
+            "adapterVersion": "web-cad.agent-adapter.v1",
+            "cadOpsVersion": "cadops.v1",
+            "mode": "commit",
+            "semanticDiff": {
+              "created": [],
+              "modified": [],
+              "deleted": [],
+              "features": {
+                "created": [
+                  {
+                    "id": "bored",
+                    "kind": "extrude",
+                    "bodyId": "bored_body",
+                    "sketchId": "bore",
+                    "entityId": "circle",
+                    "profileKind": "circle",
+                    "depth": 10,
+                    "side": "positive",
+                    "operationMode": "cut",
+                    "targetBodyId": "blank_body"
+                  }
+                ],
+                "modified": [],
+                "deleted": [],
+                "bodiesCreated": [
+                  {
+                    "id": "bored_body",
+                    "kind": "solid",
+                    "featureId": "bored"
+                  }
+                ],
+                "bodiesModified": [],
+                "bodiesDeleted": [],
+                "referenceEffects": [],
+                "lifecycleEffects": [],
+                "inputReferences": []
+              }
+            },
+            "createdIds": [],
+            "modifiedIds": [],
+            "deletedIds": [],
+            "createdFeatureIds": [
+              "bored"
+            ],
+            "createdBodyIds": [
+              "bored_body"
+            ],
+            "warnings": [],
+            "transactionId": "txn_2",
+            "actor": {
+              "type": "agent",
+              "id": "mcp",
+              "name": "MCP Client"
+            },
+            "audit": {
+              "intent": "commit",
+              "operationCount": 1,
+              "source": "mcp",
+              "requestId": "mcp_jsonrpc_4",
+              "toolName": "cad.batch"
+            },
+            "review": {
+              "requestedMode": "commit",
+              "effectiveIntent": "commit",
+              "operationCount": 1,
+              "entityChanges": {
+                "objects": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketches": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchEntities": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "parameters": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchDimensions": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "sketchConstraints": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "features": {
+                  "created": 1,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "bodies": {
+                  "created": 1,
+                  "modified": 0,
+                  "deleted": 0
+                },
+                "namedReferences": {
+                  "created": 0,
+                  "modified": 0,
+                  "deleted": 0
+                }
+              },
+              "operations": [
+                {
+                  "index": 0,
+                  "op": "feature.extrude",
+                  "intent": "create",
+                  "label": "Create cut extrude feature bored from bore/circle",
+                  "featureId": "bored",
+                  "bodyId": "bored_body",
+                  "targetBodyId": "blank_body",
+                  "operationMode": "cut",
+                  "sketchId": "bore",
+                  "sketchEntityId": "circle"
+                }
+              ],
+              "audit": {
+                "source": "mcp",
+                "requestId": "mcp_jsonrpc_4",
+                "toolName": "cad.batch",
+                "intent": "commit",
+                "operationCount": 1,
+                "actor": {
+                  "type": "agent",
+                  "id": "mcp",
+                  "name": "MCP Client"
+                }
+              },
+              "commitGate": {
+                "commitsRequireExplicitPermission": true,
+                "dryRunsRequirePermission": false,
+                "permissionProvided": true,
+                "blocked": false,
+                "message": "Commit requested and explicitly allowed by adapter permissions."
+              },
+              "hints": [],
+              "blockers": []
+            }
+          }
+        },
+        {
+          "name": "cad.session_info",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "result": {
+              "runtime": "partbench.cad-runtime.v1",
+              "host": "headless",
+              "geometryAuthority": "OCCT/WASM",
+              "commandVersion": "cadops.v1",
+              "units": "mm",
+              "sourceIdentity": {
+                "algorithm": "partbench-source-v1",
+                "sha256": "600f9f8bd901ab0636fdfb25d1fea88092e44cebd6abd56c7cdb6582bc877b4a"
+              },
+              "sourceAuthorityEpoch": 2,
+              "capabilities": {
+                "exactGeometry": true,
+                "nativeOpenSave": true,
+                "stepExport": true,
+                "displayMesh": false
+              },
+              "cache": {
+                "entryCount": 2,
+                "byteLength": 6223,
+                "hits": 0,
+                "maxEntries": 128,
+                "maxBytes": 67108864
+              },
+              "geometry": {
+                "artifactBuilds": 2,
+                "milliseconds": 1756.462959
+              },
+              "mode": "headless",
+              "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-trial/observer",
+              "fileAccess": "workspace-only",
+              "fileTools": [
+                "cad.project_open",
+                "cad.project_save",
+                "cad.project_export_file"
+              ],
+              "workflow": [
+                "Use cad.batch with version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise several related operations in one transaction.",
+                "Inspect cad.project_structure for body/feature IDs and cad.body_mass_properties for exact measurements. Use reference/readiness queries before topology-dependent edits.",
+                "Use mode dryRun to validate a proposed batch without committing. A rejected batch preserves the project.",
+                "Save .wcad with cad.project_save, reopen with cad.project_open, and export real STEP with cad.project_export_file. All file paths stay within this workspace."
+              ]
+            }
+          }
+        },
+        {
+          "name": "cad.body_mass_properties",
+          "arguments": {
+            "bodyId": "bored_body"
+          },
+          "response": {
+            "requestId": "mcp_jsonrpc_6",
+            "adapterVersion": "web-cad.agent-adapter.v1",
+            "ok": true,
+            "query": "body.massProperties",
+            "cadOpsVersion": "cadops.v1",
+            "massProperties": {
+              "bodyId": "bored_body",
+              "density": 1,
+              "volume": 3717.256661176918,
+              "surfaceArea": 1731.946891450771,
+              "centerOfMass": [
+                -3.7990481046742744e-16,
+                -8.36576076519357e-17,
+                5
+              ],
+              "mass": 3717.256661176918,
+              "units": "mm",
+              "momentsOfInertia": {
+                "xx": 163674.29966412237,
+                "yy": 163674.29966412243,
+                "zz": 265394.3216419628,
+                "xy": 7.044643345496609e-13,
+                "xz": -6.3362648461406934e-12,
+                "yz": -5.019328908209005e-13
+              },
+              "principalMoments": [
+                163674.2987416685,
+                163674.3005865763,
+                265394.32164196274
+              ],
+              "measurementSource": "kernel-derived",
+              "measurementConfidence": "kernel-derived",
+              "diagnostics": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

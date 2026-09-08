@@ -1,0 +1,526 @@
+{
+  "id": "gearbox-trial-browser-observation",
+  "kind": "cadops",
+  "seed": [],
+  "steps": [],
+  "use": [
+    {
+      "openWcad": ".metrics/gearbox-trial/replay/gearbox-2to1.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.0
+                  ]
+                }
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.0
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "gearbox-trial-open-solid"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "expectText": {
+        "selector": ".pb-project-table tbody tr:first-child td:first-of-type",
+        "text": "0"
+      }
+    },
+    {
+      "click": ".pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": "90"
+      }
+    },
+    {
+      "click": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    -0.7068583470577035
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    -0.7068583470577035
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.0
+                  ]
+                }
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.0
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    -0.7068583470577035
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    -0.7068583470577035
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "screenshot": "gearbox-trial-browser-motion"
+    }
+  ],
+  "useBreak": [
+    {
+      "openWcad": ".metrics/gearbox-trial/replay/gearbox-2to1.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "expectText": {
+        "selector": ".pb-project-table tbody tr:first-child td:first-of-type",
+        "text": "0"
+      }
+    },
+    {
+      "click": ".pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.0
+                  ]
+                }
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.0
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "gearbox-trial-empty-angle"
+    }
+  ]
+}

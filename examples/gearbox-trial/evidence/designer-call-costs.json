@@ -1,0 +1,170 @@
+{
+  "measurement": "Sum of per-request elapsed times and JSON payload bytes from logs/*.jsonl; requestBytes exclude JSON-RPC id/version and newline framing. Includes probes, failed attempts and retries. Discovery schema read is listed separately.",
+  "firstRequest": "2026-09-08T02:49:46.208Z",
+  "lastRequest": "2026-09-08T03:09:49.022Z",
+  "requestCount": 165,
+  "toolCallCount": 151,
+  "failedRequests": 7,
+  "totalRequestBytes": 1681228,
+  "totalResponseBytes": 48820669,
+  "totalElapsedRequestMilliseconds": 376779.307745,
+  "largestRequest": {
+    "file": "revise-and-verify.jsonl",
+    "tool": "cad.batch",
+    "bytes": 399077,
+    "milliseconds": 32987.447875
+  },
+  "groups": {
+    "initialize": {
+      "calls": 14,
+      "milliseconds": 988.9736260000001,
+      "requestBytes": 2100,
+      "responseBytes": 7042,
+      "errors": 0
+    },
+    "cad.session_info": {
+      "calls": 14,
+      "milliseconds": 20.294624000000013,
+      "requestBytes": 1050,
+      "responseBytes": 44968,
+      "errors": 0
+    },
+    "cad.batch": {
+      "calls": 52,
+      "milliseconds": 295327.90074599994,
+      "requestBytes": 1669404,
+      "responseBytes": 8714569,
+      "errors": 6
+    },
+    "cad.project_save": {
+      "calls": 15,
+      "milliseconds": 2276.5851659999944,
+      "requestBytes": 1798,
+      "responseBytes": 10958,
+      "errors": 0
+    },
+    "cad.project_open": {
+      "calls": 10,
+      "milliseconds": 22120.509040999998,
+      "requestBytes": 1018,
+      "responseBytes": 7292,
+      "errors": 0
+    },
+    "cad.project_structure": {
+      "calls": 34,
+      "milliseconds": 332.4754609999777,
+      "requestBytes": 2720,
+      "responseBytes": 39811326,
+      "errors": 0
+    },
+    "cad.parameter_list": {
+      "calls": 2,
+      "milliseconds": 0.979041000000052,
+      "requestBytes": 154,
+      "responseBytes": 7076,
+      "errors": 0
+    },
+    "cad.sketch_get": {
+      "calls": 3,
+      "milliseconds": 0.9496659999995245,
+      "requestBytes": 277,
+      "responseBytes": 5311,
+      "errors": 1
+    },
+    "cad.project_export_file": {
+      "calls": 9,
+      "milliseconds": 54100.764416,
+      "requestBytes": 1456,
+      "responseBytes": 29852,
+      "errors": 0
+    },
+    "cad.topology_command_target_readiness": {
+      "calls": 1,
+      "milliseconds": 3.0516660000000115,
+      "requestBytes": 178,
+      "responseBytes": 5533,
+      "errors": 0
+    },
+    "cad.body_mass_properties": {
+      "calls": 9,
+      "milliseconds": 368.9417920000069,
+      "requestBytes": 905,
+      "responseBytes": 16590,
+      "errors": 0
+    },
+    "cad.project_parameter_evaluation": {
+      "calls": 1,
+      "milliseconds": 0.7934580000001006,
+      "requestBytes": 91,
+      "responseBytes": 7334,
+      "errors": 0
+    },
+    "cad.project_health": {
+      "calls": 1,
+      "milliseconds": 1237.0890420000069,
+      "requestBytes": 77,
+      "responseBytes": 152818,
+      "errors": 0
+    }
+  },
+  "files": [
+    {
+      "name": "base-3to1.step",
+      "bytes": 37380
+    },
+    {
+      "name": "bolt_finished-3to1.step",
+      "bytes": 19335
+    },
+    {
+      "name": "bridge-3to1.step",
+      "bytes": 30161
+    },
+    {
+      "name": "gearbox-2to1.wcad",
+      "bytes": 1203310
+    },
+    {
+      "name": "gearbox-3to1.wcad",
+      "bytes": 2346881
+    },
+    {
+      "name": "pinion-3to1.step",
+      "bytes": 2501842
+    },
+    {
+      "name": "shaft-3to1.step",
+      "bytes": 5678
+    },
+    {
+      "name": "spacer-3to1.step",
+      "bytes": 9352
+    },
+    {
+      "name": "standoff-3to1.step",
+      "bytes": 9342
+    },
+    {
+      "name": "wheel-3to1.step",
+      "bytes": 7138185
+    },
+    {
+      "name": "wheel-40t.step",
+      "bytes": 5024496
+    }
+  ],
+  "discovery": [
+    {
+      "method": "tools/list",
+      "milliseconds": 2.193333999999993,
+      "requestBytes": 2,
+      "responseBytes": 119557
+    },
+    {
+      "method": "tools/call",
+      "milliseconds": 1.3631249999999966,
+      "requestBytes": 42,
+      "responseBytes": 3212
+    }
+  ]
+}

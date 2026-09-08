@@ -1,0 +1,103 @@
+{
+  "source": "designer tools/list, recursively inspected variants",
+  "explicitOperations": [
+    "assembly.create",
+    "assembly.instance.delete",
+    "assembly.instance.insert",
+    "assembly.instance.replace",
+    "assembly.instance.updateTransform",
+    "assembly.mate.create",
+    "assembly.mate.delete",
+    "assembly.mate.edit",
+    "feature.circularPattern",
+    "feature.extrude",
+    "feature.fillet",
+    "feature.hole",
+    "feature.linearPattern",
+    "feature.shell",
+    "feature.updateCircularPattern",
+    "feature.updateExtrude",
+    "feature.updateFillet",
+    "feature.updateHole",
+    "feature.updateLinearPattern",
+    "feature.updateShell",
+    "parameter.create",
+    "parameter.setExpression",
+    "parameter.update",
+    "sketch.addCircle",
+    "sketch.addRectangle",
+    "sketch.addRoundedRectangle",
+    "sketch.addSlot",
+    "sketch.constraint.create",
+    "sketch.constraint.delete",
+    "sketch.constraint.rename",
+    "sketch.constraint.update",
+    "sketch.create",
+    "sketch.dimension.create",
+    "sketch.dimension.delete",
+    "sketch.dimension.rename",
+    "sketch.dimension.update",
+    "sketch.offset"
+  ],
+  "missingExplicitCurveVariants": [
+    "sketch.addLine",
+    "sketch.addArc",
+    "sketch.addSpline"
+  ],
+  "fallback": [
+    {
+      "type": "object",
+      "description": "Another supported typed CadOp outside the common modeling and schema-exact sketch operations described above. Execution always validates against CADOps; this fallback does not imply arbitrary operations are supported.",
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "not": {
+            "enum": [
+              "parameter.create",
+              "parameter.update",
+              "parameter.setExpression",
+              "sketch.create",
+              "sketch.addRectangle",
+              "sketch.addCircle",
+              "feature.extrude",
+              "feature.updateExtrude",
+              "feature.hole",
+              "feature.updateHole",
+              "feature.fillet",
+              "feature.updateFillet",
+              "feature.linearPattern",
+              "feature.circularPattern",
+              "feature.updateLinearPattern",
+              "feature.updateCircularPattern",
+              "feature.shell",
+              "feature.updateShell",
+              "assembly.create",
+              "assembly.instance.insert",
+              "assembly.instance.updateTransform",
+              "assembly.instance.replace",
+              "assembly.instance.delete",
+              "assembly.mate.delete",
+              "assembly.mate.create",
+              "assembly.mate.edit",
+              "sketch.offset",
+              "sketch.addSlot",
+              "sketch.addRoundedRectangle",
+              "sketch.dimension.create",
+              "sketch.dimension.update",
+              "sketch.dimension.rename",
+              "sketch.dimension.delete",
+              "sketch.constraint.create",
+              "sketch.constraint.update",
+              "sketch.constraint.rename",
+              "sketch.constraint.delete"
+            ]
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

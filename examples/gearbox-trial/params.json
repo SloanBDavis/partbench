@@ -1,0 +1,23 @@
+{
+  "module": 1.5,
+  "pressureAngleDegrees": 20,
+  "inputTeeth": 20,
+  "outputTeethInitial": 40,
+  "outputTeethFinal": 60,
+  "faceWidth": 10,
+  "gearBore": 8.1,
+  "shaftDiameter": 8,
+  "shaftLength": 50,
+  "bearingBore": 8.3,
+  "backlashTotal": 0.16,
+  "baseWidth": 170,
+  "baseDepth": 115,
+  "baseThickness": 6,
+  "bridgeDepth": 18,
+  "bridgeThickness": 6,
+  "gearZ": 19,
+  "bottomBridgeZ": 6,
+  "topBridgeZ": 36,
+  "standoffLength": 24,
+  "flankSegments": 10
+}

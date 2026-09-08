@@ -1,0 +1,159 @@
+{
+  "baseline": "adab4e07",
+  "firstAttempt": {
+    "passed": false,
+    "reason": "After input edit, poses matched but exact/display readiness exceeded expectStructure 10 second deadline."
+  },
+  "secondAttempt": {
+    "passed": true,
+    "change": "Added existing waitReady steps before structure assertions; runtime and geometry unchanged. Readiness timeout remains default 180 seconds.",
+    "scope": "2:1 native open, input 90, undo, redo, fresh tab empty-input rejection. No 3:1 browser journey."
+  },
+  "logExcerpt": [
+    "wait Ready|Ready \u00b7 exact= \u00b7 display=",
+    "wait Needs attention|Needs attention \u00b7 exact= \u00b7 display=",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,pending,pending,pending,pending,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,pending,pending,pending,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,ready,pending,pending,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,ready,pending,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,ready,ready,pending,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:unsupported,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 1 exact result unavailable|1 exact result unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,unsupported",
+    "wait Needs attention|Needs attention \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "wait Needs attention|Needs attention \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "screenshot /Users/sloandavis/Documents/dev/partbench/.metrics/ui-smoke/gearbox-trial-open-solid.png",
+    "wait Updating|Updating \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "wait Updating|Updating \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:unsupported,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:unsupported,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 1 exact result unavailable|1 exact result unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,unsupported",
+    "wait Needs attention|Needs attention \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "wait 2 exact results unavailable|Undo applied. \u00b7 2 exact results unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:unsupported,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 1 exact result unavailable|Undo applied. \u00b7 1 exact result unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,unsupported",
+    "wait Needs attention|Undo applied. \u00b7 Needs attention \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "wait 2 exact results unavailable|Redo applied. \u00b7 2 exact results unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:unsupported,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 1 exact result unavailable|Redo applied. \u00b7 1 exact result unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,unsupported",
+    "wait Needs attention|Redo applied. \u00b7 Needs attention \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "screenshot /Users/sloandavis/Documents/dev/partbench/.metrics/ui-smoke/gearbox-trial-browser-motion.png",
+    "wait Ready|Ready \u00b7 exact= \u00b7 display=",
+    "wait Needs attention|Needs attention \u00b7 exact= \u00b7 display=",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,pending,pending,pending,pending,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,pending,ready,pending,pending,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,pending,ready,ready,pending,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,ready,ready,ready,pending,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=pending,pending,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,pending,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:pending,bolt_finished:pending,bolt_head_blank:blocked,bridge:pending,pinion:unsupported,pinion_blank:blocked,shaft:pending,spacer:pending,standoff:pending,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 2 exact results unavailable|2 exact results unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:unsupported,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,unsupported,unsupported",
+    "wait 1 exact result unavailable|1 exact result unavailable \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:unsupported,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,unsupported",
+    "wait Needs attention|Needs attention \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "wait Needs attention|Needs attention \u00b7 Enter a finite value or an expression. \u00b7 exact=base:ready,bolt_finished:ready,bolt_head_blank:blocked,bridge:ready,pinion:ready,pinion_blank:blocked,shaft:ready,spacer:ready,standoff:ready,wheel:ready,wheel_blank:blocked \u00b7 display=ready,ready,ready,ready,ready,ready,ready,ready",
+    "screenshot /Users/sloandavis/Documents/dev/partbench/.metrics/ui-smoke/gearbox-trial-empty-angle.png",
+    "ui-use passed 1/1 Chromium (not WebKit)"
+  ],
+  "nativeHealth": {
+    "status": "unsupported",
+    "issueCount": 14,
+    "issues": [
+      {
+        "code": "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN",
+        "message": "Composite wire extrude newBody topology requires matching kernel-derived exact topology evidence.",
+        "featureId": "pinion_extrude",
+        "bodyId": "pinion_blank",
+        "expected": "body-topology-source:v1:706be63ecc2ee0440f2f3c6f8696dbc32d85fd64c8d35adf92bd3bf5055d395c"
+      },
+      {
+        "code": "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN",
+        "message": "Composite wire extrude newBody topology requires matching kernel-derived exact topology evidence.",
+        "featureId": "wheel_extrude",
+        "bodyId": "wheel_blank",
+        "expected": "body-topology-source:v1:60d1d238cf80884266730380ad2a4df19e044e5d1920d0b9b4ef0b52cacbce73"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "pinion_outline",
+        "expected": "0 degrees of freedom",
+        "received": "2482"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "wheel_outline",
+        "expected": "0 degrees of freedom",
+        "received": "4962"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "base_sk",
+        "expected": "0 degrees of freedom",
+        "received": "20"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "bridge_sk",
+        "expected": "0 degrees of freedom",
+        "received": "12"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "shaft_sk",
+        "expected": "0 degrees of freedom",
+        "received": "2"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "spacer_sk",
+        "expected": "0 degrees of freedom",
+        "received": "5"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "standoff_sk",
+        "expected": "0 degrees of freedom",
+        "received": "6"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "bolt_head_sk",
+        "expected": "0 degrees of freedom",
+        "received": "2"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "bolt_sk",
+        "expected": "0 degrees of freedom",
+        "received": "3"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "wheel60_outline",
+        "expected": "0 degrees of freedom",
+        "received": "6963"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "bridge60_sk",
+        "expected": "0 degrees of freedom",
+        "received": "14"
+      },
+      {
+        "code": "UNDER_DEFINED_SKETCH",
+        "message": "Sketch still has unconstrained numerical degrees of freedom.",
+        "sketchId": "base60_sk",
+        "expected": "0 degrees of freedom",
+        "received": "20"
+      }
+    ]
+  }
+}
