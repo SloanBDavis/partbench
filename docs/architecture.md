@@ -21,6 +21,12 @@ authority. Pose edits reuse exact artifacts only when body/dependency identity
 and document units still match. Public operation discovery and compact response
 projections describe the same CADOps authority.
 
+The [editable interchange goal](./editable-interchange.md) requires imported
+geometry and curves to enter the same document, feature graph, exact evaluator,
+and command system as authored content. Format decoders and encoders stay at
+the boundary; source provenance must not create separate editing tools or
+document authority. This goal is designed, not yet implemented.
+
 ## Authorities
 
 CADOps is the center. cad-core is the document authority. OCCT/WASM is the
@@ -120,5 +126,5 @@ boundaries separate. Do not couple the React UI to geometry internals.
 
 Do not implement the whole architecture at once.
 
-V22-V26 are complete ([`docs/v26.md`](./v26.md)). Do not invent V27. The current user goal is [agent runtime](./agent-runtime.md). This document names sticky constraints only.
+V22-V26 are complete ([`docs/v26.md`](./v26.md)). Do not invent V27. The current user goal is linked from [`AGENTS.md`](../AGENTS.md). This document names sticky constraints only.
 It is not a source for inventing a next release.

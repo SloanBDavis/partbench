@@ -1,0 +1,59 @@
+{
+  "kind": "Isolated direct OCCT stage diagnostic; no browser or concurrent CAD run",
+  "inputSha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0",
+  "inputBytes": 13389913,
+  "node": "v22.22.1",
+  "platform": "darwin/arm64",
+  "cpu": "Apple M4",
+  "logicalCpus": 10,
+  "stages": [
+    {
+      "name": "loadOcct",
+      "milliseconds": 2178.5
+    },
+    {
+      "name": "readStep",
+      "milliseconds": 2753.9
+    },
+    {
+      "name": "transferRoots",
+      "milliseconds": 12342.1
+    },
+    {
+      "name": "healShape",
+      "milliseconds": 19349.8
+    },
+    {
+      "name": "topologySnapshot",
+      "milliseconds": 162192.8
+    },
+    {
+      "name": "writeBrep",
+      "milliseconds": 625.2
+    }
+  ],
+  "bindings": {
+    "STEPCAFControl_Reader_1": true,
+    "STEPCAFControl_Writer_1": true,
+    "XCAFDoc_DocumentTool": true,
+    "XCAFDoc_ShapeTool": true,
+    "TDocStd_Document": true,
+    "BRepTools_History": true
+  },
+  "transferredRoots": 1,
+  "healingApplied": true,
+  "topologyCounts": {
+    "bodyCount": 1,
+    "solidCount": 266,
+    "faceCount": 10330,
+    "wireCount": 11888,
+    "edgeCount": 29796,
+    "vertexCount": 19522,
+    "loopCount": 11888,
+    "coedgeCount": 59412,
+    "axisCount": 0
+  },
+  "topologyEntities": 143103,
+  "brepBytes": 9889253,
+  "totalMilliseconds": 199442.3
+}
