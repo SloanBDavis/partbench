@@ -40,6 +40,15 @@ Crash-recovery dialogs are skipped under the ui-smoke query flag.
 ## Use path (`smoke:ui-use`)
 
 A scenario may include `use` and `useBreak`: selectors + click/type/apply + wait-for-ready + screenshot name, then a break case. Use `expectStructure` after Apply, Cancel, Undo, or Redo to wait for the expected `project.structure` subset; arrays must match in length as well as contents. This verifies pose and mate changes without waiting for a transient pending indicator. `expectNoPreview` checks that a non-feature editor stays idle without reporting a preview error before Apply.
+
+`{"openWcad":"path/to/project.wcad"}` and `{"importStep":"path/to/model.step"}`
+supply a local file-picker result and click the real Project Open or Import STEP
+control. Paths are relative to the repository. STEP import accepts the preview
+confirmation and logs its text and elapsed time; the file-selection dialog and
+confirmation click themselves are fixtures, not native dialog interaction.
+In `useBreak`, add `"expectImportError":"message substring"` alongside
+`importStep` to require a matching application error and a responsive smoke
+hook. An import that succeeds or fails for another reason fails that assertion.
 Button clicks and numeric typing use native Bun input. Select helpers require visible, enabled controls but set values through input/change events. Each scenario and break case uses a fresh tab, sharing one browser/server, without seed retries.
 
 First landing: drive the UI once and write that block from what worked. After that, the script is the hill-climb.

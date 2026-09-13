@@ -1,0 +1,45 @@
+{
+  "engine": {
+    "source": "source.json",
+    "file": "radial-engine.step",
+    "sha256_after_browser_trial": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0",
+    "modified": false,
+    "browser": "HeadlessChrome/153.0.0.0",
+    "import_outcome": "failed",
+    "elapsed_ms": 168747,
+    "preview": null,
+    "error": "STEP import produced 266 bodies, exceeding the maxBodyCount of 1.",
+    "timing_limitations": "Concurrent root direct-kernel diagnostic; wall time is not isolated benchmark.",
+    "engine_rendered": false,
+    "engine_fit_tested": false,
+    "engine_view_rotation_tested": false,
+    "engine_component_selection_tested": false,
+    "evidence": ["browser-run.log", "engine-import-failure.png"]
+  },
+  "harness_control": {
+    "file": ".metrics/gearbox-workflow/independent-observed/workspace/shaft.step",
+    "label": "single-solid helper control, not engine substitute",
+    "positive_import_verified": true,
+    "prior_import_elapsed_ms": [2330, 2333],
+    "source_bounds_mm": [8, 8, 20],
+    "visual_inspection": [
+      "isometric",
+      "front",
+      "top",
+      "right",
+      "selected_body"
+    ],
+    "negative_control": "passed: invalid STEP file reported expected reader error and app remained responsive",
+    "positive_import_elapsed_ms": 2596,
+    "negative_import_elapsed_ms": 1878,
+    "runner_exit_code": 0,
+    "suite_duration_seconds": 5.9,
+    "invalid_file_error": "Open CASCADE STEP reader could not read the file.",
+    "final_log": "harness-control.log",
+    "prior_attempt_logs": [
+      "harness-control-first.log",
+      "harness-control-second.log",
+      "harness-control-third.log"
+    ]
+  }
+}

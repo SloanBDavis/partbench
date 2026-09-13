@@ -1,0 +1,57 @@
+{
+  "route": "Direct geometry-kernel diagnostic, without the browser import body limit. Not a browser render test.",
+  "byteLength": 13389913,
+  "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0",
+  "sourceRecordCounts": {
+    "manifoldSolidBrep": 53,
+    "brepWithVoids": 0,
+    "nextAssemblyUsageOccurrence": 201,
+    "advancedFace": 3421
+  },
+  "elapsedMs": 193192,
+  "ok": true,
+  "bodyCount": 1,
+  "diagnostics": [
+    {
+      "code": "STEP_READER_AVAILABLE",
+      "severity": "info",
+      "message": "Open CASCADE STEPControl_Reader read transient STEP bytes through the occt-wasm boundary."
+    },
+    {
+      "code": "STEP_TRANSFER_COMPLETE",
+      "severity": "info",
+      "message": "Open CASCADE transferred 1 STEP root(s) into 1 shape(s)."
+    },
+    {
+      "code": "STEP_HEALING_APPLIED",
+      "severity": "info",
+      "message": "ShapeFix_Shape reported healing changes for the transferred shape."
+    },
+    {
+      "code": "STEP_TOPOLOGY_EXTRACTED",
+      "severity": "info",
+      "message": "Open CASCADE topology traversal extracted imported body topology descriptors."
+    },
+    {
+      "code": "STEP_CHECKPOINT_PAYLOAD_CREATED",
+      "severity": "info",
+      "message": "Open CASCADE wrote native BRep checkpoint bytes for the imported body."
+    }
+  ],
+  "bodies": [
+    {
+      "bodyName": "radial-engine",
+      "shapeType": "compound",
+      "solidCount": 266,
+      "faceCount": 10330,
+      "edgeCount": 29796,
+      "vertexCount": 19522,
+      "bounds": {
+        "min": [-464.49392811850345, -478.0256294313594, -224.00000009999818],
+        "max": [464.4939281185127, 415.1322012978641, 326.00048679433496]
+      },
+      "healingApplied": true,
+      "brepByteLength": 9889253
+    }
+  ]
+}

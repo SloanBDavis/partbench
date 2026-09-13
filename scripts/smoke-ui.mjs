@@ -995,11 +995,18 @@ async function assertUseOutcome(view, name, scenario, clicks) {
   );
 }
 
-async function openNativeProject(view, filePath) {
+async function openProjectFile(
+  view,
+  filePath,
+  format = "wcad",
+  expectedImportError
+) {
   const bytes = readFileSync(resolve(repoRoot, filePath)).toString("base64");
   const fileName = filePath.split(/[\\/]/).at(-1);
-  // Supply a deterministic file-picker result while exercising the real Open
-  // control, native reader, project replacement, rebuild, and rendering path.
+  const isStep = format === "step";
+  const actionId = isStep ? "project.import-step" : "project.open";
+  // Supply a file-picker result while exercising the real Open/Import STEP
+  // control, reader, transaction, rebuild, and rendering path.
   await evaluate(
     view,
     "(() => { window.__pbOriginalOpenPicker = window.showOpenFilePicker; " +
@@ -1010,14 +1017,59 @@ async function openNativeProject(view, filePath) {
       JSON.stringify(fileName) +
       "); " +
       "window.showOpenFilePicker = async () => [{ kind: 'file', name: file.name, " +
-      "getFile: async () => file, queryPermission: async () => 'granted', requestPermission: async () => 'granted' }]; return true; })()"
+      "getFile: async () => file, queryPermission: async () => 'granted', requestPermission: async () => 'granted' }]; " +
+      (isStep
+        ? "window.__pbOriginalConfirm = window.confirm; window.__pbStepImportPreview = null; " +
+          "window.confirm = message => { window.__pbStepImportPreview = String(message); return true; }; "
+        : "") +
+      "return true; })()"
   );
+  const startedAt = performance.now();
   try {
     await clickVisibleControl(view, '[data-ribbon-roving-id="mode-project"]');
-    await clickVisibleControl(view, '[data-action-id="project.open"]');
-    await waitForReady(view, { timeoutMs: readyTimeoutMs, allowEmpty: false });
+    await clickVisibleControl(view, '[data-action-id="' + actionId + '"]');
+    try {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: false
+      });
+    } catch (error) {
+      if (!expectedImportError) throw error;
+      const state = await getState(view);
+      if (!state.commandError?.includes(expectedImportError)) throw error;
+      // An expected import failure legitimately sets rebuild=Update failed.
+      // Require responsive browser evaluation and a settled command instead.
+      const responsive = await evaluate(
+        view,
+        "Boolean(window.__PARTBENCH_UI_SMOKE__?.ready)",
+        5_000
+      );
+      if (!responsive || state.commandPending) throw error;
+      console.log("expected STEP import error", state.commandError);
+      return;
+    }
+    if (expectedImportError) {
+      throw new Error(
+        "Import " + fileName + " did not report " + expectedImportError
+      );
+    }
     await assertNoErrorToast(view, "Open " + fileName);
   } finally {
+    if (isStep) {
+      const preview = await evaluate(
+        view,
+        "(() => { const preview = window.__pbStepImportPreview; window.confirm = window.__pbOriginalConfirm; " +
+          "delete window.__pbOriginalConfirm; delete window.__pbStepImportPreview; return preview; })()"
+      );
+      console.log(
+        "STEP import",
+        JSON.stringify({
+          fileName,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          preview
+        })
+      );
+    }
     await evaluate(
       view,
       "(() => { window.showOpenFilePicker = window.__pbOriginalOpenPicker; delete window.__pbOriginalOpenPicker; return true; })()"
@@ -1032,7 +1084,18 @@ async function runUseSteps(view, name, steps, label) {
   for (const step of steps) {
     if (step.openWcad) {
       clicks.push('[data-action-id="project.open"]');
-      await openNativeProject(view, step.openWcad);
+      await openProjectFile(view, step.openWcad);
+      continue;
+    }
+    if (step.importStep) {
+      clicks.push('[data-action-id="project.import-step"]');
+      await openProjectFile(
+        view,
+        step.importStep,
+        "step",
+        step.expectImportError
+      );
+      if (step.expectImportError) sawBreak = true;
       continue;
     }
     if (step.expectText) {

@@ -1,0 +1,55 @@
+{
+  "id": "engine-step-trial",
+  "description": "Import and visually inspect unmodified public radial engine STEP assembly",
+  "use": [
+    {
+      "importStep": ".metrics/engine-step-trial/radial-engine.step"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "[data-action-id=\"inspect.fit-all\"]"
+    },
+    {
+      "screenshot": "engine-step-trial-isometric"
+    },
+    {
+      "click": "[data-action-id=\"inspect.front\"]"
+    },
+    {
+      "screenshot": "engine-step-trial-front"
+    },
+    {
+      "click": "[data-action-id=\"inspect.top\"]"
+    },
+    {
+      "screenshot": "engine-step-trial-top"
+    },
+    {
+      "click": "[data-action-id=\"inspect.right\"]"
+    },
+    {
+      "screenshot": "engine-step-trial-right"
+    },
+    {
+      "click": "[data-action-id=\"inspect.isometric\"]"
+    },
+    {
+      "click": "[data-tree-select^=\"body:\"]"
+    },
+    {
+      "screenshot": "engine-step-trial-selected"
+    }
+  ],
+  "useBreak": [
+    {
+      "importStep": "examples/engine-step-trial/invalid.step",
+      "expectImportError": "could not read the file"
+    },
+    {
+      "screenshot": "engine-step-trial-invalid-file"
+    }
+  ],
+  "useExpect": {}
+}
