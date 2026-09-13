@@ -39,6 +39,7 @@ type SuccessfulBatchResponse = Extract<
   {
     readonly ok: true;
     readonly mode: "dryRun" | "commit";
+    readonly semanticDiff: unknown;
   }
 >;
 

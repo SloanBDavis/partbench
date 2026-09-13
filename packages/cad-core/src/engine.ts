@@ -1,4 +1,18 @@
 import {
+  isSpurGearOp,
+  type SpurGearSource,
+  type SpurGearInputs,
+  type SpurGearValues,
+  type FeatureSpurGearOp,
+  type FeatureUpdateSpurGearOp
+} from "@web-cad/cad-protocol";
+import {
+  resolveSpurGearValues,
+  createSpurGearGeometry,
+  SpurGearInputError
+} from "./spurGear";
+import { isProjectStructureQuery } from "@web-cad/cad-protocol";
+import {
   CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   isSketchDimensionTargetV22,
@@ -142,7 +156,6 @@ import type {
   SketchId,
   SketchAttachmentSnapshot,
   SketchEntityProfileRef,
-  SketchProfileRef,
   SketchProfileRefV22,
   SketchPlane,
   SketchPointTarget,
@@ -251,7 +264,10 @@ import {
   decodeCanonicalCbor,
   encodeCanonicalCbor
 } from "./canonicalCbor";
-import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import {
+  SKETCH_GEOMETRY_POLICY,
+  sketchCoordinatesWithinTolerance
+} from "./sketchGeometryPolicy";
 import {
   canonicalizeSketchArcDefinition,
   createCanonicalSketchArcEntity,
@@ -494,7 +510,9 @@ import {
 } from "./transactionHistory";
 import {
   createSupportedBooleanBodyTargetOperations,
-  filterSupportedBooleanBodyTargetOperations
+  filterSupportedBooleanBodyTargetOperations,
+  resolveSupportedBooleanTargetProfileKind,
+  type SupportedBooleanTargetKind
 } from "./booleanTargetSupport";
 import {
   createPrimitiveBodyId,
@@ -980,6 +998,7 @@ export type SceneObject =
 export type SketchEntity = SketchEntitySnapshot;
 
 export interface Sketch {
+  readonly spurGear?: SpurGearSource;
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
@@ -1483,6 +1502,8 @@ function transactionRequiresV22(transaction: Transaction): boolean {
 function cadOpRequiresV22(op: CadOp): boolean {
   const stored = op as unknown as Record<string, unknown>;
   if (
+    op.op === "feature.spurGear" ||
+    op.op === "feature.updateSpurGear" ||
     op.op === "sketch.trim" ||
     op.op === "sketch.extend" ||
     op.op === "sketch.split" ||
@@ -2182,6 +2203,27 @@ export class CadEngine {
     return engine;
   }
 
+  /**
+   * Fork already validated in-memory authority for disposable command preflight.
+   * This is not an import path: external projects still use fromProject/loadProject.
+   * Historical documents are immutable snapshots. Entry wrappers and stacks are
+   * copied because Undo/Redo replace their transaction status. Current documents
+   * are detached by construction and by subsequent commands and Undo/Redo.
+   */
+  forkForValidation(): CadEngine {
+    const fork = new CadEngine(this.#document, this.#getDocumentIdCounters());
+    fork.#history = this.#history.map((entry) => ({ ...entry }));
+    fork.#redoStack = this.#redoStack.map((entry) => ({ ...entry }));
+    fork.#historyBaseline = this.#historyBaseline;
+    fork.#historyBaselineRequired = this.#historyBaselineRequired;
+    fork.#nextTransactionNumber = this.#nextTransactionNumber;
+    fork.#sourceAuthorityEpoch = this.#sourceAuthorityEpoch;
+    fork.#trustedQuerySourceRevision = this.#trustedQuerySourceRevision;
+    fork.#trustedQuerySolverEvaluationIdentity = this.#trustedQuerySolverEvaluationIdentity;
+    fork.#parameterExpressionImportDiagnostics = this.#parameterExpressionImportDiagnostics;
+    return fork;
+  }
+
   createSnapshot(): CadDocumentSnapshot {
     return createCadDocumentSnapshot(
       this.#document,
@@ -2538,6 +2580,59 @@ export class CadEngine {
       }
 
       case "project.structure": {
+        if (request.query.projection === "poses") {
+          const query = request.query;
+          const assemblyIds = query.assemblyIds
+            ? new Set(query.assemblyIds)
+            : undefined;
+          const instanceIds = query.instanceIds
+            ? new Set(query.instanceIds)
+            : undefined;
+          const offset = query.offset ?? 0;
+          const limit = query.limit ?? 100;
+          const instancePoses: (AssemblySnapshot["instances"][number] & {
+            assemblyId: string;
+          })[] = [];
+          let totalInstanceCount = 0;
+          for (const assembly of this.#document.assemblies.values()) {
+            if (assemblyIds && !assemblyIds.has(assembly.id)) continue;
+            for (const instance of assembly.instances) {
+              if (instanceIds && !instanceIds.has(instance.id)) continue;
+              if (
+                totalInstanceCount >= offset &&
+                instancePoses.length < limit
+              ) {
+                instancePoses.push({
+                  ...instance,
+                  assemblyId: assembly.id,
+                  definition: { ...instance.definition },
+                  transform: cloneTransform(instance.transform)
+                });
+              }
+              totalInstanceCount += 1;
+            }
+          }
+          return {
+            ok: true,
+            query: "project.structure",
+            cadOpsVersion: request.version,
+            projection: "poses",
+            partCount: 1,
+            featureCount:
+              this.#document.features.size + this.#document.objects.size,
+            bodyCount:
+              this.#document.features.size + this.#document.objects.size,
+            parts: [],
+            features: [],
+            bodies: [],
+            objectSources: [],
+            instancePoses,
+            totalInstanceCount,
+            ...(offset + instancePoses.length < totalInstanceCount
+              ? { nextOffset: offset + instancePoses.length }
+              : {})
+          };
+        }
         const structure = createProjectStructure(
           this.#document,
           this.#history.map((entry) => entry.transaction)
@@ -6392,7 +6487,7 @@ function applyOperation(
             : "metadataOnly";
 
         if (unitUpdateMode === "preservePhysicalSize") {
-          scaleDocumentLengthValues(state, operationScaleFactor, diff);
+          scaleDocumentLengthValues(state, operationScaleFactor, diff, opIndex);
         }
 
         diff.document = {
@@ -7257,6 +7352,14 @@ function applyOperation(
       return;
     }
 
+    case "feature.spurGear": {
+      applySpurGear(state,op,diff,opIndex);
+      return;
+    }
+    case "feature.updateSpurGear": {
+      applySpurGearUpdate(state,op,diff,opIndex);
+      return;
+    }
     case "feature.extrude": {
       const depth = validateExtrudeDepth(op.depth, opIndex);
       const side = validateExtrudeSide(op.side, opIndex);
@@ -7848,10 +7951,19 @@ function applyOperation(
 
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
+      for (const sketch of state.sketches.values()) if (sketch.spurGear?.featureId === op.id) {
+        const {spurGear: _source, ...plain} = sketch; void _source;
+        state.sketches.set(sketch.id,plain); pushSketchModified(diff,sketchRef(plain));
+      }
       return;
     }
 
     case "feature.updateExtrude": {
+      const gearSketch = [...state.sketches.values()].find(s=>s.spurGear?.featureId===op.id);
+      if (gearSketch) {
+        applySpurGearUpdate(state,{op:'feature.updateSpurGear',id:op.id,faceWidth:op.depth},diff,opIndex);
+        return;
+      }
       updateExtrudeFeature(state, op, diff, opIndex);
       return;
     }
@@ -8494,6 +8606,8 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.constraint.update":
     case "sketch.constraint.rename":
     case "sketch.constraint.delete":
+    case "feature.spurGear":
+    case "feature.updateSpurGear":
     case "feature.extrude":
     case "feature.revolve":
     case "feature.hole":
@@ -9222,7 +9336,6 @@ function isCadQuery(value: unknown): boolean {
     case "parameter.list":
     case "project.parameterEvaluation":
     case "project.features":
-    case "project.structure":
     case "project.topologyIdentityReadiness":
     case "project.importReadiness":
     case "project.packageReadiness":
@@ -9230,6 +9343,8 @@ function isCadQuery(value: unknown): boolean {
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.structure":
+      return isProjectStructureQuery(value);
     case "project.summary":
     case "project.exportReadiness":
     case "project.health":
@@ -10529,6 +10644,360 @@ function validateFiniteParameterValue(
   return cleanMeasurementNumber(value);
 }
 
+function gearValuesOrThrow(
+  inputs: SpurGearInputs,
+  state: MutableDocumentState,
+  opIndex: number
+): SpurGearValues {
+  try {
+    return resolveSpurGearValues(inputs, state.parameters);
+  } catch (error) {
+    if (error instanceof SpurGearInputError)
+      throwValidationError({
+        code: "INVALID_FEATURE",
+        message: error.message,
+        opIndex,
+        path: operationPath(opIndex, error.field)
+      });
+    throw error;
+  }
+}
+function gearGeometryOrThrow(
+  sketchId: string,
+  values: SpurGearValues,
+  opIndex: number
+) {
+  try {
+    return createSpurGearGeometry(sketchId, values);
+  } catch (error) {
+    if (error instanceof SpurGearInputError)
+      throwValidationError({
+        code: "INVALID_FEATURE",
+        message: error.message,
+        opIndex,
+        path: operationPath(opIndex, error.field)
+      });
+    throw error;
+  }
+}
+function gearInputs(op: SpurGearInputs): SpurGearInputs {
+  return cloneJsonSource(
+    Object.fromEntries(
+      [
+        "teeth",
+        "module",
+        "faceWidth",
+        "pressureAngleDegrees",
+        "boreDiameter",
+        "backlash",
+        "profileTolerance"
+      ]
+        .filter((k) => op[k as keyof SpurGearInputs] !== undefined)
+        .map((k) => [k, op[k as keyof SpurGearInputs]])
+    )
+  ) as unknown as SpurGearInputs;
+}
+function applySpurGear(
+  state: MutableDocumentState,
+  op: FeatureSpurGearOp,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (!isSpurGearOp(op))
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Invalid spur gear command.",
+      opIndex,
+      path: operationPath(opIndex)
+    });
+  const inputs = gearInputs(op),
+    values = gearValuesOrThrow(inputs, state, opIndex),
+    geometry = gearGeometryOrThrow(op.sketchId, values, opIndex);
+  const used = new Set(
+    [...state.sketches.values()].flatMap((s) => [...s.entities.keys()])
+  );
+  const collision = geometry.entities.find((e) => used.has(e.id));
+  if (collision)
+    throwValidationError({
+      code: "SKETCH_ENTITY_ALREADY_EXISTS",
+      message: `Generated gear entity ID is already in use: ${collision.id}.`,
+      opIndex,
+      sketchEntityId: collision.id
+    });
+  const sketch: Sketch = {
+    id: op.sketchId,
+    name: op.name ?? "Spur gear profile",
+    plane: op.plane ?? "XY",
+    entities: new Map(
+      geometry.entities.map((e) => [e.id, cloneGeneratedGearEntity(e)])
+    ),
+    spurGear: { kind: "spurGear", featureId: op.id, inputs, values }
+  };
+  addSketch(state.sketches, sketch, diff, opIndex);
+  for (const entity of geometry.entities) {
+    pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, entity));
+    pushSketchEntityChange(
+      diff,
+      createSketchEntityAddedDiff(sketch.id, entity)
+    );
+  }
+  const resolved = resolveRegionExtrudeProfile(
+    state,
+    geometry.profile,
+    "newBody",
+    {}
+  );
+  if (!resolved.ok)
+    throwValidationError({
+      code: resolved.code,
+      message: resolved.message,
+      opIndex,
+      sketchId: sketch.id,
+      path: operationPath(opIndex)
+    });
+  const feature = {
+    id: op.id,
+    bodyId: op.bodyId,
+    kind: "extrude",
+    name: op.name ?? "Spur gear",
+    profile: resolved.profile,
+    depth: values.faceWidth,
+    side: "positive",
+    operationMode: "newBody"
+  } as unknown as ExtrudeFeature;
+  addFeature(state, feature, diff, opIndex);
+  pushFeatureInputReference(
+    diff,
+    createProfileInputReference(
+      feature.id,
+      feature.profile,
+      false,
+      undefined,
+      resolved.normalization
+    )
+  );
+}
+function regenerateSpurGear(
+  state: MutableDocumentState,
+  sketch: Sketch,
+  inputs: SpurGearInputs,
+  diff: MutableSemanticDiff,
+  opIndex: number,
+  name?: string
+): void {
+  const source = sketch.spurGear!;
+  const values = gearValuesOrThrow(inputs, state, opIndex);
+  const feature = state.features.get(source.featureId);
+  if (!feature || feature.kind !== "extrude")
+    throwValidationError({
+      code: "FEATURE_NOT_FOUND",
+      message: `Spur gear feature does not exist: ${source.featureId}.`,
+      opIndex
+    });
+  // Native CBOR reorders object fields. Recipe equality is semantic, not the
+  // property insertion order of the host that last created or decoded it.
+  const sourceChanged = !stableJsonEqual(source.inputs, inputs);
+  const shapeChanged = !stableJsonEqual(source.values, values);
+  if (!sourceChanged && !shapeChanged && name === undefined) return;
+  if (shapeChanged) {
+    const geometry = gearGeometryOrThrow(sketch.id, values, opIndex);
+    const elsewhere = new Set(
+      [...state.sketches.values()]
+        .filter((s) => s.id !== sketch.id)
+        .flatMap((s) => [...s.entities.keys()])
+    );
+    const collision = geometry.entities.find((e) => elsewhere.has(e.id));
+    if (collision)
+      throwValidationError({
+        code: "SKETCH_ENTITY_ALREADY_EXISTS",
+        message: `Generated gear entity ID is already in use: ${collision.id}.`,
+        opIndex,
+        sketchEntityId: collision.id
+      });
+    const entities = new Map(
+      geometry.entities.map((e) => [e.id, cloneGeneratedGearEntity(e)])
+    );
+    for (const old of sketch.entities.values())
+      if (!entities.has(old.id)) {
+        pushSketchEntityDeleted(diff, sketchEntityRef(sketch.id, old));
+        pushSketchEntityChange(
+          diff,
+          createSketchEntityDeletedDiff(sketch.id, old)
+        );
+      }
+    for (const entity of entities.values()) {
+      const old = sketch.entities.get(entity.id);
+      if (!old) {
+        pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, entity));
+        pushSketchEntityChange(
+          diff,
+          createSketchEntityAddedDiff(sketch.id, entity)
+        );
+      } else if (JSON.stringify(old) !== JSON.stringify(entity)) {
+        pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
+        pushSketchEntityChange(
+          diff,
+          createSketchEntityUpdatedDiff(sketch.id, old, entity)
+        );
+      }
+    }
+    state.sketches.set(sketch.id, {
+      ...sketch,
+      entities,
+      spurGear: { ...source, inputs: cloneJsonSource(inputs), values }
+    });
+    updateExtrudeFeature(
+      state,
+      {
+        op: "feature.updateExtrude",
+        id: feature.id,
+        profile: geometry.profile,
+        depth: values.faceWidth
+      },
+      diff,
+      opIndex
+    );
+  } else
+    state.sketches.set(sketch.id, {
+      ...sketch,
+      spurGear: { ...source, inputs: cloneJsonSource(inputs), values }
+    });
+  if (name !== undefined) {
+    const current = state.features.get(feature.id)!;
+    const updated = {
+      ...current,
+      name: normalizeOptionalFeatureName(name, opIndex, feature.id)
+    };
+    state.features.set(feature.id, updated);
+    pushFeatureModified(diff, featureRef(state, updated));
+    const currentSketch = state.sketches.get(sketch.id)!;
+    state.sketches.set(sketch.id, {
+      ...currentSketch,
+      name: `${name} profile`
+    });
+  }
+  pushSketchModified(diff, sketchRef(state.sketches.get(sketch.id)!));
+}
+function applySpurGearUpdate(
+  state: MutableDocumentState,
+  op: FeatureUpdateSpurGearOp,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (!isSpurGearOp(op))
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Invalid spur gear update.",
+      opIndex,
+      path: operationPath(opIndex)
+    });
+  const sketch = [...state.sketches.values()].find(
+    (s) => s.spurGear?.featureId === op.id
+  );
+  if (!sketch)
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature ${op.id} is not a parametric spur gear.`,
+      opIndex,
+      featureId: op.id
+    });
+  regenerateSpurGear(
+    state,
+    sketch,
+    { ...sketch.spurGear!.inputs, ...gearInputs(op as SpurGearInputs) },
+    diff,
+    opIndex,
+    op.name
+  );
+}
+function reevaluateSpurGears(
+  state: MutableDocumentState,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  for (const sketch of state.sketches.values())
+    if (sketch.spurGear)
+      regenerateSpurGear(state, sketch, sketch.spurGear.inputs, diff, opIndex);
+}
+function referencesSketchId(value: unknown, sketchId: string): boolean {
+  if (Array.isArray(value))
+    return value.some((v) => referencesSketchId(v, sketchId));
+  if (!isRecord(value)) return false;
+  return (
+    value.sketchId === sketchId ||
+    Object.entries(value).some(
+      ([k, v]) => k !== "spurGear" && referencesSketchId(v, sketchId)
+    )
+  );
+}
+function assertGeneratedGearSourceEdit(
+  state: MutableDocumentState,
+  op: CadOp,
+  opIndex: number
+): void {
+  const record = op as unknown as Record<string, unknown>;
+  if (op.op.startsWith("sketch.") && op.op !== "sketch.rename") {
+    const sketchId =
+      typeof record.sketchId === "string"
+        ? record.sketchId
+        : op.op === "sketch.delete"
+          ? op.id
+          : undefined;
+    const sketch = sketchId ? state.sketches.get(sketchId) : undefined;
+    if (sketch?.spurGear)
+      throwValidationError({
+        code: "FEATURE_NOT_EDITABLE",
+        message:
+          "Generated gear geometry is controlled by feature.updateSpurGear or its bound parameters.",
+        opIndex,
+        sketchId: sketch.id,
+        featureId: sketch.spurGear.featureId
+      });
+  }
+  if (op.op === "feature.updateExtrude") {
+    const gearSketch = [...state.sketches.values()].find(
+      (s) => s.spurGear?.featureId === op.id
+    );
+    if (gearSketch) {
+      const owner = state.features.get(op.id)!;
+      const profile = "profile" in op ? op.profile : undefined;
+      if (
+        op.depth === undefined ||
+        (op.side !== undefined && op.side !== "positive") ||
+        (profile !== undefined &&
+          !stableJsonEqual(profile, (owner as ExtrudeFeature).profile)) ||
+        "sketchId" in op
+      )
+        throwValidationError({
+          code: "FEATURE_NOT_EDITABLE",
+          message:
+            "Use feature.updateSpurGear or bound parameters to change a generated gear profile. Depth-only edits update its faceWidth.",
+          opIndex,
+          featureId: op.id
+        });
+      return;
+    }
+  }
+  if (
+    op.op.startsWith("feature.") &&
+    op.op !== "feature.spurGear" &&
+    op.op !== "feature.updateSpurGear"
+  ) {
+    const owned = [...state.sketches.values()].find(
+      (s) => s.spurGear && referencesSketchId(record, s.id)
+    );
+    if (owned)
+      throwValidationError({
+        code: "FEATURE_NOT_EDITABLE",
+        message:
+          "Generated gear sketches belong to their gear feature. Use the finished body as an operation target, or author a separate tool sketch.",
+        opIndex,
+        sketchId: owned.id,
+        featureId: owned.spurGear!.featureId
+      });
+  }
+}
+
 function applyParameterExpressionEvaluation(
   state: MutableDocumentState,
   diff: MutableSemanticDiff,
@@ -10909,10 +11378,12 @@ function validateV22DimensionValue(
       : target.kind === "entityScalar" && target.role === "sweep"
         ? value >= SKETCH_GEOMETRY_POLICY.angularToleranceDegrees &&
           value <= 360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
-        : value >
-          (target.kind === "entityScalar" && target.role === "diameter"
-            ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
-            : SKETCH_GEOMETRY_POLICY.linearTolerance));
+        : target.kind === "pointPair" && target.measurement !== "distance"
+          ? value >= 0
+          : value >
+            (target.kind === "entityScalar" && target.role === "diameter"
+              ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
+              : SKETCH_GEOMETRY_POLICY.linearTolerance));
 
   if (!valid) {
     const angular = isAngularSketchDimensionTarget(target);
@@ -10935,11 +11406,13 @@ function validateV22DimensionValue(
             ? `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} <= sweep <= ${
                 360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
               }`
-            : `>${
-                target.kind === "entityScalar" && target.role === "diameter"
-                  ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
-                  : SKETCH_GEOMETRY_POLICY.linearTolerance
-              }`,
+            : target.kind === "pointPair" && target.measurement !== "distance"
+              ? ">=0"
+              : `>${
+                  target.kind === "entityScalar" && target.role === "diameter"
+                    ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
+                    : SKETCH_GEOMETRY_POLICY.linearTolerance
+                }`,
       received: describeReceived(value)
     });
   }
@@ -14958,15 +15431,15 @@ function addSketchEntity(
   diff: MutableSemanticDiff,
   opIndex?: number
 ): void {
-  if (sketch.entities.has(entity.id)) {
+  if (hasSketchEntityId(sketches, entity.id)) {
     throwValidationError({
       code: "SKETCH_ENTITY_ALREADY_EXISTS",
-      message: `Sketch entity already exists: ${entity.id}`,
+      message: `Sketch entity ID already exists in the document: ${entity.id}`,
       opIndex,
       sketchId: sketch.id,
       sketchEntityId: entity.id,
       path: operationPath(opIndex, "id"),
-      expected: "unique sketch entity id",
+      expected: "document-wide unique sketch entity id",
       received: entity.id
     });
   }
@@ -20146,27 +20619,22 @@ function isConsumingExtrudeOperationMode(
   return operationMode === "add" || operationMode === "cut";
 }
 
-type SupportedBooleanTargetKind = FeatureExtrudeProfileKind | "importedBody";
-
 function isSupportedCutTargetProfileKind(
   profileKind: SupportedBooleanTargetKind
 ): boolean {
   return (
     profileKind === "rectangle" ||
     profileKind === "circle" ||
+    profileKind === "wire" ||
+    profileKind === "regions" ||
     profileKind === "importedBody"
   );
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: SupportedBooleanTargetKind,
-  hasTopologyAnchorTarget = false
+  profileKind: SupportedBooleanTargetKind
 ): boolean {
-  return (
-    profileKind === "rectangle" ||
-    (hasTopologyAnchorTarget && profileKind === "circle") ||
-    profileKind === "importedBody"
-  );
+  return isSupportedCutTargetProfileKind(profileKind);
 }
 
 function isSupportedAddToolProfileKind(
@@ -22304,10 +22772,7 @@ function assertSupportedExtrudeOperation(
     targetBodyId &&
     isSupportedAddToolProfileKind(profileKind) &&
     targetProfileKind !== undefined &&
-    isSupportedAddTargetProfileKind(
-      targetProfileKind,
-      targetTopologyAnchorId !== undefined
-    ) &&
+    isSupportedAddTargetProfileKind(targetProfileKind) &&
     !hasBlockingConsumingFeature
   ) {
     return;
@@ -22315,8 +22780,8 @@ function assertSupportedExtrudeOperation(
 
   const expected =
     operationMode === "add"
-      ? "add with rectangle/circle/composite wire source and active rectangle source or supported topology-backed result target"
-      : "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target";
+      ? "add with a valid entity/wire/region profile and active supported extrude source/result or topology-backed target"
+      : "cut with a valid entity/wire/region profile and active supported extrude source/result or topology-backed target";
   const message =
     operationMode === "add"
       ? "This add extrude target is unsupported."
@@ -22352,65 +22817,6 @@ function assertSupportedExtrudeOperation(
   });
 }
 
-function resolveSupportedBooleanTargetProfileKind(
-  state: Pick<MutableDocumentState, "features" | "sketches">,
-  targetFeature: Feature | undefined,
-  targetTopologyAnchorId?: string,
-  activeResultBodyId?: BodyId
-): SupportedBooleanTargetKind | undefined {
-  if (targetFeature?.kind === "importedBody") {
-    return targetTopologyAnchorId !== undefined ? "importedBody" : undefined;
-  }
-
-  if (targetFeature?.kind !== "extrude") {
-    return undefined;
-  }
-
-  if (targetFeature.operationMode === "newBody") {
-    if (targetFeature.profile.kind === "wire") return undefined;
-    return getFeatureProfileKindOrThrow(state, targetFeature);
-  }
-
-  if (!isConsumingExtrudeOperationMode(targetFeature.operationMode)) {
-    return undefined;
-  }
-
-  const allowActiveResultBodyAnchor =
-    targetTopologyAnchorId !== undefined &&
-    activeResultBodyId === targetFeature.bodyId;
-  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
-    return undefined;
-  }
-
-  let current: ExtrudeFeature | undefined = targetFeature;
-  const visitedFeatureIds = new Set<FeatureId>();
-
-  while (current && !visitedFeatureIds.has(current.id)) {
-    visitedFeatureIds.add(current.id);
-
-    if (current.operationMode === "newBody") {
-      return getFeatureProfileKindOrThrow(state, current);
-    }
-
-    if (current.targetBodyId === undefined) {
-      return undefined;
-    }
-
-    const isAllowedActiveResultBody =
-      allowActiveResultBodyAnchor && current.id === targetFeature.id;
-    if (
-      !isAllowedActiveResultBody &&
-      current.targetTopologyAnchorId !== targetTopologyAnchorId
-    ) {
-      return undefined;
-    }
-
-    const parent = findFeatureByBodyId(state.features, current.targetBodyId);
-    current = parent?.kind === "extrude" ? parent : undefined;
-  }
-
-  return undefined;
-}
 
 function validateBoxDimensions(
   dimensions: BoxDimensions,
@@ -26048,7 +26454,8 @@ function getMillimetersPerUnit(units: DocumentUnits): number {
 function scaleDocumentLengthValues(
   state: MutableDocumentState,
   scaleFactor: number,
-  diff: MutableSemanticDiff
+  diff: MutableSemanticDiff,
+  opIndex: number
 ): void {
   for (const object of state.objects.values()) {
     const scaled = scaleSceneObjectLengthValues(object, scaleFactor);
@@ -26073,10 +26480,77 @@ function scaleDocumentLengthValues(
     }
   }
 
+  const dimensionless = new Set<string>();
+  const boundLengths = new Set<string>();
+  for (const sketch of state.sketches.values())
+    if (sketch.spurGear) {
+      for (const field of ["teeth", "pressureAngleDegrees"] as const) {
+        const input = sketch.spurGear.inputs[field];
+        if (input && typeof input !== "number")
+          dimensionless.add(input.parameterId);
+      }
+      for (const field of [
+        "module",
+        "faceWidth",
+        "boreDiameter",
+        "backlash",
+        "profileTolerance"
+      ] as const) {
+        const input = sketch.spurGear.inputs[field];
+        if (input && typeof input !== "number")
+          boundLengths.add(input.parameterId);
+      }
+    }
+  for (const assembly of state.assemblies.values())
+    for (const mate of assembly.mates ?? []) {
+      if (mate.kind === "revolute" && mate.angleParameterId)
+        dimensionless.add(mate.angleParameterId);
+      if (mate.kind === "revolute" && mate.offsetParameterId)
+        boundLengths.add(mate.offsetParameterId);
+      if (mate.kind === "distance" && mate.distanceParameterId)
+        boundLengths.add(mate.distanceParameterId);
+    }
+  for (const dimension of state.sketchDimensions.values()) {
+    if (dimension.valueSource.type !== "parameter") continue;
+    (isAngularSketchDimensionTarget(
+      normalizeSketchDimensionSnapshotV22(dimension).target
+    )
+      ? dimensionless
+      : boundLengths
+    ).add(dimension.valueSource.parameterId);
+  }
+  for (const parameterId of dimensionless)
+    if (boundLengths.has(parameterId)) {
+      throwValidationError({
+        code: "INVALID_UNITS",
+        message: `Parameter ${parameterId} controls both a length and an angle/tooth count; separate these bindings before preserving physical size.`,
+        opIndex,
+        parameterId,
+        path: operationPath(opIndex, "mode")
+      });
+    }
+  const expectedDimensionless = new Map(
+    [...dimensionless].map(
+      (id) => [id, state.parameters.get(id)?.value] as const
+    )
+  );
+  const expectedLengths = new Map(
+    [...boundLengths].map(
+      (id) =>
+        [
+          id,
+          state.parameters.get(id)?.value === undefined
+            ? undefined
+            : scaleLength(state.parameters.get(id)!.value, scaleFactor)
+        ] as const
+    )
+  );
   for (const parameter of state.parameters.values()) {
     const scaled: CadParameter = {
       ...parameter,
-      value: scaleLength(parameter.value, scaleFactor)
+      value: dimensionless.has(parameter.id)
+        ? parameter.value
+        : scaleLength(parameter.value, scaleFactor)
     };
     state.parameters.set(parameter.id, scaled);
     pushParameterModified(diff, parameterRef(scaled));
@@ -26123,6 +26597,102 @@ function scaleDocumentLengthValues(
       pushBodyModified(diff, bodyRef(scaled));
     }
   }
+  for (const assembly of state.assemblies.values()) {
+    const scaled = scaleAssemblyLengthValues(assembly, scaleFactor);
+    state.assemblies.set(assembly.id, scaled);
+    pushAssemblyModified(diff, assemblyRef(scaled));
+    for (const instance of scaled.instances)
+      pushAssemblyInstanceModified(
+        diff,
+        assemblyInstanceRef(assembly.id, instance)
+      );
+    for (const mate of scaled.mates ?? [])
+      pushAssemblyMateModified(diff, assemblyMateRef(assembly.id, mate));
+  }
+  if (
+    [...state.sketches.values()].some((sketch) => sketch.spurGear) ||
+    state.assemblies.size > 0
+  ) {
+    // Untyped expressions are safe only when reevaluation agrees with the
+    // physical lengths and angles whose dimensional roles are known here.
+    applyParameterExpressionEvaluation(
+      state,
+      diff,
+      opIndex,
+      new Set(state.parameters.keys())
+    );
+    for (const [parameterId, expected] of expectedDimensionless)
+      if (
+        !gearSourceValuesMatch(
+          expected,
+          state.parameters.get(parameterId)?.value
+        )
+      ) {
+        throwValidationError({
+          code: "INVALID_UNITS",
+          message: `Unit conversion changes dimensionless parameter ${parameterId} through an untyped expression chain; use independently bound angle/tooth-count parameters.`,
+          opIndex,
+          parameterId,
+          path: operationPath(opIndex, "mode")
+        });
+      }
+    for (const [parameterId, expected] of expectedLengths)
+      if (
+        !gearSourceValuesMatch(
+          expected,
+          state.parameters.get(parameterId)?.value
+        )
+      ) {
+        throwValidationError({
+          code: "INVALID_UNITS",
+          message: `Unit conversion cannot preserve length parameter ${parameterId} through its untyped expression chain; bind lengths to independently convertible parameters.`,
+          opIndex,
+          parameterId,
+          path: operationPath(opIndex, "mode")
+        });
+      }
+    for (const sketch of state.sketches.values())
+      if (sketch.spurGear) {
+        try {
+          const resolved = resolveSpurGearValues(
+            sketch.spurGear.inputs,
+            state.parameters
+          );
+          if (!gearSourceValuesMatch(resolved, sketch.spurGear.values))
+            throw new Error(
+              "Resolved dimensions change the physical gear size."
+            );
+        } catch (error) {
+          throwValidationError({
+            code: "INVALID_UNITS",
+            message: `Cannot preserve physical size for gear ${sketch.spurGear.featureId}: ${error instanceof Error ? error.message : String(error)} Check the dimensional roles of its parameter expressions.`,
+            opIndex,
+            featureId: sketch.spurGear.featureId,
+            sketchId: sketch.id,
+            path: operationPath(opIndex, "mode")
+          });
+        }
+      }
+  }
+}
+
+function scaleAssemblyLengthValues(assembly: AssemblySnapshot, factor: number): AssemblySnapshot {
+  const frame = (ref: Extract<AssemblyMateSnapshot, {kind: "revolute"}>["primary"]) => ({...ref, frame: ref.frame.kind === "local"
+    ? {...ref.frame, origin: scaleVec3(ref.frame.origin, factor)}
+    : {...ref.frame, ...(ref.frame.offset === undefined ? {} : {offset: scaleLength(ref.frame.offset, factor)})}});
+  const plane = (ref: Extract<AssemblyMateSnapshot, {kind: "distance"}>["primary"]) => ({...ref, ...(ref.offset === undefined ? {} : {offset: scaleLength(ref.offset, factor)})});
+  return {...assembly, instances: assembly.instances.map(instance => ({...instance, transform: scaleTransformTranslation(instance.transform, factor)})),
+    ...(assembly.mates ? {mates: assembly.mates.map((mate): AssemblyMateSnapshot => {
+      switch (mate.kind) {
+        case "fixed": return mate;
+        case "revolute": return {...mate, primary: frame(mate.primary), secondary: frame(mate.secondary), offset: scaleLength(mate.offset, factor)};
+        case "distance": return {...mate, primary: plane(mate.primary), secondary: plane(mate.secondary), distance: scaleLength(mate.distance, factor)};
+        case "coincident": return {...mate, primary: plane(mate.primary), secondary: plane(mate.secondary)};
+        case "concentric": return {...mate,
+          primary: {...mate.primary, ...(mate.primary.origin ? {origin: scaleVec3(mate.primary.origin, factor)} : {})},
+          secondary: {...mate.secondary, ...(mate.secondary.origin ? {origin: scaleVec3(mate.secondary.origin, factor)} : {})}};
+      }
+    })} : {})};
 }
 
 function isAngularSketchDimensionTarget(
@@ -26204,8 +26774,20 @@ function scaleVec3(vector: Vec3, scaleFactor: number): Vec3 {
 }
 
 function scaleSketchLengthValues(sketch: Sketch, scaleFactor: number): Sketch {
+  const spurGear = sketch.spurGear ? cloneJsonSource(sketch.spurGear) : undefined;
+  if (spurGear) {
+    const lengthFields = ["module", "faceWidth", "boreDiameter", "backlash", "profileTolerance"] as const;
+    const inputs = {...spurGear.inputs};
+    const values = {...spurGear.values};
+    for (const field of lengthFields) {
+      if (typeof inputs[field] === "number") inputs[field] = scaleLength(inputs[field], scaleFactor);
+      values[field] = scaleLength(values[field], scaleFactor);
+    }
+    Object.assign(spurGear, {inputs, values});
+  }
   return {
     ...sketch,
+    ...(spurGear ? {spurGear} : {}),
     entities: new Map(
       [...sketch.entities.entries()].map(([id, entity]) => [
         id,
@@ -26426,6 +27008,7 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
 
 function createSketchSnapshot(sketch: Sketch): SketchSnapshot {
   return {
+    ...(sketch.spurGear ? { spurGear: cloneJsonSource(sketch.spurGear) } : {}),
     id: sketch.id,
     name: sketch.name,
     plane: sketch.plane,
@@ -26433,12 +27016,17 @@ function createSketchSnapshot(sketch: Sketch): SketchSnapshot {
     attachment: sketch.attachment
       ? cloneSketchAttachment(sketch.attachment)
       : undefined,
-    entities: [...sketch.entities.values()].map(cloneSketchEntity)
+    entities: [...sketch.entities.values()].map(
+      sketch.spurGear ? cloneGeneratedGearEntity : cloneSketchEntity
+    )
   };
 }
 
 function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
   return {
+    ...(snapshot.spurGear
+      ? { spurGear: cloneJsonSource(snapshot.spurGear) }
+      : {}),
     id: snapshot.id,
     name: snapshot.name,
     plane: snapshot.plane,
@@ -26447,7 +27035,12 @@ function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
       ? cloneSketchAttachment(snapshot.attachment)
       : undefined,
     entities: new Map(
-      snapshot.entities.map((entity) => [entity.id, cloneSketchEntity(entity)])
+      snapshot.entities.map((entity) => [
+        entity.id,
+        snapshot.spurGear
+          ? cloneGeneratedGearEntity(entity)
+          : cloneSketchEntity(entity)
+      ])
     )
   };
 }
@@ -26933,6 +27526,20 @@ function cloneNamedReferenceSnapshot(
     ...(reference.topologyAnchorId
       ? { topologyAnchorId: reference.topologyAnchorId }
       : {})
+  };
+}
+
+/** Stable semantic field order for the new generated source, including CBOR reopen. */
+function cloneGeneratedGearEntity(entity: SketchEntitySnapshot): SketchEntity {
+  if (entity.kind !== "arc") return cloneSketchEntity(entity);
+  return {
+    id: entity.id,
+    kind: "arc",
+    center: [...entity.center],
+    radius: entity.radius,
+    startAngleDegrees: entity.startAngleDegrees,
+    sweepAngleDegrees: entity.sweepAngleDegrees,
+    construction: entity.construction === true
   };
 }
 
@@ -30711,6 +31318,7 @@ function runOperations(
         nextMateNumber = result.nextMateNumber;
         return result.id;
       };
+      assertGeneratedGearSourceEdit(state,op,opIndex);
       if (isSketchConvenienceOp(op)) {
         assertV19SketchConvenienceOp(op, opIndex);
         getSketchOrThrow(state.sketches, op.sketchId, opIndex);
@@ -30847,6 +31455,7 @@ function runOperations(
         allocateMateId,
         opIndex
       );
+      if (op.op.startsWith("parameter.")) reevaluateSpurGears(state,diff,opIndex);
       appliedOps.push(op);
       if (op.op === "assembly.mate.create") {
         const mateId =
@@ -30880,7 +31489,10 @@ function runOperations(
   }
 
   try {
-    solveDocumentAssemblies(state, diff, document.assemblies);
+    const previousAssemblies = diff.document?.units?.mode === "preservePhysicalSize"
+      ? new Map([...document.assemblies].map(([id, assembly]) => [id, scaleAssemblyLengthValues(assembly, diff.document!.units!.scaleFactor)] as const))
+      : document.assemblies;
+    solveDocumentAssemblies(state, diff, previousAssemblies);
   } catch (error) {
     if (error instanceof AssemblySolveError) {
       const index = error.mateId
@@ -31977,8 +32589,8 @@ function createProjectState(project: CadProject): {
 
   return {
     document: createCadDocumentFromSnapshot(projectForReplay.document),
-    history: historyState.entries,
-    redoStack: [...redoEntriesInApplyOrder.entries].reverse(),
+    history: retainImportedGearCoordinates(historyState.entries, projectForReplay.document),
+    redoStack: retainImportedGearCoordinates([...redoEntriesInApplyOrder.entries].reverse(), projectForReplay.document),
     ...(projectForReplay.historyBaseline
       ? {
           historyBaseline: cloneJsonSource(projectForReplay.historyBaseline)
@@ -32333,7 +32945,7 @@ function cadDocumentsEqual(
   for (const [id, leftSketch] of left.sketches) {
     const rightSketch = right.sketches.get(id);
 
-    if (!rightSketch || !sketchesEqual(leftSketch, rightSketch)) {
+    if (!rightSketch || !(sketchesEqual(leftSketch, rightSketch) || generatedGearSketchesEqualForReplay(leftSketch, rightSketch))) {
       return false;
     }
   }
@@ -32489,12 +33101,104 @@ function vec3Equal(left: Vec3, right: Vec3): boolean {
   return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
 }
 
+/** Trig may differ by a few ulps between JS hosts; authored fields stay exact. */
+function generatedGearSketchesEqualForReplay(
+  left: Sketch,
+  right: Sketch
+): boolean {
+  if (!left.spurGear || !right.spurGear) return false;
+  const { entities: leftEntities, ...leftSource } = left;
+  const { entities: rightEntities, ...rightSource } = right;
+  return (
+    stableJsonEqual(leftSource, rightSource) &&
+    leftEntities.size === rightEntities.size &&
+    [...leftEntities].every(([id, entity]) =>
+      generatedGearReplayValuesClose(entity, rightEntities.get(id))
+    )
+  );
+}
+
+function generatedGearReplayValuesClose(
+  left: unknown,
+  right: unknown
+): boolean {
+  if (typeof left === "number" && typeof right === "number") {
+    return (
+      Number.isFinite(left) &&
+      Number.isFinite(right) &&
+      Math.abs(left - right) <=
+        1e-12 + 64 * Number.EPSILON * Math.max(Math.abs(left), Math.abs(right))
+    );
+  }
+  if (Array.isArray(left))
+    return (
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) =>
+        generatedGearReplayValuesClose(value, right[index])
+      )
+    );
+  if (isRecord(left) && isRecord(right))
+    return (
+      Object.keys(left).length === Object.keys(right).length &&
+      Object.keys(left).every((key) =>
+        generatedGearReplayValuesClose(left[key], right[key])
+      )
+    );
+  return left === right;
+}
+
+/** Keep saved source bits across motion Undo/Redo as well as initial Open. */
+function retainImportedGearCoordinates(
+  entries: TransactionEntry[],
+  snapshot: CadDocumentSnapshot
+): TransactionEntry[] {
+  const saved = createCadDocumentFromSnapshot(snapshot);
+  const gears = [...saved.sketches.values()].filter(
+    (sketch) => sketch.spurGear
+  );
+  if (!gears.length) return entries;
+  const retain = (document: CadDocument): CadDocument => {
+    let sketches: Map<SketchId, Sketch> | undefined;
+    for (const gear of gears) {
+      const replayed = document.sketches.get(gear.id);
+      if (
+        !replayed?.spurGear ||
+        replayed.spurGear.featureId !== gear.spurGear!.featureId ||
+        !stableJsonEqual(replayed.spurGear.values, gear.spurGear!.values) ||
+        replayed.entities.size !== gear.entities.size ||
+        ![...replayed.entities].every(([id, entity]) =>
+          generatedGearReplayValuesClose(entity, gear.entities.get(id))
+        )
+      )
+        continue;
+      sketches ??= new Map(document.sketches);
+      sketches.set(gear.id, {
+        ...replayed,
+        entities: new Map(
+          [...gear.entities].map(([id, entity]) => [
+            id,
+            cloneGeneratedGearEntity(entity)
+          ])
+        )
+      });
+    }
+    return sketches ? { ...document, sketches } : document;
+  };
+  return entries.map((entry) => ({
+    ...entry,
+    before: retain(entry.before),
+    after: retain(entry.after)
+  }));
+}
+
 function sketchesEqual(left: Sketch, right: Sketch): boolean {
   if (
     left.id !== right.id ||
     left.name !== right.name ||
     left.plane !== right.plane ||
     !sketchAttachmentsEqual(left.attachment, right.attachment) ||
+    !stableJsonEqual(left.spurGear,right.spurGear) ||
     left.entities.size !== right.entities.size
   ) {
     return false;
@@ -33850,8 +34554,8 @@ type ImportExtrudeFeatureSnapshot = Omit<
   "entityId" | "profileKind"
 > & {
   readonly entityId?: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind | "wire";
-  readonly profile?: Extract<SketchProfileRef, { readonly kind: "wire" }>;
+  readonly profileKind: FeatureExtrudeProfileKind | "wire" | "regions";
+  readonly profile?: Extract<SketchProfileRefV22, { readonly kind: "wire" | "regions" }>;
 };
 
 type ImportFeatureSnapshot =
@@ -34576,6 +35280,8 @@ function validateCadDocumentSnapshot(
     }
   }
 
+  validateSpurGearSources(value,path,issues);
+
   validateEdgeFinishNamedReferenceSnapshots(
     authoredFeatureByBodyId,
     namedReferencesByName,
@@ -34651,6 +35357,177 @@ function validateSceneObject(
   }
 
   validateTransformShape(value.transform, `${path}.transform`, issues);
+}
+
+function validateSpurGearSources(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!Array.isArray(value.sketches)) return;
+  const parameters = new Map<string, { value: number }>(
+    (Array.isArray(value.parameters) ? value.parameters : [])
+      .filter(
+        (p) =>
+          isRecord(p) && typeof p.id === "string" && typeof p.value === "number"
+      )
+      .map((p) => [p.id, p])
+  );
+  const featureOwners = new Set<string>();
+  for (const [index, sketch] of value.sketches.entries()) {
+    if (!isRecord(sketch) || sketch.spurGear === undefined) continue;
+    const gearPath = `${path}.sketches[${index}].spurGear`;
+    try {
+      const source = sketch.spurGear;
+      if (
+        !isRecord(source) ||
+        source.kind !== "spurGear" ||
+        typeof source.featureId !== "string" ||
+        !isRecord(source.inputs) ||
+        !isRecord(source.values) ||
+        Object.keys(source).some(
+          (k) => !["kind", "featureId", "inputs", "values"].includes(k)
+        )
+      )
+        throw new Error("Invalid native spur gear source record.");
+      if (
+        Object.keys(source.inputs).some(
+          (k) =>
+            ![
+              "teeth",
+              "module",
+              "faceWidth",
+              "pressureAngleDegrees",
+              "boreDiameter",
+              "backlash",
+              "profileTolerance"
+            ].includes(k)
+        )
+      )
+        throw new Error("Unexpected spur gear source input.");
+      if (featureOwners.has(source.featureId))
+        throw new Error(
+          "A gear feature must have exactly one generated source sketch."
+        );
+      featureOwners.add(source.featureId);
+      const inputs = source.inputs as unknown as SpurGearInputs;
+      const values = resolveSpurGearValues(inputs, parameters);
+      if (!gearSourceValuesMatch(values, source.values))
+        throw new Error(
+          "Stored gear values do not match their current parameter bindings."
+        );
+      if (typeof sketch.id !== "string" || !Array.isArray(sketch.entities))
+        throw new Error("Invalid generated gear sketch.");
+      const geometry = createSpurGearGeometry(sketch.id, values);
+      const actual = new Map(
+        sketch.entities.filter(isRecord).map((e) => [e.id, e])
+      );
+      if (
+        actual.size !== geometry.entities.length ||
+        geometry.entities.some(
+          (e) => !gearSourceValuesMatch(e, actual.get(e.id))
+        )
+      )
+        throw new Error(
+          "Generated gear entities do not match the authored gear recipe."
+        );
+      const feature = Array.isArray(value.features)
+        ? value.features.find((f) => isRecord(f) && f.id === source.featureId)
+        : undefined;
+      if (
+        !feature ||
+        feature.kind !== "extrude" ||
+        feature.operationMode !== "newBody" ||
+        feature.side !== "positive" ||
+        !gearSourceValuesMatch(feature.depth, values.faceWidth)
+      )
+        throw new Error(
+          "Generated gear requires its matching positive new-body extrusion and face width."
+        );
+      if (
+        (value.features as unknown[]).some(
+          (f) =>
+            isRecord(f) &&
+            f.id !== source.featureId &&
+            referencesSketchId(f, sketch.id as string)
+        )
+      )
+        throw new Error(
+          "Generated gear sketches may be consumed only by their owning feature."
+        );
+      const profile = feature.profile;
+      if (
+        !isRecord(profile) ||
+        profile.kind !== "regions" ||
+        profile.sketchId !== sketch.id ||
+        !Array.isArray(profile.regions) ||
+        profile.regions.length !== 1
+      )
+        throw new Error(
+          "Generated gear extrusion must consume its complete generated region."
+        );
+      const region = profile.regions[0];
+      if (
+        !isRecord(region) ||
+        !isRecord(region.outer) ||
+        region.outer.kind !== "wire" ||
+        !Array.isArray(region.outer.segments) ||
+        !Array.isArray(region.holes)
+      )
+        throw new Error("Invalid generated gear region.");
+      const expected = geometry.profile.regions[0]!;
+      const expectedSegments =
+        expected.outer.kind === "wire" ? expected.outer.segments : [];
+      if (
+        !stableJsonEqual(
+          region.outer.segments
+            .map((x: Record<string, unknown>) => x.entityId)
+            .sort(),
+          expectedSegments.map((x) => x.entityId).sort()
+        ) ||
+        !stableJsonEqual(region.holes, expected.holes)
+      )
+        throw new Error(
+          "Gear extrusion references differ from the generated outline or bore."
+        );
+      for (const records of [value.sketchDimensions, value.sketchConstraints])
+        if (
+          Array.isArray(records) &&
+          records.some((r) => isRecord(r) && r.sketchId === sketch.id)
+        )
+          throw new Error(
+            "Generated gear sketches cannot have independent solver dimensions or constraints."
+          );
+    } catch (error) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        gearPath,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+}
+/** Only floating arithmetic may vary slightly across browser and Node hosts. */
+function gearSourceValuesMatch(left: unknown, right: unknown): boolean {
+  if (typeof left === "number" && typeof right === "number")
+    return (
+      Number.isFinite(left) &&
+      Number.isFinite(right) &&
+      Math.abs(left - right) <= 1e-10 * Math.max(1, Math.abs(left))
+    );
+  if (Array.isArray(left))
+    return (
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((v, i) => gearSourceValuesMatch(v, right[i]))
+    );
+  if (isRecord(left) && isRecord(right))
+    return (
+      Object.keys(left).length === Object.keys(right).length &&
+      Object.keys(left).every((k) => gearSourceValuesMatch(left[k], right[k]))
+    );
+  return left === right;
 }
 
 function validateSketchSnapshot(
@@ -35846,7 +36723,8 @@ function validateSketchDimensionV22Source(
     `${path}.valueSource`,
     seenParameterIds,
     parameterValues,
-    issues
+    issues,
+    target.kind === "pointPair" && target.measurement !== "distance"
   );
   if (
     target.kind === "lineAngle" &&
@@ -35923,6 +36801,8 @@ function isValidV22DimensionEffectiveValue(
   if (target.kind === "lineAngle") {
     return value > angularTolerance && value < 180 - angularTolerance;
   }
+  if (target.kind === "pointPair" && target.measurement !== "distance")
+    return value >= 0;
   return value > linearTolerance;
 }
 
@@ -37526,7 +38406,7 @@ function validateSketchConstraintSnapshot(
 
       if (
         currentCoordinate &&
-        !vec2Equal(currentCoordinate, value.coordinate)
+        !sketchCoordinatesWithinTolerance(currentCoordinate, value.coordinate)
       ) {
         addProjectIssue(
           issues,
@@ -37710,7 +38590,8 @@ function validateSketchDimensionValueSourceSnapshot(
   path: string,
   seenParameterIds: ReadonlySet<string>,
   parameterValues: ReadonlyMap<ParameterId, number>,
-  issues: CadProjectImportIssue[]
+  issues: CadProjectImportIssue[],
+  allowZero = false
 ): number | undefined {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -37737,13 +38618,16 @@ function validateSketchDimensionValueSourceSnapshot(
     }
     if (
       typeof value.value !== "number" ||
-      !isPositiveFiniteNumber(value.value)
+      !(
+        Number.isFinite(value.value) &&
+        (allowZero ? value.value >= 0 : value.value > 0)
+      )
     ) {
       addProjectIssue(
         issues,
         "INVALID_SKETCH_DIMENSION",
         `${path}.value`,
-        "Sketch dimension value must be a positive finite number."
+        `Sketch dimension value must be a ${allowZero ? "nonnegative" : "positive"} finite number.`
       );
       return undefined;
     }
@@ -37787,13 +38671,16 @@ function validateSketchDimensionValueSourceSnapshot(
 
       if (
         typeof parameterValue !== "number" ||
-        !isPositiveFiniteNumber(parameterValue)
+        !(
+          Number.isFinite(parameterValue) &&
+          (allowZero ? parameterValue >= 0 : parameterValue > 0)
+        )
       ) {
         addProjectIssue(
           issues,
           "INVALID_SKETCH_DIMENSION",
           `${path}.parameterId`,
-          "Sketch dimension parameter value must be positive and finite."
+          `Sketch dimension parameter value must be ${allowZero ? "nonnegative" : "positive"} and finite.`
         );
         return undefined;
       }
@@ -37927,12 +38814,16 @@ function collectValidAuthoredFeatureByBodyId(
     isRecord(value) && value.kind === "extrude"
       ? validateSketchProfileRefSource(value.profile)
       : undefined;
+  const compositeProfile = isRecord(value) && isSketchRegionsProfileRef(value.profile)
+    ? value.profile
+    : normalizedProfile?.ok && normalizedProfile.value.kind === "wire"
+      ? normalizedProfile.value
+      : undefined;
   if (
     isRecord(value) &&
     value.kind === "extrude" &&
     typeof value.id === "string" &&
-    normalizedProfile?.ok &&
-    normalizedProfile.value.kind === "wire" &&
+    compositeProfile !== undefined &&
     typeof value.depth === "number" &&
     isPositiveFiniteNumber(value.depth) &&
     isExtrudeSide(value.side) &&
@@ -37947,9 +38838,9 @@ function collectValidAuthoredFeatureByBodyId(
       id: value.id,
       kind: "extrude",
       name: typeof value.name === "string" ? value.name : undefined,
-      sketchId: normalizedProfile.value.sketchId,
-      profile: normalizedProfile.value,
-      profileKind: "wire",
+      sketchId: compositeProfile.sketchId,
+      profile: compositeProfile,
+      profileKind: compositeProfile.kind,
       depth: value.depth,
       side: value.side,
       operationMode: value.operationMode,
@@ -38563,6 +39454,7 @@ function isSupportedImportEdgeFinishTargetCombination(
   return (
     (operationMode === "newBody" &&
       target.profileKind !== "wire" &&
+      target.profileKind !== "regions" &&
       isSupportedCutTargetProfileKind(target.profileKind)) ||
     (operationMode === "cut" && target.profileKind === "rectangle")
   );
@@ -38666,10 +39558,7 @@ function isSupportedBooleanExtrudeCombination(
   }
 
   if (operationMode === "add") {
-    return isSupportedAddTargetProfileKind(
-      targetProfileKind,
-      feature.targetTopologyAnchorId !== undefined
-    );
+    return isSupportedAddTargetProfileKind(targetProfileKind);
   }
 
   if (operationMode === "cut") {
@@ -38687,17 +39576,14 @@ function resolveImportBooleanTargetProfileKind(
   target: ImportExtrudeFeatureSnapshot,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
-): FeatureExtrudeProfileKind | undefined {
+): SupportedBooleanTargetKind | undefined {
   if ((target.operationMode ?? "newBody") === "newBody") {
-    return target.profileKind === "wire" ? undefined : target.profileKind;
+    return target.profileKind;
   }
 
   const allowActiveResultBodyAnchor =
     targetTopologyAnchorId !== undefined &&
     activeResultBodyId === target.bodyId;
-  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
-    return undefined;
-  }
 
   let current: ImportExtrudeFeatureSnapshot | undefined = target;
   const visitedFeatureIds = new Set<FeatureId>();
@@ -38706,7 +39592,7 @@ function resolveImportBooleanTargetProfileKind(
     visitedFeatureIds.add(current.id);
 
     if ((current.operationMode ?? "newBody") === "newBody") {
-      return current.profileKind === "wire" ? undefined : current.profileKind;
+      return current.profileKind;
     }
 
     const isAllowedActiveResultBody =
@@ -38716,6 +39602,7 @@ function resolveImportBooleanTargetProfileKind(
     }
 
     if (
+      targetTopologyAnchorId !== undefined &&
       !isAllowedActiveResultBody &&
       current.targetTopologyAnchorId !== targetTopologyAnchorId
     ) {
@@ -42702,6 +43589,8 @@ function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
   }
+
+  if (isSpurGearOp(value)) return true;
 
   if (validateV19CadOp(value).ok) {
     return true;

@@ -1,0 +1,136 @@
+{
+  "checks": [
+    {
+      "name": "Input exact volume unchanged",
+      "pass": true
+    },
+    {
+      "name": "Output exact shape changed",
+      "pass": true
+    },
+    {
+      "name": "Support material and relocated holes coherent",
+      "pass": true
+    },
+    {
+      "name": "Resolved pose 0",
+      "pass": true
+    },
+    {
+      "name": "Resolved pose 60",
+      "pass": true
+    },
+    {
+      "name": "Resolved pose 120",
+      "pass": true
+    }
+  ],
+  "failures": [
+    {
+      "name": "cad.project_open",
+      "error": {
+        "code": "PROJECT_OPERATION_FAILED",
+        "message": "Invalid Partbench project JSON: Project transaction history could not be replayed: Saved transaction diff does not match replayed operations for txn_2. ($.history)."
+      }
+    },
+    {
+      "name": "cad.project_open",
+      "error": {
+        "code": "PROJECT_OPERATION_FAILED",
+        "message": "Invalid Partbench project JSON: Project transaction history could not be replayed: Saved transaction diff does not match replayed operations for txn_2. ($.history)."
+      }
+    }
+  ],
+  "exports": [
+    {
+      "path": "workspace/input_gear.step",
+      "bytes": 814004,
+      "isoHeader": true,
+      "schema": "FILE_SCHEMA((\n'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF. {1 0 10303 442 1 1 4 \n}'));"
+    },
+    {
+      "path": "workspace/output_gear.step",
+      "bytes": 1486139,
+      "isoHeader": true,
+      "schema": "FILE_SCHEMA((\n'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF. {1 0 10303 442 1 1 4 \n}'));"
+    },
+    {
+      "path": "workspace/support.step",
+      "bytes": 22983,
+      "isoHeader": true,
+      "schema": "FILE_SCHEMA((\n'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF. {1 0 10303 442 1 1 4 \n}'));"
+    },
+    {
+      "path": "workspace/shaft.step",
+      "bytes": 5627,
+      "isoHeader": true,
+      "schema": "FILE_SCHEMA((\n'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF. {1 0 10303 442 1 1 4 \n}'));"
+    }
+  ],
+  "slowest": [
+    {
+      "label": "retry-immediate-save-and-export",
+      "at": "2026-09-12T07:58:25.593Z",
+      "method": "tools/call",
+      "name": "cad.project_export_file",
+      "milliseconds": 24767.753875,
+      "responseBytes": 3333
+    },
+    {
+      "label": "retry-immediate-save-and-export",
+      "at": "2026-09-12T07:58:50.363Z",
+      "method": "tools/call",
+      "name": "cad.project_export_file",
+      "milliseconds": 23873.333959000003,
+      "responseBytes": 3355
+    },
+    {
+      "label": "retry-immediate-save-and-export",
+      "at": "2026-09-12T07:59:32.848Z",
+      "method": "tools/call",
+      "name": "cad.project_export_file",
+      "milliseconds": 18691.230582999997,
+      "responseBytes": 3150
+    },
+    {
+      "label": "retry-immediate-save-and-export",
+      "at": "2026-09-12T07:59:14.238Z",
+      "method": "tools/call",
+      "name": "cad.project_export_file",
+      "milliseconds": 18608.625,
+      "responseBytes": 3275
+    },
+    {
+      "label": "revision-and-motion",
+      "at": "2026-09-12T07:55:43.538Z",
+      "method": "tools/call",
+      "name": "cad.body_mass_properties",
+      "milliseconds": 18323.364959,
+      "responseBytes": 1854
+    },
+    {
+      "label": "retry-immediate-save-and-export",
+      "at": "2026-09-12T07:58:00.055Z",
+      "method": "tools/call",
+      "name": "cad.batch",
+      "milliseconds": 17616.875917,
+      "responseBytes": 130885256
+    },
+    {
+      "label": "build",
+      "at": "2026-09-12T07:54:50.871Z",
+      "method": "tools/call",
+      "name": "cad.batch",
+      "milliseconds": 17566.140292,
+      "responseBytes": 1079899
+    },
+    {
+      "label": "revision-and-motion",
+      "at": "2026-09-12T07:56:02.231Z",
+      "method": "tools/call",
+      "name": "cad.batch",
+      "milliseconds": 11186.335458000001,
+      "responseBytes": 130885256
+    }
+  ]
+}

@@ -1,0 +1,4128 @@
+{
+  "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-workflow/2026-09-12T23-57-49.467Z",
+  "buildOperations": 159,
+  "revisionOperations": 1,
+  "calls": [
+    {
+      "name": "cad.operation_schema",
+      "milliseconds": 0.5008339999999976,
+      "responseBytes": 6459
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 7113.8055,
+      "responseBytes": 13669
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.7645419999998921,
+      "responseBytes": 11096
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 23.134417000000212,
+      "responseBytes": 3630
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 146.76254100000006,
+      "responseBytes": 5306
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.29650000000037835,
+      "responseBytes": 11096
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 146.1701669999993,
+      "responseBytes": 5798
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.4584580000000642,
+      "responseBytes": 11232
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 194.01154199999928,
+      "responseBytes": 5804
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.32420899999942776,
+      "responseBytes": 11234
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 156.76766599999974,
+      "responseBytes": 5804
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.2342079999998532,
+      "responseBytes": 11226
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 135.4918749999997,
+      "responseBytes": 5804
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.23666599999978644,
+      "responseBytes": 11210
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 136.139333000001,
+      "responseBytes": 5804
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.2366249999995489,
+      "responseBytes": 11274
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 134.634082999999,
+      "responseBytes": 5804
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 20.788833000000523,
+      "responseBytes": 3632
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 123.32966699999997,
+      "responseBytes": 1848
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 14.920749999999316,
+      "responseBytes": 1840
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.5381250000009459,
+      "responseBytes": 1840
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.0453750000015134,
+      "responseBytes": 1792
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.8291250000002037,
+      "responseBytes": 1816
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.8315000000002328,
+      "responseBytes": 1856
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.0632079999995767,
+      "responseBytes": 1846
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.9188750000012078,
+      "responseBytes": 1866
+    },
+    {
+      "name": "cad.project_save",
+      "milliseconds": 93.38008400000035,
+      "responseBytes": 812
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 2841.0918340000007,
+      "responseBytes": 8832
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.3181249999997817,
+      "responseBytes": 11356
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 32.51912500000071,
+      "responseBytes": 3636
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 120.45187499999884,
+      "responseBytes": 5314
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.268792000000758,
+      "responseBytes": 11356
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 120.14245800000026,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.2422499999993306,
+      "responseBytes": 11466
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 117.91441699999996,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.2593329999999696,
+      "responseBytes": 11466
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 121.89537500000006,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.23500000000058208,
+      "responseBytes": 11450
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 119.3794999999991,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.24437500000021828,
+      "responseBytes": 11458
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 122.82912499999838,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.2415000000000873,
+      "responseBytes": 11498
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 120.16254200000003,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 35.25174999999945,
+      "responseBytes": 3638
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 117.12995799999953,
+      "responseBytes": 1848
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 7.988666999999623,
+      "responseBytes": 1840
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.037292000000889,
+      "responseBytes": 1828
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.2424579999988055,
+      "responseBytes": 1794
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.7162500000013097,
+      "responseBytes": 1816
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.9677499999997963,
+      "responseBytes": 1856
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.9721669999998994,
+      "responseBytes": 1846
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.7952920000006998,
+      "responseBytes": 1866
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 38.429167000000234,
+      "responseBytes": 3638
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 14.57983299999978,
+      "responseBytes": 5369
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 35.99137499999961,
+      "responseBytes": 3638
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 13.505499999999302,
+      "responseBytes": 5389
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 35.73512500000106,
+      "responseBytes": 3638
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 0.6621249999989232,
+      "responseBytes": 859
+    },
+    {
+      "name": "cad.session_info",
+      "milliseconds": 35.836459000000104,
+      "responseBytes": 3638
+    },
+    {
+      "name": "cad.project_health",
+      "milliseconds": 119.49729099999968,
+      "responseBytes": 165506
+    },
+    {
+      "name": "cad.project_save",
+      "milliseconds": 171.75545799999963,
+      "responseBytes": 814
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.2637079999985872,
+      "responseBytes": 11492
+    },
+    {
+      "name": "cad.project_export_file",
+      "milliseconds": 2426.8679580000007,
+      "responseBytes": 13653
+    },
+    {
+      "name": "cad.project_open",
+      "milliseconds": 373.7357499999998,
+      "responseBytes": 814
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 1.6992079999999987,
+      "responseBytes": 11490
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 6003.7165,
+      "responseBytes": 1846
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 10.013709000002564,
+      "responseBytes": 1838
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 2.5157499999986612,
+      "responseBytes": 1826
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.14495800000077,
+      "responseBytes": 1792
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.1090000000003783,
+      "responseBytes": 1814
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.85791700000118,
+      "responseBytes": 1854
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 0.821750000002794,
+      "responseBytes": 1846
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 1.1295830000017304,
+      "responseBytes": 1866
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 3976.698833000002,
+      "responseBytes": 8834
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.3082089999988966,
+      "responseBytes": 11314
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 212.16300000000047,
+      "responseBytes": 5806
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 0.347208999999566,
+      "responseBytes": 11450
+    }
+  ],
+  "motion": [
+    {
+      "teeth": 40,
+      "samples": [
+        {
+          "angle": 0,
+          "milliseconds": 146.7827499999994
+        },
+        {
+          "angle": 45,
+          "milliseconds": 146.19650000000001
+        },
+        {
+          "angle": 90,
+          "milliseconds": 194.03399999999965
+        },
+        {
+          "angle": 180,
+          "milliseconds": 156.79133400000046
+        },
+        {
+          "angle": 270,
+          "milliseconds": 135.5129160000006
+        },
+        {
+          "angle": 360,
+          "milliseconds": 136.1600840000001
+        }
+      ],
+      "exactBuildsBefore": 8,
+      "exactBuildsAfter": 8
+    },
+    {
+      "teeth": 60,
+      "samples": [
+        {
+          "angle": 0,
+          "milliseconds": 120.4821669999983
+        },
+        {
+          "angle": 45,
+          "milliseconds": 120.16604200000074
+        },
+        {
+          "angle": 90,
+          "milliseconds": 117.93720899999971
+        },
+        {
+          "angle": 180,
+          "milliseconds": 121.91558299999997
+        },
+        {
+          "angle": 270,
+          "milliseconds": 119.39937499999905
+        },
+        {
+          "angle": 360,
+          "milliseconds": 122.85304200000064
+        }
+      ],
+      "exactBuildsBefore": 11,
+      "exactBuildsAfter": 11
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "gearbox-2to1.wcad",
+      "bytes": 491424
+    },
+    {
+      "name": "gearbox-3to1.wcad",
+      "bytes": 1423192
+    },
+    {
+      "name": "gearbox-definitions.step",
+      "bytes": 2445594
+    }
+  ],
+  "initialBuildMs": 7113.857458,
+  "buildResponseBytes": 13669,
+  "initialMasses": {
+    "pinion": 6328.635905883286,
+    "wheel": 27405.732253281967,
+    "base": 116752.6088960385,
+    "bridge": 14396.2633449621,
+    "shaft": 2513.2741228718346,
+    "spacer": 401.14054115891975,
+    "standoff": 841.4441763374899,
+    "bolt_finished": 698.6548245743668
+  },
+  "initialIdentity": {
+    "algorithm": "partbench-source-v1",
+    "sha256": "18cb4baee4ee8192f3e39fd7b18ed38a42621a69f61b645c4982ae8d885edeb3"
+  },
+  "revisionMs": 2841.121792,
+  "revisionResponseBytes": 8832,
+  "finalMasses": {
+    "pinion": 6328.635905883286,
+    "wheel": 62617.580781870165,
+    "base": 116752.6088960385,
+    "bridge": 16016.263344962099,
+    "shaft": 2513.2741228718346,
+    "spacer": 401.14054115891975,
+    "standoff": 841.4441763374899,
+    "bolt_finished": 698.6548245743668
+  },
+  "health": {
+    "ok": true,
+    "requestId": "mcp_jsonrpc_61",
+    "adapterVersion": "web-cad.agent-adapter.v1",
+    "cadOpsVersion": "cadops.v1",
+    "query": "project.health",
+    "status": "healthy",
+    "issueCount": 0,
+    "authoredExtrudeCount": 9,
+    "authoredRevolveCount": 0,
+    "authoredHoleCount": 0,
+    "authoredChamferCount": 0,
+    "authoredFilletCount": 0,
+    "attachedSketchCount": 0,
+    "sketchEvaluationCount": 9,
+    "sketchDimensionCount": 60,
+    "sketchConstraintCount": 7,
+    "namedReferenceCount": 0,
+    "authoredExtrudes": [
+      {
+        "featureId": "base_extrude",
+        "bodyId": "base",
+        "sketchId": "base_sk",
+        "sourceEntityIds": [
+          "base_outer",
+          "base_hole_0",
+          "base_hole_1",
+          "base_hole_2",
+          "base_hole_3",
+          "base_hole_4",
+          "base_hole_5"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "bridge_extrude",
+        "bodyId": "bridge",
+        "sketchId": "bridge_sk",
+        "sourceEntityIds": [
+          "bridge_outer",
+          "bridge_hole_0",
+          "bridge_hole_1",
+          "bridge_hole_2",
+          "bridge_hole_3"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "shaft_extrude",
+        "bodyId": "shaft",
+        "sketchId": "shaft_sk",
+        "sourceEntityIds": [
+          "shaft_outer"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "spacer_extrude",
+        "bodyId": "spacer",
+        "sketchId": "spacer_sk",
+        "sourceEntityIds": [
+          "spacer_outer",
+          "spacer_bore"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "standoff_extrude",
+        "bodyId": "standoff",
+        "sketchId": "standoff_sk",
+        "sourceEntityIds": [
+          "standoff_outer",
+          "standoff_bore"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "bolt_shank_extrude",
+        "bodyId": "bolt_shank",
+        "sketchId": "bolt_sk",
+        "sourceEntityIds": [
+          "bolt_outer"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "semantic-source",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": false,
+        "measurementConfidence": "none",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "bolt_extrude",
+        "bodyId": "bolt_finished",
+        "sketchId": "bolt_head_sk",
+        "entityId": "bolt_head",
+        "profileKind": "rectangle",
+        "operationMode": "add",
+        "targetBodyId": "bolt_shank",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "pinion_extrude",
+        "bodyId": "pinion",
+        "sketchId": "pinion_outline",
+        "sourceEntityIds": [
+          "pinion_outline:edge:0",
+          "pinion_outline:edge:1",
+          "pinion_outline:edge:2",
+          "pinion_outline:edge:3",
+          "pinion_outline:edge:4",
+          "pinion_outline:edge:5",
+          "pinion_outline:edge:6",
+          "pinion_outline:edge:7",
+          "pinion_outline:edge:8",
+          "pinion_outline:edge:9",
+          "pinion_outline:edge:10",
+          "pinion_outline:edge:11",
+          "pinion_outline:edge:12",
+          "pinion_outline:edge:13",
+          "pinion_outline:edge:14",
+          "pinion_outline:edge:15",
+          "pinion_outline:edge:16",
+          "pinion_outline:edge:17",
+          "pinion_outline:edge:18",
+          "pinion_outline:edge:19",
+          "pinion_outline:edge:20",
+          "pinion_outline:edge:21",
+          "pinion_outline:edge:22",
+          "pinion_outline:edge:23",
+          "pinion_outline:edge:24",
+          "pinion_outline:edge:25",
+          "pinion_outline:edge:26",
+          "pinion_outline:edge:27",
+          "pinion_outline:edge:28",
+          "pinion_outline:edge:29",
+          "pinion_outline:edge:30",
+          "pinion_outline:edge:31",
+          "pinion_outline:edge:32",
+          "pinion_outline:edge:33",
+          "pinion_outline:edge:34",
+          "pinion_outline:edge:35",
+          "pinion_outline:edge:36",
+          "pinion_outline:edge:37",
+          "pinion_outline:edge:38",
+          "pinion_outline:edge:39",
+          "pinion_outline:edge:40",
+          "pinion_outline:edge:41",
+          "pinion_outline:edge:42",
+          "pinion_outline:edge:43",
+          "pinion_outline:edge:44",
+          "pinion_outline:edge:45",
+          "pinion_outline:edge:46",
+          "pinion_outline:edge:47",
+          "pinion_outline:edge:48",
+          "pinion_outline:edge:49",
+          "pinion_outline:edge:50",
+          "pinion_outline:edge:51",
+          "pinion_outline:edge:52",
+          "pinion_outline:edge:53",
+          "pinion_outline:edge:54",
+          "pinion_outline:edge:55",
+          "pinion_outline:edge:56",
+          "pinion_outline:edge:57",
+          "pinion_outline:edge:58",
+          "pinion_outline:edge:59",
+          "pinion_outline:edge:60",
+          "pinion_outline:edge:61",
+          "pinion_outline:edge:62",
+          "pinion_outline:edge:63",
+          "pinion_outline:edge:64",
+          "pinion_outline:edge:65",
+          "pinion_outline:edge:66",
+          "pinion_outline:edge:67",
+          "pinion_outline:edge:68",
+          "pinion_outline:edge:69",
+          "pinion_outline:edge:70",
+          "pinion_outline:edge:71",
+          "pinion_outline:edge:72",
+          "pinion_outline:edge:73",
+          "pinion_outline:edge:74",
+          "pinion_outline:edge:75",
+          "pinion_outline:edge:76",
+          "pinion_outline:edge:77",
+          "pinion_outline:edge:78",
+          "pinion_outline:edge:79",
+          "pinion_outline:edge:80",
+          "pinion_outline:edge:81",
+          "pinion_outline:edge:82",
+          "pinion_outline:edge:83",
+          "pinion_outline:edge:84",
+          "pinion_outline:edge:85",
+          "pinion_outline:edge:86",
+          "pinion_outline:edge:87",
+          "pinion_outline:edge:88",
+          "pinion_outline:edge:89",
+          "pinion_outline:edge:90",
+          "pinion_outline:edge:91",
+          "pinion_outline:edge:92",
+          "pinion_outline:edge:93",
+          "pinion_outline:edge:94",
+          "pinion_outline:edge:95",
+          "pinion_outline:edge:96",
+          "pinion_outline:edge:97",
+          "pinion_outline:edge:98",
+          "pinion_outline:edge:99",
+          "pinion_outline:edge:100",
+          "pinion_outline:edge:101",
+          "pinion_outline:edge:102",
+          "pinion_outline:edge:103",
+          "pinion_outline:edge:104",
+          "pinion_outline:edge:105",
+          "pinion_outline:edge:106",
+          "pinion_outline:edge:107",
+          "pinion_outline:edge:108",
+          "pinion_outline:edge:109",
+          "pinion_outline:edge:110",
+          "pinion_outline:edge:111",
+          "pinion_outline:edge:112",
+          "pinion_outline:edge:113",
+          "pinion_outline:edge:114",
+          "pinion_outline:edge:115",
+          "pinion_outline:edge:116",
+          "pinion_outline:edge:117",
+          "pinion_outline:edge:118",
+          "pinion_outline:edge:119",
+          "pinion_outline:edge:120",
+          "pinion_outline:edge:121",
+          "pinion_outline:edge:122",
+          "pinion_outline:edge:123",
+          "pinion_outline:edge:124",
+          "pinion_outline:edge:125",
+          "pinion_outline:edge:126",
+          "pinion_outline:edge:127",
+          "pinion_outline:edge:128",
+          "pinion_outline:edge:129",
+          "pinion_outline:edge:130",
+          "pinion_outline:edge:131",
+          "pinion_outline:edge:132",
+          "pinion_outline:edge:133",
+          "pinion_outline:edge:134",
+          "pinion_outline:edge:135",
+          "pinion_outline:edge:136",
+          "pinion_outline:edge:137",
+          "pinion_outline:edge:138",
+          "pinion_outline:edge:139",
+          "pinion_outline:edge:140",
+          "pinion_outline:edge:141",
+          "pinion_outline:edge:142",
+          "pinion_outline:edge:143",
+          "pinion_outline:edge:144",
+          "pinion_outline:edge:145",
+          "pinion_outline:edge:146",
+          "pinion_outline:edge:147",
+          "pinion_outline:edge:148",
+          "pinion_outline:edge:149",
+          "pinion_outline:edge:150",
+          "pinion_outline:edge:151",
+          "pinion_outline:edge:152",
+          "pinion_outline:edge:153",
+          "pinion_outline:edge:154",
+          "pinion_outline:edge:155",
+          "pinion_outline:edge:156",
+          "pinion_outline:edge:157",
+          "pinion_outline:edge:158",
+          "pinion_outline:edge:159",
+          "pinion_outline:edge:160",
+          "pinion_outline:edge:161",
+          "pinion_outline:edge:162",
+          "pinion_outline:edge:163",
+          "pinion_outline:edge:164",
+          "pinion_outline:edge:165",
+          "pinion_outline:edge:166",
+          "pinion_outline:edge:167",
+          "pinion_outline:edge:168",
+          "pinion_outline:edge:169",
+          "pinion_outline:edge:170",
+          "pinion_outline:edge:171",
+          "pinion_outline:edge:172",
+          "pinion_outline:edge:173",
+          "pinion_outline:edge:174",
+          "pinion_outline:edge:175",
+          "pinion_outline:edge:176",
+          "pinion_outline:edge:177",
+          "pinion_outline:edge:178",
+          "pinion_outline:edge:179",
+          "pinion_outline:edge:180",
+          "pinion_outline:edge:181",
+          "pinion_outline:edge:182",
+          "pinion_outline:edge:183",
+          "pinion_outline:edge:184",
+          "pinion_outline:edge:185",
+          "pinion_outline:edge:186",
+          "pinion_outline:edge:187",
+          "pinion_outline:edge:188",
+          "pinion_outline:edge:189",
+          "pinion_outline:edge:190",
+          "pinion_outline:edge:191",
+          "pinion_outline:edge:192",
+          "pinion_outline:edge:193",
+          "pinion_outline:edge:194",
+          "pinion_outline:edge:195",
+          "pinion_outline:edge:196",
+          "pinion_outline:edge:197",
+          "pinion_outline:edge:198",
+          "pinion_outline:edge:199",
+          "pinion_outline:bore"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      },
+      {
+        "featureId": "wheel_extrude",
+        "bodyId": "wheel",
+        "sketchId": "wheel_outline",
+        "sourceEntityIds": [
+          "wheel_outline:edge:0",
+          "wheel_outline:edge:1",
+          "wheel_outline:edge:2",
+          "wheel_outline:edge:3",
+          "wheel_outline:edge:4",
+          "wheel_outline:edge:5",
+          "wheel_outline:edge:6",
+          "wheel_outline:edge:7",
+          "wheel_outline:edge:8",
+          "wheel_outline:edge:9",
+          "wheel_outline:edge:10",
+          "wheel_outline:edge:11",
+          "wheel_outline:edge:12",
+          "wheel_outline:edge:13",
+          "wheel_outline:edge:14",
+          "wheel_outline:edge:15",
+          "wheel_outline:edge:16",
+          "wheel_outline:edge:17",
+          "wheel_outline:edge:18",
+          "wheel_outline:edge:19",
+          "wheel_outline:edge:20",
+          "wheel_outline:edge:21",
+          "wheel_outline:edge:22",
+          "wheel_outline:edge:23",
+          "wheel_outline:edge:24",
+          "wheel_outline:edge:25",
+          "wheel_outline:edge:26",
+          "wheel_outline:edge:27",
+          "wheel_outline:edge:28",
+          "wheel_outline:edge:29",
+          "wheel_outline:edge:30",
+          "wheel_outline:edge:31",
+          "wheel_outline:edge:32",
+          "wheel_outline:edge:33",
+          "wheel_outline:edge:34",
+          "wheel_outline:edge:35",
+          "wheel_outline:edge:36",
+          "wheel_outline:edge:37",
+          "wheel_outline:edge:38",
+          "wheel_outline:edge:39",
+          "wheel_outline:edge:40",
+          "wheel_outline:edge:41",
+          "wheel_outline:edge:42",
+          "wheel_outline:edge:43",
+          "wheel_outline:edge:44",
+          "wheel_outline:edge:45",
+          "wheel_outline:edge:46",
+          "wheel_outline:edge:47",
+          "wheel_outline:edge:48",
+          "wheel_outline:edge:49",
+          "wheel_outline:edge:50",
+          "wheel_outline:edge:51",
+          "wheel_outline:edge:52",
+          "wheel_outline:edge:53",
+          "wheel_outline:edge:54",
+          "wheel_outline:edge:55",
+          "wheel_outline:edge:56",
+          "wheel_outline:edge:57",
+          "wheel_outline:edge:58",
+          "wheel_outline:edge:59",
+          "wheel_outline:edge:60",
+          "wheel_outline:edge:61",
+          "wheel_outline:edge:62",
+          "wheel_outline:edge:63",
+          "wheel_outline:edge:64",
+          "wheel_outline:edge:65",
+          "wheel_outline:edge:66",
+          "wheel_outline:edge:67",
+          "wheel_outline:edge:68",
+          "wheel_outline:edge:69",
+          "wheel_outline:edge:70",
+          "wheel_outline:edge:71",
+          "wheel_outline:edge:72",
+          "wheel_outline:edge:73",
+          "wheel_outline:edge:74",
+          "wheel_outline:edge:75",
+          "wheel_outline:edge:76",
+          "wheel_outline:edge:77",
+          "wheel_outline:edge:78",
+          "wheel_outline:edge:79",
+          "wheel_outline:edge:80",
+          "wheel_outline:edge:81",
+          "wheel_outline:edge:82",
+          "wheel_outline:edge:83",
+          "wheel_outline:edge:84",
+          "wheel_outline:edge:85",
+          "wheel_outline:edge:86",
+          "wheel_outline:edge:87",
+          "wheel_outline:edge:88",
+          "wheel_outline:edge:89",
+          "wheel_outline:edge:90",
+          "wheel_outline:edge:91",
+          "wheel_outline:edge:92",
+          "wheel_outline:edge:93",
+          "wheel_outline:edge:94",
+          "wheel_outline:edge:95",
+          "wheel_outline:edge:96",
+          "wheel_outline:edge:97",
+          "wheel_outline:edge:98",
+          "wheel_outline:edge:99",
+          "wheel_outline:edge:100",
+          "wheel_outline:edge:101",
+          "wheel_outline:edge:102",
+          "wheel_outline:edge:103",
+          "wheel_outline:edge:104",
+          "wheel_outline:edge:105",
+          "wheel_outline:edge:106",
+          "wheel_outline:edge:107",
+          "wheel_outline:edge:108",
+          "wheel_outline:edge:109",
+          "wheel_outline:edge:110",
+          "wheel_outline:edge:111",
+          "wheel_outline:edge:112",
+          "wheel_outline:edge:113",
+          "wheel_outline:edge:114",
+          "wheel_outline:edge:115",
+          "wheel_outline:edge:116",
+          "wheel_outline:edge:117",
+          "wheel_outline:edge:118",
+          "wheel_outline:edge:119",
+          "wheel_outline:edge:120",
+          "wheel_outline:edge:121",
+          "wheel_outline:edge:122",
+          "wheel_outline:edge:123",
+          "wheel_outline:edge:124",
+          "wheel_outline:edge:125",
+          "wheel_outline:edge:126",
+          "wheel_outline:edge:127",
+          "wheel_outline:edge:128",
+          "wheel_outline:edge:129",
+          "wheel_outline:edge:130",
+          "wheel_outline:edge:131",
+          "wheel_outline:edge:132",
+          "wheel_outline:edge:133",
+          "wheel_outline:edge:134",
+          "wheel_outline:edge:135",
+          "wheel_outline:edge:136",
+          "wheel_outline:edge:137",
+          "wheel_outline:edge:138",
+          "wheel_outline:edge:139",
+          "wheel_outline:edge:140",
+          "wheel_outline:edge:141",
+          "wheel_outline:edge:142",
+          "wheel_outline:edge:143",
+          "wheel_outline:edge:144",
+          "wheel_outline:edge:145",
+          "wheel_outline:edge:146",
+          "wheel_outline:edge:147",
+          "wheel_outline:edge:148",
+          "wheel_outline:edge:149",
+          "wheel_outline:edge:150",
+          "wheel_outline:edge:151",
+          "wheel_outline:edge:152",
+          "wheel_outline:edge:153",
+          "wheel_outline:edge:154",
+          "wheel_outline:edge:155",
+          "wheel_outline:edge:156",
+          "wheel_outline:edge:157",
+          "wheel_outline:edge:158",
+          "wheel_outline:edge:159",
+          "wheel_outline:edge:160",
+          "wheel_outline:edge:161",
+          "wheel_outline:edge:162",
+          "wheel_outline:edge:163",
+          "wheel_outline:edge:164",
+          "wheel_outline:edge:165",
+          "wheel_outline:edge:166",
+          "wheel_outline:edge:167",
+          "wheel_outline:edge:168",
+          "wheel_outline:edge:169",
+          "wheel_outline:edge:170",
+          "wheel_outline:edge:171",
+          "wheel_outline:edge:172",
+          "wheel_outline:edge:173",
+          "wheel_outline:edge:174",
+          "wheel_outline:edge:175",
+          "wheel_outline:edge:176",
+          "wheel_outline:edge:177",
+          "wheel_outline:edge:178",
+          "wheel_outline:edge:179",
+          "wheel_outline:edge:180",
+          "wheel_outline:edge:181",
+          "wheel_outline:edge:182",
+          "wheel_outline:edge:183",
+          "wheel_outline:edge:184",
+          "wheel_outline:edge:185",
+          "wheel_outline:edge:186",
+          "wheel_outline:edge:187",
+          "wheel_outline:edge:188",
+          "wheel_outline:edge:189",
+          "wheel_outline:edge:190",
+          "wheel_outline:edge:191",
+          "wheel_outline:edge:192",
+          "wheel_outline:edge:193",
+          "wheel_outline:edge:194",
+          "wheel_outline:edge:195",
+          "wheel_outline:edge:196",
+          "wheel_outline:edge:197",
+          "wheel_outline:edge:198",
+          "wheel_outline:edge:199",
+          "wheel_outline:edge:200",
+          "wheel_outline:edge:201",
+          "wheel_outline:edge:202",
+          "wheel_outline:edge:203",
+          "wheel_outline:edge:204",
+          "wheel_outline:edge:205",
+          "wheel_outline:edge:206",
+          "wheel_outline:edge:207",
+          "wheel_outline:edge:208",
+          "wheel_outline:edge:209",
+          "wheel_outline:edge:210",
+          "wheel_outline:edge:211",
+          "wheel_outline:edge:212",
+          "wheel_outline:edge:213",
+          "wheel_outline:edge:214",
+          "wheel_outline:edge:215",
+          "wheel_outline:edge:216",
+          "wheel_outline:edge:217",
+          "wheel_outline:edge:218",
+          "wheel_outline:edge:219",
+          "wheel_outline:edge:220",
+          "wheel_outline:edge:221",
+          "wheel_outline:edge:222",
+          "wheel_outline:edge:223",
+          "wheel_outline:edge:224",
+          "wheel_outline:edge:225",
+          "wheel_outline:edge:226",
+          "wheel_outline:edge:227",
+          "wheel_outline:edge:228",
+          "wheel_outline:edge:229",
+          "wheel_outline:edge:230",
+          "wheel_outline:edge:231",
+          "wheel_outline:edge:232",
+          "wheel_outline:edge:233",
+          "wheel_outline:edge:234",
+          "wheel_outline:edge:235",
+          "wheel_outline:edge:236",
+          "wheel_outline:edge:237",
+          "wheel_outline:edge:238",
+          "wheel_outline:edge:239",
+          "wheel_outline:edge:240",
+          "wheel_outline:edge:241",
+          "wheel_outline:edge:242",
+          "wheel_outline:edge:243",
+          "wheel_outline:edge:244",
+          "wheel_outline:edge:245",
+          "wheel_outline:edge:246",
+          "wheel_outline:edge:247",
+          "wheel_outline:edge:248",
+          "wheel_outline:edge:249",
+          "wheel_outline:edge:250",
+          "wheel_outline:edge:251",
+          "wheel_outline:edge:252",
+          "wheel_outline:edge:253",
+          "wheel_outline:edge:254",
+          "wheel_outline:edge:255",
+          "wheel_outline:edge:256",
+          "wheel_outline:edge:257",
+          "wheel_outline:edge:258",
+          "wheel_outline:edge:259",
+          "wheel_outline:edge:260",
+          "wheel_outline:edge:261",
+          "wheel_outline:edge:262",
+          "wheel_outline:edge:263",
+          "wheel_outline:edge:264",
+          "wheel_outline:edge:265",
+          "wheel_outline:edge:266",
+          "wheel_outline:edge:267",
+          "wheel_outline:edge:268",
+          "wheel_outline:edge:269",
+          "wheel_outline:edge:270",
+          "wheel_outline:edge:271",
+          "wheel_outline:edge:272",
+          "wheel_outline:edge:273",
+          "wheel_outline:edge:274",
+          "wheel_outline:edge:275",
+          "wheel_outline:edge:276",
+          "wheel_outline:edge:277",
+          "wheel_outline:edge:278",
+          "wheel_outline:edge:279",
+          "wheel_outline:edge:280",
+          "wheel_outline:edge:281",
+          "wheel_outline:edge:282",
+          "wheel_outline:edge:283",
+          "wheel_outline:edge:284",
+          "wheel_outline:edge:285",
+          "wheel_outline:edge:286",
+          "wheel_outline:edge:287",
+          "wheel_outline:edge:288",
+          "wheel_outline:edge:289",
+          "wheel_outline:edge:290",
+          "wheel_outline:edge:291",
+          "wheel_outline:edge:292",
+          "wheel_outline:edge:293",
+          "wheel_outline:edge:294",
+          "wheel_outline:edge:295",
+          "wheel_outline:edge:296",
+          "wheel_outline:edge:297",
+          "wheel_outline:edge:298",
+          "wheel_outline:edge:299",
+          "wheel_outline:edge:300",
+          "wheel_outline:edge:301",
+          "wheel_outline:edge:302",
+          "wheel_outline:edge:303",
+          "wheel_outline:edge:304",
+          "wheel_outline:edge:305",
+          "wheel_outline:edge:306",
+          "wheel_outline:edge:307",
+          "wheel_outline:edge:308",
+          "wheel_outline:edge:309",
+          "wheel_outline:edge:310",
+          "wheel_outline:edge:311",
+          "wheel_outline:edge:312",
+          "wheel_outline:edge:313",
+          "wheel_outline:edge:314",
+          "wheel_outline:edge:315",
+          "wheel_outline:edge:316",
+          "wheel_outline:edge:317",
+          "wheel_outline:edge:318",
+          "wheel_outline:edge:319",
+          "wheel_outline:edge:320",
+          "wheel_outline:edge:321",
+          "wheel_outline:edge:322",
+          "wheel_outline:edge:323",
+          "wheel_outline:edge:324",
+          "wheel_outline:edge:325",
+          "wheel_outline:edge:326",
+          "wheel_outline:edge:327",
+          "wheel_outline:edge:328",
+          "wheel_outline:edge:329",
+          "wheel_outline:edge:330",
+          "wheel_outline:edge:331",
+          "wheel_outline:edge:332",
+          "wheel_outline:edge:333",
+          "wheel_outline:edge:334",
+          "wheel_outline:edge:335",
+          "wheel_outline:edge:336",
+          "wheel_outline:edge:337",
+          "wheel_outline:edge:338",
+          "wheel_outline:edge:339",
+          "wheel_outline:edge:340",
+          "wheel_outline:edge:341",
+          "wheel_outline:edge:342",
+          "wheel_outline:edge:343",
+          "wheel_outline:edge:344",
+          "wheel_outline:edge:345",
+          "wheel_outline:edge:346",
+          "wheel_outline:edge:347",
+          "wheel_outline:edge:348",
+          "wheel_outline:edge:349",
+          "wheel_outline:edge:350",
+          "wheel_outline:edge:351",
+          "wheel_outline:edge:352",
+          "wheel_outline:edge:353",
+          "wheel_outline:edge:354",
+          "wheel_outline:edge:355",
+          "wheel_outline:edge:356",
+          "wheel_outline:edge:357",
+          "wheel_outline:edge:358",
+          "wheel_outline:edge:359",
+          "wheel_outline:bore"
+        ],
+        "profileKind": "regions",
+        "operationMode": "newBody",
+        "topologyStatus": "healthy",
+        "topologyModel": "kernel-derived",
+        "topologyAvailable": true,
+        "exactMeasurementsAvailable": true,
+        "measurementConfidence": "kernel-derived",
+        "topologyIssueCount": 0,
+        "status": "healthy",
+        "issues": []
+      }
+    ],
+    "authoredRevolves": [],
+    "authoredHoles": [],
+    "authoredChamfers": [],
+    "authoredFillets": [],
+    "attachedSketches": [],
+    "sketchEvaluations": [
+      {
+        "sketchId": "base_sk",
+        "sketchName": "base_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "base_sk:origin",
+          "base_outer",
+          "base_hole_0",
+          "base_hole_1",
+          "base_hole_2",
+          "base_hole_3",
+          "base_hole_4",
+          "base_hole_5"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "bridge_sk",
+        "sketchName": "bridge_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "bridge_sk:origin",
+          "bridge_outer",
+          "bridge_hole_0",
+          "bridge_hole_1",
+          "bridge_hole_2",
+          "bridge_hole_3"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "shaft_sk",
+        "sketchName": "shaft_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "shaft_sk:origin",
+          "shaft_outer"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "spacer_sk",
+        "sketchName": "spacer_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "spacer_sk:origin",
+          "spacer_outer",
+          "spacer_bore"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "standoff_sk",
+        "sketchName": "standoff_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "standoff_sk:origin",
+          "standoff_outer",
+          "standoff_bore"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "bolt_sk",
+        "sketchName": "bolt_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "bolt_sk:origin",
+          "bolt_outer"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "bolt_head_sk",
+        "sketchName": "bolt_head_sk",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "bolt_head_sk:origin",
+          "bolt_head"
+        ],
+        "affectedFeatureIds": [
+          "bolt_extrude"
+        ],
+        "affectedBodyIds": [
+          "bolt_finished"
+        ],
+        "issues": []
+      },
+      {
+        "sketchId": "pinion_outline",
+        "sketchName": "Input gear",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "pinion_outline:edge:0",
+          "pinion_outline:edge:1",
+          "pinion_outline:edge:2",
+          "pinion_outline:edge:3",
+          "pinion_outline:edge:4",
+          "pinion_outline:edge:5",
+          "pinion_outline:edge:6",
+          "pinion_outline:edge:7",
+          "pinion_outline:edge:8",
+          "pinion_outline:edge:9",
+          "pinion_outline:edge:10",
+          "pinion_outline:edge:11",
+          "pinion_outline:edge:12",
+          "pinion_outline:edge:13",
+          "pinion_outline:edge:14",
+          "pinion_outline:edge:15",
+          "pinion_outline:edge:16",
+          "pinion_outline:edge:17",
+          "pinion_outline:edge:18",
+          "pinion_outline:edge:19",
+          "pinion_outline:edge:20",
+          "pinion_outline:edge:21",
+          "pinion_outline:edge:22",
+          "pinion_outline:edge:23",
+          "pinion_outline:edge:24",
+          "pinion_outline:edge:25",
+          "pinion_outline:edge:26",
+          "pinion_outline:edge:27",
+          "pinion_outline:edge:28",
+          "pinion_outline:edge:29",
+          "pinion_outline:edge:30",
+          "pinion_outline:edge:31",
+          "pinion_outline:edge:32",
+          "pinion_outline:edge:33",
+          "pinion_outline:edge:34",
+          "pinion_outline:edge:35",
+          "pinion_outline:edge:36",
+          "pinion_outline:edge:37",
+          "pinion_outline:edge:38",
+          "pinion_outline:edge:39",
+          "pinion_outline:edge:40",
+          "pinion_outline:edge:41",
+          "pinion_outline:edge:42",
+          "pinion_outline:edge:43",
+          "pinion_outline:edge:44",
+          "pinion_outline:edge:45",
+          "pinion_outline:edge:46",
+          "pinion_outline:edge:47",
+          "pinion_outline:edge:48",
+          "pinion_outline:edge:49",
+          "pinion_outline:edge:50",
+          "pinion_outline:edge:51",
+          "pinion_outline:edge:52",
+          "pinion_outline:edge:53",
+          "pinion_outline:edge:54",
+          "pinion_outline:edge:55",
+          "pinion_outline:edge:56",
+          "pinion_outline:edge:57",
+          "pinion_outline:edge:58",
+          "pinion_outline:edge:59",
+          "pinion_outline:edge:60",
+          "pinion_outline:edge:61",
+          "pinion_outline:edge:62",
+          "pinion_outline:edge:63",
+          "pinion_outline:edge:64",
+          "pinion_outline:edge:65",
+          "pinion_outline:edge:66",
+          "pinion_outline:edge:67",
+          "pinion_outline:edge:68",
+          "pinion_outline:edge:69",
+          "pinion_outline:edge:70",
+          "pinion_outline:edge:71",
+          "pinion_outline:edge:72",
+          "pinion_outline:edge:73",
+          "pinion_outline:edge:74",
+          "pinion_outline:edge:75",
+          "pinion_outline:edge:76",
+          "pinion_outline:edge:77",
+          "pinion_outline:edge:78",
+          "pinion_outline:edge:79",
+          "pinion_outline:edge:80",
+          "pinion_outline:edge:81",
+          "pinion_outline:edge:82",
+          "pinion_outline:edge:83",
+          "pinion_outline:edge:84",
+          "pinion_outline:edge:85",
+          "pinion_outline:edge:86",
+          "pinion_outline:edge:87",
+          "pinion_outline:edge:88",
+          "pinion_outline:edge:89",
+          "pinion_outline:edge:90",
+          "pinion_outline:edge:91",
+          "pinion_outline:edge:92",
+          "pinion_outline:edge:93",
+          "pinion_outline:edge:94",
+          "pinion_outline:edge:95",
+          "pinion_outline:edge:96",
+          "pinion_outline:edge:97",
+          "pinion_outline:edge:98",
+          "pinion_outline:edge:99",
+          "pinion_outline:edge:100",
+          "pinion_outline:edge:101",
+          "pinion_outline:edge:102",
+          "pinion_outline:edge:103",
+          "pinion_outline:edge:104",
+          "pinion_outline:edge:105",
+          "pinion_outline:edge:106",
+          "pinion_outline:edge:107",
+          "pinion_outline:edge:108",
+          "pinion_outline:edge:109",
+          "pinion_outline:edge:110",
+          "pinion_outline:edge:111",
+          "pinion_outline:edge:112",
+          "pinion_outline:edge:113",
+          "pinion_outline:edge:114",
+          "pinion_outline:edge:115",
+          "pinion_outline:edge:116",
+          "pinion_outline:edge:117",
+          "pinion_outline:edge:118",
+          "pinion_outline:edge:119",
+          "pinion_outline:edge:120",
+          "pinion_outline:edge:121",
+          "pinion_outline:edge:122",
+          "pinion_outline:edge:123",
+          "pinion_outline:edge:124",
+          "pinion_outline:edge:125",
+          "pinion_outline:edge:126",
+          "pinion_outline:edge:127",
+          "pinion_outline:edge:128",
+          "pinion_outline:edge:129",
+          "pinion_outline:edge:130",
+          "pinion_outline:edge:131",
+          "pinion_outline:edge:132",
+          "pinion_outline:edge:133",
+          "pinion_outline:edge:134",
+          "pinion_outline:edge:135",
+          "pinion_outline:edge:136",
+          "pinion_outline:edge:137",
+          "pinion_outline:edge:138",
+          "pinion_outline:edge:139",
+          "pinion_outline:edge:140",
+          "pinion_outline:edge:141",
+          "pinion_outline:edge:142",
+          "pinion_outline:edge:143",
+          "pinion_outline:edge:144",
+          "pinion_outline:edge:145",
+          "pinion_outline:edge:146",
+          "pinion_outline:edge:147",
+          "pinion_outline:edge:148",
+          "pinion_outline:edge:149",
+          "pinion_outline:edge:150",
+          "pinion_outline:edge:151",
+          "pinion_outline:edge:152",
+          "pinion_outline:edge:153",
+          "pinion_outline:edge:154",
+          "pinion_outline:edge:155",
+          "pinion_outline:edge:156",
+          "pinion_outline:edge:157",
+          "pinion_outline:edge:158",
+          "pinion_outline:edge:159",
+          "pinion_outline:edge:160",
+          "pinion_outline:edge:161",
+          "pinion_outline:edge:162",
+          "pinion_outline:edge:163",
+          "pinion_outline:edge:164",
+          "pinion_outline:edge:165",
+          "pinion_outline:edge:166",
+          "pinion_outline:edge:167",
+          "pinion_outline:edge:168",
+          "pinion_outline:edge:169",
+          "pinion_outline:edge:170",
+          "pinion_outline:edge:171",
+          "pinion_outline:edge:172",
+          "pinion_outline:edge:173",
+          "pinion_outline:edge:174",
+          "pinion_outline:edge:175",
+          "pinion_outline:edge:176",
+          "pinion_outline:edge:177",
+          "pinion_outline:edge:178",
+          "pinion_outline:edge:179",
+          "pinion_outline:edge:180",
+          "pinion_outline:edge:181",
+          "pinion_outline:edge:182",
+          "pinion_outline:edge:183",
+          "pinion_outline:edge:184",
+          "pinion_outline:edge:185",
+          "pinion_outline:edge:186",
+          "pinion_outline:edge:187",
+          "pinion_outline:edge:188",
+          "pinion_outline:edge:189",
+          "pinion_outline:edge:190",
+          "pinion_outline:edge:191",
+          "pinion_outline:edge:192",
+          "pinion_outline:edge:193",
+          "pinion_outline:edge:194",
+          "pinion_outline:edge:195",
+          "pinion_outline:edge:196",
+          "pinion_outline:edge:197",
+          "pinion_outline:edge:198",
+          "pinion_outline:edge:199",
+          "pinion_outline:bore"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      },
+      {
+        "sketchId": "wheel_outline",
+        "sketchName": "Output gear",
+        "plane": "XY",
+        "status": "healthy",
+        "drivenEntityIds": [
+          "wheel_outline:edge:0",
+          "wheel_outline:edge:1",
+          "wheel_outline:edge:2",
+          "wheel_outline:edge:3",
+          "wheel_outline:edge:4",
+          "wheel_outline:edge:5",
+          "wheel_outline:edge:6",
+          "wheel_outline:edge:7",
+          "wheel_outline:edge:8",
+          "wheel_outline:edge:9",
+          "wheel_outline:edge:10",
+          "wheel_outline:edge:11",
+          "wheel_outline:edge:12",
+          "wheel_outline:edge:13",
+          "wheel_outline:edge:14",
+          "wheel_outline:edge:15",
+          "wheel_outline:edge:16",
+          "wheel_outline:edge:17",
+          "wheel_outline:edge:18",
+          "wheel_outline:edge:19",
+          "wheel_outline:edge:20",
+          "wheel_outline:edge:21",
+          "wheel_outline:edge:22",
+          "wheel_outline:edge:23",
+          "wheel_outline:edge:24",
+          "wheel_outline:edge:25",
+          "wheel_outline:edge:26",
+          "wheel_outline:edge:27",
+          "wheel_outline:edge:28",
+          "wheel_outline:edge:29",
+          "wheel_outline:edge:30",
+          "wheel_outline:edge:31",
+          "wheel_outline:edge:32",
+          "wheel_outline:edge:33",
+          "wheel_outline:edge:34",
+          "wheel_outline:edge:35",
+          "wheel_outline:edge:36",
+          "wheel_outline:edge:37",
+          "wheel_outline:edge:38",
+          "wheel_outline:edge:39",
+          "wheel_outline:edge:40",
+          "wheel_outline:edge:41",
+          "wheel_outline:edge:42",
+          "wheel_outline:edge:43",
+          "wheel_outline:edge:44",
+          "wheel_outline:edge:45",
+          "wheel_outline:edge:46",
+          "wheel_outline:edge:47",
+          "wheel_outline:edge:48",
+          "wheel_outline:edge:49",
+          "wheel_outline:edge:50",
+          "wheel_outline:edge:51",
+          "wheel_outline:edge:52",
+          "wheel_outline:edge:53",
+          "wheel_outline:edge:54",
+          "wheel_outline:edge:55",
+          "wheel_outline:edge:56",
+          "wheel_outline:edge:57",
+          "wheel_outline:edge:58",
+          "wheel_outline:edge:59",
+          "wheel_outline:edge:60",
+          "wheel_outline:edge:61",
+          "wheel_outline:edge:62",
+          "wheel_outline:edge:63",
+          "wheel_outline:edge:64",
+          "wheel_outline:edge:65",
+          "wheel_outline:edge:66",
+          "wheel_outline:edge:67",
+          "wheel_outline:edge:68",
+          "wheel_outline:edge:69",
+          "wheel_outline:edge:70",
+          "wheel_outline:edge:71",
+          "wheel_outline:edge:72",
+          "wheel_outline:edge:73",
+          "wheel_outline:edge:74",
+          "wheel_outline:edge:75",
+          "wheel_outline:edge:76",
+          "wheel_outline:edge:77",
+          "wheel_outline:edge:78",
+          "wheel_outline:edge:79",
+          "wheel_outline:edge:80",
+          "wheel_outline:edge:81",
+          "wheel_outline:edge:82",
+          "wheel_outline:edge:83",
+          "wheel_outline:edge:84",
+          "wheel_outline:edge:85",
+          "wheel_outline:edge:86",
+          "wheel_outline:edge:87",
+          "wheel_outline:edge:88",
+          "wheel_outline:edge:89",
+          "wheel_outline:edge:90",
+          "wheel_outline:edge:91",
+          "wheel_outline:edge:92",
+          "wheel_outline:edge:93",
+          "wheel_outline:edge:94",
+          "wheel_outline:edge:95",
+          "wheel_outline:edge:96",
+          "wheel_outline:edge:97",
+          "wheel_outline:edge:98",
+          "wheel_outline:edge:99",
+          "wheel_outline:edge:100",
+          "wheel_outline:edge:101",
+          "wheel_outline:edge:102",
+          "wheel_outline:edge:103",
+          "wheel_outline:edge:104",
+          "wheel_outline:edge:105",
+          "wheel_outline:edge:106",
+          "wheel_outline:edge:107",
+          "wheel_outline:edge:108",
+          "wheel_outline:edge:109",
+          "wheel_outline:edge:110",
+          "wheel_outline:edge:111",
+          "wheel_outline:edge:112",
+          "wheel_outline:edge:113",
+          "wheel_outline:edge:114",
+          "wheel_outline:edge:115",
+          "wheel_outline:edge:116",
+          "wheel_outline:edge:117",
+          "wheel_outline:edge:118",
+          "wheel_outline:edge:119",
+          "wheel_outline:edge:120",
+          "wheel_outline:edge:121",
+          "wheel_outline:edge:122",
+          "wheel_outline:edge:123",
+          "wheel_outline:edge:124",
+          "wheel_outline:edge:125",
+          "wheel_outline:edge:126",
+          "wheel_outline:edge:127",
+          "wheel_outline:edge:128",
+          "wheel_outline:edge:129",
+          "wheel_outline:edge:130",
+          "wheel_outline:edge:131",
+          "wheel_outline:edge:132",
+          "wheel_outline:edge:133",
+          "wheel_outline:edge:134",
+          "wheel_outline:edge:135",
+          "wheel_outline:edge:136",
+          "wheel_outline:edge:137",
+          "wheel_outline:edge:138",
+          "wheel_outline:edge:139",
+          "wheel_outline:edge:140",
+          "wheel_outline:edge:141",
+          "wheel_outline:edge:142",
+          "wheel_outline:edge:143",
+          "wheel_outline:edge:144",
+          "wheel_outline:edge:145",
+          "wheel_outline:edge:146",
+          "wheel_outline:edge:147",
+          "wheel_outline:edge:148",
+          "wheel_outline:edge:149",
+          "wheel_outline:edge:150",
+          "wheel_outline:edge:151",
+          "wheel_outline:edge:152",
+          "wheel_outline:edge:153",
+          "wheel_outline:edge:154",
+          "wheel_outline:edge:155",
+          "wheel_outline:edge:156",
+          "wheel_outline:edge:157",
+          "wheel_outline:edge:158",
+          "wheel_outline:edge:159",
+          "wheel_outline:edge:160",
+          "wheel_outline:edge:161",
+          "wheel_outline:edge:162",
+          "wheel_outline:edge:163",
+          "wheel_outline:edge:164",
+          "wheel_outline:edge:165",
+          "wheel_outline:edge:166",
+          "wheel_outline:edge:167",
+          "wheel_outline:edge:168",
+          "wheel_outline:edge:169",
+          "wheel_outline:edge:170",
+          "wheel_outline:edge:171",
+          "wheel_outline:edge:172",
+          "wheel_outline:edge:173",
+          "wheel_outline:edge:174",
+          "wheel_outline:edge:175",
+          "wheel_outline:edge:176",
+          "wheel_outline:edge:177",
+          "wheel_outline:edge:178",
+          "wheel_outline:edge:179",
+          "wheel_outline:edge:180",
+          "wheel_outline:edge:181",
+          "wheel_outline:edge:182",
+          "wheel_outline:edge:183",
+          "wheel_outline:edge:184",
+          "wheel_outline:edge:185",
+          "wheel_outline:edge:186",
+          "wheel_outline:edge:187",
+          "wheel_outline:edge:188",
+          "wheel_outline:edge:189",
+          "wheel_outline:edge:190",
+          "wheel_outline:edge:191",
+          "wheel_outline:edge:192",
+          "wheel_outline:edge:193",
+          "wheel_outline:edge:194",
+          "wheel_outline:edge:195",
+          "wheel_outline:edge:196",
+          "wheel_outline:edge:197",
+          "wheel_outline:edge:198",
+          "wheel_outline:edge:199",
+          "wheel_outline:edge:200",
+          "wheel_outline:edge:201",
+          "wheel_outline:edge:202",
+          "wheel_outline:edge:203",
+          "wheel_outline:edge:204",
+          "wheel_outline:edge:205",
+          "wheel_outline:edge:206",
+          "wheel_outline:edge:207",
+          "wheel_outline:edge:208",
+          "wheel_outline:edge:209",
+          "wheel_outline:edge:210",
+          "wheel_outline:edge:211",
+          "wheel_outline:edge:212",
+          "wheel_outline:edge:213",
+          "wheel_outline:edge:214",
+          "wheel_outline:edge:215",
+          "wheel_outline:edge:216",
+          "wheel_outline:edge:217",
+          "wheel_outline:edge:218",
+          "wheel_outline:edge:219",
+          "wheel_outline:edge:220",
+          "wheel_outline:edge:221",
+          "wheel_outline:edge:222",
+          "wheel_outline:edge:223",
+          "wheel_outline:edge:224",
+          "wheel_outline:edge:225",
+          "wheel_outline:edge:226",
+          "wheel_outline:edge:227",
+          "wheel_outline:edge:228",
+          "wheel_outline:edge:229",
+          "wheel_outline:edge:230",
+          "wheel_outline:edge:231",
+          "wheel_outline:edge:232",
+          "wheel_outline:edge:233",
+          "wheel_outline:edge:234",
+          "wheel_outline:edge:235",
+          "wheel_outline:edge:236",
+          "wheel_outline:edge:237",
+          "wheel_outline:edge:238",
+          "wheel_outline:edge:239",
+          "wheel_outline:edge:240",
+          "wheel_outline:edge:241",
+          "wheel_outline:edge:242",
+          "wheel_outline:edge:243",
+          "wheel_outline:edge:244",
+          "wheel_outline:edge:245",
+          "wheel_outline:edge:246",
+          "wheel_outline:edge:247",
+          "wheel_outline:edge:248",
+          "wheel_outline:edge:249",
+          "wheel_outline:edge:250",
+          "wheel_outline:edge:251",
+          "wheel_outline:edge:252",
+          "wheel_outline:edge:253",
+          "wheel_outline:edge:254",
+          "wheel_outline:edge:255",
+          "wheel_outline:edge:256",
+          "wheel_outline:edge:257",
+          "wheel_outline:edge:258",
+          "wheel_outline:edge:259",
+          "wheel_outline:edge:260",
+          "wheel_outline:edge:261",
+          "wheel_outline:edge:262",
+          "wheel_outline:edge:263",
+          "wheel_outline:edge:264",
+          "wheel_outline:edge:265",
+          "wheel_outline:edge:266",
+          "wheel_outline:edge:267",
+          "wheel_outline:edge:268",
+          "wheel_outline:edge:269",
+          "wheel_outline:edge:270",
+          "wheel_outline:edge:271",
+          "wheel_outline:edge:272",
+          "wheel_outline:edge:273",
+          "wheel_outline:edge:274",
+          "wheel_outline:edge:275",
+          "wheel_outline:edge:276",
+          "wheel_outline:edge:277",
+          "wheel_outline:edge:278",
+          "wheel_outline:edge:279",
+          "wheel_outline:edge:280",
+          "wheel_outline:edge:281",
+          "wheel_outline:edge:282",
+          "wheel_outline:edge:283",
+          "wheel_outline:edge:284",
+          "wheel_outline:edge:285",
+          "wheel_outline:edge:286",
+          "wheel_outline:edge:287",
+          "wheel_outline:edge:288",
+          "wheel_outline:edge:289",
+          "wheel_outline:edge:290",
+          "wheel_outline:edge:291",
+          "wheel_outline:edge:292",
+          "wheel_outline:edge:293",
+          "wheel_outline:edge:294",
+          "wheel_outline:edge:295",
+          "wheel_outline:edge:296",
+          "wheel_outline:edge:297",
+          "wheel_outline:edge:298",
+          "wheel_outline:edge:299",
+          "wheel_outline:edge:300",
+          "wheel_outline:edge:301",
+          "wheel_outline:edge:302",
+          "wheel_outline:edge:303",
+          "wheel_outline:edge:304",
+          "wheel_outline:edge:305",
+          "wheel_outline:edge:306",
+          "wheel_outline:edge:307",
+          "wheel_outline:edge:308",
+          "wheel_outline:edge:309",
+          "wheel_outline:edge:310",
+          "wheel_outline:edge:311",
+          "wheel_outline:edge:312",
+          "wheel_outline:edge:313",
+          "wheel_outline:edge:314",
+          "wheel_outline:edge:315",
+          "wheel_outline:edge:316",
+          "wheel_outline:edge:317",
+          "wheel_outline:edge:318",
+          "wheel_outline:edge:319",
+          "wheel_outline:edge:320",
+          "wheel_outline:edge:321",
+          "wheel_outline:edge:322",
+          "wheel_outline:edge:323",
+          "wheel_outline:edge:324",
+          "wheel_outline:edge:325",
+          "wheel_outline:edge:326",
+          "wheel_outline:edge:327",
+          "wheel_outline:edge:328",
+          "wheel_outline:edge:329",
+          "wheel_outline:edge:330",
+          "wheel_outline:edge:331",
+          "wheel_outline:edge:332",
+          "wheel_outline:edge:333",
+          "wheel_outline:edge:334",
+          "wheel_outline:edge:335",
+          "wheel_outline:edge:336",
+          "wheel_outline:edge:337",
+          "wheel_outline:edge:338",
+          "wheel_outline:edge:339",
+          "wheel_outline:edge:340",
+          "wheel_outline:edge:341",
+          "wheel_outline:edge:342",
+          "wheel_outline:edge:343",
+          "wheel_outline:edge:344",
+          "wheel_outline:edge:345",
+          "wheel_outline:edge:346",
+          "wheel_outline:edge:347",
+          "wheel_outline:edge:348",
+          "wheel_outline:edge:349",
+          "wheel_outline:edge:350",
+          "wheel_outline:edge:351",
+          "wheel_outline:edge:352",
+          "wheel_outline:edge:353",
+          "wheel_outline:edge:354",
+          "wheel_outline:edge:355",
+          "wheel_outline:edge:356",
+          "wheel_outline:edge:357",
+          "wheel_outline:edge:358",
+          "wheel_outline:edge:359",
+          "wheel_outline:bore"
+        ],
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "issues": []
+      }
+    ],
+    "sketchDimensions": [
+      {
+        "dimensionId": "base_outer_horizontal",
+        "dimensionName": "base_outer_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 45
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 45,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_outer",
+            "entityKind": "rectangle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_outer_vertical",
+        "dimensionName": "base_outer_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_outer",
+            "entityKind": "rectangle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_outer_width",
+        "dimensionName": "base_outer_width",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 170
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 170,
+        "issues": [],
+        "entityId": "base_outer",
+        "target": {
+          "entityKind": "rectangle",
+          "role": "width"
+        }
+      },
+      {
+        "dimensionId": "base_outer_height",
+        "dimensionName": "base_outer_height",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 115
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 115,
+        "issues": [],
+        "entityId": "base_outer",
+        "target": {
+          "entityKind": "rectangle",
+          "role": "height"
+        }
+      },
+      {
+        "dimensionId": "base_hole_0_horizontal",
+        "dimensionName": "base_hole_0_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 25
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 25,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_0",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "negative"
+        }
+      },
+      {
+        "dimensionId": "base_hole_0_vertical",
+        "dimensionName": "base_hole_0_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_0",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_0_diameter",
+        "dimensionName": "base_hole_0_diameter",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "base_hole_0",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "base_hole_1_horizontal",
+        "dimensionName": "base_hole_1_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "right_mount"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 115,
+        "parameterId": "right_mount",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_1",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_1_vertical",
+        "dimensionName": "base_hole_1_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_1",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_1_diameter",
+        "dimensionName": "base_hole_1_diameter",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "base_hole_1",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "base_hole_2_horizontal",
+        "dimensionName": "base_hole_2_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 30
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 30,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_2",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "negative"
+        }
+      },
+      {
+        "dimensionId": "base_hole_2_vertical",
+        "dimensionName": "base_hole_2_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 45
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 45,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_2",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "negative"
+        }
+      },
+      {
+        "dimensionId": "base_hole_2_diameter",
+        "dimensionName": "base_hole_2_diameter",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "base_hole_2",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "base_hole_3_horizontal",
+        "dimensionName": "base_hole_3_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 30
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 30,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_3",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "negative"
+        }
+      },
+      {
+        "dimensionId": "base_hole_3_vertical",
+        "dimensionName": "base_hole_3_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 45
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 45,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_3",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_3_diameter",
+        "dimensionName": "base_hole_3_diameter",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "base_hole_3",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "base_hole_4_horizontal",
+        "dimensionName": "base_hole_4_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 120
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 120,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_4",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_4_vertical",
+        "dimensionName": "base_hole_4_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 45
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 45,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_4",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "negative"
+        }
+      },
+      {
+        "dimensionId": "base_hole_4_diameter",
+        "dimensionName": "base_hole_4_diameter",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "base_hole_4",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "base_hole_5_horizontal",
+        "dimensionName": "base_hole_5_horizontal",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 120
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 120,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_5",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_5_vertical",
+        "dimensionName": "base_hole_5_vertical",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 45
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 45,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "base_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "base_hole_5",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "base_hole_5_diameter",
+        "dimensionName": "base_hole_5_diameter",
+        "sketchId": "base_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "base_hole_5",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "bridge_outer_horizontal",
+        "dimensionName": "bridge_outer_horizontal",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "bridge_center"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 45,
+        "parameterId": "bridge_center",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_outer",
+            "entityKind": "rectangle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_outer_vertical",
+        "dimensionName": "bridge_outer_vertical",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_outer",
+            "entityKind": "rectangle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_outer_width",
+        "dimensionName": "bridge_outer_width",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "bridge_width"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 156,
+        "parameterId": "bridge_width",
+        "issues": [],
+        "entityId": "bridge_outer",
+        "target": {
+          "entityKind": "rectangle",
+          "role": "width"
+        }
+      },
+      {
+        "dimensionId": "bridge_outer_height",
+        "dimensionName": "bridge_outer_height",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 18
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 18,
+        "issues": [],
+        "entityId": "bridge_outer",
+        "target": {
+          "entityKind": "rectangle",
+          "role": "height"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_0_horizontal",
+        "dimensionName": "bridge_hole_0_horizontal",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_0",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_0_vertical",
+        "dimensionName": "bridge_hole_0_vertical",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_0",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_0_diameter",
+        "dimensionName": "bridge_hole_0_diameter",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "bearing_bore"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 8.3,
+        "parameterId": "bearing_bore",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "bridge_hole_0",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_1_horizontal",
+        "dimensionName": "bridge_hole_1_horizontal",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "center_distance"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 60,
+        "parameterId": "center_distance",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_1",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_1_vertical",
+        "dimensionName": "bridge_hole_1_vertical",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_1",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_1_diameter",
+        "dimensionName": "bridge_hole_1_diameter",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "bearing_bore"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 8.3,
+        "parameterId": "bearing_bore",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "bridge_hole_1",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_2_horizontal",
+        "dimensionName": "bridge_hole_2_horizontal",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 25
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 25,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_2",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "negative"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_2_vertical",
+        "dimensionName": "bridge_hole_2_vertical",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_2",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_2_diameter",
+        "dimensionName": "bridge_hole_2_diameter",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "bridge_hole_2",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_3_horizontal",
+        "dimensionName": "bridge_hole_3_horizontal",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "right_mount"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 115,
+        "parameterId": "right_mount",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_3",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_3_vertical",
+        "dimensionName": "bridge_hole_3_vertical",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bridge_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bridge_hole_3",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bridge_hole_3_diameter",
+        "dimensionName": "bridge_hole_3_diameter",
+        "sketchId": "bridge_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "bridge_hole_3",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "shaft_outer_horizontal",
+        "dimensionName": "shaft_outer_horizontal",
+        "sketchId": "shaft_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "shaft_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "shaft_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "shaft_outer_vertical",
+        "dimensionName": "shaft_outer_vertical",
+        "sketchId": "shaft_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "shaft_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "shaft_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "shaft_outer_diameter",
+        "dimensionName": "shaft_outer_diameter",
+        "sketchId": "shaft_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "shaft_diameter"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 8,
+        "parameterId": "shaft_diameter",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "shaft_outer",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "spacer_outer_horizontal",
+        "dimensionName": "spacer_outer_horizontal",
+        "sketchId": "spacer_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "spacer_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "spacer_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "spacer_outer_vertical",
+        "dimensionName": "spacer_outer_vertical",
+        "sketchId": "spacer_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "spacer_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "spacer_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "spacer_outer_diameter",
+        "dimensionName": "spacer_outer_diameter",
+        "sketchId": "spacer_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 12
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 12,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "spacer_outer",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "spacer_bore_horizontal",
+        "dimensionName": "spacer_bore_horizontal",
+        "sketchId": "spacer_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "spacer_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "spacer_bore",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "spacer_bore_vertical",
+        "dimensionName": "spacer_bore_vertical",
+        "sketchId": "spacer_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "spacer_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "spacer_bore",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "spacer_bore_diameter",
+        "dimensionName": "spacer_bore_diameter",
+        "sketchId": "spacer_sk",
+        "valueSource": {
+          "type": "parameter",
+          "parameterId": "bearing_bore"
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 8.3,
+        "parameterId": "bearing_bore",
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "spacer_bore",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "standoff_outer_horizontal",
+        "dimensionName": "standoff_outer_horizontal",
+        "sketchId": "standoff_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "standoff_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "standoff_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "standoff_outer_vertical",
+        "dimensionName": "standoff_outer_vertical",
+        "sketchId": "standoff_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "standoff_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "standoff_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "standoff_outer_diameter",
+        "dimensionName": "standoff_outer_diameter",
+        "sketchId": "standoff_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 8
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 8,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "standoff_outer",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "standoff_bore_horizontal",
+        "dimensionName": "standoff_bore_horizontal",
+        "sketchId": "standoff_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "standoff_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "standoff_bore",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "standoff_bore_vertical",
+        "dimensionName": "standoff_bore_vertical",
+        "sketchId": "standoff_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "standoff_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "standoff_bore",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "standoff_bore_diameter",
+        "dimensionName": "standoff_bore_diameter",
+        "sketchId": "standoff_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4.4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4.4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "standoff_bore",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "bolt_outer_horizontal",
+        "dimensionName": "bolt_outer_horizontal",
+        "sketchId": "bolt_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bolt_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bolt_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bolt_outer_vertical",
+        "dimensionName": "bolt_outer_vertical",
+        "sketchId": "bolt_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bolt_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bolt_outer",
+            "entityKind": "circle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bolt_outer_diameter",
+        "dimensionName": "bolt_outer_diameter",
+        "sketchId": "bolt_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 4
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "effectiveValue": 4,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "entityScalar",
+          "entityId": "bolt_outer",
+          "entityKind": "circle",
+          "role": "diameter"
+        }
+      },
+      {
+        "dimensionId": "bolt_head_horizontal",
+        "dimensionName": "bolt_head_horizontal",
+        "sketchId": "bolt_head_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [
+          "bolt_extrude"
+        ],
+        "affectedBodyIds": [
+          "bolt_finished"
+        ],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bolt_head_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bolt_head",
+            "entityKind": "rectangle",
+            "role": "center"
+          },
+          "measurement": "horizontal",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bolt_head_vertical",
+        "dimensionName": "bolt_head_vertical",
+        "sketchId": "bolt_head_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 0
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [
+          "bolt_extrude"
+        ],
+        "affectedBodyIds": [
+          "bolt_finished"
+        ],
+        "effectiveValue": 0,
+        "issues": [],
+        "sourceShape": "v22",
+        "target": {
+          "kind": "pointPair",
+          "primary": {
+            "entityId": "bolt_head_sk:origin",
+            "entityKind": "point",
+            "role": "position"
+          },
+          "secondary": {
+            "entityId": "bolt_head",
+            "entityKind": "rectangle",
+            "role": "center"
+          },
+          "measurement": "vertical",
+          "direction": "positive"
+        }
+      },
+      {
+        "dimensionId": "bolt_head_width",
+        "dimensionName": "bolt_head_width",
+        "sketchId": "bolt_head_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 7
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [
+          "bolt_extrude"
+        ],
+        "affectedBodyIds": [
+          "bolt_finished"
+        ],
+        "effectiveValue": 7,
+        "issues": [],
+        "entityId": "bolt_head",
+        "target": {
+          "entityKind": "rectangle",
+          "role": "width"
+        }
+      },
+      {
+        "dimensionId": "bolt_head_height",
+        "dimensionName": "bolt_head_height",
+        "sketchId": "bolt_head_sk",
+        "valueSource": {
+          "type": "literal",
+          "value": 7
+        },
+        "status": "healthy",
+        "affectedFeatureIds": [
+          "bolt_extrude"
+        ],
+        "affectedBodyIds": [
+          "bolt_finished"
+        ],
+        "effectiveValue": 7,
+        "issues": [],
+        "entityId": "bolt_head",
+        "target": {
+          "entityKind": "rectangle",
+          "role": "height"
+        }
+      }
+    ],
+    "sketchConstraints": [
+      {
+        "constraintId": "base_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "base_sk",
+        "entityId": "base_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "base_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          -1.35e-10,
+          0
+        ],
+        "issues": []
+      },
+      {
+        "constraintId": "bridge_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "bridge_sk",
+        "entityId": "bridge_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "bridge_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          -5.2e-11,
+          0
+        ],
+        "issues": []
+      },
+      {
+        "constraintId": "shaft_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "shaft_sk",
+        "entityId": "shaft_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "shaft_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          0,
+          0
+        ],
+        "issues": []
+      },
+      {
+        "constraintId": "spacer_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "spacer_sk",
+        "entityId": "spacer_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "spacer_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          0,
+          0
+        ],
+        "issues": []
+      },
+      {
+        "constraintId": "standoff_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "standoff_sk",
+        "entityId": "standoff_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "standoff_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          0,
+          0
+        ],
+        "issues": []
+      },
+      {
+        "constraintId": "bolt_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "bolt_sk",
+        "entityId": "bolt_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "bolt_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          0,
+          0
+        ],
+        "issues": []
+      },
+      {
+        "constraintId": "bolt_head_sk:origin-fixed",
+        "constraintName": "Profile origin",
+        "sketchId": "bolt_head_sk",
+        "entityId": "bolt_head_sk:origin",
+        "kind": "fixed",
+        "status": "healthy",
+        "affectedFeatureIds": [],
+        "affectedBodyIds": [],
+        "target": {
+          "entityId": "bolt_head_sk:origin",
+          "role": "position"
+        },
+        "currentCoordinate": [
+          0,
+          0
+        ],
+        "issues": []
+      }
+    ],
+    "namedReferences": []
+  },
+  "poseResponseBytes": 2300,
+  "finalIdentity": {
+    "algorithm": "partbench-source-v1",
+    "sha256": "161770ba5e67739a7e3fab02707e07de7470e381b5ce18b6dbf1c6f1bda297e2"
+  },
+  "finalPoses": [
+    {
+      "id": "base_i",
+      "name": "base_i",
+      "definition": {
+        "kind": "body",
+        "bodyId": "base"
+      },
+      "transform": {
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "bridge_bottom",
+      "name": "bridge_bottom",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bridge"
+      },
+      "transform": {
+        "translation": [
+          0,
+          0,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "bridge_top",
+      "name": "bridge_top",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bridge"
+      },
+      "transform": {
+        "translation": [
+          0,
+          0,
+          36
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "input_shaft",
+      "name": "input_shaft",
+      "definition": {
+        "kind": "body",
+        "bodyId": "shaft"
+      },
+      "transform": {
+        "translation": [
+          -5.99802249037e-11,
+          0,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          -2.4492935982947064e-16
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "input_gear",
+      "name": "input_gear",
+      "definition": {
+        "kind": "body",
+        "bodyId": "pinion"
+      },
+      "transform": {
+        "translation": [
+          -5.99802249037e-11,
+          0,
+          19
+        ],
+        "rotation": [
+          0,
+          0,
+          -2.4492935982947064e-16
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "input_spacer_low",
+      "name": "input_spacer_low",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      },
+      "transform": {
+        "translation": [
+          -5.99802249037e-11,
+          0,
+          12.1
+        ],
+        "rotation": [
+          0,
+          0,
+          -2.4492935982947064e-16
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "input_spacer_high",
+      "name": "input_spacer_high",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      },
+      "transform": {
+        "translation": [
+          -5.99802249037e-11,
+          0,
+          29.1
+        ],
+        "rotation": [
+          0,
+          0,
+          -2.4492935982947064e-16
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "output_shaft",
+      "name": "output_shaft",
+      "definition": {
+        "kind": "body",
+        "bodyId": "shaft"
+      },
+      "transform": {
+        "translation": [
+          59.9999999999,
+          0,
+          6
+        ],
+        "rotation": [
+          0,
+          0,
+          0.05235987755982989
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "output_gear",
+      "name": "output_gear",
+      "definition": {
+        "kind": "body",
+        "bodyId": "wheel"
+      },
+      "transform": {
+        "translation": [
+          59.9999999999,
+          0,
+          19
+        ],
+        "rotation": [
+          0,
+          0,
+          0.0523598775598299
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "output_spacer_low",
+      "name": "output_spacer_low",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      },
+      "transform": {
+        "translation": [
+          59.9999999999,
+          0,
+          12.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0.0523598775598299
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "output_spacer_high",
+      "name": "output_spacer_high",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      },
+      "transform": {
+        "translation": [
+          59.9999999999,
+          0,
+          29.1
+        ],
+        "rotation": [
+          0,
+          0,
+          0.0523598775598299
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "standoff_0",
+      "name": "standoff_0",
+      "definition": {
+        "kind": "body",
+        "bodyId": "standoff"
+      },
+      "transform": {
+        "translation": [
+          -25,
+          0,
+          12
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "bolt_0",
+      "name": "bolt_0",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bolt_finished"
+      },
+      "transform": {
+        "translation": [
+          -25,
+          0,
+          42
+        ],
+        "rotation": [
+          3.141592653589793,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "standoff_1",
+      "name": "standoff_1",
+      "definition": {
+        "kind": "body",
+        "bodyId": "standoff"
+      },
+      "transform": {
+        "translation": [
+          115,
+          0,
+          12
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    },
+    {
+      "id": "bolt_1",
+      "name": "bolt_1",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bolt_finished"
+      },
+      "transform": {
+        "translation": [
+          115,
+          0,
+          42
+        ],
+        "rotation": [
+          3.141592653589793,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "assemblyId": "gearbox"
+    }
+  ],
+  "gearProfiles": [
+    {
+      "teeth": 20,
+      "entityCount": 201,
+      "expectedVolume": 6328.63590588328,
+      "exactVolume": 6328.635905883286,
+      "profileTolerance": 0.00375
+    },
+    {
+      "teeth": 40,
+      "entityCount": 481,
+      "expectedVolume": 27405.732253281974,
+      "exactVolume": 27405.732253281967,
+      "profileTolerance": 0.00375
+    },
+    {
+      "teeth": 60,
+      "entityCount": 361,
+      "expectedVolume": 62617.58078187063,
+      "exactVolume": 62617.580781870165,
+      "profileTolerance": 0.00375
+    }
+  ],
+  "step": {
+    "solids": 8,
+    "volume": 206169.6025937113
+  },
+  "passed": true
+}

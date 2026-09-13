@@ -24,6 +24,7 @@ import type {
   SketchId,
   SketchPlane,
   SketchPointTarget,
+  SpurGearSource,
   Vec2
 } from "@web-cad/cad-protocol";
 import {
@@ -37,7 +38,10 @@ import {
   createCanonicalSketchArcEntity,
   getSketchArcPoint
 } from "./sketchArcMath";
-import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import {
+  SKETCH_GEOMETRY_POLICY,
+  sketchCoordinatesWithinTolerance
+} from "./sketchGeometryPolicy";
 import { cleanSketchNumber } from "./sketchNumber";
 import {
   runSketchSolverPackageProbe,
@@ -49,6 +53,7 @@ export interface SketchSolverSketch {
   readonly name: string;
   readonly plane: SketchPlane;
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+  readonly spurGear?: SpurGearSource;
 }
 
 export interface SketchSolverParameter {
@@ -168,6 +173,22 @@ export function evaluateSketch(
   document: SketchSolverDocument,
   sketch: SketchSolverSketch
 ): SketchSolverEvaluation {
+  if (sketch.spurGear) {
+    const solverProbe = runSketchSolverPackageProbe(document, sketch);
+    const issues = solverProbe.generatedSource!.issues;
+    return {
+      sketchId: sketch.id,
+      sketchName: sketch.name,
+      plane: sketch.plane,
+      status: getSketchEvaluationStatus(issues),
+      drivenEntityIds: issues.length ? [] : [...sketch.entities.keys()],
+      dimensions: [],
+      constraints: [],
+      issues,
+      evaluatedGeometry: { entities: new Map(sketch.entities) },
+      solverProbe
+    };
+  }
   const evaluatedGeometry = evaluateSketchGeometry(document, sketch);
   const dimensions = [...document.sketchDimensions.values()]
     .filter((dimension) => dimension.sketchId === sketch.id)
@@ -688,6 +709,8 @@ function isValidV22DimensionValue(
   if (target.kind === "entityScalar" && target.role === "sweep") {
     return isValidArcDimensionValue("sweep", value);
   }
+  if (target.kind === "pointPair" && target.measurement !== "distance")
+    return value >= 0;
   const minimum =
     target.kind === "entityScalar" && target.role === "diameter"
       ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
@@ -708,6 +731,8 @@ function getV22DimensionValueDomainLabel(
       360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
     }`;
   }
+  if (target.kind === "pointPair" && target.measurement !== "distance")
+    return ">=0";
   const minimum =
     target.kind === "entityScalar" && target.role === "diameter"
       ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
@@ -1182,7 +1207,7 @@ function evaluateFixedSketchConstraint(
   if (
     currentCoordinate &&
     isFiniteVec2(constraint.coordinate) &&
-    !vec2Equal(currentCoordinate, constraint.coordinate)
+    !sketchCoordinatesWithinTolerance(currentCoordinate, constraint.coordinate)
   ) {
     issues.push({
       code: "INCONSISTENT_CONSTRAINT",

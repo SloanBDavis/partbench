@@ -1,0 +1,42 @@
+{
+  "recordedAt": "2026-09-12T08:23:47.647Z",
+  "artifactRoot": ".metrics/gearbox-workflow/independent-observed",
+  "note": "Original mid-implementation independent trial, including failed revised files. See observed-report.md; after-fix replay is separate.",
+  "files": [
+    {
+      "path": "creation-ops.json",
+      "bytes": 9079,
+      "sha256": "c321ce9ab544b340b33a08dce274285a5f1b8b7424ba916979a2890bea8bdd40"
+    },
+    {
+      "path": "calls.jsonl",
+      "bytes": 263294715,
+      "sha256": "cfb4aa76755ecbd2b26233506958ca26225cd577db095b4b219aee4249c2fabf"
+    },
+    {
+      "path": "report.md",
+      "bytes": 6467,
+      "sha256": "c8cd6cf4190fba7b641e5a5d5cd1e4c60c468554da504bebad84abecacc1e07e"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 3826,
+      "sha256": "6d80b5cb9e9e981287aa4c6292779bb46983d80f07409ea3b0485107dba5c508"
+    },
+    {
+      "path": "workspace/gearbox-20-40.wcad",
+      "bytes": 433670,
+      "sha256": "60d52f46944520d8dc360206ac2d51c48760f4456fa9cacf17a13f625d4b2fdf"
+    },
+    {
+      "path": "workspace/gearbox-20-60.wcad",
+      "bytes": 65361618,
+      "sha256": "5d464da3c5e21a38397e131cdfc2cd9f7a6e0801ac2221243c3449cabc3ad0ec"
+    },
+    {
+      "path": "workspace/gearbox-20-60-immediate-save.wcad",
+      "bytes": 65357110,
+      "sha256": "452cab2f6c13160afbbc8eeb5f750b9679dc9473b46d81c3380b0c4f6543a8e9"
+    }
+  ]
+}

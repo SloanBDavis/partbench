@@ -113,7 +113,7 @@ function createOperationSummaries(
         ? transaction.diff.created[createdIndex++]
         : undefined;
     const createdSketchRef =
-      op.op === "sketch.create" || op.op === "sketch.createOnFace"
+      op.op === "sketch.create" || op.op === "sketch.createOnFace" || op.op === "feature.spurGear"
         ? transaction.diff.sketches?.created?.[createdSketchIndex++]
         : undefined;
     const createdDatumRef =
@@ -164,6 +164,7 @@ function createOperationSummaries(
       ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
       : undefined;
     const createdFeatureRef =
+      op.op === "feature.spurGear" ||
       op.op === "feature.extrude" ||
       op.op === "feature.revolve" ||
       op.op === "feature.hole" ||
@@ -765,6 +766,11 @@ function createOperationSummaries(
           sketchConstraintId: op.id ?? deletedSketchConstraintRef?.id
         });
 
+      case "feature.spurGear":
+        createdSketchEntityIndex += transaction.diff.sketches?.entitiesCreated?.filter(e=>e.sketchId===op.sketchId).length ?? 0;
+        return createFeatureOperationSummary({op:op.op,label:`Create parametric spur gear ${op.id}`,featureId:op.id,bodyId:op.bodyId,sketchId:op.sketchId});
+      case "feature.updateSpurGear":
+        return createFeatureOperationSummary({op:op.op,label:`Update parametric spur gear ${op.id}`,featureId:op.id});
       case "feature.extrude": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;

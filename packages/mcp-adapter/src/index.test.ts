@@ -81,6 +81,7 @@ describe("mcp-adapter", () => {
     const tools = server.listTools().tools;
 
     expect(tools.map((tool) => tool.name)).toEqual([
+      "cad.operation_schema",
       "cad.parameter_list",
       "cad.parameter_get",
       "cad.project_parameter_evaluation",
@@ -3044,13 +3045,11 @@ describe("mcp-adapter", () => {
     expect(seed).toMatchObject({ isError: false });
     expect(directTarget).toMatchObject({
       toolName: "cad.batch",
-      isError: true,
+      isError: false,
       structuredContent: {
-        ok: false,
-        error: {
-          code: "UNSUPPORTED_BODY_REFERENCES",
-          path: "$.ops[0].profile"
-        }
+        ok: true,
+        mode: "dryRun",
+        createdBodyIds: ["mcp_cut_wire_body"]
       }
     });
     for (const result of [dryRun, commit]) {
@@ -3419,7 +3418,7 @@ describe("mcp-adapter", () => {
     });
   });
 
-  it("passes unsupported extrude operation mode errors through cad.batch", () => {
+  it("accepts circle-target additive extrusion through cad.batch dry-run", () => {
     const server = new CadMcpServer();
     seedMcpExtrudeFeature(server, {
       sketchId: "sketch_unsupported",
@@ -3453,15 +3452,17 @@ describe("mcp-adapter", () => {
 
     expect(result).toMatchObject({
       toolName: "cad.batch",
-      isError: true,
+      isError: false,
       structuredContent: {
-        ok: false,
-        error: {
-          code: "UNSUPPORTED_FEATURE_OPERATION",
-          path: "$.ops[0].operationMode"
-        }
+        ok: true,
+        mode: "dryRun",
+        createdFeatureIds: ["feat_add"],
+        createdBodyIds: ["body_add"]
       }
     });
+    expect(
+      server.callTool({ name: "cad.project_structure" }).structuredContent
+    ).toMatchObject({ bodyCount: 1 });
   });
 
   it("passes rectangle cut extrudes through cad.batch dry-run and commit", () => {
@@ -6451,6 +6452,7 @@ describe("mcp-adapter", () => {
       id: 1,
       result: {
         tools: [
+          { name: "cad.operation_schema" },
           { name: "cad.parameter_list" },
           { name: "cad.parameter_get" },
           { name: "cad.project_parameter_evaluation" },

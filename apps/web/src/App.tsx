@@ -2,6 +2,7 @@ import {
   createAssemblyEditorRequest,
   canEditAssemblyInstancePose
 } from "./modes/solid/assemblyEditorRequests";
+import { ModelingReferenceQueryCache } from "./modelingReferenceQueries";
 import {
   AsyncCadCommandExecutor,
   CadEngine,
@@ -367,7 +368,6 @@ import {
   formatGeneratedReferenceMeasurementError,
   formatGeneratedReferenceKind,
   formatGeneratedReferencesError,
-  getGeneratedReferenceItems,
   type GeneratedReferenceMeasurementDisplay
 } from "./generatedReferenceUi";
 import {
@@ -682,6 +682,7 @@ function SketchOverlayLoadingFallback() {
 }
 
 const engine = new CadEngine();
+const modelingReferenceQueryCache = new ModelingReferenceQueryCache();
 let cadV19RegionSourceValidationPolicyLoad: Promise<void> | undefined;
 
 function ensureCadV19RegionSourceValidationPolicy(): Promise<void> {
@@ -1053,9 +1054,10 @@ function readBodyGeneratedReferences(
 }
 
 function readGeneratedReferenceMeasurements(
-  references: BodyGeneratedReferencesQueryResponse | undefined
+  references: BodyGeneratedReferencesQueryResponse | undefined,
+  selectedStableId: string | undefined
 ): ReadonlyMap<string, GeneratedReferenceMeasurementDisplay> | undefined {
-  if (!references) {
+  if (!references || !selectedStableId) {
     return undefined;
   }
 
@@ -1074,6 +1076,7 @@ function readGeneratedReferenceMeasurements(
   ];
 
   for (const reference of referenceItems) {
+    if (reference.stableId !== selectedStableId) continue;
     const response = engine.executeQuery({
       version: "cadops.v1",
       query: {
@@ -1217,31 +1220,21 @@ function readTopologyAnchorCommandTargetReadinessByAnchorId(
 }
 
 function readSelectionReferenceCandidatesByStableId(
-  references: BodyGeneratedReferencesQueryResponse | undefined
+  references: BodyGeneratedReferencesQueryResponse | undefined,
+  options: Parameters<ModelingReferenceQueryCache["read"]>[3] = {}
 ): ReadonlyMap<string, SelectionReferenceCandidatesQueryResponse> {
-  const candidatesByStableId = new Map<
-    string,
-    SelectionReferenceCandidatesQueryResponse
-  >();
-
-  if (!references) {
-    return candidatesByStableId;
-  }
-
-  for (const reference of getGeneratedReferenceItems(references)) {
-    const response = readSelectionReferenceCandidates({
-      type: "generatedReference",
-      bodyId: reference.bodyId,
-      stableId: reference.stableId,
-      expectedKind: reference.kind
-    });
-
-    if (response) {
-      candidatesByStableId.set(reference.stableId, response);
-    }
-  }
-
-  return candidatesByStableId;
+  return modelingReferenceQueryCache.read(
+    engine.getSourceAuthorityEpoch(),
+    references,
+    (reference) =>
+      readSelectionReferenceCandidates({
+        type: "generatedReference",
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        expectedKind: reference.kind
+      }),
+    options
+  );
 }
 
 function readNamedReferenceCandidatesByName(
@@ -3294,7 +3287,8 @@ export function App() {
         ...currentExactProjectionState,
         current: {
           resolutions: currentExactArtifactResolutions,
-          documentSourceIdentity: currentProjectSourceIdentity
+          documentSourceIdentity: currentProjectSourceIdentity,
+          units: document.units
         },
         display: baseDerivedGeometry,
         metadata: baseDerivedExactMetadata
@@ -3310,6 +3304,7 @@ export function App() {
       currentExactArtifactResolutions,
       currentExactProjectionState,
       currentProjectSourceIdentity,
+      document.units,
       derivedGeometrySourceBuilders
     ]
   );
@@ -3582,10 +3577,15 @@ export function App() {
     () =>
       readEngineStateForDocument(document, () =>
         readGeneratedReferenceMeasurements(
-          selectedBodyGeneratedReferences.references
+          selectedBodyGeneratedReferences.references,
+          selectedGeneratedReference?.stableId
         )
       ),
-    [document, selectedBodyGeneratedReferences.references]
+    [
+      document,
+      selectedBodyGeneratedReferences.references,
+      selectedGeneratedReference?.stableId
+    ]
   );
   const selectedBodyMeasurements = useMemo(
     () =>
@@ -4224,6 +4224,17 @@ export function App() {
     modelingUiRuntime
   ]);
   const solidShellFaceChoices = useMemo(() => {
+    const tool = workbenchUi.activeTool;
+    const faceTools = ["solid.shell", "solid.offset", "solid.align", "solid.draft"];
+    const editingFaceFeature =
+      tool === "solid.edit" &&
+      selectedFeature &&
+      ["shell", "offset", "align", "draft"].includes(selectedFeature.kind);
+    const allBodies = faceTools.includes(tool ?? "") || editingFaceFeature;
+    const selectedFace =
+      selectedGeneratedReferenceState.status === "selected" &&
+      selectedGeneratedReferenceState.reference.kind === "face";
+    if (!allBodies && !selectedFace) return [];
     const choices = [
       ...(modelingUiRuntime?.createSolidFaceChoices(
         undefined,
@@ -4234,6 +4245,7 @@ export function App() {
       ) ?? [])
     ];
     for (const body of projectStructure.bodies) {
+      if (!allBodies && body.id !== selectedBodyId) continue;
       const references = readBodyGeneratedReferences(
         body.id,
         derivedGeneratedReferenceEvidenceByBodyId.get(body.id)
@@ -4242,7 +4254,10 @@ export function App() {
         ...(modelingUiRuntime?.createSolidFaceChoices(
           references,
           [],
-          readSelectionReferenceCandidatesByStableId(references),
+          readSelectionReferenceCandidatesByStableId(references, {
+            kind: "face",
+            operation: "feature.shell"
+          }),
           new Map(),
           "feature.shell",
           document.topologyIdentity?.anchors,
@@ -4266,7 +4281,11 @@ export function App() {
     namedReferences,
     pendingCurrentExactPromotion,
     modelingUiRuntime,
-    projectStructure.bodies
+    projectStructure.bodies,
+    selectedBodyId,
+    selectedFeature,
+    selectedGeneratedReferenceState,
+    workbenchUi.activeTool
   ]);
   const solidLinearDirectionChoices = useMemo(() => {
     const choices =
@@ -11075,6 +11094,7 @@ export function App() {
     selectedSeedBodyId,
     selectedSeedFeatureId,
     selectedShellTargetBodyId,
+    selectedShellFaceChoice,
     selectedSketchContext,
     selectedViewportRenderId,
     sketchApplyCanApply,
@@ -11220,6 +11240,12 @@ export function App() {
 
   const uiSmokeHostRef = useRef({} as UiSmokeHost);
   uiSmokeHostRef.current = {
+    executeQuery: (query) => engine.executeQuery({ version: "cadops.v1", query }),
+    getDisplayState: () => ({
+      meshIds: renderScene.meshes.map(mesh=>mesh.id),
+      exactResults: currentExactResultProjections.map(({bodyId,status})=>({bodyId,status})),
+      displayStatuses: derivedGeometry.entries.map(entry=>entry.status)
+    }),
     applyOps: async (ops: readonly CadOp[]) => {
       const response = await commitOps(ops, () => null);
       if (!response) {
@@ -11339,9 +11365,11 @@ export function App() {
     if (!isUiSmokeEnabled()) return;
     // host methods read .current so Apply stays the live commitOps
     installUiSmokeHook({
+      executeQuery: (query) => uiSmokeHostRef.current.executeQuery!(query),
       applyOps: (ops) => uiSmokeHostRef.current.applyOps(ops),
       reset: () => uiSmokeHostRef.current.reset(),
-      getState: () => uiSmokeHostRef.current.getState()
+      getState: () => uiSmokeHostRef.current.getState(),
+      getDisplayState: () => uiSmokeHostRef.current.getDisplayState!()
     });
     return () => uninstallUiSmokeHook();
   }, []);

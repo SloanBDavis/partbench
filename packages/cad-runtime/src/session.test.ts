@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createCadSession } from "./index";
 import { CadEngine } from "@web-cad/cad-core";
 import type { CadOp } from "@web-cad/cad-protocol";
@@ -37,6 +37,143 @@ const batch = (
 ) => ({ version: "cadops.v1" as const, mode, ops });
 
 describe("exact CAD session", () => {
+  it("moves a connected wire-profile part without exact rebuilding or history replay, including Undo/Redo", async () => {
+    const session = createCadSession();
+    const frame = (instanceId: string) => ({
+      instanceId,
+      frame: {
+        kind: "local" as const,
+        origin: [0, 0, 0] as const,
+        xDirection: [1, 0, 0] as const,
+        zDirection: [0, 0, 1] as const
+      }
+    });
+    const edges = [
+      [
+        [-10, -10],
+        [10, -10]
+      ],
+      [
+        [10, -10],
+        [10, 10]
+      ],
+      [
+        [10, 10],
+        [-10, 10]
+      ],
+      [
+        [-10, 10],
+        [-10, -10]
+      ]
+    ] as const;
+    try {
+      expect(
+        await session.executeBatch(
+          batch([
+            { op: "parameter.create", id: "angle", name: "angle", value: 0 },
+            { op: "sketch.create", id: "wire", name: "Wire", plane: "XY" },
+            ...edges.map(
+              ([start, end], i): CadOp => ({
+                op: "sketch.addLine",
+                sketchId: "wire",
+                id: `edge${i}`,
+                start,
+                end
+              })
+            ),
+            {
+              op: "feature.extrude",
+              id: "wire_extrude",
+              bodyId: "wire_body",
+              profile: {
+                kind: "wire",
+                sketchId: "wire",
+                segments: edges.map((_, i) => ({
+                  entityId: `edge${i}`,
+                  orientation: "forward" as const
+                }))
+              },
+              depth: 10
+            },
+            { op: "assembly.create", id: "gearbox", name: "Gearbox" },
+            ...["base", "moving"].map(
+              (id): CadOp => ({
+                op: "assembly.instance.insert",
+                assemblyId: "gearbox",
+                id,
+                definition: { kind: "body", bodyId: "wire_body" }
+              })
+            ),
+            {
+              op: "assembly.mate.create",
+              assemblyId: "gearbox",
+              id: "fixed",
+              kind: "fixed",
+              instanceId: "base"
+            },
+            {
+              op: "assembly.mate.create",
+              assemblyId: "gearbox",
+              id: "rotation",
+              kind: "revolute",
+              primary: frame("base"),
+              secondary: frame("moving"),
+              angleParameterId: "angle"
+            }
+          ])
+        )
+      ).toMatchObject({ ok: true });
+      const original = await session.getCurrentExactEvidence();
+      const builds = session.getSessionInfo().geometry.artifactBuilds;
+      const historyImport = vi.spyOn(CadEngine, "fromProject");
+      try {
+        expect(
+          await session.executeBatch(
+            batch([{ op: "parameter.update", id: "angle", value: 90 }])
+          )
+        ).toMatchObject({ ok: true });
+        const rotation = () =>
+          session.engine
+            .getDocument()
+            .assemblies.get("gearbox")!
+            .instances.find(({ id }) => id === "moving")!.transform.rotation[2];
+        expect(rotation()).toBeCloseTo(Math.PI / 2);
+        for (const action of [
+          () => {},
+          () => session.engine.undo(),
+          () => session.engine.redo()
+        ]) {
+          action();
+          const evidence = await session.getCurrentExactEvidence();
+          expect(evidence.currentExactResults).toEqual([
+            expect.objectContaining({ bodyId: "wire_body", status: "ready" })
+          ]);
+          expect(evidence.derivedExactMetadata).toEqual(
+            original.derivedExactMetadata
+          );
+          expect(session.getSessionInfo().geometry.artifactBuilds).toBe(builds);
+        }
+        expect(rotation()).toBeCloseTo(Math.PI / 2);
+        expect(historyImport).not.toHaveBeenCalled();
+      } finally {
+        historyImport.mockRestore();
+      }
+      expect(
+        await session.executeBatch(
+          batch([
+            { op: "feature.updateExtrude", id: "wire_extrude", depth: 12 }
+          ])
+        )
+      ).toMatchObject({ ok: true });
+      expect(session.getSessionInfo().geometry.artifactBuilds).toBe(builds + 1);
+      expect(
+        (await session.getCurrentExactEvidence()).derivedExactMetadata
+      ).not.toEqual(original.derivedExactMetadata);
+    } finally {
+      session.dispose();
+    }
+  }, 30_000);
+
   it("attributes exact failures to their source edit before unrelated operations", async () => {
     const session = createCadSession();
     try {

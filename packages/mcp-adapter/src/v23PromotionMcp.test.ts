@@ -287,7 +287,7 @@ describe("V23 slice D current-exact promotion over existing MCP seams", () => {
   it("freezes tools, approval and batch modes, and package readiness", () => {
     const server = createSeededServer();
     const tools = server.listTools().tools;
-    expect(tools).toHaveLength(49);
+    expect(tools).toHaveLength(51);
     expect(tools.map(({ name }) => name)).toContain(
       "cad.selection_reference_candidates"
     );

@@ -79,6 +79,37 @@ type RuntimeInput =
   | DerivedExactBodyGeometryInput;
 
 describe("derivedGeometry", () => {
+  it("displays generated gear bores through the supported wire-target boolean path", async () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "feature.spurGear",
+      id: "gear",
+      bodyId: "gear_body",
+      sketchId: "gear_profile",
+      teeth: 20,
+      module: 1.5,
+      faceWidth: 6,
+      boreDiameter: 8
+    });
+    const source = getDerivedSources(engine)[0]!;
+    expect(source).toMatchObject({
+      kind: "extrudeBoolean",
+      target: { profile: { kind: "wire" } }
+    });
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    await deriveGeometrySourceMesh(runtime, source);
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        operation: "cut",
+        target: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "wire" })
+        })
+      })
+    ]);
+  });
+
   it("creates cache keys that change when object geometry inputs change", () => {
     const object = createBoxObject("box_1", 2);
     const movedObject: BoxObject = {
@@ -2993,6 +3024,7 @@ describe("derivedGeometry", () => {
       (source): source is DerivedHoleGeometrySource => source.kind === "hole"
     );
 
+    expect(holeSource).not.toHaveProperty("placementError");
     expect(sources.map((source) => source.id)).toEqual(["body_hole_1"]);
     expect(holeSource).toMatchObject({
       id: "body_hole_1",
@@ -3010,6 +3042,18 @@ describe("derivedGeometry", () => {
         direction: "positive"
       }
     });
+
+    const cyclicSources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      [
+        baseFeature,
+        { ...cutFeature, targetBodyId: cutFeature.bodyId },
+        holeFeature
+      ]
+    );
+    expect(
+      cyclicSources.find((source) => source.kind === "hole")?.placementError
+    ).toMatch(/cyclic/);
 
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -3142,6 +3186,7 @@ describe("derivedGeometry", () => {
       (source): source is DerivedHoleGeometrySource => source.kind === "hole"
     );
 
+    expect(holeSource).not.toHaveProperty("placementError");
     expect(sources.map((source) => source.id)).toEqual(["body_hole_1"]);
     expect(holeSource).toMatchObject({
       id: "body_hole_1",

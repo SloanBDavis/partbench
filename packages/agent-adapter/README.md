@@ -36,6 +36,38 @@ through the existing read/query path. It reports readiness, diagnostics, units,
 names, order, and identities only; it never returns B-rep/STEP bytes, file
 handles, paths, renderer-private IDs, or download authority.
 
+## Command discovery and concise inspection
+
+`getCadOperationSchema(name)` and `CAD_OPERATION_NAMES` expose generated
+structural contracts for the complete `CadOp` union. The MCP wrapper makes them
+available through `cad.operation_schema`; modeling still uses normal CADOps.
+`parseCadOpsAgentRequest` throws `CadAgentRequestValidationError` with structured
+field diagnostics for malformed requests. Discovery never replaces canonical
+command validation.
+
+On-demand expression schemas also carry shared discovery help for the core's
+expression grammar and exact parameter-name binding. These descriptions add no
+validation or evaluation path; core still parses and evaluates every expression.
+The [public example](../../docs/agent-runtime-usage.md#parameter-expressions)
+uses different IDs and names to make that distinction concrete.
+
+Regenerate after changing protocol input types:
+
+```sh
+node scripts/generate-operation-schemas.mjs
+```
+
+The generator uses existing TypeScript and Prettier development tooling. It fails
+on unhandled type forms, and the emitted map must cover every `CadOp["op"]` at
+compile time. This package's build, typecheck and test commands check freshness,
+so changed nested fields cannot silently retain stale discovery contracts.
+
+`project.structure` also accepts `projection: "poses"`, optional `assemblyIds`
+and `instanceIds`, and bounded `offset`/`limit` pagination. It forwards the core's
+resolved `instancePoses` without full sketch/feature data; default/full queries
+retain the existing response. See the
+[public guide](../../docs/agent-runtime-usage.md#compact-pose-inspection).
+
 ## Boundary
 
 External callers submit mutations with a `CadOpsAgentRequest`:

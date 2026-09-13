@@ -589,21 +589,81 @@ describe("validateV22RegionSource", () => {
     expect(issueCodes(structural)).toEqual(["SKETCH_REGION_COMPLEXITY_LIMIT"]);
     expect(structural.complexity.predicateVisitCount).toBe(0);
 
-    const manyEntities = Array.from({ length: 256 }, (_, index) =>
-      rectangle(`r${String(index).padStart(3, "0")}`, [index * 10, 0], 2, 2)
+    // Dense crossing segments still exhaust the unchanged budget; widely
+    // separated regions should no longer consume quadratic exact predicates.
+    const points = Array.from({ length: 701 }, (_, index) => {
+      const angle = (((index * 349) % 701) * 2 * Math.PI) / 701;
+      return [20 * Math.cos(angle), 20 * Math.sin(angle)] as const;
+    });
+    const manyEntities = points.map((point, index) =>
+      line(`dense_${index}`, point, points[(index + 1) % points.length]!)
     );
     const analytic = validateV22RegionSource(
-      profile(
-        { outer: entityLoop(manyEntities[0]!.id), holes: [] },
-        ...manyEntities.slice(1).map((entity) => ({
-          outer: entityLoop(entity.id),
-          holes: []
-        }))
-      ),
+      profile({
+        outer: wireLoop(...manyEntities.map((entity) => [entity.id] as const)),
+        holes: []
+      }),
       entities(...manyEntities)
     );
     expect(issueCodes(analytic)).toContain("SKETCH_REGION_COMPLEXITY_LIMIT");
     expect(analytic.complexity.predicateVisitCount).toBe(100_001);
+  });
+
+  it.each([20, 60])(
+    "validates a bounded detailed %i-tooth outline and bore with spatial pruning",
+    (teeth) => {
+      const samplesPerTooth = 31;
+      const count = teeth * samplesPerTooth;
+      const points = Array.from({ length: count }, (_, index) => {
+        const angle = (index * 2 * Math.PI) / count;
+        const radius = teeth + 1.5 * Math.cos(teeth * angle);
+        return [radius * Math.cos(angle), radius * Math.sin(angle)] as const;
+      });
+      const outline = points.map((point, index) =>
+        line(`edge_${index}`, point, points[(index + 1) % count]!)
+      );
+      const source = entities(...outline, circle("bore", [0, 0], 4));
+      const submitted = profile({
+        outer: wireLoop(...outline.map((entity) => [entity.id] as const)),
+        holes: [entityLoop("bore")]
+      });
+      const result = validateV22RegionSource(submitted, source);
+      expect(result.ok).toBe(true);
+      expect(result.complexity.segmentReferenceCount).toBe(count);
+      expect(result.complexity.predicateVisitCount).toBeLessThan(count * 35);
+      // A non-neighbor crossing must still fail even in a large valid outline.
+      const crossed = [...points];
+      [crossed[1], crossed[Math.floor(count / 2)]] = [
+        crossed[Math.floor(count / 2)]!,
+        crossed[1]!
+      ];
+      const invalid = entities(
+        ...crossed.map((point, index) =>
+          line(`edge_${index}`, point, crossed[(index + 1) % count]!)
+        ),
+        circle("bore", [0, 0], 4)
+      );
+      expect(issueCodes(validateV22RegionSource(submitted, invalid))).toContain(
+        "SKETCH_REGION_LOOP_INTERSECTION"
+      );
+    }
+  );
+
+  it("prunes disjoint loops without spending the predicate budget on their boundaries", () => {
+    const outlines = Array.from({ length: 256 }, (_, index) =>
+      rectangle(`r${index}`, [index * 10, 0], 2, 2)
+    );
+    const result = validateV22RegionSource(
+      profile(
+        { outer: entityLoop(outlines[0]!.id), holes: [] },
+        ...outlines
+          .slice(1)
+          .map((entity) => ({ outer: entityLoop(entity.id), holes: [] }))
+      ),
+      entities(...outlines)
+    );
+    expect(result.ok).toBe(true);
+    expect(result.complexity.predicateVisitCount).toBeLessThan(100_000);
   });
 
   it("enforces exact sketch-entity, loop, and segment-reference boundaries", () => {

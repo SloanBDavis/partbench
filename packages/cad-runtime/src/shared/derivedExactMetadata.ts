@@ -1005,36 +1005,7 @@ function getUnsupportedExactMetadataSourceMessage(
     return source.placementError;
   }
 
-  const runtimeSourceError = getBooleanExtrudeRuntimeSourceError(source);
-  if (runtimeSourceError) return runtimeSourceError;
-
-  const targetProfileKind = getExactBooleanSourceProfileKind(source.target);
-
-  if (
-    source.operation === "add" &&
-    targetProfileKind !== "rectangle" &&
-    targetProfileKind !== "circle"
-  ) {
-    return "Exact metadata for add currently supports rectangle or circle target extrudes only.";
-  }
-
-  if (
-    source.operation === "cut" &&
-    targetProfileKind !== "rectangle" &&
-    targetProfileKind !== "circle"
-  ) {
-    return "Exact metadata for cut currently supports rectangle or circle target extrudes only.";
-  }
-
-  if (
-    source.operation === "intersect" &&
-    targetProfileKind !== "rectangle" &&
-    targetProfileKind !== "circle"
-  ) {
-    return "Exact metadata for intersect currently supports rectangle or circle target extrudes only.";
-  }
-
-  return undefined;
+  return getBooleanExtrudeRuntimeSourceError(source);
 }
 
 function getExactBooleanSourceProfileKind(

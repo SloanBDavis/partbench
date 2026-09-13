@@ -567,24 +567,38 @@ export async function buildCurrentExactProjectionArtifacts(input: {
       throw new Error("Current exact artifact source changed during build.");
     }
   };
+  const currentNodes = new Map<string, CurrentExactArtifactNode>();
+  for (const resolution of input.resolutions) {
+    for (
+      let node: CurrentExactArtifactNode | undefined = resolution;
+      node;
+      node = node.artifactDependency
+    ) {
+      if (currentNodes.has(node.bodyId)) break;
+      currentNodes.set(node.bodyId, node);
+    }
+  }
   const retained = new Map(
-    input.existingArtifacts
-      .filter(
-        (artifact) =>
-          artifact.documentSourceIdentity.algorithm ===
-            input.documentSourceIdentity.algorithm &&
-          artifact.documentSourceIdentity.sha256 ===
-            input.documentSourceIdentity.sha256
-      )
-      .map((artifact) => [artifact.bodyId, artifact] as const)
+    input.existingArtifacts.flatMap((artifact) => {
+      const node = currentNodes.get(artifact.bodyId);
+      return node &&
+        artifact.units === input.units &&
+        artifact.sourceType === node.sourceType &&
+        artifact.bodySourceIdentitySignature === node.sourceIdentitySignature &&
+        artifact.sourceCacheKeySha256 === node.cacheKeySha256
+        ? [[artifact.bodyId, artifact] as const]
+        : [];
+    })
   );
   const artifacts = input.resolutions.flatMap((resolution) => {
     const artifact = retained.get(resolution.bodyId);
     return artifact &&
       artifact.bodySourceIdentitySignature ===
         resolution.sourceIdentitySignature &&
-      artifact.sourceCacheKeySha256 === resolution.cacheKeySha256
-      ? [artifact]
+      artifact.sourceCacheKeySha256 === resolution.cacheKeySha256 &&
+      artifact.sourceType === resolution.sourceType &&
+      artifact.units === input.units
+      ? [{ ...artifact, documentSourceIdentity: input.documentSourceIdentity }]
       : [];
   });
   const failures: CurrentExactProjectionFailure[] = [];
@@ -771,12 +785,7 @@ export async function buildCurrentExactBodyArtifacts({
       existingArtifact.bodySourceIdentitySignature !==
         node.sourceIdentitySignature ||
       existingArtifact.sourceCacheKeySha256 !== node.cacheKeySha256 ||
-      existingArtifact.units !== units ||
-      (selectedKeys.has(key) &&
-        (existingArtifact.documentSourceIdentity.algorithm !==
-          documentSourceIdentity.algorithm ||
-          existingArtifact.documentSourceIdentity.sha256 !==
-            documentSourceIdentity.sha256))
+      existingArtifact.units !== units
     )
       continue;
     assertArtifactMatchesIdentity(existingArtifact, {
@@ -788,10 +797,15 @@ export async function buildCurrentExactBodyArtifacts({
         ? 2
         : node.sourceGraphNodeCount,
       shapePolicy,
-      units,
-      ...(selectedKeys.has(key) ? { documentSourceIdentity } : {})
+      units
     });
-    const evidence = existingArtifact;
+    const evidence =
+      existingArtifact.documentSourceIdentity.algorithm ===
+        documentSourceIdentity.algorithm &&
+      existingArtifact.documentSourceIdentity.sha256 ===
+        documentSourceIdentity.sha256
+        ? existingArtifact
+        : { ...existingArtifact, documentSourceIdentity };
     assertArtifactAggregateWithinLimit([...artifactsByKey.values(), evidence]);
     artifactsByKey.set(key, evidence);
   }

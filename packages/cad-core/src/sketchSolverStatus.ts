@@ -305,6 +305,17 @@ function createSolverModelBuildDiagnostic(
   sketchId: SketchId,
   probe: SketchSolverPackageProbe
 ): CadSketchSolverDiagnostic {
+  if (probe.generatedSource)
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_NOT_RUN",
+      severity: "info",
+      sketchId,
+      message:
+        "Generated spur gear source is checked against its native recipe instead of creating free numerical sketch variables.",
+      received: probe.generatedSource.issues.length
+        ? "invalid generated source"
+        : "verified generated source"
+    });
   if (probe.modelBuilt && probe.model) {
     return createDiagnostic({
       code: "SKETCH_SOLVER_MODEL_BUILT",
@@ -336,6 +347,14 @@ function createNumericalSolverDiagnostic(
   sketchId: SketchId,
   probe: SketchSolverPackageProbe
 ): CadSketchSolverDiagnostic {
+  if (probe.generatedSource)
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_NOT_RUN",
+      severity: "info",
+      sketchId,
+      message:
+        "Numerical constraint solving is not used for generated gear geometry; edit the gear recipe or its bound parameters."
+    });
   const status = probe.result?.status ?? "not-run";
 
   if (status === "converged") {
@@ -436,6 +455,9 @@ function createSolverEngineSummary(
 
   return {
     engine: "current-direct-evaluator",
+    ...(probe.generatedSource && !probe.generatedSource.issues.length
+      ? { definitionMode: "generated-spur-gear" as const }
+      : {}),
     numericalSolverStatus: result?.status ?? "not-run",
     ...(modelVersion
       ? {
@@ -469,6 +491,37 @@ function createSketchProfileValidity(
   status: CadSketchSolverStatus,
   solverProbe: SketchSolverPackageProbe
 ): CadSketchProfileValiditySummary {
+  if (solverProbe.generatedSource) {
+    const ready = solverProbe.generatedSource.issues.length === 0;
+    const diagnostics = [
+      createDiagnostic({
+        code: ready
+          ? "SKETCH_SOLVER_PROFILE_VALID"
+          : "SKETCH_SOLVER_FAILED",
+        severity: ready ? "info" : "blocker",
+        sketchId: sketch.id,
+        message: ready
+          ? "The verified spur gear recipe defines one closed region containing the tooth outline and optional bore."
+          : "The generated gear region is unavailable until its recipe and source geometry are consistent."
+      })
+    ];
+    return {
+      status: ready ? "valid" : "invalid",
+      profileCount: 1,
+      validProfileCount: ready ? 1 : 0,
+      profiles: [],
+      generatedProfiles: [
+        {
+          kind: "spurGear",
+          featureId: solverProbe.generatedSource.featureId,
+          closed: ready,
+          featureReady: ready
+        }
+      ],
+      diagnosticCount: diagnostics.length,
+      diagnostics
+    };
+  }
   const effectiveStatus = chooseProfileValidityStatus(status, solverProbe);
   const blockerStatus = new Set<CadSketchSolverStatus>([
     "missing-target",

@@ -12,9 +12,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "node ../../scripts/generate-operation-schemas.mjs --check && tsc -p tsconfig.json",
+    "test": "node ../../scripts/generate-operation-schemas.mjs --check && vitest run",
+    "typecheck": "node ../../scripts/generate-operation-schemas.mjs --check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@web-cad/cad-core": "workspace:*",

@@ -47,6 +47,45 @@ import type {
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("derivedExactMetadata", () => {
+  it("measures generated gear bores through the supported wire-target boolean path", async () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "feature.spurGear",
+      id: "gear",
+      bodyId: "gear_body",
+      sketchId: "gear_profile",
+      teeth: 20,
+      module: 1.5,
+      faceWidth: 6,
+      boreDiameter: 8
+    });
+    const source = getDerivedSources(engine, ["gear_body"])[0]!;
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+    service.reconcile([source]);
+    await flushPromises();
+    expect(service.getSnapshot()).toMatchObject({
+      readyCount: 1,
+      errorCount: 0
+    });
+    expect(runtime.exactInputs).toEqual([
+      expect.objectContaining({
+        source: expect.objectContaining({
+          operation: "cut",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "wire" })
+          })
+        })
+      })
+    ]);
+    service.dispose();
+  });
+
   it("defers authored exact retries until display settles while imported exact stays independent", () => {
     const pendingDisplay = createExtrudeSource("body_pending");
     const readyDisplay = createExtrudeSource("body_ready");

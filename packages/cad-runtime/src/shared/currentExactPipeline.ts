@@ -1,5 +1,5 @@
 import type { CadEngine } from "@web-cad/cad-core";
-import type { WcadSourceIdentity } from "@web-cad/cad-protocol";
+import type { DocumentUnits, WcadSourceIdentity } from "@web-cad/cad-protocol";
 import type { GeometryKernelExactBodyArtifact } from "@web-cad/geometry-worker";
 import { createRenderMeshFromSerializableMesh } from "@web-cad/renderer-mesh-bridge";
 
@@ -84,6 +84,7 @@ export function projectCurrentExactBodyArtifacts(input: {
       { readonly status: "ready" }
     >[];
     readonly documentSourceIdentity?: WcadSourceIdentity;
+    readonly units: DocumentUnits;
   };
   readonly display: DerivedGeometrySnapshot;
   readonly metadata: DerivedExactMetadataSnapshot;
@@ -101,19 +102,23 @@ export function projectCurrentExactBodyArtifacts(input: {
       )
     : undefined;
   const currentIdentity = input.current?.documentSourceIdentity;
-  const artifacts = input.artifacts.filter((artifact) => {
-    if (!resolutions || !input.current) return true;
+  const artifacts = input.artifacts.flatMap((artifact) => {
+    if (!resolutions || !input.current) return [artifact];
     const resolution = resolutions.get(artifact.bodyId);
-    return (
+    if (
       resolution?.status === "ready" &&
       resolution.sourceType === artifact.sourceType &&
       resolution.sourceIdentitySignature ===
         artifact.bodySourceIdentitySignature &&
       resolution.cacheKeySha256 === artifact.sourceCacheKeySha256 &&
-      currentIdentity &&
-      artifact.documentSourceIdentity.algorithm === currentIdentity.algorithm &&
-      artifact.documentSourceIdentity.sha256 === currentIdentity.sha256
-    );
+      artifact.units === input.current.units &&
+      currentIdentity
+    ) {
+      // Assembly poses and unrelated edits change the document identity, but
+      // the authoritative body/dependency key still proves this exact shape.
+      return [{ ...artifact, documentSourceIdentity: currentIdentity }];
+    }
+    return [];
   });
   const failures = input.failures?.filter((failure) => {
     if (!resolutions) return true;
@@ -275,14 +280,23 @@ function createFailureMetadataEntry(
       };
 }
 
+const artifactMeshBridges = new WeakMap<
+  CurrentExactProjectionArtifact["displayMesh"],
+  ReturnType<typeof createRenderMeshFromSerializableMesh>
+>();
+
 function createArtifactDisplayEntry(
   artifact: CurrentExactProjectionArtifact
 ): DerivedGeometryReadyEntry {
-  const bridge = createRenderMeshFromSerializableMesh(artifact.displayMesh, {
-    id: artifact.bodyId,
-    alignment: "source",
-    label: `${artifact.bodyId} OCCT mesh`
-  });
+  let bridge = artifactMeshBridges.get(artifact.displayMesh);
+  if (!bridge || bridge.mesh.id !== artifact.bodyId) {
+    bridge = createRenderMeshFromSerializableMesh(artifact.displayMesh, {
+      id: artifact.bodyId,
+      alignment: "source",
+      label: `${artifact.bodyId} OCCT mesh`
+    });
+    artifactMeshBridges.set(artifact.displayMesh, bridge);
+  }
   const source = createArtifactEvidenceSource(artifact);
   const generatedReferences =
     artifact.topologySnapshot.generatedReferences ??

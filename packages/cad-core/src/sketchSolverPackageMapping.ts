@@ -26,8 +26,11 @@ import type {
   SketchId,
   SketchPointTarget,
   SketchPointTargetV22,
-  SketchPlane
+  SketchPlane,
+  SpurGearSource,
+  SketchDimensionIssue
 } from "@web-cad/cad-protocol";
+import { createSpurGearGeometry, resolveSpurGearValues } from "./spurGear";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { createCanonicalSketchArcEntity } from "./sketchArcMath";
 import { cleanSketchNumber } from "./sketchNumber";
@@ -50,6 +53,7 @@ export interface SketchSolverPackageSketch {
   readonly name: string;
   readonly plane: SketchPlane;
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+  readonly spurGear?: SpurGearSource;
 }
 
 export interface SketchSolverPackageModelBuild {
@@ -71,6 +75,11 @@ export interface SketchSolverPackageProbe {
   readonly result?: SketchSolveResult;
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+  readonly generatedSource?: {
+    readonly kind: "spurGear";
+    readonly featureId: string;
+    readonly issues: readonly SketchDimensionIssue[];
+  };
 }
 
 export function createSketchSolveModelFromCadSource(
@@ -231,6 +240,7 @@ export function runSketchSolverPackageProbe(
   document: SketchSolverPackageDocument,
   sketch: SketchSolverPackageSketch
 ): SketchSolverPackageProbe {
+  if (sketch.spurGear) return probeGeneratedSpurGear(document, sketch);
   const build = createSketchSolveModelFromCadSource(document, sketch);
   const result = solveSketch(build.model);
   const resultDiagnostics = result.diagnostics.map((diagnostic) =>
@@ -246,6 +256,152 @@ export function runSketchSolverPackageProbe(
     diagnosticCount: diagnostics.length,
     diagnostics
   };
+}
+
+function probeGeneratedSpurGear(
+  document: SketchSolverPackageDocument,
+  sketch: SketchSolverPackageSketch
+): SketchSolverPackageProbe {
+  const source = sketch.spurGear!;
+  const issues: SketchDimensionIssue[] = [];
+  try {
+    if (
+      source.kind !== "spurGear" ||
+      typeof source.featureId !== "string" ||
+      !source.featureId.trim() ||
+      Object.keys(source).some(
+        (key) => !["kind", "featureId", "inputs", "values"].includes(key)
+      ) ||
+      !source.inputs ||
+      typeof source.inputs !== "object" ||
+      Object.keys(source.inputs).some(
+        (key) =>
+          ![
+            "teeth",
+            "module",
+            "faceWidth",
+            "pressureAngleDegrees",
+            "boreDiameter",
+            "backlash",
+            "profileTolerance"
+          ].includes(key)
+      )
+    )
+      throw new Error("Invalid generated spur gear recipe.");
+    for (const input of Object.values(source.inputs)) {
+      if (
+        input &&
+        typeof input === "object" &&
+        "parameterId" in input &&
+        !document.parameters.has(input.parameterId)
+      ) {
+        issues.push({
+          code: "PARAMETER_NOT_FOUND",
+          message: `Generated gear parameter does not exist: ${input.parameterId}.`,
+          sketchId: sketch.id,
+          parameterId: input.parameterId
+        });
+      }
+    }
+    if (!issues.length) {
+      const values = resolveSpurGearValues(source.inputs, document.parameters);
+      if (!generatedSourceMatches(values, source.values))
+        throw new Error(
+          "Stored gear values differ from the current recipe and parameter bindings."
+        );
+      const geometry = createSpurGearGeometry(sketch.id, values);
+      if (
+        sketch.entities.size !== geometry.entities.length ||
+        geometry.entities.some(
+          (entity) =>
+            !generatedSourceMatches(entity, sketch.entities.get(entity.id))
+        )
+      )
+        throw new Error(
+          "Generated sketch entities differ from the authored spur gear recipe."
+        );
+      if (
+        [
+          ...document.sketchDimensions.values(),
+          ...document.sketchConstraints.values()
+        ].some((entry) => entry.sketchId === sketch.id)
+      )
+        throw new Error(
+          "Generated gear geometry cannot have independent solver dimensions or constraints."
+        );
+    }
+  } catch (error) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message: error instanceof Error ? error.message : String(error),
+      sketchId: sketch.id,
+      expected:
+        "generated entities and resolved values matching the authored spur gear recipe"
+    });
+  }
+  const diagnostics: CadSketchSolverDiagnostic[] = issues.length
+    ? issues.map((issue) => ({
+        code:
+          issue.code === "PARAMETER_NOT_FOUND"
+            ? "SKETCH_SOLVER_MISSING_TARGET"
+            : "SKETCH_SOLVER_FAILED",
+        severity: "blocker",
+        message: issue.message,
+        sketchId: sketch.id,
+        expected: issue.expected,
+        received: issue.received
+      }))
+    : [
+        {
+          code: "SKETCH_SOLVER_STATUS_READY",
+          severity: "info",
+          sketchId: sketch.id,
+          message:
+            "Spur gear geometry is fully defined by its verified native recipe and parameter bindings; no numerical constraint solve is needed."
+        }
+      ];
+  return {
+    modelBuilt: false,
+    solverRan: false,
+    diagnosticCount: diagnostics.length,
+    diagnostics,
+    generatedSource: { kind: "spurGear", featureId: source.featureId, issues }
+  };
+}
+
+/** Allow only insignificant cross-host arithmetic variation, never source drift. */
+function generatedSourceMatches(expected: unknown, actual: unknown): boolean {
+  if (typeof expected === "number" && typeof actual === "number")
+    return (
+      Number.isFinite(expected) &&
+      Number.isFinite(actual) &&
+      Math.abs(expected - actual) <= 1e-10 * Math.max(1, Math.abs(expected))
+    );
+  if (Array.isArray(expected))
+    return (
+      Array.isArray(actual) &&
+      expected.length === actual.length &&
+      expected.every((value, index) =>
+        generatedSourceMatches(value, actual[index])
+      )
+    );
+  if (
+    expected &&
+    typeof expected === "object" &&
+    actual &&
+    typeof actual === "object" &&
+    !Array.isArray(actual)
+  ) {
+    const left = expected as Record<string, unknown>,
+      right = actual as Record<string, unknown>;
+    return (
+      Object.keys(left).length === Object.keys(right).length &&
+      Object.keys(left).every((key) =>
+        generatedSourceMatches(left[key], right[key])
+      )
+    );
+  }
+  return expected === actual;
 }
 
 export function applySketchSolveResultToCadEntities(

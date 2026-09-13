@@ -52,14 +52,38 @@ OCCT internals, and mesh data do not enter tool responses. Existing modeling
 operations and their CADOps semantics are unchanged. Lifecycle tools are asynchronous;
 use `callToolAsync` or `handleJsonRpcAsync` for a host-backed server.
 
-The `cad.batch` tool schema includes concrete operation fields for common
-parameter, rectangle/circle sketch, extrusion, hole, fillet, pattern, shell,
-and assembly workflows, including their revision commands. Discover these
-through `tools/list` without reading TypeScript. Other existing CADOps retain a
-clearly labeled fallback schema; it does not promise support for invented
-operation names. Geometry-dependent eligibility is still validated by the
-shared command/runtime path. `cad.body_mass_properties` exposes the existing
-exact mass-properties query for inspection of final result bodies.
+Use `cad.operation_schema` without arguments for the complete supported CADOps
+operation-name catalog, or with `{ "operation": "sketch.addSpline" }` for one
+full nested structural schema. These schemas are generated from the canonical
+`CadOp` TypeScript union, including native gear commands. Discovery adds no
+runtime compiler or dependency and does not inflate `tools/list` with every
+operation. The existing `cad.batch` schemas retain common modeling examples;
+their fallback directs callers to complete on-demand discovery. Geometry and
+value constraints are still validated by the shared command/runtime path.
+`cad.body_mass_properties` exposes exact final-body mass properties.
+
+Expression discovery documents the actual arithmetic/functions and name-binding
+rules on `parameter.setExpression.expression`. The receiving parameter uses an
+ID; references in the formula use exact parameter names, with brackets for names
+containing spaces. See the [expression example](../../docs/agent-runtime-usage.md#parameter-expressions).
+Mass-property discovery lists volume, area, center of mass and optional inertia;
+it makes no bounding-box claim.
+
+For agent modeling, set top-level `cad.batch` argument `responseDetail:"summary"`.
+The adapter projects only successful responses after ordinary CADOps execution.
+It returns transaction/audit metadata, complete warnings, per-ID-field samples
+with `total`/`truncated`, immediate semantic-diff array counts, and a review whose
+operation list is bounded with explicit total/truncation indicators. The sample
+limit is 8. Review notices and errors remain complete; geometry payloads are
+omitted. Sync and async execution ports use the same projection. Full remains the
+default and is required when requesting `projectHandoff`. See the
+[summary response contract](../../docs/agent-runtime-usage.md#compact-batch-results).
+
+Malformed CADOps batches include `error.diagnostics`: up to 20 field/path-level
+issues, identifying missing or unknown fields, invalid scalar/tuple/variant
+shapes, or unsupported operation names. The canonical parser owns acceptance;
+these schemas only explain rejected requests. Valid commands rejected by core
+retain their CADOps error rather than becoming wrapper errors.
 
 Assembly schemas cover create, insert, in-place pose update, definition
 replacement, deletion, and every fixed/coincident/concentric/distance/revolute
@@ -70,7 +94,13 @@ angles use degrees. Lengths use document units. See the
 [public assembly guide](../../docs/agent-runtime-usage.md#connected-assemblies)
 for frames, constraints and examples. `cad.project_structure` already includes
 assembly instances, resolved transforms and mates; pose inspection needs no
-full native handoff.
+full native handoff. For repeated motion queries, request
+`{ "projection": "poses", "assemblyIds": ["gearbox"], "limit": 20 }`.
+This returns a bounded `instancePoses` page with resolved transforms,
+`totalInstanceCount` and optional `nextOffset`. Filters also accept `instanceIds`;
+page size defaults to 100 and is capped at 1000. The projection skips constructing
+source geometry data and leaves full-definition arrays empty. Counts still refer
+to the whole document. Omit the projection for backward-compatible full results.
 
 ## Local Client Shape
 

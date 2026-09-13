@@ -36,6 +36,7 @@ import type {
 } from "./exactArtifactOpfsCache";
 import {
   buildCurrentExactBodyArtifacts,
+  buildCurrentExactProjectionArtifacts,
   downloadProjectExactStepArtifact,
   executeProjectExactStepExport,
   isExactExportPlanCurrent
@@ -50,6 +51,84 @@ type ExportRuntime = Pick<
 };
 
 describe("projectExactStepExport", () => {
+  it("reuses unchanged shapes across document edits and rebuilds only a changed body", async () => {
+    const fixture = createFixture();
+    const runtime = createRuntime();
+    const before = createFixtureForEngine(fixture.engine);
+    const original = await buildCurrentExactBodyArtifacts({
+      engine: fixture.engine,
+      resolutions: before.resolutions.filter(
+        (entry) => entry.status === "ready"
+      ),
+      runtime,
+      documentSourceIdentity: before.exactExport.plan!.sourceIdentity,
+      units: "mm",
+      assertCurrent: () => undefined
+    });
+    expect(runtime.artifactInputs).toHaveLength(3);
+    fixture.engine.apply({
+      op: "parameter.create",
+      id: "angle",
+      name: "angle",
+      value: 90
+    });
+    const moved = createFixtureForEngine(fixture.engine);
+    const rebound = await buildCurrentExactBodyArtifacts({
+      engine: fixture.engine,
+      resolutions: moved.resolutions.filter(
+        (entry) => entry.status === "ready"
+      ),
+      runtime,
+      documentSourceIdentity: moved.exactExport.plan!.sourceIdentity,
+      units: "mm",
+      existingArtifacts: original,
+      assertCurrent: () => undefined
+    });
+    expect(runtime.artifactInputs).toHaveLength(3);
+    for (const [index, artifact] of rebound.entries()) {
+      expect(artifact.documentSourceIdentity).toEqual(
+        moved.exactExport.plan!.sourceIdentity
+      );
+      expect(artifact.brepBytes).toBe(original[index]!.brepBytes);
+      expect(artifact.topologySnapshot).toBe(original[index]!.topologySnapshot);
+    }
+    fixture.engine.apply({
+      op: "scene.updateBoxDimensions",
+      id: "z",
+      dimensions: { width: 2, height: 2, depth: 3 }
+    });
+    const changed = createFixtureForEngine(fixture.engine);
+    const publications: { artifacts: readonly { bodyId: string }[] }[] = [];
+    await buildCurrentExactProjectionArtifacts({
+      engine: fixture.engine,
+      resolutions: changed.resolutions.filter(
+        (entry) => entry.status === "ready"
+      ),
+      runtime: {
+        ...runtime,
+        exactBodyArtifact: (input) =>
+          runtime.exactBodyArtifact(input, {
+            intent: "user",
+            userKind: "export"
+          })
+      },
+      documentSourceIdentity: changed.exactExport.plan!.sourceIdentity,
+      units: "mm",
+      generation: runtime.getModelWorkSnapshot().generation,
+      sourceAuthorityEpoch: fixture.engine.getSourceAuthorityEpoch(),
+      existingArtifacts: original as GeometryKernelExactBodyArtifact[],
+      isActive: () => true,
+      onChange: (state) => publications.push(state)
+    });
+    expect(publications[0]!.artifacts.map(({ bodyId }) => bodyId)).toEqual([
+      "body:a",
+      "body:n"
+    ]);
+    expect(publications.at(-1)!.artifacts).toHaveLength(3);
+    expect(runtime.artifactInputs).toHaveLength(4);
+    expect(runtime.artifactInputs.at(-1)!.bodyId).toBe("body:z");
+  });
+
   it("schedules revised artifacts through edit, undo, redo, and reopen without metadata or generation collisions", async () => {
     const fixture = createFixture();
     const scheduler = new GeometryJobScheduler({
@@ -64,7 +143,9 @@ describe("projectExactStepExport", () => {
     });
     const schedulingRequest = createBoxTessellationWorkerRequest({
       id: "scheduler-regression",
-      width: 1, height: 1, depth: 1
+      width: 1,
+      height: 1,
+      depth: 1
     });
     const baseRuntime = createRuntime();
     const runtime: ExportRuntime = {

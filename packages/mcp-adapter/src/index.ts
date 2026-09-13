@@ -1,4 +1,15 @@
 import {
+  createCadMcpBatchSummary,
+  type CadMcpBatchSummary
+} from "./batchSummary";
+export type { CadMcpBatchSummary, CadMcpIdSample } from "./batchSummary";
+import {
+  CadAgentRequestValidationError,
+  CAD_OPERATION_NAMES,
+  diagnoseCadBatch,
+  getCadOperationSchema,
+  type CadRequestDiagnostic,
+  type OperationSchema,
   parseCadAgentExactExportRequest,
   type CadAgentSessionErrorResponse,
   type CadAgentExactExportRequest,
@@ -22,6 +33,7 @@ export {
 } from "@web-cad/agent-adapter";
 import {
   WCAD_SOURCE_IDENTITY_ALGORITHM,
+  isProjectStructureQuery,
   validateProjectExactExportQuery
 } from "@web-cad/cad-protocol";
 import type {
@@ -60,6 +72,7 @@ const SHA256_HEX_PATTERN = "^[a-f0-9]{64}$";
 
 export type CadMcpToolName =
   | CadProjectToolName
+  | "cad.operation_schema"
   | "cad.parameter_list"
   | "cad.parameter_get"
   | "cad.project_parameter_evaluation"
@@ -129,7 +142,18 @@ export interface McpTextContent {
   readonly text: string;
 }
 
+export interface CadMcpOperationSchemaResponse {
+  readonly ok: true;
+  readonly cadOpsVersion: "cadops.v1";
+  readonly operations?: readonly string[];
+  readonly operation?: string;
+  readonly schema?: OperationSchema;
+  readonly note: string;
+}
+
 export type CadMcpStructuredContent =
+  | CadMcpBatchSummary
+  | CadMcpOperationSchemaResponse
   | CadProjectToolResult
   | CadOpsAgentQueryResponse
   | CadOpsAgentResponse
@@ -154,6 +178,7 @@ export interface CadMcpToolErrorResponse {
 export interface CadMcpToolError {
   readonly code: "UNKNOWN_TOOL" | "INVALID_ARGUMENTS";
   readonly message: string;
+  readonly diagnostics?: readonly CadRequestDiagnostic[];
 }
 
 export interface McpJsonRpcRequest {
@@ -255,6 +280,50 @@ export class CadMcpServer {
   }
 
   callTool(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (request.name === "cad.operation_schema") {
+      const args = request.arguments ?? {};
+      if (
+        !isRecord(args) ||
+        Object.keys(args).some((key) => key !== "operation") ||
+        (args.operation !== undefined &&
+          (typeof args.operation !== "string" || !args.operation))
+      ) {
+        return createInvalidArgumentsResult(
+          request.name,
+          "cad.operation_schema expects { operation?: string }."
+        );
+      }
+      const schema =
+        typeof args.operation === "string"
+          ? getCadOperationSchema(args.operation)
+          : undefined;
+      if (args.operation !== undefined && !schema) {
+        return createInvalidArgumentsResult(
+          request.name,
+          "Unknown operation. Omit operation to list all supported names.",
+          [
+            {
+              path: "$.operation",
+              code: "UNKNOWN_OPERATION",
+              message:
+                "Call cad.operation_schema with no arguments to list supported operations."
+            }
+          ]
+        );
+      }
+      return createToolResult(
+        request.name,
+        {
+          ok: true,
+          cadOpsVersion: "cadops.v1",
+          ...(typeof args.operation === "string"
+            ? { operation: args.operation, schema }
+            : { operations: CAD_OPERATION_NAMES }),
+          note: "Read-only structural discovery generated from canonical CadOp types. Submit operations through cad.batch; command value, geometry, dependency and readiness validation remains authoritative. Transform rotations are radians applied X then Y then Z; revolute angles are degrees; lengths use document units."
+        },
+        false
+      );
+    }
     if (request.name === "cad.parameter_list") {
       return this.#callParameterList(request);
     }
@@ -496,7 +565,7 @@ export class CadMcpServer {
       const response = await callExecutionPort(this.#executionPort, error);
       return createToolResult(
         request.name,
-        response,
+        projectBatchResponse(request, response),
         "ok" in response
           ? !response.ok
           : response.status !== "downloadRequested"
@@ -737,24 +806,26 @@ export class CadMcpServer {
   }
 
   #callProjectStructure(request: CadMcpToolCallRequest): CadMcpToolCallResult {
-    if (!isEmptyObjectOrUndefined(request.arguments)) {
+    const args = request.arguments ?? {};
+    const query = isRecord(args)
+      ? { ...args, query: "project.structure" }
+      : undefined;
+    if (
+      !isProjectStructureQuery(query) ||
+      (isRecord(args) && "query" in args)
+    ) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_structure does not accept arguments."
+        "cad.project_structure expects {} or { projection: 'poses', assemblyIds?: string[], instanceIds?: string[], offset?: nonnegative integer, limit?: integer (1–1000) }."
       );
     }
-
     const response = this.#adapter.query(
       parseCadOpsAgentQueryRequest({
         requestId: request.requestId ?? this.#createRequestId(),
         adapterVersion: ADAPTER_VERSION,
-        query: {
-          version: "cadops.v1",
-          query: { query: "project.structure" }
-        }
+        query: { version: "cadops.v1", query }
       })
     );
-
     return createToolResult(request.name, response, !response.ok);
   }
 
@@ -1828,7 +1899,13 @@ export class CadMcpServer {
       });
     } catch (error) {
       if (error instanceof CadMcpExecutionPortCall) throw error;
-      return createInvalidArgumentsResult(request.name, getErrorMessage(error));
+      return createInvalidArgumentsResult(
+        request.name,
+        getErrorMessage(error),
+        error instanceof CadAgentRequestValidationError
+          ? error.diagnostics
+          : undefined
+      );
     }
   }
 
@@ -1860,7 +1937,8 @@ export class CadMcpServer {
     if (!isBatchToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.batch expects arguments shaped as { batch: CadBatch }."
+        "cad.batch expects arguments shaped as { batch: CadBatch }.",
+        diagnoseBatchToolArguments(request.arguments)
       );
     }
 
@@ -1887,10 +1965,20 @@ export class CadMcpServer {
         })
       );
 
-      return createToolResult(request.name, response, !response.ok);
+      return createToolResult(
+        request.name,
+        projectBatchResponse(request, response),
+        !response.ok
+      );
     } catch (error) {
       if (error instanceof CadMcpExecutionPortCall) throw error;
-      return createInvalidArgumentsResult(request.name, getErrorMessage(error));
+      return createInvalidArgumentsResult(
+        request.name,
+        getErrorMessage(error),
+        error instanceof CadAgentRequestValidationError
+          ? error.diagnostics
+          : undefined
+      );
     }
   }
 
@@ -2889,7 +2977,7 @@ const V19_BATCH_OP_SCHEMA = {
     {
       type: "object",
       description:
-        "Another supported typed CadOp outside the common modeling and schema-exact sketch operations described above. Execution always validates against CADOps; this fallback does not imply arbitrary operations are supported.",
+        "Another supported typed CadOp. Call cad.operation_schema with its operation name for the complete schema before authoring it. Omit the operation name to discover all supported names. Execution always validates against CADOps; arbitrary operations are not supported.",
       required: ["op"],
       properties: {
         op: {
@@ -2920,6 +3008,16 @@ const V19_BATCH_OP_SCHEMA = {
 } as const;
 
 const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
+  {
+    name: "cad.operation_schema",
+    description:
+      "Discover every supported CADOps operation without reading implementation source. Omit arguments for the complete operation-name catalog; provide operation for its full nested structural schema. Query this before authoring an unfamiliar operation, then submit through cad.batch. Geometry and document-dependent constraints are validated on execution.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { operation: { type: "string", minLength: 1 } }
+    }
+  },
   {
     name: "cad.parameter_list",
     description:
@@ -3027,11 +3125,36 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_structure",
     description:
-      "Inspect part definitions, features/bodies, source mappings, and assemblies with instance IDs, definitions, resolved transforms and mates. Use this for assembly pose and constraint inspection; a full native project handoff is unnecessary for these fields.",
+      "Inspect part definitions, features/bodies, source mappings, and assemblies with resolved transforms and mates. For motion inspection use projection:'poses' with optional assemblyIds/instanceIds filters: returns instancePoses only, totalInstanceCount and nextOffset, without building definition/sketch/feature data. Page defaults to 100 instances, maximum 1000; offset indexes the stable matching instance order. Full projection remains the backward-compatible default. Definition arrays are empty in pose projections; counts describe the whole document.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      properties: {}
+      properties: {
+        projection: { enum: ["full", "poses"] },
+        assemblyIds: {
+          type: "array",
+          maxItems: 1000,
+          uniqueItems: true,
+          items: { type: "string", minLength: 1 }
+        },
+        instanceIds: {
+          type: "array",
+          maxItems: 1000,
+          uniqueItems: true,
+          items: { type: "string", minLength: 1 }
+        },
+        offset: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1, maximum: 1000, default: 100 }
+      },
+      if: {
+        anyOf: ["assemblyIds", "instanceIds", "offset", "limit"].map((key) => ({
+          required: [key]
+        }))
+      },
+      then: {
+        required: ["projection"],
+        properties: { projection: { const: "poses" } }
+      }
     }
   },
   {
@@ -3506,7 +3629,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.body_mass_properties",
     description:
-      "Returns exact volume, surface area, centroid, and bounds for one final body through the existing body.massProperties CADOps query. The headless runtime evaluates current exact geometry automatically. Inspect status/availability before using measurements; unavailable evidence is never a mesh approximation.",
+      "Returns exact volume, surface area, centerOfMass, and optional momentsOfInertia/principalMoments for one final body through the existing body.massProperties CADOps query. The headless runtime evaluates current exact geometry automatically. Inspect status/availability before using measurements; unavailable evidence is never a mesh approximation.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -4130,12 +4253,27 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.batch",
     description:
-      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, explodeRectangle, or non-associative offset, call cad.sketch_curve_edit_readiness first and submit its preparedOperation unchanged. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact. sketch.addSlot and sketch.addRoundedRectangle accept their exact ordered caller-supplied entityIds and constraintIds through this same batch authority. V19 dimension create/update uses normalized V22 targets with exactly one literal or parameter value source; lineAngle targets are literal-only. Constraint create/update uses the exact Decision 14 target matrix, structural update cannot change kind, and legacy angle supports update/rename/delete but not new create.",
+      "Use responseDetail:summary for compact agent modeling results, or full (default) for complete semantic diffs. Call cad.operation_schema for the exact nested fields of any unfamiliar command. Sketch entity IDs must be unique across all sketches in the document; entity updates retain their existing ID. Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, explodeRectangle, or non-associative offset, call cad.sketch_curve_edit_readiness first and submit its preparedOperation unchanged. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact. sketch.addSlot and sketch.addRoundedRectangle accept their exact ordered caller-supplied entityIds and constraintIds through this same batch authority. V19 dimension create/update uses normalized V22 targets with exactly one literal or parameter value source; lineAngle targets are literal-only. Constraint create/update uses the exact Decision 14 target matrix, structural update cannot change kind, and legacy angle supports update/rename/delete but not new create.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["batch"],
+      allOf: [
+        {
+          if: {
+            required: ["responseDetail"],
+            properties: { responseDetail: { const: "summary" } }
+          },
+          then: { not: { required: ["projectHandoff"] } }
+        }
+      ],
       properties: {
+        responseDetail: {
+          enum: ["summary", "full"],
+          default: "full",
+          description:
+            "Use summary for agent modeling: returns bounded ID samples with totals/truncation, diff record counts, complete warnings/audit and a bounded operation review. Omits semanticDiff geometry. Errors stay full. Full is backward-compatible and required with projectHandoff."
+        },
         batch: {
           type: "object",
           additionalProperties: false,
@@ -4221,6 +4359,24 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   }
 ];
 
+function projectBatchResponse(
+  request: CadMcpToolCallRequest,
+  response: CadMcpStructuredContent
+): CadMcpStructuredContent {
+  if (
+    request.name === "cad.batch" &&
+    isRecord(request.arguments) &&
+    request.arguments.responseDetail === "summary" &&
+    "ok" in response &&
+    response.ok &&
+    "semanticDiff" in response &&
+    "review" in response
+  ) {
+    return createCadMcpBatchSummary(response);
+  }
+  return response;
+}
+
 function createToolResult(
   toolName: string,
   structuredContent: CadMcpStructuredContent,
@@ -4241,19 +4397,92 @@ function createToolResult(
 
 function createInvalidArgumentsResult(
   toolName: string,
-  message: string
+  message: string,
+  diagnostics?: readonly CadRequestDiagnostic[]
 ): CadMcpToolCallResult {
   return createToolResult(toolName, {
     ok: false,
     error: {
       code: "INVALID_ARGUMENTS",
-      message
+      message,
+      ...(diagnostics ? { diagnostics } : {})
     }
   });
 }
 
+function diagnoseBatchToolArguments(
+  value: unknown
+): readonly CadRequestDiagnostic[] {
+  if (!isRecord(value))
+    return [
+      {
+        path: "$",
+        code: "INVALID_TYPE",
+        message: "Expected an object containing batch."
+      }
+    ];
+  const diagnostics = diagnoseCadBatch(value.batch);
+  for (const key of Object.keys(value)) {
+    if (
+      ![
+        "batch",
+        "actor",
+        "allowCommit",
+        "projectHandoff",
+        "responseDetail"
+      ].includes(key)
+    )
+      diagnostics.push({
+        path: `$.${key}`,
+        code: "UNKNOWN_FIELD",
+        message: "Unknown cad.batch argument."
+      });
+  }
+  if (value.allowCommit !== undefined && typeof value.allowCommit !== "boolean")
+    diagnostics.push({
+      path: "$.allowCommit",
+      code: "INVALID_TYPE",
+      message: "Expected a boolean."
+    });
+  if (value.actor !== undefined && !isCadActorMetadata(value.actor))
+    diagnostics.push({
+      path: "$.actor",
+      code: "INVALID_VALUE",
+      message:
+        "Expected { type: 'human'|'agent'|'script'|'system', id?: nonempty string, name?: nonempty string }."
+    });
+  if (
+    value.projectHandoff !== undefined &&
+    !isProjectHandoffToolArguments(value.projectHandoff)
+  )
+    diagnostics.push({
+      path: "$.projectHandoff",
+      code: "INVALID_VALUE",
+      message: "Expected { includeProjectJson?: boolean }."
+    });
+  if (
+    value.responseDetail !== undefined &&
+    value.responseDetail !== "full" &&
+    value.responseDetail !== "summary"
+  )
+    diagnostics.push({
+      path: "$.responseDetail",
+      code: "INVALID_VALUE",
+      message: "Expected 'summary' or 'full'."
+    });
+  if (value.responseDetail === "summary" && value.projectHandoff !== undefined)
+    diagnostics.push({
+      path: "$.projectHandoff",
+      code: "INVALID_VALUE",
+      message:
+        "A project handoff requires responseDetail:'full'; summary responses omit project geometry."
+    });
+  return diagnostics.slice(0, 20);
+}
+
 function isBatchToolArguments(value: unknown): value is {
   readonly batch: CadBatch;
+  readonly responseDetail?: "summary" | "full";
   readonly actor?: CadActorMetadata;
   readonly allowCommit?: boolean;
   readonly projectHandoff?: CadOpsAgentProjectHandoffRequest;
@@ -4261,9 +4490,20 @@ function isBatchToolArguments(value: unknown): value is {
   return (
     isRecord(value) &&
     Object.keys(value).every((key) =>
-      ["batch", "actor", "allowCommit", "projectHandoff"].includes(key)
+      [
+        "batch",
+        "actor",
+        "allowCommit",
+        "projectHandoff",
+        "responseDetail"
+      ].includes(key)
     ) &&
-    value.batch !== undefined &&
+    isRecord(value.batch) &&
+    (value.responseDetail === undefined ||
+      value.responseDetail === "full" ||
+      value.responseDetail === "summary") &&
+    (value.responseDetail !== "summary" ||
+      value.projectHandoff === undefined) &&
     (value.actor === undefined || isCadActorMetadata(value.actor)) &&
     (value.allowCommit === undefined ||
       typeof value.allowCommit === "boolean") &&

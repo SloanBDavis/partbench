@@ -4,7 +4,7 @@
  * (`commandExecutor.executeBatch` via App.commitOps).
  */
 
-import type { CadOp } from "@web-cad/cad-protocol";
+import type { CadOp, CadQuery, CadQueryResponse } from "@web-cad/cad-protocol";
 
 export interface UiSmokeApplyError {
   readonly code?: string;
@@ -60,7 +60,19 @@ export interface UiSmokeState {
   readonly userAgent: string;
 }
 
+export interface UiSmokeDisplayState {
+  readonly meshIds: readonly string[];
+  readonly exactResults: readonly {
+    readonly bodyId: string;
+    readonly status: string;
+  }[];
+  readonly displayStatuses: readonly string[];
+}
+
 export interface UiSmokeHost {
+  executeQuery?(query: CadQuery): CadQueryResponse;
+  /** Cheap read-only snapshot for frame-by-frame display continuity checks. */
+  getDisplayState?(): UiSmokeDisplayState;
   applyOps(ops: readonly CadOp[]): Promise<UiSmokeApplyResult>;
   reset(): Promise<void>;
   getState(): UiSmokeState;
@@ -91,7 +103,13 @@ export function installUiSmokeHook(host: UiSmokeHost): PartbenchUiSmokeApi {
     ready: true,
     applyOps: (ops) => host.applyOps(ops),
     reset: () => host.reset(),
-    getState: () => host.getState()
+    getState: () => host.getState(),
+    ...(host.executeQuery
+      ? { executeQuery: (query: CadQuery) => host.executeQuery!(query) }
+      : {}),
+    ...(host.getDisplayState
+      ? { getDisplayState: () => host.getDisplayState!() }
+      : {})
   };
   window.__PARTBENCH_UI_SMOKE__ = api;
   return api;

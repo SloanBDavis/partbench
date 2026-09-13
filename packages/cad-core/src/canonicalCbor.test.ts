@@ -18,6 +18,23 @@ describe("canonical CBOR", () => {
     });
   });
 
+  it("preserves canonical scalar bytes and UTF-8 across chunk boundaries", () => {
+    expect([
+      ...encodeCanonicalCbor([null, true, false, -1, 23, 24, 256, 1.5])
+    ]).toEqual([
+      0x88, 0xf6, 0xf5, 0xf4, 0x20, 0x17, 0x18, 0x18, 0x19, 0x01, 0x00, 0xfb,
+      0x3f, 0xf8, 0, 0, 0, 0, 0, 0
+    ]);
+    const value = {
+      first: "a".repeat(65529) + "⚙",
+      second: "b".repeat(8 * 1024 * 1024),
+      last: [1.5, 0x100000000]
+    };
+    const bytes = encodeCanonicalCbor(value);
+    expect(bytes.length).toBeGreaterThan(value.second.length);
+    expect(decodeCanonicalCbor(bytes)).toEqual(value);
+  });
+
   it.each([
     new Uint8Array(),
     new Uint8Array([0x18]),

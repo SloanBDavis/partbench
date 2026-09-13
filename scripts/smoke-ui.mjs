@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import { clearTimeout } from "node:timers";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   findBrowserExecutable,
@@ -195,8 +196,8 @@ async function startWorkbench(port) {
   };
 }
 async function waitForHook(view) {
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + 60_000;
+  while (performance.now() < deadline) {
     const ready = await evaluate(
       view,
       "Boolean(window.__PARTBENCH_UI_SMOKE__ && window.__PARTBENCH_UI_SMOKE__.ready)"
@@ -220,8 +221,8 @@ async function getState(view) {
 
 async function resetWorkbench(view) {
   await evaluate(view, "window.__PARTBENCH_UI_SMOKE__.reset()");
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + 30_000;
+  while (performance.now() < deadline) {
     const state = await getState(view);
     if (
       !state.commandPending &&
@@ -235,8 +236,30 @@ async function resetWorkbench(view) {
   throw new Error("Timed out resetting the live workbench");
 }
 
-async function evaluate(view, expression) {
-  return view.evaluate(expression);
+async function evaluate(view, expression, timeoutMs = readyTimeoutMs) {
+  return withDeadline(
+    view.evaluate(expression),
+    timeoutMs,
+    "browser evaluation"
+  );
+}
+
+async function withDeadline(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error(`Timed out during ${label} after ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function formatApplyError(error) {
@@ -361,18 +384,44 @@ function isTerminalFailure(state) {
 async function waitForReady(view, options = {}) {
   const timeoutMs = options.timeoutMs ?? readyTimeoutMs;
   const allowEmpty = options.allowEmpty ?? false;
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = performance.now();
+  const deadline = startedAt + timeoutMs;
   let last;
   let lastSig;
-  while (Date.now() < deadline) {
+  let lastTimingPrint = performance.now();
+  while (performance.now() < deadline) {
     last = await getState(view);
     const sig =
       (last && last.rebuildState) + "|" + ((last && last.diagnostic) || "");
     if (sig !== lastSig) {
       lastSig = sig;
       console.log("wait", sig);
+      const unavailable = (last?.exactResults ?? [])
+        .filter(
+          (result) =>
+            result.status === "unsupported" || result.status === "failed"
+        )
+        .map((result) => ({
+          bodyId: result.bodyId,
+          status: result.status,
+          diagnostics: result.diagnostics
+        }));
+      if (unavailable.length)
+        console.log("exact diagnostics", JSON.stringify(unavailable));
     }
     if (isExactDisplayReady(last, allowEmpty)) return last;
+    if (
+      process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1" &&
+      performance.now() - lastTimingPrint >= 15_000
+    ) {
+      lastTimingPrint = performance.now();
+      console.log(
+        "pending geometry timings",
+        JSON.stringify(
+          await evaluate(view, "window.__partbenchSmokeTimings?.splice(0)")
+        )
+      );
+    }
     if (isTerminalFailure(last)) {
       throw new Error(
         "Workbench rebuild failed: " +
@@ -384,7 +433,9 @@ async function waitForReady(view, options = {}) {
     await delay(250);
   }
   throw new Error(
-    "Timed out waiting for exact/display ready. rebuild=" +
+    "Timed out waiting for exact/display ready after " +
+      Math.round(performance.now() - startedAt) +
+      "ms. rebuild=" +
       (last && last.rebuildState) +
       " diagnostic=" +
       (last && last.diagnostic)
@@ -402,17 +453,14 @@ async function assertNoErrorToast(view, label) {
 }
 
 async function assertScenarioQueries(view, name, step) {
-  const state = await getState(view);
   for (const queryCase of step.queries ?? []) {
-    if (queryCase.query?.query !== "project.structure" || !queryCase.expect) {
-      continue;
-    }
-    const actual = state.structureQuery ?? {
-      ok: true,
-      query: "project.structure",
-      features: state.features,
-      bodies: state.bodies
-    };
+    if (!queryCase.expect) continue;
+    const actual = await evaluate(
+      view,
+      "window.__PARTBENCH_UI_SMOKE__.executeQuery(" +
+        JSON.stringify(queryCase.query) +
+        ")"
+    );
     if (!matches(actual, queryCase.expect)) {
       throw new Error(
         name +
@@ -427,8 +475,8 @@ async function assertScenarioQueries(view, name, step) {
   }
 }
 async function waitForSelector(view, selector, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
     const found = await evaluate(
       view,
       "Boolean(document.querySelector(" + JSON.stringify(selector) + "))"
@@ -484,8 +532,24 @@ async function clickPickCollector(view) {
 
 async function captureFailure(view, screenshotPath, id, message) {
   let diagnostic = message;
+  if (process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1") {
+    try {
+      console.log(
+        "failure geometry timings",
+        JSON.stringify(
+          await evaluate(view, "window.__partbenchSmokeTimings", 5_000)
+        )
+      );
+    } catch {
+      /* The renderer may be unavailable. */
+    }
+  }
   try {
-    const state = await getState(view);
+    const state = await evaluate(
+      view,
+      "window.__PARTBENCH_UI_SMOKE__.getState()",
+      5_000
+    );
     diagnostic = [
       "scenario=" + id,
       "rebuild=" + state.rebuildState,
@@ -504,7 +568,11 @@ async function captureFailure(view, screenshotPath, id, message) {
       ")";
   }
   try {
-    const png = await view.screenshot({ encoding: "buffer" });
+    const png = await withDeadline(
+      view.screenshot({ encoding: "buffer" }),
+      5_000,
+      "failure screenshot capture"
+    );
     writeFileSync(screenshotPath, png);
   } catch (error) {
     diagnostic +=
@@ -515,8 +583,44 @@ async function captureFailure(view, screenshotPath, id, message) {
   return diagnostic;
 }
 async function runCadopsScenario(view, name, scenario) {
+  const traceTimings = process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1";
+  if (traceTimings) {
+    await evaluate(
+      view,
+      `(() => {
+      const startedAt = performance.now();
+      window.__partbenchSmokeTimings = [];
+      addEventListener('partbench:geometry-diagnostic', event => {
+        const d = event.detail;
+        const events = window.__partbenchSmokeTimings;
+        if (events.length >= 512) return;
+        events.push({ ms: Math.round(d.timestamp - startedAt), phase: d.phase,
+          ...(d.job ? { job: d.job.phase, operation: d.job.operation,
+            sourceId: d.job.sourceId, executionMs: d.job.executionMs,
+            queueMs: d.job.queueMs, outcome: d.job.outcome } : {}),
+          ...(d.readyCount !== undefined ? { ready: d.readyCount, pending: d.pendingCount } : {}) });
+      });
+    })()`
+    );
+  }
+  const printTimings = async () => {
+    if (traceTimings)
+      console.log(
+        "geometry timings",
+        JSON.stringify(
+          await evaluate(view, "window.__partbenchSmokeTimings.splice(0)")
+        )
+      );
+  };
   if (Array.isArray(scenario.seed) && scenario.seed.length > 0) {
+    const seedStartedAt = performance.now();
     const seedResult = await applyOps(view, scenario.seed);
+    console.log(
+      name,
+      "seed apply ms",
+      Math.round(performance.now() - seedStartedAt)
+    );
+    await printTimings();
     console.log(name, "seed", JSON.stringify(seedResult));
     if (!seedResult.ok) {
       throw new Error(
@@ -528,6 +632,12 @@ async function runCadopsScenario(view, name, scenario) {
       timeoutMs: readyTimeoutMs,
       allowEmpty: seedBodies.length === 0
     });
+    console.log(
+      name,
+      "seed ready ms",
+      Math.round(performance.now() - seedStartedAt)
+    );
+    await printTimings();
   }
 
   for (const step of scenario.steps ?? []) {
@@ -538,7 +648,14 @@ async function runCadopsScenario(view, name, scenario) {
     ) {
       continue;
     }
+    const stepStartedAt = performance.now();
     const result = await applyOps(view, step.ops ?? []);
+    console.log(
+      name,
+      step.id,
+      "apply ms",
+      Math.round(performance.now() - stepStartedAt)
+    );
     if (step.expect && step.expect.error) {
       if (result.ok) {
         throw new Error(name + " " + step.id + " expected a structured error.");
@@ -591,6 +708,13 @@ async function runCadopsScenario(view, name, scenario) {
       allowEmpty:
         createdBodies.length === 0 && (after.bodies ?? []).length === 0
     });
+    console.log(
+      name,
+      step.id,
+      "ready ms",
+      Math.round(performance.now() - stepStartedAt)
+    );
+    await printTimings();
     await assertNoErrorToast(view, name + " " + step.id);
     if (step.queries) {
       await assertScenarioQueries(view, name, step);
@@ -641,9 +765,9 @@ async function typeField(view, selector, text) {
 }
 
 async function waitForControlState(view, selector, disabled, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   let last;
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     last = await evaluate(
       view,
       "(() => { const el = document.querySelector(" +
@@ -737,9 +861,9 @@ async function selectCollectorOption(view, spec) {
     throw new Error("select step needs option");
   }
   await view.scrollTo(selector, { block: "nearest", timeout: 5_000 });
-  const deadline = Date.now() + 15_000;
+  const deadline = performance.now() + 15_000;
   let last;
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     last = await evaluate(
       view,
       "(() => { const el = document.querySelector(" +
@@ -786,7 +910,7 @@ async function applyUseSeedSetup(view, name, scenario) {
 // Poll the observable result, not a transient Applying state that may finish
 // between samples. Exact array lengths catch duplicate mates and failed undo.
 async function expectStructure(view, name, expected) {
-  const deadline = Date.now() + 10_000;
+  const deadline = performance.now() + 10_000;
   let state;
   do {
     state = await getState(view);
@@ -799,7 +923,7 @@ async function expectStructure(view, name, expected) {
     )
       return;
     await delay(50);
-  } while (Date.now() < deadline);
+  } while (performance.now() < deadline);
   throw new Error(
     name +
       " structure mismatch. Expected " +
@@ -913,7 +1037,7 @@ async function runUseSteps(view, name, steps, label) {
     }
     if (step.expectText) {
       const { selector, text } = step.expectText;
-      const deadline = Date.now() + 10_000;
+      const deadline = performance.now() + 10_000;
       let actual;
       do {
         actual = await evaluate(
@@ -924,7 +1048,7 @@ async function runUseSteps(view, name, steps, label) {
         );
         if (actual === text) break;
         await delay(50);
-      } while (Date.now() < deadline);
+      } while (performance.now() < deadline);
       if (actual !== text)
         throw new Error(
           name +
@@ -937,7 +1061,7 @@ async function runUseSteps(view, name, steps, label) {
     }
     if (step.expectExactVolume) {
       const { bodyId, volume } = step.expectExactVolume;
-      const deadline = Date.now() + 10_000;
+      const deadline = performance.now() + 10_000;
       let actual;
       let matched = false;
       do {
@@ -956,7 +1080,7 @@ async function runUseSteps(view, name, steps, label) {
           break;
         }
         await delay(50);
-      } while (Date.now() < deadline);
+      } while (performance.now() < deadline);
       if (!matched)
         throw new Error(
           name +
@@ -1029,7 +1153,7 @@ async function runUseSteps(view, name, steps, label) {
         timeoutMs: readyTimeoutMs,
         allowEmpty: false
       });
-      const deadline = Date.now() + 10_000;
+      const deadline = performance.now() + 10_000;
       let state;
       do {
         state = await getState(view);
@@ -1041,7 +1165,7 @@ async function runUseSteps(view, name, steps, label) {
         )
           break;
         await delay(50);
-      } while (Date.now() < deadline);
+      } while (performance.now() < deadline);
       if (
         !isExactDisplayReady(state, false) ||
         !matches(state.viewport, step.expectViewport, true)
@@ -1049,6 +1173,55 @@ async function runUseSteps(view, name, steps, label) {
         throw new Error(
           name + " viewport mismatch: " + JSON.stringify(state.viewport)
         );
+      continue;
+    }
+    if (step.beginExactStability) {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: false
+      });
+      await evaluate(
+        view,
+        `(() => {
+        const api=window.__PARTBENCH_UI_SMOKE__;
+        if(!api.getDisplayState)throw new Error('Display continuity hook unavailable');
+        const initial=api.getDisplayState();
+        const monitor={initial,samples:0,drops:[],active:true,frame:0};
+        const inspect=()=>{
+          if(!monitor.active)return;
+          const current=api.getDisplayState();monitor.samples++;
+          const ready=new Set(current.exactResults.filter(x=>x.status==='ready').map(x=>x.bodyId));
+          const missing=initial.exactResults.filter(x=>x.status==='ready'&&!ready.has(x.bodyId)).map(x=>x.bodyId);
+          if(missing.length||JSON.stringify(current.meshIds)!==JSON.stringify(initial.meshIds)||current.displayStatuses.some(s=>s!=='ready')) {
+            if(monitor.drops.length<5)monitor.drops.push({sample:monitor.samples,missing,display:current.displayStatuses,meshIds:current.meshIds});
+          }
+          monitor.frame=requestAnimationFrame(inspect);
+        };
+        window.__PARTBENCH_EXACT_MONITOR__=monitor;inspect();return true;
+      })()`
+      );
+      continue;
+    }
+    if (step.expectExactStability) {
+      const result = await evaluate(
+        view,
+        `(() => {
+        const monitor=window.__PARTBENCH_EXACT_MONITOR__;
+        if(!monitor)throw new Error('Display continuity monitor was not started');
+        monitor.active=false;cancelAnimationFrame(monitor.frame);delete window.__PARTBENCH_EXACT_MONITOR__;
+        return {samples:monitor.samples,drops:monitor.drops};
+      })()`
+      );
+      if (result.samples < 2 || result.drops.length)
+        throw new Error(
+          name + " exact display continuity failed: " + JSON.stringify(result)
+        );
+      console.log(
+        name +
+          " exact display continuity: " +
+          result.samples +
+          " frames, zero drops"
+      );
       continue;
     }
     if (step.waitReady) {

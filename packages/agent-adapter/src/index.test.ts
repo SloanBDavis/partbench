@@ -2695,11 +2695,8 @@ describe("agent-adapter", () => {
 
     expect(seed).toMatchObject({ ok: true });
     expect(directTarget).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_BODY_REFERENCES",
-        path: "$.ops[0].profile"
-      }
+      ok: true,
+      mode: "dryRun"
     });
     expect(beforeCommit).not.toMatchObject({
       features: expect.arrayContaining([
@@ -5550,7 +5547,10 @@ describe("agent-adapter", () => {
         "feature.attachSketchPlane",
         "feature.measureReference",
         "feature.selectReference",
-        "feature.shell"
+        "feature.shell",
+        "feature.offset",
+        "feature.align",
+        "feature.draft"
       ],
       candidateCount: 1,
       proof: {
@@ -5624,7 +5624,10 @@ describe("agent-adapter", () => {
         "feature.attachSketchPlane",
         "feature.measureReference",
         "feature.selectReference",
-        "feature.shell"
+        "feature.shell",
+        "feature.offset",
+        "feature.align",
+        "feature.draft"
       ],
       anchorReadiness: expect.objectContaining({
         query: "topology.anchorCommandReadiness",

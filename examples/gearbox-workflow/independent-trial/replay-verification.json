@@ -1,0 +1,91 @@
+{
+  "workspace": "/Users/sloandavis/Documents/dev/partbench/.metrics/gearbox-workflow/independent-replay/2026-09-12T08-10-20.498Z",
+  "calls": [
+    {
+      "name": "cad.batch",
+      "milliseconds": 15471.700542,
+      "responseBytes": 1079899
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 209.6022920000014,
+      "responseBytes": 1854
+    },
+    {
+      "name": "cad.project_save",
+      "milliseconds": 163.2666250000002,
+      "responseBytes": 842
+    },
+    {
+      "name": "cad.project_open",
+      "milliseconds": 414.6944160000003,
+      "responseBytes": 842
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 12840.257999999998,
+      "responseBytes": 2742204
+    },
+    {
+      "name": "cad.project_save",
+      "milliseconds": 247.4285839999975,
+      "responseBytes": 842
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 2.608541999998124,
+      "responseBytes": 4466
+    },
+    {
+      "name": "cad.project_open",
+      "milliseconds": 634.3759170000012,
+      "responseBytes": 842
+    },
+    {
+      "name": "cad.project_structure",
+      "milliseconds": 3.9753339999988384,
+      "responseBytes": 4466
+    },
+    {
+      "name": "cad.body_mass_properties",
+      "milliseconds": 12781.320083999999,
+      "responseBytes": 1854
+    },
+    {
+      "name": "cad.batch",
+      "milliseconds": 195.82795800000167,
+      "responseBytes": 12573
+    },
+    {
+      "name": "cad.parameter_get",
+      "milliseconds": 0.49187499999970896,
+      "responseBytes": 765
+    }
+  ],
+  "stages": [
+    {
+      "stage": "create original 20/40",
+      "passed": true
+    },
+    {
+      "stage": "fresh open, one-op 20/60 revision, immediate save",
+      "passed": true
+    },
+    {
+      "stage": "fresh reopen of revision, preserved shape and motion",
+      "passed": true
+    }
+  ],
+  "revisionResponseBytes": 2742204,
+  "artifacts": [
+    {
+      "name": "original.wcad",
+      "bytes": 433670
+    },
+    {
+      "name": "revised.wcad",
+      "bytes": 1421930
+    }
+  ],
+  "passed": true
+}

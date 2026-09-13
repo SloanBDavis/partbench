@@ -204,15 +204,17 @@ function compareReferenceSequences(
 function rotateToCanonicalStart(
   references: readonly OrientedSketchSegmentRef[]
 ): readonly OrientedSketchSegmentRef[] {
-  let best = [...references];
+  let bestIndex = 0;
   for (let index = 1; index < references.length; index += 1) {
-    const candidate = [
-      ...references.slice(index),
-      ...references.slice(0, index)
-    ];
-    if (compareReferenceSequences(candidate, best) < 0) best = candidate;
+    if (
+      compareReferenceSequences(
+        [references[index]!],
+        [references[bestIndex]!]
+      ) < 0
+    )
+      bestIndex = index;
   }
-  return best;
+  return [...references.slice(bestIndex), ...references.slice(0, bestIndex)];
 }
 
 function sameReferences(
@@ -472,7 +474,11 @@ function resolveLoop(
         );
         return { orientationChanged: false, cyclicStartChanged: false };
       }
-      const resolution = resolveOrientedSketchSegment(entity, "forward", policy);
+      const resolution = resolveOrientedSketchSegment(
+        entity,
+        "forward",
+        policy
+      );
       if (!resolution.ok || resolution.segment.kind !== "spline") {
         issues.push(
           issue(
@@ -680,48 +686,58 @@ function resolveLoop(
     }
   }
 
-  for (let leftIndex = 0; leftIndex < resolved.length; leftIndex += 1) {
-    for (
-      let rightIndex = leftIndex + 1;
-      rightIndex < resolved.length;
-      rightIndex += 1
-    ) {
-      budget.visit();
-      const left = resolved[leftIndex]!;
-      const right = resolved[rightIndex]!;
-      const intersection = intersectSketchSegments(left, right, policy);
-      const adjacent =
-        rightIndex === leftIndex + 1 ||
-        (leftIndex === 0 && rightIndex === resolved.length - 1);
-      const allowedJoin =
-        adjacent &&
-        !intersection.overlap &&
-        intersection.points.length > 0 &&
-        intersection.points.every((point) =>
-          resolved.length === 2
-            ? (point.leftLocation === "start" &&
-                point.rightLocation === "end") ||
-              (point.leftLocation === "end" && point.rightLocation === "start")
-            : leftIndex === 0 && rightIndex === resolved.length - 1
-              ? point.leftLocation === "start" && point.rightLocation === "end"
-              : point.leftLocation === "end" && point.rightLocation === "start"
-        );
-      if (
-        intersection.overlap ||
-        (intersection.points.length > 0 && !allowedJoin)
-      ) {
-        issues.push(
-          issue(
-            "SKETCH_REGION_LOOP_INTERSECTION",
-            `Wire loop entities ${left.entityId} and ${right.entityId} overlap or intersect away from their shared join.`,
-            {
-              ...issueDetails,
-              entityId: left.entityId,
-              otherEntityId: right.entityId
-            }
+  const segmentIndex = createBoundsTree(
+    resolved.map((segment) =>
+      segment.kind === "spline"
+        ? mergeBounds(
+            splineSamplePrimitives(segment).map((part) =>
+              primitiveBounds(part, policy)
+            )
           )
-        );
-      }
+        : primitiveBounds(segment, policy)
+    )
+  );
+  for (const [firstIndex, secondIndex] of overlappingBoundsPairs(
+    segmentIndex,
+    segmentIndex,
+    budget,
+    policy
+  )) {
+    const leftIndex = Math.min(firstIndex, secondIndex);
+    const rightIndex = Math.max(firstIndex, secondIndex);
+    const left = resolved[leftIndex]!;
+    const right = resolved[rightIndex]!;
+    const intersection = intersectSketchSegments(left, right, policy);
+    const adjacent =
+      rightIndex === leftIndex + 1 ||
+      (leftIndex === 0 && rightIndex === resolved.length - 1);
+    const allowedJoin =
+      adjacent &&
+      !intersection.overlap &&
+      intersection.points.length > 0 &&
+      intersection.points.every((point) =>
+        resolved.length === 2
+          ? (point.leftLocation === "start" && point.rightLocation === "end") ||
+            (point.leftLocation === "end" && point.rightLocation === "start")
+          : leftIndex === 0 && rightIndex === resolved.length - 1
+            ? point.leftLocation === "start" && point.rightLocation === "end"
+            : point.leftLocation === "end" && point.rightLocation === "start"
+      );
+    if (
+      intersection.overlap ||
+      (intersection.points.length > 0 && !allowedJoin)
+    ) {
+      issues.push(
+        issue(
+          "SKETCH_REGION_LOOP_INTERSECTION",
+          `Wire loop entities ${left.entityId} and ${right.entityId} overlap or intersect away from their shared join.`,
+          {
+            ...issueDetails,
+            entityId: left.entityId,
+            otherEntityId: right.entityId
+          }
+        )
+      );
     }
   }
 
@@ -1054,15 +1070,29 @@ function loopBoundaryDistance(
   policy: SketchGeometryPolicy
 ): number {
   let minimum = Number.POSITIVE_INFINITY;
-  for (const leftPrimitive of left.primitives) {
-    for (const rightPrimitive of right.primitives) {
-      budget.visit();
-      minimum = Math.min(
-        minimum,
-        primitiveDistance(leftPrimitive, rightPrimitive, policy)
-      );
-      if (minimum === 0) return 0;
-    }
+  const leftIndex = createBoundsTree(
+    left.primitives.map((part) => primitiveBounds(part, policy))
+  );
+  const rightIndex = createBoundsTree(
+    right.primitives.map((part) => primitiveBounds(part, policy))
+  );
+  // Callers need exact separation only at or below tolerance. Disjoint bounds
+  // prove greater separation without evaluating every pair of boundary curves.
+  for (const [leftPart, rightPart] of overlappingBoundsPairs(
+    leftIndex,
+    rightIndex,
+    budget,
+    policy
+  )) {
+    minimum = Math.min(
+      minimum,
+      primitiveDistance(
+        left.primitives[leftPart]!,
+        right.primitives[rightPart]!,
+        policy
+      )
+    );
+    if (minimum === 0) return 0;
   }
   return minimum;
 }
@@ -1552,6 +1582,15 @@ export function validateV22RegionSource(
       ) {
         const left = validationRegions[leftIndex]!;
         const right = validationRegions[rightIndex]!;
+        budget.visit();
+        if (
+          !boundsOverlapWithTolerance(
+            loopBounds(left.outer, policy),
+            loopBounds(right.outer, policy),
+            policy
+          )
+        )
+          continue;
         const leftLoops = [left.outer, ...left.holes];
         const rightLoops = [right.outer, ...right.holes];
         let boundariesTouch = false;
@@ -1845,6 +1884,80 @@ function boundsOverlapWithTolerance(
     left.max[1] < right.min[1] - policy.linearTolerance ||
     right.max[1] < left.min[1] - policy.linearTolerance
   );
+}
+
+type BoundsTree = {
+  readonly bounds: SketchBounds2d;
+  readonly count: number;
+} & (
+  | { readonly index: number }
+  | { readonly left: BoundsTree; readonly right: BoundsTree }
+);
+
+function mergeBounds(bounds: readonly SketchBounds2d[]): SketchBounds2d {
+  return {
+    min: [
+      Math.min(...bounds.map((value) => value.min[0])),
+      Math.min(...bounds.map((value) => value.min[1]))
+    ],
+    max: [
+      Math.max(...bounds.map((value) => value.max[0])),
+      Math.max(...bounds.map((value) => value.max[1]))
+    ]
+  };
+}
+
+function createBoundsTree(bounds: readonly SketchBounds2d[]): BoundsTree {
+  const build = (
+    entries: readonly { bounds: SketchBounds2d; index: number }[]
+  ): BoundsTree => {
+    const merged = mergeBounds(entries.map((entry) => entry.bounds));
+    if (entries.length === 1) return { ...entries[0]!, count: 1 };
+    const axis =
+      merged.max[0] - merged.min[0] >= merged.max[1] - merged.min[1] ? 0 : 1;
+    const ordered = [...entries].sort(
+      (a, b) =>
+        (a.bounds.min[axis] + a.bounds.max[axis]) / 2 -
+          (b.bounds.min[axis] + b.bounds.max[axis]) / 2 || a.index - b.index
+    );
+    const middle = Math.floor(ordered.length / 2);
+    return {
+      bounds: merged,
+      count: entries.length,
+      left: build(ordered.slice(0, middle)),
+      right: build(ordered.slice(middle))
+    };
+  };
+  return build(bounds.map((value, index) => ({ bounds: value, index })));
+}
+
+function* overlappingBoundsPairs(
+  left: BoundsTree,
+  right: BoundsTree,
+  budget: PredicateBudget,
+  policy: SketchGeometryPolicy
+): Generator<readonly [number, number]> {
+  // Charge broad-phase visits too: dense/adversarial geometry still reaches the
+  // same bounded-work guard, while separated curves avoid quadratic predicates.
+  budget.visit();
+  if (!boundsOverlapWithTolerance(left.bounds, right.bounds, policy)) return;
+  if (left === right) {
+    if ("index" in left) return;
+    yield* overlappingBoundsPairs(left.left, left.left, budget, policy);
+    yield* overlappingBoundsPairs(left.left, left.right, budget, policy);
+    yield* overlappingBoundsPairs(left.right, left.right, budget, policy);
+  } else if ("index" in left && "index" in right) {
+    yield [left.index, right.index];
+  } else if (
+    !("index" in left) &&
+    ("index" in right || left.count >= right.count)
+  ) {
+    yield* overlappingBoundsPairs(left.left, right, budget, policy);
+    yield* overlappingBoundsPairs(left.right, right, budget, policy);
+  } else if (!("index" in right)) {
+    yield* overlappingBoundsPairs(left, right.left, budget, policy);
+    yield* overlappingBoundsPairs(left, right.right, budget, policy);
+  }
 }
 
 function createHoleLoop(loop: ResolvedLoop): SketchLoopRef {

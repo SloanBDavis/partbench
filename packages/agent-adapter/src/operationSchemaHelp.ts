@@ -1,0 +1,6 @@
+/** Discovery text for the language implemented by cad-core/parameterExpressions.ts. */
+export const CAD_PARAMETER_EXPRESSION_HELP =
+  "References bind to exact, case-sensitive parameter names, not IDs. Use a bare name matching [A-Za-z_][A-Za-z0-9_]* or [Parameter name with spaces]; every referenced name must exist and be unique. Decimal numbers must start with a digit (0.5, not .5); scientific notation is unsupported. Supports +, -, *, /, unary -, parentheses, comparisons < > <= >= == != (results 1 or 0), condition ? whenTrue : whenFalse, and if(condition, whenTrue, whenFalse); zero is false. Conditional value branches are evaluated lazily. Functions: min(a,b), max(a,b), abs(x), sqrt(x), round(x), floor(x), ceil(x), sin(x), cos(x), tan(x), asin(x), acos(x), atan(x), atan2(y,x), deg(x), rad(x). Trig inputs/outputs are degrees; deg converts radians to degrees and rad converts degrees to radians. Cycles, division by zero and invalid function domains reject the transaction. Null, omission or whitespace-only expression clears it. Example: module * (input_teeth + [Output Teeth]) / 2.";
+
+export const CAD_EXPRESSION_PARAMETER_ID_HELP =
+  "ID of the parameter receiving this expression. References inside expression use parameter names instead.";

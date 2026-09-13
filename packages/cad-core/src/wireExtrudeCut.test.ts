@@ -280,8 +280,7 @@ describe("V17 composite wire extrude cut", () => {
         ]
       })
     ).toMatchObject({
-      ok: false,
-      error: { code: "UNSUPPORTED_BODY_REFERENCES" }
+      ok: true
     });
   });
 

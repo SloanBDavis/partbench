@@ -72,8 +72,8 @@ export async function createHeadlessAgentHost(options: {
           "cad.project_export_file"
         ],
         workflow: [
-          "Use cad.batch with version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise several related operations in one transaction.",
-          "Inspect cad.project_structure for body/feature IDs and cad.body_mass_properties for exact measurements. Use reference/readiness queries before topology-dependent edits.",
+          "Use cad.operation_schema to discover commands, then cad.batch with responseDetail summary, version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise related operations in one transaction.",
+          "Inspect cad.project_structure for body/feature IDs; use projection poses with filters for compact motion checks. Use cad.body_mass_properties for exact volume, area and center of mass, and reference/readiness queries before topology-dependent edits.",
           "Use mode dryRun to validate a proposed batch without committing. A rejected batch preserves the project.",
           "Save .wcad with cad.project_save, reopen with cad.project_open, and export real STEP with cad.project_export_file. All file paths stay within this workspace."
         ]

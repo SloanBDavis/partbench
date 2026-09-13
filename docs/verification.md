@@ -56,6 +56,21 @@ through headless sessions and a browser Open/edit journey.
 
 ## Passing record
 
+The [gearbox workflow record](./gearbox-workflow.md#verification-record) covers
+native parametric gears, coherent spacing/ratio changes and motion continuity.
+Run `pnpm smoke:gearbox`, then `pnpm smoke:ui -- scenarios/gearbox-parametric-revision.json`
+and `pnpm smoke:gearbox:browser`. The last command opens the native file produced
+by the closer, selects a gear, edits ratio/angle through controls, uses Undo/Redo
+and checks an empty-input break case. Frame sampling checks that motion never
+drops ready exact results or rendered mesh identities. This is one fuller journey;
+the two fast `smoke:e2e` cases remain unchanged in scope.
+
+2026-09-12: gearbox headless closer, command scenario, engine (22.8 s), native
+Use (70.1 s; 24 motion frames, zero drops), and both fast assembly journeys passed.
+The runner uses monotonic wait deadlines and bounded failure capture without
+retries. Engine scenarios execute their declared read-only query, including
+bounded pose projections, instead of substituting the full structure response.
+
 The [robot arm fixes record](./robot-arm-fixes.md#verification-record) documents
 the connected assembly closer, focused CADOps scenario, browser controls and
 native/STEP evidence. Run `pnpm smoke:robot-arm` before

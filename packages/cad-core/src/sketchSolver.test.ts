@@ -10,6 +10,7 @@ import {
   applySketchConstraintValue,
   applySketchDimensionValue,
   evaluateSketch,
+  evaluateSketchConstraint,
   getLineLength,
   type SketchSolverDocument,
   type SketchSolverSketch
@@ -61,6 +62,35 @@ function createDocument(
 }
 
 describe("sketch solver boundary", () => {
+  it("uses solver tolerance for fixed-coordinate health while detecting real drift", () => {
+    const fixed: SketchConstraintSnapshot = {
+      id: "fixed_origin",
+      name: "Origin",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      entityId: "origin",
+      target: { entityId: "origin", role: "position" },
+      coordinate: [0, 0]
+    };
+    const check = (point: readonly [number, number]) => {
+      const sketch = createSketch([
+        { id: "origin", kind: "point", point, construction: true }
+      ]);
+      return evaluateSketchConstraint(
+        createDocument(sketch, [], [fixed]),
+        fixed
+      );
+    };
+    expect(check([-1.35e-10, 5.2e-11]).issues).toEqual([]);
+    expect(check([1e-7, -1e-7]).issues).toEqual([]);
+    expect(check([2e-7, 0]).issues).toEqual([
+      expect.objectContaining({
+        code: "INCONSISTENT_CONSTRAINT",
+        sketchConstraintId: "fixed_origin"
+      })
+    ]);
+  });
+
   it("classifies under-defined, fully-defined, and over-defined sketches", () => {
     const underDefinedSketch = createSketch([
       {

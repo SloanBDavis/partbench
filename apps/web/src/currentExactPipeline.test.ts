@@ -20,6 +20,58 @@ import {
 } from "./currentExactPipeline";
 
 describe("currentExactPipeline", () => {
+  it("keeps exact display and mesh buffers during motion, while rejecting changed source or units", () => {
+    const artifact = createArtifact("moving_gear");
+    const resolution = {
+      status: "ready" as const,
+      bodyId: artifact.bodyId,
+      sourceType: "linearPatternFeature" as const,
+      sourceIdentitySignature: artifact.bodySourceIdentitySignature,
+      cacheKeySha256: artifact.sourceCacheKeySha256,
+      sourceGraphNodeCount: artifact.sourceGraphNodeCount,
+      source: {
+        id: artifact.bodyId,
+        kind: "linearPattern" as const,
+        direction: [1, 0, 0] as const,
+        spacing: 1,
+        instanceCount: 2,
+        sourceIdentitySignature: artifact.bodySourceIdentitySignature
+      },
+      diagnostics: []
+    };
+    const project = (
+      cacheKeySha256 = resolution.cacheKeySha256,
+      units: "mm" | "cm" = "mm"
+    ) =>
+      projectCurrentExactBodyArtifacts({
+        artifacts: [artifact],
+        current: {
+          resolutions: [{ ...resolution, cacheKeySha256 }],
+          documentSourceIdentity: {
+            algorithm: "partbench-source-v1",
+            sha256: "9".repeat(64)
+          },
+          units
+        },
+        display: emptyDisplaySnapshot(),
+        metadata: emptyMetadataSnapshot()
+      });
+    const first = projectCurrentExactBodyArtifacts({
+      artifacts: [artifact],
+      display: emptyDisplaySnapshot(),
+      metadata: emptyMetadataSnapshot()
+    });
+    const moved = project();
+    expect(moved.display.readyCount).toBe(1);
+    expect(moved.metadata.readyCount).toBe(1);
+    expect(moved.artifacts[0]!.documentSourceIdentity.sha256).toBe(
+      "9".repeat(64)
+    );
+    expect(moved.display.meshes[0]).toBe(first.display.meshes[0]);
+    expect(project("changed-source").artifacts).toEqual([]);
+    expect(project(resolution.cacheKeySha256, "cm").artifacts).toEqual([]);
+  });
+
   it("projects artifact display, metadata, topology references, and counts once per body", () => {
     const generatedReferences = createGeneratedReferences("artifact-root");
     const artifact = createArtifact("pattern_body", generatedReferences);
@@ -190,6 +242,7 @@ describe("currentExactPipeline", () => {
     const projected = projectCurrentExactBodyArtifacts({
       artifacts: [artifact],
       current: {
+        units: "mm",
         resolutions: [
           {
             status: "ready",

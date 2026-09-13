@@ -62,7 +62,7 @@ export function projectCadBatch(
   engine: CadEngine,
   batch: CadBatch
 ): CadBatchProjectionResult {
-  const projectedEngine = CadEngine.fromProject(exportCadProject(engine));
+  const projectedEngine = engine.forkForValidation();
   const validationBatch: CadBatch = {
     ...batch,
     mode: "dryRun",

@@ -1,0 +1,464 @@
+[
+  {
+    "op": "parameter.create",
+    "id": "input_teeth",
+    "name": "input_teeth",
+    "value": 20
+  },
+  {
+    "op": "parameter.create",
+    "id": "output_teeth",
+    "name": "output_teeth",
+    "value": 40
+  },
+  {
+    "op": "parameter.create",
+    "id": "module",
+    "name": "module",
+    "value": 1.5
+  },
+  {
+    "op": "parameter.create",
+    "id": "input_angle",
+    "name": "input_angle",
+    "value": 0
+  },
+  {
+    "op": "parameter.create",
+    "id": "output_angle",
+    "name": "output_angle",
+    "value": 4.5
+  },
+  {
+    "op": "parameter.create",
+    "id": "center_distance",
+    "name": "center_distance",
+    "value": 45
+  },
+  {
+    "op": "parameter.setExpression",
+    "id": "output_angle",
+    "expression": "180 / output_teeth - input_angle * input_teeth / output_teeth"
+  },
+  {
+    "op": "parameter.setExpression",
+    "id": "center_distance",
+    "expression": "module * (input_teeth + output_teeth) / 2"
+  },
+  {
+    "op": "feature.spurGear",
+    "id": "input_gear_feature",
+    "bodyId": "input_gear",
+    "sketchId": "input_gear_profile",
+    "name": "input spur gear",
+    "teeth": {
+      "parameterId": "input_teeth"
+    },
+    "module": {
+      "parameterId": "module"
+    },
+    "faceWidth": 10,
+    "boreDiameter": 8.1,
+    "pressureAngleDegrees": 20,
+    "backlash": 0.08
+  },
+  {
+    "op": "feature.spurGear",
+    "id": "output_gear_feature",
+    "bodyId": "output_gear",
+    "sketchId": "output_gear_profile",
+    "name": "output spur gear",
+    "teeth": {
+      "parameterId": "output_teeth"
+    },
+    "module": {
+      "parameterId": "module"
+    },
+    "faceWidth": 10,
+    "boreDiameter": 8.1,
+    "pressureAngleDegrees": 20,
+    "backlash": 0.08
+  },
+  {
+    "op": "sketch.create",
+    "id": "support_profile",
+    "name": "Support with shaft clearance bores",
+    "plane": "XY"
+  },
+  {
+    "op": "sketch.addRectangle",
+    "sketchId": "support_profile",
+    "id": "support_outline",
+    "center": [
+      30,
+      0
+    ],
+    "width": 90,
+    "height": 24
+  },
+  {
+    "op": "sketch.addCircle",
+    "sketchId": "support_profile",
+    "id": "input_support_hole",
+    "center": [
+      0,
+      0
+    ],
+    "radius": 4.1
+  },
+  {
+    "op": "sketch.addCircle",
+    "sketchId": "support_profile",
+    "id": "output_support_hole",
+    "center": [
+      45,
+      0
+    ],
+    "radius": 4.1
+  },
+  {
+    "op": "sketch.constraint.create",
+    "id": "input_support_fixed",
+    "name": "Ground input axis",
+    "sketchId": "support_profile",
+    "kind": "fixed",
+    "target": {
+      "entityId": "input_support_hole",
+      "entityKind": "circle",
+      "role": "center"
+    },
+    "coordinate": [
+      0,
+      0
+    ]
+  },
+  {
+    "op": "sketch.dimension.create",
+    "id": "support_horizontal",
+    "name": "Shaft horizontal alignment",
+    "sketchId": "support_profile",
+    "target": {
+      "kind": "pointPair",
+      "primary": {
+        "entityId": "input_support_hole",
+        "entityKind": "circle",
+        "role": "center"
+      },
+      "secondary": {
+        "entityId": "output_support_hole",
+        "entityKind": "circle",
+        "role": "center"
+      },
+      "measurement": "horizontal",
+      "direction": "positive"
+    },
+    "parameterId": "center_distance"
+  },
+  {
+    "op": "sketch.dimension.create",
+    "id": "support_vertical",
+    "name": "Shaft vertical alignment",
+    "sketchId": "support_profile",
+    "target": {
+      "kind": "pointPair",
+      "primary": {
+        "entityId": "input_support_hole",
+        "entityKind": "circle",
+        "role": "center"
+      },
+      "secondary": {
+        "entityId": "output_support_hole",
+        "entityKind": "circle",
+        "role": "center"
+      },
+      "measurement": "vertical",
+      "direction": "positive"
+    },
+    "value": 0
+  },
+  {
+    "op": "feature.extrude",
+    "id": "support_feature",
+    "bodyId": "support",
+    "name": "Support plate",
+    "profile": {
+      "kind": "regions",
+      "sketchId": "support_profile",
+      "regions": [
+        {
+          "outer": {
+            "kind": "entity",
+            "entityId": "support_outline"
+          },
+          "holes": [
+            {
+              "kind": "entity",
+              "entityId": "input_support_hole"
+            },
+            {
+              "kind": "entity",
+              "entityId": "output_support_hole"
+            }
+          ]
+        }
+      ]
+    },
+    "depth": 4,
+    "side": "negative"
+  },
+  {
+    "op": "sketch.create",
+    "id": "shaft_profile",
+    "name": "Eight millimeter shaft",
+    "plane": "XY"
+  },
+  {
+    "op": "sketch.addCircle",
+    "id": "shaft_circle",
+    "sketchId": "shaft_profile",
+    "center": [
+      0,
+      0
+    ],
+    "radius": 4
+  },
+  {
+    "op": "feature.extrude",
+    "id": "shaft_feature",
+    "bodyId": "shaft",
+    "sketchId": "shaft_profile",
+    "entityId": "shaft_circle",
+    "depth": 20
+  },
+  {
+    "op": "assembly.create",
+    "id": "gearbox",
+    "name": "Parametric external spur reducer"
+  },
+  {
+    "op": "assembly.instance.insert",
+    "assemblyId": "gearbox",
+    "id": "support_instance",
+    "definition": {
+      "kind": "body",
+      "bodyId": "support"
+    }
+  },
+  {
+    "op": "assembly.instance.insert",
+    "assemblyId": "gearbox",
+    "id": "input_shaft",
+    "definition": {
+      "kind": "body",
+      "bodyId": "shaft"
+    }
+  },
+  {
+    "op": "assembly.instance.insert",
+    "assemblyId": "gearbox",
+    "id": "output_shaft",
+    "definition": {
+      "kind": "body",
+      "bodyId": "shaft"
+    }
+  },
+  {
+    "op": "assembly.instance.insert",
+    "assemblyId": "gearbox",
+    "id": "input_gear_instance",
+    "definition": {
+      "kind": "body",
+      "bodyId": "input_gear"
+    }
+  },
+  {
+    "op": "assembly.instance.insert",
+    "assemblyId": "gearbox",
+    "id": "output_gear_instance",
+    "definition": {
+      "kind": "body",
+      "bodyId": "output_gear"
+    }
+  },
+  {
+    "op": "assembly.mate.create",
+    "assemblyId": "gearbox",
+    "id": "support_ground",
+    "kind": "fixed",
+    "instanceId": "support_instance"
+  },
+  {
+    "op": "assembly.mate.create",
+    "assemblyId": "gearbox",
+    "id": "input_shaft_joint",
+    "kind": "revolute",
+    "primary": {
+      "instanceId": "support_instance",
+      "frame": {
+        "kind": "sketch",
+        "sketchId": "support_profile",
+        "entityId": "input_support_hole"
+      }
+    },
+    "secondary": {
+      "instanceId": "input_shaft",
+      "frame": {
+        "kind": "local",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "xDirection": [
+          1,
+          0,
+          0
+        ],
+        "zDirection": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    "angleParameterId": "input_angle",
+    "offset": -4
+  },
+  {
+    "op": "assembly.mate.create",
+    "assemblyId": "gearbox",
+    "id": "input_gear_joint",
+    "kind": "revolute",
+    "primary": {
+      "instanceId": "input_shaft",
+      "frame": {
+        "kind": "local",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "xDirection": [
+          1,
+          0,
+          0
+        ],
+        "zDirection": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    "secondary": {
+      "instanceId": "input_gear_instance",
+      "frame": {
+        "kind": "local",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "xDirection": [
+          1,
+          0,
+          0
+        ],
+        "zDirection": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    "angleDegrees": 0,
+    "offset": 6
+  },
+  {
+    "op": "assembly.mate.create",
+    "assemblyId": "gearbox",
+    "id": "output_shaft_joint",
+    "kind": "revolute",
+    "primary": {
+      "instanceId": "support_instance",
+      "frame": {
+        "kind": "sketch",
+        "sketchId": "support_profile",
+        "entityId": "output_support_hole"
+      }
+    },
+    "secondary": {
+      "instanceId": "output_shaft",
+      "frame": {
+        "kind": "local",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "xDirection": [
+          1,
+          0,
+          0
+        ],
+        "zDirection": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    "angleParameterId": "output_angle",
+    "offset": -4
+  },
+  {
+    "op": "assembly.mate.create",
+    "assemblyId": "gearbox",
+    "id": "output_gear_joint",
+    "kind": "revolute",
+    "primary": {
+      "instanceId": "output_shaft",
+      "frame": {
+        "kind": "local",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "xDirection": [
+          1,
+          0,
+          0
+        ],
+        "zDirection": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    "secondary": {
+      "instanceId": "output_gear_instance",
+      "frame": {
+        "kind": "local",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "xDirection": [
+          1,
+          0,
+          0
+        ],
+        "zDirection": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    "angleDegrees": 0,
+    "offset": 6
+  }
+]

@@ -1124,36 +1124,7 @@ function isSupportedBooleanExtrudeSource(
 function getUnsupportedBooleanSourceMessage(
   source: DerivedBooleanExtrudeGeometrySource
 ): string | undefined {
-  const runtimeSourceError = getBooleanExtrudeRuntimeSourceError(source);
-  if (runtimeSourceError) return runtimeSourceError;
-
-  const targetProfileKind = getBooleanSourceProfileKind(source.target);
-
-  if (
-    source.operation === "add" &&
-    targetProfileKind !== "rectangle" &&
-    targetProfileKind !== "circle"
-  ) {
-    return "Boolean add display currently supports rectangle or circle target extrudes only.";
-  }
-
-  if (
-    source.operation === "cut" &&
-    targetProfileKind !== "rectangle" &&
-    targetProfileKind !== "circle"
-  ) {
-    return "Boolean cut display currently supports rectangle or circle target extrudes only.";
-  }
-
-  if (
-    source.operation === "intersect" &&
-    targetProfileKind !== "rectangle" &&
-    targetProfileKind !== "circle"
-  ) {
-    return "Boolean intersect display currently supports rectangle or circle target extrudes only.";
-  }
-
-  return undefined;
+  return getBooleanExtrudeRuntimeSourceError(source);
 }
 
 function getBooleanSourceProfileKind(

@@ -18,10 +18,10 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 
 export function encodeCanonicalCbor(value: unknown): Uint8Array {
-  const bytes: number[] = [];
+  const bytes = new CborByteWriter();
   encodeValue(toJsonCompatibleValue(value), bytes);
 
-  return new Uint8Array(bytes);
+  return bytes.finish();
 }
 
 export function decodeCanonicalCbor(bytes: Uint8Array): unknown {
@@ -45,7 +45,7 @@ function toJsonCompatibleValue(value: unknown): JsonValue {
   return JSON.parse(json) as JsonValue;
 }
 
-function encodeValue(value: JsonValue, bytes: number[]): void {
+function encodeValue(value: JsonValue, bytes: CborByteWriter): void {
   if (value === null) {
     bytes.push(0xf6);
     return;
@@ -88,7 +88,7 @@ function encodeValue(value: JsonValue, bytes: number[]): void {
   });
 }
 
-function encodeNumber(value: number, bytes: number[]): void {
+function encodeNumber(value: number, bytes: CborByteWriter): void {
   if (!Number.isFinite(value)) {
     throw new TypeError("WCAD source payload numbers must be finite.");
   }
@@ -112,7 +112,7 @@ function encodeNumber(value: number, bytes: number[]): void {
 function encodeTypeAndLength(
   majorType: number,
   length: number,
-  bytes: number[]
+  bytes: CborByteWriter
 ): void {
   if (!Number.isSafeInteger(length) || length < 0) {
     throw new TypeError("CBOR length must be a non-negative safe integer.");
@@ -143,11 +143,11 @@ function encodeTypeAndLength(
   pushUint64(bytes, length);
 }
 
-function pushBytes(target: number[], source: Uint8Array): void {
-  source.forEach((byte) => target.push(byte));
+function pushBytes(target: CborByteWriter, source: Uint8Array): void {
+  target.append(source);
 }
 
-function pushUint32(bytes: number[], value: number): void {
+function pushUint32(bytes: CborByteWriter, value: number): void {
   bytes.push(
     (value >>> 24) & 0xff,
     (value >>> 16) & 0xff,
@@ -156,11 +156,60 @@ function pushUint32(bytes: number[], value: number): void {
   );
 }
 
-function pushUint64(bytes: number[], value: number): void {
+function pushUint64(bytes: CborByteWriter, value: number): void {
   const high = Math.floor(value / 0x100000000);
   const low = value >>> 0;
   pushUint32(bytes, high);
   pushUint32(bytes, low);
+}
+
+/** Byte storage must scale with encoded bytes, not V8's much larger number[]
+ * backing store. Header writes and bulk UTF-8 writes share bounded chunks. */
+class CborByteWriter {
+  readonly #chunks: Uint8Array[] = [];
+  #current = new Uint8Array(4096);
+  #used = 0;
+  #length = 0;
+
+  push(...values: readonly number[]): void {
+    for (const value of values) {
+      this.#makeSpace();
+      this.#current[this.#used++] = value;
+      this.#length++;
+    }
+  }
+
+  append(bytes: Uint8Array): void {
+    for (let offset = 0; offset < bytes.length; ) {
+      this.#makeSpace();
+      const count = Math.min(
+        bytes.length - offset,
+        this.#current.length - this.#used
+      );
+      this.#current.set(bytes.subarray(offset, offset + count), this.#used);
+      this.#used += count;
+      this.#length += count;
+      offset += count;
+    }
+  }
+
+  finish(): Uint8Array {
+    const result = new Uint8Array(this.#length);
+    let offset = 0;
+    for (const chunk of this.#chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    result.set(this.#current.subarray(0, this.#used), offset);
+    return result;
+  }
+
+  #makeSpace(): void {
+    if (this.#used < this.#current.length) return;
+    this.#chunks.push(this.#current);
+    this.#current = new Uint8Array(64 * 1024);
+    this.#used = 0;
+  }
 }
 
 class CborReader {

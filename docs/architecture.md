@@ -14,6 +14,13 @@ connected joints, source-linked frames and parameter-driven poses. cad-core
 solves these constraints transactionally; browser instance meshes remain
 derived views of exact part definitions.
 
+The [gearbox workflow](./gearbox-workflow.md) adds native spur-gear recipes that
+own ordinary sketch regions and extrusions. cad-core resolves their parameter
+bindings and regenerates the source transactionally; OCCT remains the solid
+authority. Pose edits reuse exact artifacts only when body/dependency identity
+and document units still match. Public operation discovery and compact response
+projections describe the same CADOps authority.
+
 ## Authorities
 
 CADOps is the center. cad-core is the document authority. OCCT/WASM is the

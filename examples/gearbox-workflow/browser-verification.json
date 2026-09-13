@@ -1,0 +1,58 @@
+{
+  "verifiedAt": "2026-09-13T00:01:25.469Z",
+  "engine": {
+    "passed": true,
+    "seconds": 22.8,
+    "seedApplyMs": 1156,
+    "seedReadyMs": 14079,
+    "revisionApplyMs": 1780,
+    "revisionReadyMs": 7770,
+    "motionApplyMs": 785,
+    "motionReadyMs": 864
+  },
+  "nativeUse": {
+    "passed": true,
+    "seconds": 70.1,
+    "complexGearSelection": true,
+    "motionFrames": 24,
+    "droppedFrames": 0,
+    "emptyInputBlocked": true,
+    "screenshotsVisuallyInspected": true
+  },
+  "fastAssemblyE2E": {
+    "passed": true,
+    "journeys": 2
+  },
+  "artifacts": [
+    {
+      "path": ".metrics/gearbox-workflow/browser-engine-final.log",
+      "bytes": 26893,
+      "sha256": "e24973f59fc02c4647e951144f911ba4faa47dcba6b5b954ea7efe91fcf2ae13"
+    },
+    {
+      "path": ".metrics/gearbox-workflow/browser-use-verified.log",
+      "bytes": 24518,
+      "sha256": "777a02a351c3d87e8446aab49a12f54e9c852c152dbd57384e34e9f85f903b6d"
+    },
+    {
+      "path": ".metrics/gearbox-workflow/e2e-final.log",
+      "bytes": 12523,
+      "sha256": "04e2b1aaee439a009ae2f8e51040495707e22eb1d11d9f264398f79092697dfd"
+    },
+    {
+      "path": ".metrics/ui-smoke/gearbox-workflow-initial.png",
+      "bytes": 180252,
+      "sha256": "803d7ff71cf2ec25795465749f5e8ac6848027ff9c45a0c5d395b46e9c20a8e9"
+    },
+    {
+      "path": ".metrics/ui-smoke/gearbox-workflow-motion.png",
+      "bytes": 190409,
+      "sha256": "59bf4af3fef5a05fdb229d586939998bb9ebdd60412dda501d1b9f040da10d52"
+    },
+    {
+      "path": ".metrics/ui-smoke/gearbox-workflow-empty-angle.png",
+      "bytes": 98262,
+      "sha256": "b24b6a3ea40907aab4a539a994446fde54107c9878c59ed858f4fac534d9e117"
+    }
+  ]
+}

@@ -2022,19 +2022,16 @@ function validateDimension(
       stateAccess,
       diagnostics
     );
-    if (
-      !Number.isFinite(dimension.value) ||
-      Math.abs(dimension.value) <= settings.tolerance
-    ) {
+    if (!Number.isFinite(dimension.value)) {
       diagnostics.push({
         code: "SKETCH_DIMENSION_DISTANCE_INVALID",
         severity: "blocker",
         message:
-          "Directed point-pair distance must have a finite signed component outside the linear tolerance.",
+          "Directed point-pair distance must have a finite signed component.",
         sourceType: "dimension",
         sourceId: dimension.id,
         dimensionKind: dimension.kind,
-        expected: `abs(value) > ${settings.tolerance}`,
+        expected: "finite signed component (zero is allowed)",
         received: describeReceived(dimension.value)
       });
     }
@@ -2254,6 +2251,9 @@ function validateDimensionStateBranch(
   state: readonly number[]
 ): SketchSolveDiagnostic | undefined {
   if (dimension.kind === "pointComponent") {
+    // The component residual is linear at zero. A zero target may approach
+    // alignment from either side, and a nonzero target may start aligned.
+    if (dimension.value === 0) return undefined;
     const primary = readPointTarget(
       state,
       stateAccess,
@@ -2267,7 +2267,7 @@ function validateDimensionStateBranch(
     const axisIndex = dimension.axis === "horizontal" ? 0 : 1;
     const component = secondary[axisIndex] - primary[axisIndex];
     if (!Number.isFinite(component)) return undefined;
-    if (Math.sign(dimension.value) * component <= settings.tolerance) {
+    if (Math.sign(dimension.value) * component < -settings.tolerance) {
       return {
         code: "SKETCH_DIMENSION_DISTANCE_INVALID",
         severity: "blocker",
@@ -2278,8 +2278,8 @@ function validateDimensionStateBranch(
         dimensionKind: dimension.kind,
         expected:
           dimension.value < 0
-            ? `ordered component < -${settings.tolerance}`
-            : `ordered component > ${settings.tolerance}`,
+            ? `ordered component <= ${settings.tolerance}`
+            : `ordered component >= -${settings.tolerance}`,
         received: describeReceived(component)
       };
     }

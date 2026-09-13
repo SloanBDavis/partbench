@@ -1,6 +1,7 @@
 import "@web-cad/cad-core/region-source-validation-policy";
-import { CadEngine, type CadWorkerRequest } from "@web-cad/cad-core/full";
+import type { CadEngine, CadWorkerRequest } from "@web-cad/cad-core/full";
 import type { CadQueryWorkerRequest } from "./browserCadQueryWorker";
+import { CadCommandEngineCache } from "./cadCommandEngineCache";
 
 type CadCommandWorkerTransportRequest =
   | CadWorkerRequest
@@ -8,6 +9,7 @@ type CadCommandWorkerTransportRequest =
 
 let cachedQueryEngine: CadEngine | undefined;
 let cachedQueryProjectKey: string | undefined;
+const engines = new CadCommandEngineCache();
 
 self.addEventListener(
   "message",
@@ -17,9 +19,13 @@ self.addEventListener(
       executeQuery(request);
       return;
     }
+    const engine = createEngine(request.project);
+    const response = engine.executeBatch(request.batch);
+    if (response.ok && request.batch.mode === "commit")
+      engines.remember(engine);
     self.postMessage({
       id: request.id,
-      response: createEngine(request.project).executeBatch(request.batch)
+      response
     });
   }
 );
@@ -41,5 +47,5 @@ function executeQuery(request: CadQueryWorkerRequest): void {
 
 function createEngine(project: CadWorkerRequest["project"]): CadEngine {
   if (!project) throw Error("No project");
-  return CadEngine.fromProject(project);
+  return engines.load(project);
 }

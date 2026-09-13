@@ -28,12 +28,19 @@ export interface BooleanTargetSupportDocument<
   readonly sketches: ReadonlyMap<
     SketchId,
     {
-      readonly entities: ReadonlyMap<SketchEntityId, { readonly kind: string }>;
+      readonly entities: ReadonlyMap<
+        SketchEntityId,
+        { readonly kind: string; readonly construction?: boolean }
+      >;
     }
   >;
 }
 
-type SupportedBooleanTargetKind = FeatureExtrudeProfileKind | "importedBody";
+export type SupportedBooleanTargetKind =
+  | FeatureExtrudeProfileKind
+  | "wire"
+  | "regions"
+  | "importedBody";
 
 export function createSupportedBooleanBodyTargetOperations<
   TFeature extends BooleanTargetSupportFeature
@@ -60,10 +67,7 @@ export function createSupportedBooleanBodyTargetOperations<
 
   if (
     targetProfileKind !== undefined &&
-    isSupportedAddTargetProfileKind(
-      targetProfileKind,
-      topologyAnchorId !== undefined
-    )
+    isSupportedAddTargetProfileKind(targetProfileKind)
   ) {
     operations.push("feature.extrudeAddTarget");
   }
@@ -118,7 +122,7 @@ function findFeatureByBodyId<TFeature extends BooleanTargetSupportFeature>(
   return [...features.values()].find((feature) => feature.bodyId === bodyId);
 }
 
-function resolveSupportedBooleanTargetProfileKind<
+export function resolveSupportedBooleanTargetProfileKind<
   TFeature extends BooleanTargetSupportFeature
 >(
   document: BooleanTargetSupportDocument<TFeature>,
@@ -148,9 +152,6 @@ function resolveSupportedBooleanTargetProfileKind<
   const allowActiveResultBodyAnchor =
     targetTopologyAnchorId !== undefined &&
     activeResultBodyId === targetFeature.bodyId;
-  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
-    return undefined;
-  }
 
   let current: TFeature | undefined = targetFeature;
   const visitedFeatureIds = new Set<FeatureId>();
@@ -173,6 +174,7 @@ function resolveSupportedBooleanTargetProfileKind<
     const isAllowedActiveResultBody =
       allowActiveResultBodyAnchor && current.id === targetFeature.id;
     if (
+      targetTopologyAnchorId !== undefined &&
       !isAllowedActiveResultBody &&
       current.targetTopologyAnchorId !== targetTopologyAnchorId
     ) {
@@ -188,13 +190,17 @@ function resolveSupportedBooleanTargetProfileKind<
 function resolveProfileKind<TFeature extends BooleanTargetSupportFeature>(
   document: BooleanTargetSupportDocument<TFeature>,
   feature: TFeature
-): FeatureExtrudeProfileKind | undefined {
+): SupportedBooleanTargetKind | undefined {
+  if (feature.profile?.kind === "wire" || feature.profile?.kind === "regions")
+    return feature.profile.kind;
   const profile =
     feature.profile?.kind === "entity" ? feature.profile : undefined;
   const entity = profile
     ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
     : undefined;
-  return getSupportedEntityProfileKind(entity);
+  return entity?.construction
+    ? undefined
+    : getSupportedEntityProfileKind(entity);
 }
 
 function isFeatureExtrudeOperationMode(
@@ -219,19 +225,16 @@ function isSupportedCutTargetProfileKind(
   return (
     profileKind === "rectangle" ||
     profileKind === "circle" ||
+    profileKind === "wire" ||
+    profileKind === "regions" ||
     profileKind === "importedBody"
   );
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: SupportedBooleanTargetKind,
-  hasTopologyAnchorTarget: boolean
+  profileKind: SupportedBooleanTargetKind
 ): boolean {
-  return (
-    profileKind === "rectangle" ||
-    (hasTopologyAnchorTarget && profileKind === "circle") ||
-    profileKind === "importedBody"
-  );
+  return isSupportedCutTargetProfileKind(profileKind);
 }
 
 function isSupportedHoleTargetProfileKind(

@@ -23148,7 +23148,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("supports circle add tools and rejects unsupported add targets", () => {
+  it("supports circle add tools and circle targets while rejecting consumed or unsupported targets", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.apply({
@@ -23280,13 +23280,7 @@ describe("cad-core", () => {
         }
       ]
     });
-    expect(circleTarget).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode"
-      }
-    });
+    expect(circleTarget).toMatchObject({ ok: true });;
 
     const consumedTarget = engine.executeBatch({
       version: "cadops.v1",

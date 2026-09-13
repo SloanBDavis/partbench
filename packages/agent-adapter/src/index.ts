@@ -1,3 +1,18 @@
+export {
+  CAD_PARAMETER_EXPRESSION_HELP,
+  CAD_EXPRESSION_PARAMETER_ID_HELP
+} from "./operationSchemaHelp";
+import {
+  CadAgentRequestValidationError,
+  diagnoseCadBatch
+} from "./operationSchemas";
+export {
+  CadAgentRequestValidationError,
+  CAD_OPERATION_NAMES,
+  diagnoseCadBatch,
+  getCadOperationSchema
+} from "./operationSchemas";
+export type { CadRequestDiagnostic, OperationSchema } from "./operationSchemas";
 import {
   CadEngine,
   createCadProjectSourceIdentity,
@@ -10,6 +25,8 @@ import {
   CAD_EXPORT_DIAGNOSTIC_CODES,
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   isCadExactDownstreamGeometryOp,
+  isProjectStructureQuery,
+  isSpurGearOp,
   isFeatureCombineMode,
   readExclusivePatternSeed,
   validateCadExactExportPlan,
@@ -23,6 +40,7 @@ import {
 import type {
   CadActorMetadata,
   AssemblySnapshot,
+  AssemblyInstanceSnapshot,
   CadBatch,
   CadBatchMode,
   CadBatchResponse,
@@ -669,6 +687,12 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
   readonly assemblies?: readonly AssemblySnapshot[];
+  readonly projection?: "poses";
+  readonly instancePoses?: readonly (AssemblyInstanceSnapshot & {
+    readonly assemblyId: string;
+  })[];
+  readonly totalInstanceCount?: number;
+  readonly nextOffset?: number;
 }
 
 export interface CadOpsAgentProjectHealthQueryResponse {
@@ -1610,7 +1634,48 @@ export function parseCadAgentSessionErrorResponse(
 
 export function parseCadOpsAgentRequest(value: unknown): CadOpsAgentRequest {
   if (!isCadOpsAgentRequest(value)) {
-    throw new Error("Invalid CADOps agent adapter request.");
+    const diagnostics = diagnoseCadBatch(
+      isRecord(value) ? value.batch : undefined
+    );
+    if (
+      !diagnostics.length &&
+      isRecord(value) &&
+      isRecord(value.batch) &&
+      Array.isArray(value.batch.ops)
+    ) {
+      value.batch.ops.forEach((op, index) => {
+        if (isCadOp(op)) return;
+        const validation = validateV19CadOp(op);
+        if (isV19OperationAttempt(op) && !validation.ok) {
+          diagnostics.push(
+            ...validation.issues.map((issue) => ({
+              path: `$.batch.ops[${index}]${issue.path.slice(1)}`,
+              code: "INVALID_OPERATION" as const,
+              message: issue.message
+            }))
+          );
+        } else {
+          diagnostics.push({
+            path: `$.batch.ops[${index}]`,
+            code: "INVALID_OPERATION",
+            message:
+              "Operation violates a command value constraint. Query cad.operation_schema for its fields and constraints."
+          });
+        }
+      });
+    }
+    throw new CadAgentRequestValidationError(
+      diagnostics.length
+        ? diagnostics.slice(0, 20)
+        : [
+            {
+              path: "$",
+              code: "INVALID_VALUE",
+              message:
+                "Expected requestId, adapterVersion and batch with valid optional actor, permissions, source and projectHandoff fields."
+            }
+          ]
+    );
   }
 
   return value;
@@ -2766,6 +2831,30 @@ function createOperationReview(
         sketchConstraintId: op.id
       };
 
+    case "feature.spurGear":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create parametric spur gear ${op.id}`
+        ),
+        featureId: op.id,
+        bodyId: op.bodyId,
+        sketchId: op.sketchId
+      };
+
+    case "feature.updateSpurGear":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update parametric spur gear ${op.id}`
+        ),
+        featureId: op.id
+      };
+
     case "feature.extrude": {
       const operationMode = op.operationMode ?? "newBody";
       const operationLabel =
@@ -3598,6 +3687,16 @@ function toAgentQueryResponse(
       features: response.features,
       bodies: response.bodies,
       objectSources: response.objectSources,
+      ...(response.projection
+        ? {
+            projection: response.projection,
+            instancePoses: response.instancePoses,
+            totalInstanceCount: response.totalInstanceCount,
+            ...(response.nextOffset !== undefined
+              ? { nextOffset: response.nextOffset }
+              : {})
+          }
+        : {}),
       ...(response.datums ? { datums: response.datums } : {}),
       ...(response.assemblies ? { assemblies: response.assemblies } : {})
     };
@@ -5002,8 +5101,7 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.features" &&
         Object.keys(value.query).length === 1) ||
-      (value.query.query === "project.structure" &&
-        Object.keys(value.query).length === 1) ||
+      isProjectStructureQuery(value.query) ||
       (value.query.query === "project.dependencyGraph" &&
         Object.keys(value.query).every((key) =>
           ["query", "topologyMatchResults"].includes(key)
@@ -5956,6 +6054,9 @@ function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
   }
+
+  if (value.op === "feature.spurGear" || value.op === "feature.updateSpurGear")
+    return isSpurGearOp(value);
 
   const v19Validation = validateV19CadOp(value);
   if (v19Validation.ok) {

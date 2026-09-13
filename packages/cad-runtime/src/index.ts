@@ -309,7 +309,9 @@ export class CadSession {
   async #validateCandidate(
     request: CadWorkerRequest
   ): Promise<CadBatchResponse> {
-    const candidate = CadEngine.fromProject(request.project!);
+    // This worker belongs to this serialized live session. Re-importing its own
+    // project would replay the entire design history on every joint-angle edit.
+    const candidate = this.engine.forkForValidation();
     const response = candidate.executeBatch(request.batch);
     if (!response.ok) return response;
     if (request.batch.mode === "dryRun") {
@@ -401,7 +403,8 @@ export class CadSession {
             runtime: this.#runtime,
             documentSourceIdentity: identity,
             units: source.document.units,
-            assertCurrent
+            assertCurrent,
+            existingArtifacts: this.#exact?.artifacts
           });
         } catch (error) {
           failure = error;

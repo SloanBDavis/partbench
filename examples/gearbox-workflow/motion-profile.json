@@ -1,0 +1,172 @@
+{
+  "recordedAt": "2026-09-12T04:56:02.830Z",
+  "note": "Same machine and native gearbox files, sequential cold sessions with warmed exact shapes before measured motion. Local CPU work elsewhere may affect timings; counters are the invariant.",
+  "runs": [
+    {
+      "revision": "baseline",
+      "ratio": 2,
+      "motion": [
+        {
+          "angle": 0,
+          "milliseconds": 1119.469041999997,
+          "artifactBuilds": 10,
+          "responseBytes": 1691
+        },
+        {
+          "angle": 90,
+          "milliseconds": 999.6122079999986,
+          "artifactBuilds": 10,
+          "responseBytes": 4803
+        },
+        {
+          "angle": 180,
+          "milliseconds": 940.3271249999998,
+          "artifactBuilds": 10,
+          "responseBytes": 4803
+        },
+        {
+          "angle": 270,
+          "milliseconds": 975.2566249999982,
+          "artifactBuilds": 10,
+          "responseBytes": 4796
+        },
+        {
+          "angle": 360,
+          "milliseconds": 959.4193749999977,
+          "artifactBuilds": 10,
+          "responseBytes": 4828
+        }
+      ],
+      "artifactBuildsBefore": 10,
+      "artifactBuildsAfter": 10,
+      "medianMilliseconds": 975.2566249999982
+    },
+    {
+      "revision": "baseline",
+      "ratio": 3,
+      "motion": [
+        {
+          "angle": 0,
+          "milliseconds": 2024.8840409999975,
+          "artifactBuilds": 10,
+          "responseBytes": 1691
+        },
+        {
+          "angle": 90,
+          "milliseconds": 1924.125874999998,
+          "artifactBuilds": 10,
+          "responseBytes": 4805
+        },
+        {
+          "angle": 180,
+          "milliseconds": 1911.7910420000117,
+          "artifactBuilds": 10,
+          "responseBytes": 4801
+        },
+        {
+          "angle": 270,
+          "milliseconds": 1936.0236250000016,
+          "artifactBuilds": 10,
+          "responseBytes": 4805
+        },
+        {
+          "angle": 360,
+          "milliseconds": 1963.1583329999994,
+          "artifactBuilds": 10,
+          "responseBytes": 4826
+        }
+      ],
+      "artifactBuildsBefore": 10,
+      "artifactBuildsAfter": 10,
+      "medianMilliseconds": 1936.0236250000016
+    },
+    {
+      "revision": "current",
+      "ratio": 2,
+      "motion": [
+        {
+          "angle": 0,
+          "milliseconds": 201.90516599999683,
+          "artifactBuilds": 10,
+          "responseBytes": 1691
+        },
+        {
+          "angle": 90,
+          "milliseconds": 168.96979199998896,
+          "artifactBuilds": 10,
+          "responseBytes": 4803
+        },
+        {
+          "angle": 180,
+          "milliseconds": 152.7768330000108,
+          "artifactBuilds": 10,
+          "responseBytes": 4803
+        },
+        {
+          "angle": 270,
+          "milliseconds": 147.3199159999931,
+          "artifactBuilds": 10,
+          "responseBytes": 4796
+        },
+        {
+          "angle": 360,
+          "milliseconds": 147.82216700000572,
+          "artifactBuilds": 10,
+          "responseBytes": 4828
+        }
+      ],
+      "artifactBuildsBefore": 10,
+      "artifactBuildsAfter": 10,
+      "medianMilliseconds": 152.7768330000108
+    },
+    {
+      "revision": "current",
+      "ratio": 3,
+      "motion": [
+        {
+          "angle": 0,
+          "milliseconds": 255.18149999997695,
+          "artifactBuilds": 10,
+          "responseBytes": 1691
+        },
+        {
+          "angle": 90,
+          "milliseconds": 219.32937500000116,
+          "artifactBuilds": 10,
+          "responseBytes": 4805
+        },
+        {
+          "angle": 180,
+          "milliseconds": 220.82645899997442,
+          "artifactBuilds": 10,
+          "responseBytes": 4801
+        },
+        {
+          "angle": 270,
+          "milliseconds": 218.46395900001517,
+          "artifactBuilds": 10,
+          "responseBytes": 4805
+        },
+        {
+          "angle": 360,
+          "milliseconds": 217.64554100000532,
+          "artifactBuilds": 10,
+          "responseBytes": 4826
+        }
+      ],
+      "artifactBuildsBefore": 10,
+      "artifactBuildsAfter": 10,
+      "medianMilliseconds": 219.32937500000116
+    }
+  ],
+  "executables": {
+    "baseline": {
+      "path": "packages/mcp-stdio-server/dist/motion-profile-baseline.js",
+      "sha256": "88819ed27dc63b35f0b7dade1b144811f40b8e43118270cc587d242eeded677b"
+    },
+    "current": {
+      "path": "packages/mcp-stdio-server/dist/motion-profile-current.js",
+      "sha256": "cb3ffcb5a62f293d73fcf71aa105df4b736f33d1474bb1d6b0dbb8a653f026b7"
+    }
+  }
+}

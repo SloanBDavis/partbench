@@ -1,3 +1,6 @@
+export { isProjectStructureQuery } from "./structureQuery";
+import type { FeatureSpurGearOp, FeatureUpdateSpurGearOp, SpurGearSource } from "./spurGear";
+export * from "./spurGear";
 export interface PackageInfo {
   readonly name: string;
   readonly status: "ready";
@@ -15,6 +18,7 @@ export type AssemblyId = string;
 export type InstanceId = string;
 export type MateId = string;
 export type SketchId = string;
+/** Globally unique across every sketch in one document. */
 export type SketchEntityId = string;
 export type ParameterId = string;
 export type SketchDimensionId = string;
@@ -478,6 +482,7 @@ export interface SketchDirectedPointPairDimensionTargetV22 {
   readonly kind: "pointPair";
   readonly primary: SketchPointTargetV22;
   readonly secondary: SketchPointTargetV22;
+  /** Directed magnitudes may be zero; direction applies when the magnitude is positive. */
   readonly measurement: "horizontal" | "vertical";
   readonly direction: "positive" | "negative";
 }
@@ -595,6 +600,8 @@ export type CadOp =
   | SketchConstraintUpdateOpV19
   | SketchConstraintRenameOp
   | SketchConstraintDeleteOp
+  | FeatureSpurGearOp
+  | FeatureUpdateSpurGearOp
   | FeatureExtrudeCommandInput
   | FeatureRevolveCommandInput
   | FeatureHoleOp
@@ -869,6 +876,7 @@ export interface SketchDeleteOp {
 export interface SketchAddPointOp {
   readonly op: "sketch.addPoint";
   readonly sketchId: SketchId;
+  /** Document-wide unique sketch entity ID; omit to generate one. */
   readonly id?: SketchEntityId;
   readonly point: Vec2;
   readonly construction?: boolean;
@@ -877,6 +885,7 @@ export interface SketchAddPointOp {
 export interface SketchAddLineOp {
   readonly op: "sketch.addLine";
   readonly sketchId: SketchId;
+  /** Document-wide unique sketch entity ID; omit to generate one. */
   readonly id?: SketchEntityId;
   readonly start: Vec2;
   readonly end: Vec2;
@@ -886,6 +895,7 @@ export interface SketchAddLineOp {
 export interface SketchAddRectangleOp {
   readonly op: "sketch.addRectangle";
   readonly sketchId: SketchId;
+  /** Document-wide unique sketch entity ID; omit to generate one. */
   readonly id?: SketchEntityId;
   readonly center: Vec2;
   readonly width: number;
@@ -896,6 +906,7 @@ export interface SketchAddRectangleOp {
 export interface SketchAddCircleOp {
   readonly op: "sketch.addCircle";
   readonly sketchId: SketchId;
+  /** Document-wide unique sketch entity ID; omit to generate one. */
   readonly id?: SketchEntityId;
   readonly center: Vec2;
   readonly radius: number;
@@ -924,6 +935,7 @@ export interface SketchArcThreePointDefinition {
 export interface SketchAddArcOp {
   readonly op: "sketch.addArc";
   readonly sketchId: SketchId;
+  /** Document-wide unique sketch entity ID; omit to generate one. */
   readonly id?: SketchEntityId;
   readonly construction?: boolean;
   readonly definition: SketchArcDefinition;
@@ -949,6 +961,7 @@ export interface SketchSplineControlPointsDefinition {
 export interface SketchAddSplineOp {
   readonly op: "sketch.addSpline";
   readonly sketchId: SketchId;
+  /** Document-wide unique sketch entity ID; omit to generate one. */
   readonly id?: SketchEntityId;
   readonly construction?: boolean;
   readonly definition: SketchSplineDefinition;
@@ -1156,6 +1169,7 @@ export interface SketchAddSlotOp {
   readonly centerlineEnd: Vec2;
   readonly radius: number;
   readonly construction?: boolean;
+  /** Ordered output IDs, each unused across the entire document. */
   readonly entityIds?: readonly [
     SketchEntityId,
     SketchEntityId,
@@ -1183,6 +1197,7 @@ export interface SketchAddRoundedRectangleOp {
   readonly height: number;
   readonly cornerRadius: number;
   readonly construction?: boolean;
+  /** Ordered output IDs, each unused across the entire document. */
   readonly entityIds?: readonly [
     SketchEntityId,
     SketchEntityId,
@@ -3575,6 +3590,11 @@ export interface ProjectFeaturesQuery {
 
 export interface ProjectStructureQuery {
   readonly query: "project.structure";
+  readonly projection?: "full" | "poses";
+  readonly assemblyIds?: readonly AssemblyId[];
+  readonly instanceIds?: readonly InstanceId[];
+  readonly offset?: number;
+  readonly limit?: number;
 }
 
 export interface ProjectHealthQuery {
@@ -4392,6 +4412,7 @@ export interface SketchTopologyAnchorFaceAttachmentSnapshot {
 }
 
 export interface SketchSnapshot {
+  readonly spurGear?: SpurGearSource;
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
@@ -6190,6 +6211,13 @@ export interface CadSketchProfileValiditySummary {
   readonly profileCount: number;
   readonly validProfileCount: number;
   readonly profiles: readonly CadSketchProfileCandidateSummary[];
+  /** Complete generated regions; included in profileCount and validProfileCount. */
+  readonly generatedProfiles?: readonly {
+    readonly kind: "spurGear";
+    readonly featureId: FeatureId;
+    readonly closed: boolean;
+    readonly featureReady: boolean;
+  }[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];
 }
@@ -6223,6 +6251,7 @@ export interface CadSketchSolverSourceContract {
 
 export interface CadSketchSolverEngineSummary {
   readonly engine: "current-direct-evaluator";
+  readonly definitionMode?: "generated-spur-gear";
   readonly numericalSolverStatus:
     | "deferred"
     | "not-run"
@@ -9935,6 +9964,13 @@ export interface ProjectStructureQueryResponse {
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
   readonly assemblies?: readonly AssemblySnapshot[];
+  /** Pose projection keeps definition arrays empty and returns only this bounded page. */
+  readonly projection?: "poses";
+  readonly instancePoses?: readonly (AssemblyInstanceSnapshot & {
+    readonly assemblyId: AssemblyId;
+  })[];
+  readonly totalInstanceCount?: number;
+  readonly nextOffset?: number;
 }
 
 export interface ProjectHealthQueryResponse {
@@ -15255,6 +15291,15 @@ function validateV19DimensionLiteral(
         path,
         message:
           "An arc-sweep dimension must use a positive magnitude inside the V17 sweep domain."
+      });
+    }
+  } else if (target.kind === "pointPair" && target.measurement !== "distance") {
+    if (value < 0) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path,
+        message:
+          "A directed coordinate dimension must have a nonnegative magnitude."
       });
     }
   } else if (

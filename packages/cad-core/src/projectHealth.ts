@@ -48,6 +48,10 @@ import type {
 
 import { createBodyTopology } from "./bodyTopology";
 import {
+  createSupportedBooleanBodyTargetOperations,
+  resolveSupportedBooleanTargetProfileKind
+} from "./booleanTargetSupport";
+import {
   validateGeneratedReference,
   type GeneratedReferenceValidationError,
   type GeneratedReferencesDocument,
@@ -529,9 +533,7 @@ function createAuthoredExtrudeHealth(
           featureId: feature.id,
           bodyId: feature.targetBodyId,
           expected:
-            feature.operationMode === "add"
-              ? "active rectangle source body or topology-backed result body"
-              : "active rectangle/circle source body or topology-backed result body",
+            "active supported extrude source/result or topology-backed target",
           received: describeFeatureForHealth(targetFeature, document)
         });
       }
@@ -566,17 +568,36 @@ function createAuthoredExtrudeHealth(
             : topologyIssue?.code === "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
               ? "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
               : "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN";
-    issues.push({
-      code,
-      message:
-        topologyIssue?.message ??
-        `Composite wire extrude ${feature.id} requires matching exact topology evidence.`,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      expected: topologySnapshot?.sourceIdentity.signature,
-      received: getDerivedExactMetadataForBody(options, feature.bodyId)
-        ?.sourceIdentitySignature
-    });
+    const consumed = [...document.features.values()].some(
+      (candidate) =>
+        (isTargetConsumingProjectHealthFeature(candidate) &&
+          candidate.targetBodyId === feature.bodyId) ||
+        (candidate.kind === "combine" &&
+          candidate.toolBodyId === feature.bodyId) ||
+        ((candidate.kind === "linearPattern" ||
+          candidate.kind === "circularPattern") &&
+          (candidate.seedBodyId === feature.bodyId ||
+            candidate.seedFeatureId === feature.id)) ||
+        (((candidate.kind === "mirror" && candidate.includeOriginal) ||
+          candidate.kind === "align") &&
+          candidate.seedBodyId === feature.bodyId)
+    );
+    // Consumed intermediates are not evaluated for independent reference picks.
+    // Their topology availability remains visible below; missing correspondence
+    // alone is not a failure of valid source geometry. Actual kernel/stale and
+    // source validation errors continue to affect health.
+    if (!(consumed && code === "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN"))
+      issues.push({
+        code,
+        message:
+          topologyIssue?.message ??
+          `Composite wire extrude ${feature.id} requires matching exact topology evidence.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        expected: topologySnapshot?.sourceIdentity.signature,
+        received: getDerivedExactMetadataForBody(options, feature.bodyId)
+          ?.sourceIdentitySignature
+      });
   }
 
   return {
@@ -1826,9 +1847,9 @@ function createSketchEvaluationHealth(
   sketch: ProjectHealthSketch
 ): CadSketchEvaluationHealth {
   const evaluation = evaluateSketch(document, sketch);
-  const issues = evaluation.issues
-    .filter(isSketchCompletenessIssue)
-    .map(createIssueFromSketchCompletenessIssue);
+  const issues = evaluation.solverProbe.generatedSource
+    ? evaluation.solverProbe.generatedSource.issues.map(createIssueFromSketchDimensionIssue)
+    : evaluation.issues.filter(isSketchCompletenessIssue).map(createIssueFromSketchCompletenessIssue);
   const affected = collectSketchEntityAffectedFeatures(
     document,
     getSketchEvaluationAffectedEntityIds(
@@ -2473,16 +2494,6 @@ function isSupportedCutTargetProfileKind(
   return profileKind === "rectangle" || profileKind === "circle";
 }
 
-function isSupportedAddTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind,
-  hasTopologyAnchorTarget = false
-): boolean {
-  return (
-    profileKind === "rectangle" ||
-    (hasTopologyAnchorTarget && profileKind === "circle")
-  );
-}
-
 function isSupportedBooleanToolProfileKind(
   profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): boolean {
@@ -2512,79 +2523,15 @@ function isSupportedBooleanTarget(
     return false;
   }
 
-  const targetProfileKind = resolveBooleanTargetProfileKind(
-    targetFeature,
+  return createSupportedBooleanBodyTargetOperations(
     document,
-    feature.targetTopologyAnchorId,
-    feature.targetBodyId
+    targetFeature.bodyId,
+    feature.targetTopologyAnchorId
+  ).includes(
+    feature.operationMode === "add"
+      ? "feature.extrudeAddTarget"
+      : "feature.extrudeCutTarget"
   );
-
-  if (targetProfileKind === undefined) {
-    return false;
-  }
-
-  if (feature.operationMode === "add") {
-    return isSupportedAddTargetProfileKind(
-      targetProfileKind,
-      feature.targetTopologyAnchorId !== undefined
-    );
-  }
-
-  return isSupportedCutTargetProfileKind(targetProfileKind);
-}
-
-function resolveBooleanTargetProfileKind(
-  targetFeature: ProjectHealthFeature,
-  document: ProjectHealthDocument,
-  targetTopologyAnchorId?: string,
-  activeResultBodyId?: BodyId
-): FeatureExtrudeProfileKind | undefined {
-  if (targetFeature.kind !== "extrude") {
-    return undefined;
-  }
-
-  if (targetFeature.operationMode === "newBody") {
-    return getProjectHealthProfileKind(document, targetFeature);
-  }
-
-  const allowActiveResultBodyAnchor =
-    targetTopologyAnchorId !== undefined &&
-    activeResultBodyId === targetFeature.bodyId;
-  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
-    return undefined;
-  }
-
-  let current: GeneratedReferencesExtrudeFeature | undefined = targetFeature;
-  const visitedFeatureIds = new Set<FeatureId>();
-
-  while (current && !visitedFeatureIds.has(current.id)) {
-    visitedFeatureIds.add(current.id);
-
-    if (current.operationMode === "newBody") {
-      return getProjectHealthProfileKind(document, current);
-    }
-
-    const isAllowedActiveResultBody =
-      allowActiveResultBodyAnchor && current.id === targetFeature.id;
-    if (current.targetBodyId === undefined) {
-      return undefined;
-    }
-
-    if (
-      !isAllowedActiveResultBody &&
-      current.targetTopologyAnchorId !== targetTopologyAnchorId
-    ) {
-      return undefined;
-    }
-
-    const targetBodyId: BodyId = current.targetBodyId;
-    const parent: ProjectHealthFeature | undefined = [
-      ...document.features.values()
-    ].find((candidate) => candidate.bodyId === targetBodyId);
-    current = parent?.kind === "extrude" ? parent : undefined;
-  }
-
-  return undefined;
 }
 
 function isSupportedHoleTargetFeature(
@@ -2592,16 +2539,16 @@ function isSupportedHoleTargetFeature(
   targetFeature: ProjectHealthFeature,
   document: ProjectHealthDocument
 ): boolean {
-  const targetProfileKind = resolveBooleanTargetProfileKind(
-    targetFeature,
+  const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
     document,
+    targetFeature,
     feature.targetTopologyAnchorId,
     feature.targetBodyId
   );
 
   return (
     targetProfileKind !== undefined &&
-    isSupportedCutTargetProfileKind(targetProfileKind)
+    (targetProfileKind === "rectangle" || targetProfileKind === "circle")
   );
 }
 

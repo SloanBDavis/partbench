@@ -1,0 +1,3881 @@
+{
+  "id": "gearbox-parametric-revision",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "parameter.create",
+      "id": "input_angle",
+      "name": "input_angle",
+      "value": 0
+    },
+    {
+      "op": "parameter.create",
+      "id": "output_teeth",
+      "name": "output_teeth",
+      "value": 40
+    },
+    {
+      "op": "parameter.create",
+      "id": "input_teeth",
+      "name": "input_teeth",
+      "value": 20
+    },
+    {
+      "op": "parameter.create",
+      "id": "module",
+      "name": "module",
+      "value": 1.5
+    },
+    {
+      "op": "parameter.create",
+      "id": "ratio",
+      "name": "ratio",
+      "value": 2
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "ratio",
+      "expression": "output_teeth / input_teeth"
+    },
+    {
+      "op": "parameter.create",
+      "id": "output_angle",
+      "name": "output_angle",
+      "value": 4.5
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "output_angle",
+      "expression": "180 / output_teeth - input_angle / ratio"
+    },
+    {
+      "op": "parameter.create",
+      "id": "center_distance",
+      "name": "center_distance",
+      "value": 45
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "center_distance",
+      "expression": "module * (input_teeth + output_teeth) / 2"
+    },
+    {
+      "op": "parameter.create",
+      "id": "right_mount",
+      "name": "right_mount",
+      "value": 100
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "right_mount",
+      "expression": "center_distance + 55"
+    },
+    {
+      "op": "parameter.create",
+      "id": "bridge_width",
+      "name": "bridge_width",
+      "value": 141
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "bridge_width",
+      "expression": "center_distance + 96"
+    },
+    {
+      "op": "parameter.create",
+      "id": "bridge_center",
+      "name": "bridge_center",
+      "value": 37.5
+    },
+    {
+      "op": "parameter.setExpression",
+      "id": "bridge_center",
+      "expression": "(center_distance + 30) / 2"
+    },
+    {
+      "op": "parameter.create",
+      "id": "gear_bore",
+      "name": "gear_bore",
+      "value": 8.1
+    },
+    {
+      "op": "parameter.create",
+      "id": "shaft_diameter",
+      "name": "shaft_diameter",
+      "value": 8
+    },
+    {
+      "op": "parameter.create",
+      "id": "bearing_bore",
+      "name": "bearing_bore",
+      "value": 8.3
+    },
+    {
+      "op": "sketch.create",
+      "id": "base_sk",
+      "name": "base_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "base_sk:origin",
+      "sketchId": "base_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "base_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "base_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "base_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "base_sk",
+      "id": "base_outer",
+      "width": 170,
+      "height": 115,
+      "center": [
+        45,
+        0
+      ]
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_outer_horizontal",
+      "name": "base_outer_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_outer",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 45
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_outer_vertical",
+      "name": "base_outer_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_outer",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_outer_width",
+      "name": "base_outer_width",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_outer",
+        "entityKind": "rectangle",
+        "role": "width"
+      },
+      "value": 170
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_outer_height",
+      "name": "base_outer_height",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_outer",
+        "entityKind": "rectangle",
+        "role": "height"
+      },
+      "value": 115
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "base_sk",
+      "id": "base_hole_0",
+      "center": [
+        -25,
+        0
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_0_horizontal",
+      "name": "base_hole_0_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_0",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "negative"
+      },
+      "value": 25
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_0_vertical",
+      "name": "base_hole_0_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_0",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_0_diameter",
+      "name": "base_hole_0_diameter",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_hole_0",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "base_sk",
+      "id": "base_hole_1",
+      "center": [
+        100,
+        0
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_1_horizontal",
+      "name": "base_hole_1_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_1",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "parameterId": "right_mount"
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_1_vertical",
+      "name": "base_hole_1_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_1",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_1_diameter",
+      "name": "base_hole_1_diameter",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_hole_1",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "base_sk",
+      "id": "base_hole_2",
+      "center": [
+        -30,
+        -45
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_2_horizontal",
+      "name": "base_hole_2_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_2",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "negative"
+      },
+      "value": 30
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_2_vertical",
+      "name": "base_hole_2_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_2",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "negative"
+      },
+      "value": 45
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_2_diameter",
+      "name": "base_hole_2_diameter",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_hole_2",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "base_sk",
+      "id": "base_hole_3",
+      "center": [
+        -30,
+        45
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_3_horizontal",
+      "name": "base_hole_3_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_3",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "negative"
+      },
+      "value": 30
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_3_vertical",
+      "name": "base_hole_3_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_3",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 45
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_3_diameter",
+      "name": "base_hole_3_diameter",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_hole_3",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "base_sk",
+      "id": "base_hole_4",
+      "center": [
+        120,
+        -45
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_4_horizontal",
+      "name": "base_hole_4_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_4",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 120
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_4_vertical",
+      "name": "base_hole_4_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_4",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "negative"
+      },
+      "value": 45
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_4_diameter",
+      "name": "base_hole_4_diameter",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_hole_4",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "base_sk",
+      "id": "base_hole_5",
+      "center": [
+        120,
+        45
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_5_horizontal",
+      "name": "base_hole_5_horizontal",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_5",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 120
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_5_vertical",
+      "name": "base_hole_5_vertical",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "base_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "base_hole_5",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 45
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "base_hole_5_diameter",
+      "name": "base_hole_5_diameter",
+      "sketchId": "base_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "base_hole_5",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "feature.extrude",
+      "id": "base_extrude",
+      "bodyId": "base",
+      "name": "base",
+      "profile": {
+        "kind": "regions",
+        "sketchId": "base_sk",
+        "regions": [
+          {
+            "outer": {
+              "kind": "entity",
+              "entityId": "base_outer"
+            },
+            "holes": [
+              {
+                "kind": "entity",
+                "entityId": "base_hole_0"
+              },
+              {
+                "kind": "entity",
+                "entityId": "base_hole_1"
+              },
+              {
+                "kind": "entity",
+                "entityId": "base_hole_2"
+              },
+              {
+                "kind": "entity",
+                "entityId": "base_hole_3"
+              },
+              {
+                "kind": "entity",
+                "entityId": "base_hole_4"
+              },
+              {
+                "kind": "entity",
+                "entityId": "base_hole_5"
+              }
+            ]
+          }
+        ]
+      },
+      "depth": 6
+    },
+    {
+      "op": "sketch.create",
+      "id": "bridge_sk",
+      "name": "bridge_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "bridge_sk:origin",
+      "sketchId": "bridge_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "bridge_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "bridge_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "bridge_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "bridge_sk",
+      "id": "bridge_outer",
+      "width": 141,
+      "height": 18,
+      "center": [
+        37.5,
+        0
+      ]
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_outer_horizontal",
+      "name": "bridge_outer_horizontal",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_outer",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "parameterId": "bridge_center"
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_outer_vertical",
+      "name": "bridge_outer_vertical",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_outer",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_outer_width",
+      "name": "bridge_outer_width",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bridge_outer",
+        "entityKind": "rectangle",
+        "role": "width"
+      },
+      "parameterId": "bridge_width"
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_outer_height",
+      "name": "bridge_outer_height",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bridge_outer",
+        "entityKind": "rectangle",
+        "role": "height"
+      },
+      "value": 18
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "bridge_sk",
+      "id": "bridge_hole_0",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 4.15
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_0_horizontal",
+      "name": "bridge_hole_0_horizontal",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_0",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_0_vertical",
+      "name": "bridge_hole_0_vertical",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_0",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_0_diameter",
+      "name": "bridge_hole_0_diameter",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bridge_hole_0",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "parameterId": "bearing_bore"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "bridge_sk",
+      "id": "bridge_hole_1",
+      "center": [
+        45,
+        0
+      ],
+      "radius": 4.15
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_1_horizontal",
+      "name": "bridge_hole_1_horizontal",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_1",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "parameterId": "center_distance"
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_1_vertical",
+      "name": "bridge_hole_1_vertical",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_1",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_1_diameter",
+      "name": "bridge_hole_1_diameter",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bridge_hole_1",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "parameterId": "bearing_bore"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "bridge_sk",
+      "id": "bridge_hole_2",
+      "center": [
+        -25,
+        0
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_2_horizontal",
+      "name": "bridge_hole_2_horizontal",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_2",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "negative"
+      },
+      "value": 25
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_2_vertical",
+      "name": "bridge_hole_2_vertical",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_2",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_2_diameter",
+      "name": "bridge_hole_2_diameter",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bridge_hole_2",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "bridge_sk",
+      "id": "bridge_hole_3",
+      "center": [
+        100,
+        0
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_3_horizontal",
+      "name": "bridge_hole_3_horizontal",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_3",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "parameterId": "right_mount"
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_3_vertical",
+      "name": "bridge_hole_3_vertical",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bridge_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bridge_hole_3",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bridge_hole_3_diameter",
+      "name": "bridge_hole_3_diameter",
+      "sketchId": "bridge_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bridge_hole_3",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "feature.extrude",
+      "id": "bridge_extrude",
+      "bodyId": "bridge",
+      "name": "bridge",
+      "profile": {
+        "kind": "regions",
+        "sketchId": "bridge_sk",
+        "regions": [
+          {
+            "outer": {
+              "kind": "entity",
+              "entityId": "bridge_outer"
+            },
+            "holes": [
+              {
+                "kind": "entity",
+                "entityId": "bridge_hole_0"
+              },
+              {
+                "kind": "entity",
+                "entityId": "bridge_hole_1"
+              },
+              {
+                "kind": "entity",
+                "entityId": "bridge_hole_2"
+              },
+              {
+                "kind": "entity",
+                "entityId": "bridge_hole_3"
+              }
+            ]
+          }
+        ]
+      },
+      "depth": 6
+    },
+    {
+      "op": "sketch.create",
+      "id": "shaft_sk",
+      "name": "shaft_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "shaft_sk:origin",
+      "sketchId": "shaft_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "shaft_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "shaft_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "shaft_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "shaft_sk",
+      "id": "shaft_outer",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 4
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "shaft_outer_horizontal",
+      "name": "shaft_outer_horizontal",
+      "sketchId": "shaft_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "shaft_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "shaft_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "shaft_outer_vertical",
+      "name": "shaft_outer_vertical",
+      "sketchId": "shaft_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "shaft_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "shaft_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "shaft_outer_diameter",
+      "name": "shaft_outer_diameter",
+      "sketchId": "shaft_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "shaft_outer",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "parameterId": "shaft_diameter"
+    },
+    {
+      "op": "feature.extrude",
+      "id": "shaft_extrude",
+      "bodyId": "shaft",
+      "name": "shaft",
+      "profile": {
+        "kind": "regions",
+        "sketchId": "shaft_sk",
+        "regions": [
+          {
+            "outer": {
+              "kind": "entity",
+              "entityId": "shaft_outer"
+            },
+            "holes": []
+          }
+        ]
+      },
+      "depth": 50
+    },
+    {
+      "op": "sketch.create",
+      "id": "spacer_sk",
+      "name": "spacer_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "spacer_sk:origin",
+      "sketchId": "spacer_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "spacer_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "spacer_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "spacer_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "spacer_sk",
+      "id": "spacer_outer",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 6
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "spacer_outer_horizontal",
+      "name": "spacer_outer_horizontal",
+      "sketchId": "spacer_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "spacer_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "spacer_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "spacer_outer_vertical",
+      "name": "spacer_outer_vertical",
+      "sketchId": "spacer_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "spacer_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "spacer_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "spacer_outer_diameter",
+      "name": "spacer_outer_diameter",
+      "sketchId": "spacer_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "spacer_outer",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 12
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "spacer_sk",
+      "id": "spacer_bore",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 4.15
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "spacer_bore_horizontal",
+      "name": "spacer_bore_horizontal",
+      "sketchId": "spacer_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "spacer_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "spacer_bore",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "spacer_bore_vertical",
+      "name": "spacer_bore_vertical",
+      "sketchId": "spacer_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "spacer_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "spacer_bore",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "spacer_bore_diameter",
+      "name": "spacer_bore_diameter",
+      "sketchId": "spacer_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "spacer_bore",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "parameterId": "bearing_bore"
+    },
+    {
+      "op": "feature.extrude",
+      "id": "spacer_extrude",
+      "bodyId": "spacer",
+      "name": "spacer",
+      "profile": {
+        "kind": "regions",
+        "sketchId": "spacer_sk",
+        "regions": [
+          {
+            "outer": {
+              "kind": "entity",
+              "entityId": "spacer_outer"
+            },
+            "holes": [
+              {
+                "kind": "entity",
+                "entityId": "spacer_bore"
+              }
+            ]
+          }
+        ]
+      },
+      "depth": 6.8
+    },
+    {
+      "op": "sketch.create",
+      "id": "standoff_sk",
+      "name": "standoff_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "standoff_sk:origin",
+      "sketchId": "standoff_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "standoff_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "standoff_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "standoff_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "standoff_sk",
+      "id": "standoff_outer",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 4
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "standoff_outer_horizontal",
+      "name": "standoff_outer_horizontal",
+      "sketchId": "standoff_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "standoff_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "standoff_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "standoff_outer_vertical",
+      "name": "standoff_outer_vertical",
+      "sketchId": "standoff_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "standoff_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "standoff_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "standoff_outer_diameter",
+      "name": "standoff_outer_diameter",
+      "sketchId": "standoff_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "standoff_outer",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 8
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "standoff_sk",
+      "id": "standoff_bore",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 2.2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "standoff_bore_horizontal",
+      "name": "standoff_bore_horizontal",
+      "sketchId": "standoff_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "standoff_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "standoff_bore",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "standoff_bore_vertical",
+      "name": "standoff_bore_vertical",
+      "sketchId": "standoff_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "standoff_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "standoff_bore",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "standoff_bore_diameter",
+      "name": "standoff_bore_diameter",
+      "sketchId": "standoff_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "standoff_bore",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4.4
+    },
+    {
+      "op": "feature.extrude",
+      "id": "standoff_extrude",
+      "bodyId": "standoff",
+      "name": "standoff",
+      "profile": {
+        "kind": "regions",
+        "sketchId": "standoff_sk",
+        "regions": [
+          {
+            "outer": {
+              "kind": "entity",
+              "entityId": "standoff_outer"
+            },
+            "holes": [
+              {
+                "kind": "entity",
+                "entityId": "standoff_bore"
+              }
+            ]
+          }
+        ]
+      },
+      "depth": 24
+    },
+    {
+      "op": "sketch.create",
+      "id": "bolt_sk",
+      "name": "bolt_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "bolt_sk:origin",
+      "sketchId": "bolt_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "bolt_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "bolt_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "bolt_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "bolt_sk",
+      "id": "bolt_outer",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 2
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_outer_horizontal",
+      "name": "bolt_outer_horizontal",
+      "sketchId": "bolt_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bolt_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bolt_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_outer_vertical",
+      "name": "bolt_outer_vertical",
+      "sketchId": "bolt_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bolt_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bolt_outer",
+          "entityKind": "circle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_outer_diameter",
+      "name": "bolt_outer_diameter",
+      "sketchId": "bolt_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bolt_outer",
+        "entityKind": "circle",
+        "role": "diameter"
+      },
+      "value": 4
+    },
+    {
+      "op": "feature.extrude",
+      "id": "bolt_shank_extrude",
+      "bodyId": "bolt_shank",
+      "name": "bolt_shank",
+      "profile": {
+        "kind": "regions",
+        "sketchId": "bolt_sk",
+        "regions": [
+          {
+            "outer": {
+              "kind": "entity",
+              "entityId": "bolt_outer"
+            },
+            "holes": []
+          }
+        ]
+      },
+      "depth": 40
+    },
+    {
+      "op": "sketch.create",
+      "id": "bolt_head_sk",
+      "name": "bolt_head_sk",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addPoint",
+      "id": "bolt_head_sk:origin",
+      "sketchId": "bolt_head_sk",
+      "point": [
+        0,
+        0
+      ],
+      "construction": true
+    },
+    {
+      "op": "sketch.constraint.create",
+      "id": "bolt_head_sk:origin-fixed",
+      "name": "Profile origin",
+      "sketchId": "bolt_head_sk",
+      "kind": "fixed",
+      "target": {
+        "entityId": "bolt_head_sk:origin",
+        "entityKind": "point",
+        "role": "position"
+      },
+      "coordinate": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "bolt_head_sk",
+      "id": "bolt_head",
+      "width": 7,
+      "height": 7,
+      "center": [
+        0,
+        0
+      ]
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_head_horizontal",
+      "name": "bolt_head_horizontal",
+      "sketchId": "bolt_head_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bolt_head_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bolt_head",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "measurement": "horizontal",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_head_vertical",
+      "name": "bolt_head_vertical",
+      "sketchId": "bolt_head_sk",
+      "target": {
+        "kind": "pointPair",
+        "primary": {
+          "entityId": "bolt_head_sk:origin",
+          "entityKind": "point",
+          "role": "position"
+        },
+        "secondary": {
+          "entityId": "bolt_head",
+          "entityKind": "rectangle",
+          "role": "center"
+        },
+        "measurement": "vertical",
+        "direction": "positive"
+      },
+      "value": 0
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_head_width",
+      "name": "bolt_head_width",
+      "sketchId": "bolt_head_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bolt_head",
+        "entityKind": "rectangle",
+        "role": "width"
+      },
+      "value": 7
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "bolt_head_height",
+      "name": "bolt_head_height",
+      "sketchId": "bolt_head_sk",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "bolt_head",
+        "entityKind": "rectangle",
+        "role": "height"
+      },
+      "value": 7
+    },
+    {
+      "op": "feature.extrude",
+      "id": "bolt_extrude",
+      "bodyId": "bolt_finished",
+      "name": "Tie bolt",
+      "sketchId": "bolt_head_sk",
+      "entityId": "bolt_head",
+      "depth": 4,
+      "side": "negative",
+      "operationMode": "add",
+      "targetBodyId": "bolt_shank"
+    },
+    {
+      "op": "feature.spurGear",
+      "id": "pinion_extrude",
+      "bodyId": "pinion",
+      "sketchId": "pinion_outline",
+      "name": "Input gear",
+      "teeth": {
+        "parameterId": "input_teeth"
+      },
+      "module": {
+        "parameterId": "module"
+      },
+      "faceWidth": 10,
+      "boreDiameter": {
+        "parameterId": "gear_bore"
+      },
+      "backlash": 0.08
+    },
+    {
+      "op": "feature.spurGear",
+      "id": "wheel_extrude",
+      "bodyId": "wheel",
+      "sketchId": "wheel_outline",
+      "name": "Output gear",
+      "teeth": {
+        "parameterId": "output_teeth"
+      },
+      "module": {
+        "parameterId": "module"
+      },
+      "faceWidth": 10,
+      "boreDiameter": {
+        "parameterId": "gear_bore"
+      },
+      "backlash": 0.08
+    },
+    {
+      "op": "assembly.create",
+      "id": "gearbox",
+      "name": "Parametric gearbox"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "base_i",
+      "name": "base_i",
+      "definition": {
+        "kind": "body",
+        "bodyId": "base"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "base_fixed",
+      "kind": "fixed",
+      "instanceId": "base_i"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "bridge_bottom",
+      "name": "bridge_bottom",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bridge"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "bridge_bottom_mount",
+      "name": "bridge_bottom_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "base_i",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            6
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "bridge_bottom",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "bridge_top",
+      "name": "bridge_top",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bridge"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "bridge_top_mount",
+      "name": "bridge_top_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "base_i",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            36
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "bridge_top",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "input_shaft",
+      "name": "input_shaft",
+      "definition": {
+        "kind": "body",
+        "bodyId": "shaft"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "input_rotation",
+      "name": "input_rotation",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "bridge_bottom",
+        "frame": {
+          "kind": "sketch",
+          "sketchId": "bridge_sk",
+          "entityId": "bridge_hole_0"
+        }
+      },
+      "secondary": {
+        "instanceId": "input_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleParameterId": "input_angle",
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "input_gear",
+      "name": "input_gear",
+      "definition": {
+        "kind": "body",
+        "bodyId": "pinion"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "input_gear_mount",
+      "name": "input_gear_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "input_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            13
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "input_gear",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "input_spacer_low",
+      "name": "input_spacer_low",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "input_spacer_low_mount",
+      "name": "input_spacer_low_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "input_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            6.1
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "input_spacer_low",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "input_spacer_high",
+      "name": "input_spacer_high",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "input_spacer_high_mount",
+      "name": "input_spacer_high_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "input_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            23.1
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "input_spacer_high",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "output_shaft",
+      "name": "output_shaft",
+      "definition": {
+        "kind": "body",
+        "bodyId": "shaft"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "output_rotation",
+      "name": "output_rotation",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "bridge_bottom",
+        "frame": {
+          "kind": "sketch",
+          "sketchId": "bridge_sk",
+          "entityId": "bridge_hole_1"
+        }
+      },
+      "secondary": {
+        "instanceId": "output_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleParameterId": "output_angle",
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "output_gear",
+      "name": "output_gear",
+      "definition": {
+        "kind": "body",
+        "bodyId": "wheel"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "output_gear_mount",
+      "name": "output_gear_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "output_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            13
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "output_gear",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "output_spacer_low",
+      "name": "output_spacer_low",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "output_spacer_low_mount",
+      "name": "output_spacer_low_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "output_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            6.1
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "output_spacer_low",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "output_spacer_high",
+      "name": "output_spacer_high",
+      "definition": {
+        "kind": "body",
+        "bodyId": "spacer"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "output_spacer_high_mount",
+      "name": "output_spacer_high_mount",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "output_shaft",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            23.1
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "output_spacer_high",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "standoff_0",
+      "name": "standoff_0",
+      "definition": {
+        "kind": "body",
+        "bodyId": "standoff"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "standoff_mount_0",
+      "name": "standoff_mount_0",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "base_i",
+        "frame": {
+          "kind": "sketch",
+          "sketchId": "base_sk",
+          "entityId": "base_hole_0"
+        }
+      },
+      "secondary": {
+        "instanceId": "standoff_0",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 12
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "bolt_0",
+      "name": "bolt_0",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bolt_finished"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "bolt_mount_0",
+      "name": "bolt_mount_0",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "standoff_0",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            30
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            -1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "bolt_0",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "standoff_1",
+      "name": "standoff_1",
+      "definition": {
+        "kind": "body",
+        "bodyId": "standoff"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "standoff_mount_1",
+      "name": "standoff_mount_1",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "base_i",
+        "frame": {
+          "kind": "sketch",
+          "sketchId": "base_sk",
+          "entityId": "base_hole_1"
+        }
+      },
+      "secondary": {
+        "instanceId": "standoff_1",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 12
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "gearbox",
+      "id": "bolt_1",
+      "name": "bolt_1",
+      "definition": {
+        "kind": "body",
+        "bodyId": "bolt_finished"
+      }
+    },
+    {
+      "op": "assembly.mate.create",
+      "assemblyId": "gearbox",
+      "id": "bolt_mount_1",
+      "name": "bolt_mount_1",
+      "kind": "revolute",
+      "primary": {
+        "instanceId": "standoff_1",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            30
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            -1
+          ]
+        }
+      },
+      "secondary": {
+        "instanceId": "bolt_1",
+        "frame": {
+          "kind": "local",
+          "origin": [
+            0,
+            0,
+            0
+          ],
+          "xDirection": [
+            1,
+            0,
+            0
+          ],
+          "zDirection": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "angleDegrees": 0,
+      "offset": 0
+    }
+  ],
+  "steps": [
+    {
+      "id": "single-parameter-ratio-revision",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "output_teeth",
+          "value": 60
+        }
+      ],
+      "expect": {
+        "ops": [
+          "parameter.update"
+        ]
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "parameter.get",
+            "id": "output_teeth"
+          },
+          "expect": {
+            "ok": true,
+            "parameter": {
+              "id": "output_teeth",
+              "value": 60
+            }
+          }
+        },
+        {
+          "query": {
+            "query": "parameter.get",
+            "id": "center_distance"
+          },
+          "expect": {
+            "ok": true,
+            "parameter": {
+              "value": 60
+            }
+          }
+        },
+        {
+          "query": {
+            "query": "project.structure",
+            "projection": "poses",
+            "assemblyIds": [
+              "gearbox"
+            ],
+            "instanceIds": [
+              "output_gear"
+            ],
+            "limit": 1
+          },
+          "expect": {
+            "ok": true,
+            "projection": "poses",
+            "totalInstanceCount": 1,
+            "instancePoses": [
+              {
+                "id": "output_gear",
+                "definition": {
+                  "bodyId": "wheel"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "drive-input",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "input_angle",
+          "value": 90
+        }
+      ],
+      "queries": [
+        {
+          "query": {
+            "query": "parameter.get",
+            "id": "output_angle"
+          },
+          "expect": {
+            "ok": true,
+            "parameter": {
+              "value": -27
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "invalid-tooth-count",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "output_teeth",
+          "value": 20.5
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "INVALID_FEATURE"
+        }
+      }
+    },
+    {
+      "id": "native-source-roundtrip",
+      "persistRoundTrip": true,
+      "queries": [
+        {
+          "query": {
+            "query": "parameter.get",
+            "id": "output_teeth"
+          },
+          "expect": {
+            "ok": true,
+            "parameter": {
+              "id": "output_teeth",
+              "value": 60
+            }
+          }
+        },
+        {
+          "query": {
+            "query": "parameter.get",
+            "id": "center_distance"
+          },
+          "expect": {
+            "ok": true,
+            "parameter": {
+              "value": 60
+            }
+          }
+        },
+        {
+          "query": {
+            "query": "project.structure",
+            "projection": "poses",
+            "assemblyIds": [
+              "gearbox"
+            ],
+            "instanceIds": [
+              "output_gear"
+            ],
+            "limit": 1
+          },
+          "expect": {
+            "ok": true,
+            "projection": "poses",
+            "totalInstanceCount": 1,
+            "instancePoses": [
+              {
+                "id": "output_gear",
+                "definition": {
+                  "bodyId": "wheel"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "use": [
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "expectViewport": {
+        "meshIds": [
+          "assembly-instance:gearbox:base_i",
+          "assembly-instance:gearbox:bridge_bottom",
+          "assembly-instance:gearbox:bridge_top",
+          "assembly-instance:gearbox:input_shaft",
+          "assembly-instance:gearbox:input_gear",
+          "assembly-instance:gearbox:input_spacer_low",
+          "assembly-instance:gearbox:input_spacer_high",
+          "assembly-instance:gearbox:output_shaft",
+          "assembly-instance:gearbox:output_gear",
+          "assembly-instance:gearbox:output_spacer_low",
+          "assembly-instance:gearbox:output_spacer_high",
+          "assembly-instance:gearbox:standoff_0",
+          "assembly-instance:gearbox:bolt_0",
+          "assembly-instance:gearbox:standoff_1",
+          "assembly-instance:gearbox:bolt_1"
+        ],
+        "primitiveCount": 0
+      }
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    45,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    45,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "[data-tree-select=\"feature:wheel_extrude\"]"
+    },
+    {
+      "wait": "[data-tree-select=\"feature:wheel_extrude\"][aria-selected=\"true\"]"
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Model view\"]",
+        "value": "assembly"
+      }
+    },
+    {
+      "expectViewport": {
+        "meshIds": [
+          "assembly-instance:gearbox:base_i",
+          "assembly-instance:gearbox:bridge_bottom",
+          "assembly-instance:gearbox:bridge_top",
+          "assembly-instance:gearbox:input_shaft",
+          "assembly-instance:gearbox:input_gear",
+          "assembly-instance:gearbox:input_spacer_low",
+          "assembly-instance:gearbox:input_spacer_high",
+          "assembly-instance:gearbox:output_shaft",
+          "assembly-instance:gearbox:output_gear",
+          "assembly-instance:gearbox:output_spacer_low",
+          "assembly-instance:gearbox:output_spacer_high",
+          "assembly-instance:gearbox:standoff_0",
+          "assembly-instance:gearbox:bolt_0",
+          "assembly-instance:gearbox:standoff_1",
+          "assembly-instance:gearbox:bolt_1"
+        ],
+        "primitiveCount": 0
+      }
+    },
+    {
+      "screenshot": "gearbox-workflow-initial"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "click": ".pb-project-table tbody tr:nth-child(2) .pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": "60"
+      }
+    },
+    {
+      "click": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.05235987755982988
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.05235987755982988
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    45,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    45,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.05235987755982988
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.05235987755982988
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "beginExactStability": true
+    },
+    {
+      "click": ".pb-project-table tbody tr:nth-child(1) .pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": "90"
+      }
+    },
+    {
+      "click": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    -0.47123889803846897
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    -0.47123889803846897
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.05235987755982988
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.05235987755982988
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    1.5707963267948966
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    -0.47123889803846897
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    60,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    -0.47123889803846897
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "expectExactStability": true
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "button[title=\"Fit all objects\"]"
+    },
+    {
+      "expectViewport": {
+        "meshIds": [
+          "assembly-instance:gearbox:base_i",
+          "assembly-instance:gearbox:bridge_bottom",
+          "assembly-instance:gearbox:bridge_top",
+          "assembly-instance:gearbox:input_shaft",
+          "assembly-instance:gearbox:input_gear",
+          "assembly-instance:gearbox:input_spacer_low",
+          "assembly-instance:gearbox:input_spacer_high",
+          "assembly-instance:gearbox:output_shaft",
+          "assembly-instance:gearbox:output_gear",
+          "assembly-instance:gearbox:output_spacer_low",
+          "assembly-instance:gearbox:output_spacer_high",
+          "assembly-instance:gearbox:standoff_0",
+          "assembly-instance:gearbox:bolt_0",
+          "assembly-instance:gearbox:standoff_1",
+          "assembly-instance:gearbox:bolt_1"
+        ],
+        "primitiveCount": 0
+      }
+    },
+    {
+      "screenshot": "gearbox-workflow-motion"
+    }
+  ],
+  "useBreak": [
+    {
+      "click": "[data-ribbon-roving-id=\"mode-project\"]"
+    },
+    {
+      "click": "[data-action-id=\"project.parameters\"]"
+    },
+    {
+      "click": ".pb-project-table tbody tr:first-child .pb-project-table-actions button:first-child"
+    },
+    {
+      "type": {
+        "selector": ".pb-project-parameter-form input[type=number]",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": ".pb-project-parameter-form button[type=submit]"
+    },
+    {
+      "expectStructure": {
+        "bodyCount": 9,
+        "assemblies": [
+          {
+            "id": "gearbox",
+            "instances": [
+              {
+                "id": "base_i"
+              },
+              {
+                "id": "bridge_bottom"
+              },
+              {
+                "id": "bridge_top"
+              },
+              {
+                "id": "input_shaft",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_gear",
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              {
+                "id": "input_spacer_low"
+              },
+              {
+                "id": "input_spacer_high"
+              },
+              {
+                "id": "output_shaft",
+                "transform": {
+                  "translation": [
+                    45,
+                    0,
+                    6
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "output_gear",
+                "transform": {
+                  "translation": [
+                    45,
+                    0,
+                    19
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0.07853981633974483
+                  ]
+                }
+              },
+              {
+                "id": "output_spacer_low"
+              },
+              {
+                "id": "output_spacer_high"
+              },
+              {
+                "id": "standoff_0"
+              },
+              {
+                "id": "bolt_0"
+              },
+              {
+                "id": "standoff_1"
+              },
+              {
+                "id": "bolt_1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "gearbox-workflow-empty-angle"
+    }
+  ]
+}

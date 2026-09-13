@@ -41,6 +41,7 @@ import type {
   SketchRegionsProfileRef,
   SketchSplineEntity,
   SketchId,
+  SpurGearSource,
   SketchWireProfileRef,
   Vec2,
   Vec3
@@ -52,6 +53,7 @@ import {
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
+import { sha256Hex } from "./sha256";
 
 const SEMANTIC_REFERENCE_NOTE =
   "Generated references are semantic first-slice references, not exact B-rep topology.";
@@ -105,6 +107,7 @@ export interface GeneratedReferencesDocument {
 export interface GeneratedReferencesSketch {
   readonly id: SketchId;
   readonly plane: SketchPlane;
+  readonly spurGear?: SpurGearSource;
   readonly entities: ReadonlyMap<
     SketchEntityId,
     GeneratedReferencesSketchEntity
@@ -376,19 +379,27 @@ function createRegionExtrudeGeneratedReferences(
   if (!outerSummary || holeSummaries.length !== region.holes.length) {
     return undefined;
   }
+  // Generated gear loops can contain thousands of members. Keep their complete
+  // semantic identity without repeating the entire wire in every topology ID
+  // and transaction effect. Existing editable-region IDs remain unchanged.
+  const referenceLoopKey = (key: string): string =>
+    sketch.spurGear?.featureId === feature.id
+      ? `gear-loop-sha256:${sha256Hex(new TextEncoder().encode(key))}`
+      : key;
+  const outerKey = referenceLoopKey(outerSummary.loopKey);
   const outer = createRegionLoopReferenceSource(
     sketch,
     region.outer,
-    outerSummary.loopKey,
-    outerSummary.loopKey,
+    outerKey,
+    outerKey,
     "outer"
   );
   const holes = region.holes.map((loop, index) =>
     createRegionLoopReferenceSource(
       sketch,
       loop,
-      holeSummaries[index]!.loopKey,
-      outerSummary.loopKey,
+      referenceLoopKey(holeSummaries[index]!.loopKey),
+      outerKey,
       "hole"
     )
   );

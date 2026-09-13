@@ -526,7 +526,9 @@ function createSolidBooleanSourceForFeature(
       extrudeFeaturesByBodyId,
       sketches,
       generatedFacesByKey,
-      nextVisitedFeatureIds,
+      // The delegated resolver enters this same feature and records it once.
+      // Passing nextVisited here would mistake every boolean result for a cycle.
+      visitedFeatureIds,
       datums
     );
   }

@@ -1,3 +1,7 @@
+import {
+  CAD_PARAMETER_EXPRESSION_HELP,
+  CAD_EXPRESSION_PARAMETER_ID_HELP
+} from "@web-cad/agent-adapter";
 // Discovery for the common build/revise path. Execution still uses CADOps
 // validation; these schemas never implement modeling or geometry semantics.
 type Schema = Record<string, unknown>;
@@ -249,8 +253,14 @@ export function createModelingOpSchemas(
     op(
       "parameter.setExpression",
       ["id"],
-      { id, expression: { type: ["string", "null"] } },
-      "Set a parameter expression; null or omission clears it."
+      {
+        id: { ...id, description: CAD_EXPRESSION_PARAMETER_ID_HELP },
+        expression: {
+          type: ["string", "null"],
+          description: CAD_PARAMETER_EXPRESSION_HELP
+        }
+      },
+      "Set a parameter expression by target ID. Expression references bind by parameter name; see the expression field for grammar and functions. Null, omission or an empty string clears it."
     ),
     op(
       "sketch.create",
