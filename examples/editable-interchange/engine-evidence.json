@@ -1,0 +1,387 @@
+{
+  "mode": "full-step-acceptance",
+  "source": {
+    "fileName": "radial-engine.step",
+    "byteLength": 13389913,
+    "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
+  },
+  "environment": {
+    "node": "v22.22.1",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "cpu": "Apple M4",
+    "logicalCpuCount": 10,
+    "physicalMemoryBytes": 25769803776,
+    "memorySampling": "Process memory observed at stage completion, not continuous peak measurement."
+  },
+  "stages": [
+    {
+      "name": "cold STEP import through CadSession",
+      "milliseconds": 49747.1,
+      "memoryBytes": {
+        "rss": 1119666176,
+        "heapTotal": 445775872,
+        "heapUsed": 405721576,
+        "external": 269372313,
+        "arrayBuffers": 86102152
+      }
+    },
+    {
+      "name": "ready exact engine",
+      "milliseconds": 480.3,
+      "memoryBytes": {
+        "rss": 1143914496,
+        "heapTotal": 531759104,
+        "heapUsed": 491407360,
+        "external": 273650001,
+        "arrayBuffers": 90379800
+      }
+    },
+    {
+      "name": "save imported native source",
+      "milliseconds": 845.2,
+      "memoryBytes": {
+        "rss": 1280786432,
+        "heapTotal": 622723072,
+        "heapUsed": 572206064,
+        "external": 306366515,
+        "arrayBuffers": 123096314
+      }
+    },
+    {
+      "name": "make one nested engine occurrence independent",
+      "milliseconds": 522.7,
+      "memoryBytes": {
+        "rss": 1373274112,
+        "heapTotal": 714211328,
+        "heapUsed": 665509632,
+        "external": 308466242,
+        "arrayBuffers": 125195977
+      }
+    },
+    {
+      "name": "resize only the independent bore",
+      "milliseconds": 604.8,
+      "memoryBytes": {
+        "rss": 1654161408,
+        "heapTotal": 989200384,
+        "heapUsed": 939226088,
+        "external": 306470674,
+        "arrayBuffers": 123200409
+      }
+    },
+    {
+      "name": "sketch and cut the imported end face",
+      "milliseconds": 581.4,
+      "memoryBytes": {
+        "rss": 2023145472,
+        "heapTotal": 1355677696,
+        "heapUsed": 1301621016,
+        "external": 306578557,
+        "arrayBuffers": 123308228
+      }
+    },
+    {
+      "name": "move the independent component",
+      "milliseconds": 495.2,
+      "memoryBytes": {
+        "rss": 2024751104,
+        "heapTotal": 625246208,
+        "heapUsed": 576263896,
+        "external": 278369880,
+        "arrayBuffers": 84152441
+      }
+    },
+    {
+      "name": "save edited native",
+      "milliseconds": 812.3,
+      "memoryBytes": {
+        "rss": 2063941632,
+        "heapTotal": 806387712,
+        "heapUsed": 754570824,
+        "external": 312688314,
+        "arrayBuffers": 129418241
+      }
+    },
+    {
+      "name": "open edited native in fresh session",
+      "milliseconds": 887.1,
+      "memoryBytes": {
+        "rss": 2077818880,
+        "heapTotal": 539262976,
+        "heapUsed": 497856072,
+        "external": 347619583,
+        "arrayBuffers": 164349510
+      }
+    },
+    {
+      "name": "evaluate reopened native",
+      "milliseconds": 1902.5,
+      "memoryBytes": {
+        "rss": 2118811648,
+        "heapTotal": 562298880,
+        "heapUsed": 472527584,
+        "external": 391447585,
+        "arrayBuffers": 171935752
+      }
+    },
+    {
+      "name": "update existing native oil-port depth",
+      "milliseconds": 510.2,
+      "memoryBytes": {
+        "rss": 2120155136,
+        "heapTotal": 608960512,
+        "heapUsed": 569253704,
+        "external": 398147101,
+        "arrayBuffers": 178635396
+      }
+    },
+    {
+      "name": "undo native depth update",
+      "milliseconds": 495.9,
+      "memoryBytes": {
+        "rss": 2120482816,
+        "heapTotal": 790888448,
+        "heapUsed": 748374344,
+        "external": 402059942,
+        "arrayBuffers": 182548301
+      }
+    },
+    {
+      "name": "redo native depth update",
+      "milliseconds": 500.7,
+      "memoryBytes": {
+        "rss": 2120515584,
+        "heapTotal": 881590272,
+        "heapUsed": 838125488,
+        "external": 402063328,
+        "arrayBuffers": 182551687
+      }
+    },
+    {
+      "name": "export edited engine STEP",
+      "milliseconds": 11361,
+      "memoryBytes": {
+        "rss": 2417115136,
+        "heapTotal": 488144896,
+        "heapUsed": 468379832,
+        "external": 597393186,
+        "arrayBuffers": 219481161
+      }
+    },
+    {
+      "name": "reimport edited STEP in fresh session",
+      "milliseconds": 48242.4,
+      "memoryBytes": {
+        "rss": 2682142720,
+        "heapTotal": 768868352,
+        "heapUsed": 717282456,
+        "external": 753670486,
+        "arrayBuffers": 300588669
+      }
+    },
+    {
+      "name": "evaluate reimported STEP",
+      "milliseconds": 498.8,
+      "memoryBytes": {
+        "rss": 2682159104,
+        "heapTotal": 859308032,
+        "heapUsed": 817345768,
+        "external": 759182869,
+        "arrayBuffers": 306101052
+      }
+    },
+    {
+      "name": "edit reimported engine bore again",
+      "milliseconds": 566.5,
+      "memoryBytes": {
+        "rss": 2682978304,
+        "heapTotal": 1042546688,
+        "heapUsed": 987795040,
+        "external": 752659039,
+        "arrayBuffers": 299577158
+      }
+    },
+    {
+      "name": "sketch and cut the reimported engine again",
+      "milliseconds": 591,
+      "memoryBytes": {
+        "rss": 2682634240,
+        "heapTotal": 926449664,
+        "heapUsed": 871694464,
+        "external": 726249221,
+        "arrayBuffers": 273167404
+      }
+    }
+  ],
+  "status": "passed",
+  "measurements": {
+    "initial": {
+      "uniqueBodies": 51,
+      "occurrences": 246,
+      "solids": 266,
+      "volume": 34671280.53327277,
+      "bounds": {
+        "min": [-464.4939281445147, -478.0256294313582, -224.00000009999818],
+        "max": [464.4939281445161, 418.7034215575511, 326.0004867943349]
+      }
+    },
+    "bore": {
+      "originalRadius": 11,
+      "revisedRadius": 11.1,
+      "originalVolume": 3034.778503367731,
+      "revisedVolume": 2743.1758732615285,
+      "unchangedSiblingOccurrences": 3
+    },
+    "edited": {
+      "uniqueBodies": 52,
+      "occurrences": 246,
+      "solids": 266,
+      "volume": 34670988.89529975,
+      "bounds": {
+        "min": [-464.4939281445147, -478.0256294313582, -224.00000009999818],
+        "max": [464.4939281445161, 418.7034215575511, 326.0004867943349]
+      }
+    },
+    "nativeParameterEdit": {
+      "featureId": "engine_oil_port",
+      "initialDepth": 0.5,
+      "revisedDepth": 0.75,
+      "removedVolume": 0.01767145867643194,
+      "undoVerified": true,
+      "redoVerified": true,
+      "totals": {
+        "uniqueBodies": 52,
+        "occurrences": 246,
+        "solids": 266,
+        "volume": 34670988.8776283,
+        "bounds": {
+          "min": [-464.4939281445147, -478.0256294313582, -224.00000009999818],
+          "max": [464.4939281445161, 418.7034215575511, 326.0004867943349]
+        }
+      }
+    },
+    "native": {
+      "uniqueBodies": 52,
+      "occurrences": 246,
+      "solids": 266,
+      "volume": 34670988.89529975,
+      "bounds": {
+        "min": [-464.4939281445147, -478.0256294313582, -224.00000009999818],
+        "max": [464.4939281445161, 418.7034215575511, 326.0004867943349]
+      }
+    },
+    "step": {
+      "uniqueBodies": 52,
+      "occurrences": 246,
+      "solids": 266,
+      "volume": 34670988.91377543,
+      "bounds": {
+        "min": [-464.49392814445184, -478.02562943130016, -224.0000000999],
+        "max": [464.49392814451267, 418.7034215575462, 326.00048679433786]
+      }
+    },
+    "secondEdit": {
+      "boreRadius": 11.15,
+      "oilPortRadius": 0.15,
+      "oilPortDepth": 0.25,
+      "removedVolume": 0.017671458540007734,
+      "totals": {
+        "uniqueBodies": 52,
+        "occurrences": 246,
+        "solids": 266,
+        "volume": 34670842.10518724,
+        "bounds": {
+          "min": [-464.49392814445184, -478.02562943130016, -224.0000000999],
+          "max": [464.49392814451267, 418.7034215575462, 326.00048679433786]
+        }
+      }
+    }
+  },
+  "importWarnings": [],
+  "importDiagnostics": [
+    {
+      "code": "STEP_READER_AVAILABLE",
+      "severity": "info",
+      "message": "Open CASCADE STEPCAFControl_Reader read STEP geometry and assembly structure.",
+      "featureId": "feat_1",
+      "bodyId": "body_1",
+      "checkpointId": "checkpoint_body_1"
+    },
+    {
+      "code": "STEP_TRANSFER_COMPLETE",
+      "severity": "info",
+      "message": "Transferred 51 unique part definitions and 14 assembly definitions.",
+      "featureId": "feat_1",
+      "bodyId": "body_1",
+      "checkpointId": "checkpoint_body_1"
+    },
+    {
+      "code": "STEP_APPEARANCE_PARTIAL",
+      "severity": "warning",
+      "message": "Imported body and occurrence RGB colors. Per-face/edge colors or transparency on 1 named definition(s) are not preserved: 43-Compression Spring.",
+      "featureId": "feat_1",
+      "bodyId": "body_1",
+      "checkpointId": "checkpoint_body_1"
+    },
+    {
+      "code": "STEP_TOPOLOGY_EXTRACTED",
+      "severity": "info",
+      "message": "Extracted topology for 51 unique parts.",
+      "featureId": "feat_1",
+      "bodyId": "body_1",
+      "checkpointId": "checkpoint_body_1"
+    },
+    {
+      "code": "STEP_CHECKPOINT_PAYLOAD_CREATED",
+      "severity": "info",
+      "message": "Created 51 native part checkpoints.",
+      "featureId": "feat_1",
+      "bodyId": "body_1",
+      "checkpointId": "checkpoint_body_1"
+    }
+  ],
+  "memoryBytesAtCompletion": {
+    "rss": 2682634240,
+    "heapTotal": 1017937920,
+    "heapUsed": 968749936,
+    "external": 726922757,
+    "arrayBuffers": 273840844
+  },
+  "canonicalEvidenceCacheBudget": {
+    "maximumEstimatedBytes": 134217728,
+    "maximumEntries": 256,
+    "accounting": "Owned BRep bytes plus twice the JSON character count of retained metadata/topology; an estimated serialized size, not an exact heap limit."
+  },
+  "cache": {
+    "runtime": "partbench.cad-runtime.v1",
+    "host": "headless",
+    "geometryAuthority": "OCCT/WASM",
+    "commandVersion": "cadops.v1",
+    "units": "mm",
+    "sourceIdentity": {
+      "algorithm": "partbench-source-v1",
+      "sha256": "f2d7d23921ca461559f22c0524fb00ff8caa4af32985b7485608150be942f93d"
+    },
+    "sourceAuthorityEpoch": 7,
+    "capabilities": {
+      "exactGeometry": true,
+      "nativeOpenSave": true,
+      "stepImport": true,
+      "stepExport": true,
+      "sketchExchange": ["dxf", "svg"],
+      "displayMesh": false
+    },
+    "cache": {
+      "entryCount": 61,
+      "byteLength": 9744381,
+      "hits": 57,
+      "maxEntries": 128,
+      "maxBytes": 67108864
+    },
+    "geometry": {
+      "artifactBuilds": 61,
+      "milliseconds": 1663.7291209999166
+    }
+  }
+}

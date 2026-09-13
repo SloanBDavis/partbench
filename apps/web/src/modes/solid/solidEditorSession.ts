@@ -248,7 +248,11 @@ export function applySolidCollectorSelection(
     if (!choice) return draft;
     return {
       ...(draft as FeatureOffsetForm),
-      sourceKind: "face",
+      sourceKind:
+        (draft as FeatureOffsetForm).sourceKind === "directFace" ||
+        choice.value.kind === "topologyAnchor"
+          ? "directFace"
+          : "face",
       face: choice.value,
       profileSketchId: "",
       profileEntityId: ""

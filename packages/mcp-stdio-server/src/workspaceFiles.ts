@@ -27,6 +27,20 @@ export class ProjectFileError extends Error {
   }
 }
 
+export type ExchangeFileFormat = "step" | "dxf" | "svg";
+export const WORKSPACE_FILE_LIMITS = {
+  wcad: 256 * 1024 * 1024,
+  step: 256 * 1024 * 1024,
+  dxf: 20_000_000,
+  svg: 20_000_000
+} as const;
+const extensions: Record<"wcad" | ExchangeFileFormat, readonly string[]> = {
+  wcad: [".wcad"],
+  step: [".step", ".stp"],
+  dxf: [".dxf"],
+  svg: [".svg"]
+};
+
 /** All file operations resolve inside one explicit existing workspace directory. */
 export class WorkspaceFiles {
   private constructor(readonly root: string) {}
@@ -43,32 +57,58 @@ export class WorkspaceFiles {
   }
 
   async readNative(path: string): Promise<{ path: string; bytes: Uint8Array }> {
-    this.#requireExtension(path, [".wcad"]);
+    return this.#read(path, "wcad");
+  }
+
+  async readExchange(
+    path: string,
+    format?: ExchangeFileFormat
+  ): Promise<{ path: string; bytes: Uint8Array; format: ExchangeFileFormat }> {
+    const extension = extname(path).toLowerCase();
+    const inferred = Object.entries(extensions).find(
+      ([name, suffixes]) => name !== "wcad" && suffixes.includes(extension)
+    )?.[0] as ExchangeFileFormat | undefined;
+    if (!inferred || (format !== undefined && format !== inferred))
+      throw new ProjectFileError(
+        "INVALID_FILE_EXTENSION",
+        "Import paths must match the requested format: .step/.stp, .dxf, or .svg. Open native .wcad projects with cad.project_open."
+      );
+    return { ...(await this.#read(path, inferred)), format: inferred };
+  }
+
+  async #read(
+    path: string,
+    format: "wcad" | ExchangeFileFormat
+  ): Promise<{ path: string; bytes: Uint8Array }> {
+    this.#requireExtension(path, extensions[format]);
     const canonical = await realpath(this.#resolve(path));
     this.#requireInside(canonical);
     const info = await stat(canonical);
     if (!info.isFile())
       throw new ProjectFileError(
         "NOT_A_FILE",
-        "Choose a .wcad file, not a directory."
+        "Choose an input file, not a directory."
       );
-    if (info.size > 256 * 1024 * 1024)
+    if (info.size > WORKSPACE_FILE_LIMITS[format])
       throw new ProjectFileError(
         "FILE_TOO_LARGE",
-        "Native project files must be no larger than 256 MiB."
+        `${format.toUpperCase()} files must be no larger than ${WORKSPACE_FILE_LIMITS[format]} bytes.`
       );
-    return { path: canonical, bytes: await readFile(canonical) };
+    const bytes = await readFile(canonical);
+    if (bytes.byteLength > WORKSPACE_FILE_LIMITS[format])
+      throw new ProjectFileError(
+        "FILE_TOO_LARGE",
+        "The input file grew beyond the import size limit while it was being read."
+      );
+    return { path: canonical, bytes };
   }
 
   async outputPath(
     path: string,
-    format: "wcad" | "step",
+    format: "wcad" | ExchangeFileFormat,
     overwrite = false
   ): Promise<string> {
-    this.#requireExtension(
-      path,
-      format === "wcad" ? [".wcad"] : [".step", ".stp"]
-    );
+    this.#requireExtension(path, extensions[format]);
     const candidate = this.#resolve(path);
     const parent = await realpath(dirname(candidate));
     this.#requireInside(parent);

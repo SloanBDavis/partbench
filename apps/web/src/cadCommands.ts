@@ -831,11 +831,7 @@ export function buildAssemblyCoincidentMateOp(
 function concentricAxisOrigin(
   form: AssemblyConcentricMateAxisForm
 ): readonly [number, number, number] | undefined {
-  if (
-    form.originX === 0 &&
-    form.originY === 0 &&
-    form.originZ === 0
-  ) {
+  if (form.originX === 0 && form.originY === 0 && form.originZ === 0) {
     return undefined;
   }
   return [form.originX, form.originY, form.originZ];
@@ -898,7 +894,10 @@ export function buildAssemblyRevoluteMateOp(
   return {
     ...(form.mateId !== undefined
       ? { op: "assembly.mate.edit" as const, mateId: form.mateId.trim() }
-      : { op: "assembly.mate.create" as const, id: normalizeOptionalId(form.id) }),
+      : {
+          op: "assembly.mate.create" as const,
+          id: normalizeOptionalId(form.id)
+        }),
     assemblyId: form.assemblyId.trim(),
     name: form.name.trim() || undefined,
     kind: "revolute",
@@ -923,7 +922,7 @@ export function buildAssemblyInstancePoseOp(
     transform: {
       translation: [form.translationX, form.translationY, form.translationZ],
       rotation: [form.rotationX, form.rotationY, form.rotationZ].map(
-        (degrees) => degrees * Math.PI / 180
+        (degrees) => (degrees * Math.PI) / 180
       ) as [number, number, number]
     }
   };
@@ -987,7 +986,9 @@ export function buildAssemblyMateDeleteOp(
   };
 }
 
-export function buildDatumAndSketchOnPlaneOps(form: SketchCreateForm): readonly CadOp[] {
+export function buildDatumAndSketchOnPlaneOps(
+  form: SketchCreateForm
+): readonly CadOp[] {
   const offset = form.offset;
   const datumId = normalizeOptionalId(form.datumId ?? "");
   if (datumId) {
@@ -998,7 +999,10 @@ export function buildDatumAndSketchOnPlaneOps(form: SketchCreateForm): readonly 
       normalizeOptionalId(form.id) !== undefined
         ? `datum_${normalizeOptionalId(form.id)}`
         : form.name.trim()
-          ? `datum_${form.name.trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, "_")}`
+          ? `datum_${form.name
+              .trim()
+              .toLowerCase()
+              .replaceAll(/[^a-z0-9]+/g, "_")}`
           : "datum_1";
     return [
       buildDatumPlaneCreateOp({
@@ -2046,7 +2050,16 @@ export function buildFeatureUpdateOffsetOp(
   };
 }
 
-function buildFeatureOffsetSource(form: FeatureOffsetForm): FeatureOffsetSource {
+function buildFeatureOffsetSource(
+  form: FeatureOffsetForm
+): FeatureOffsetSource {
+  if (form.sourceKind === "directFace") {
+    if (form.face?.kind !== "topologyAnchor")
+      throw new Error(
+        "Solid face offset requires a current exact face selection."
+      );
+    return { kind: "directFace", face: form.face };
+  }
   if (form.sourceKind === "face") {
     if (!form.face) {
       throw new Error("feature.offset face source requires a face reference.");

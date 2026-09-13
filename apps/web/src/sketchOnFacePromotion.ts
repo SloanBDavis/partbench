@@ -138,6 +138,16 @@ export function shouldPromoteSketchOnFaceTarget(
   }
 
   return (
+    feature.kind === "primitive" ||
+    feature.kind === "importedBody" ||
+    feature.kind === "offset" ||
+    feature.kind === "shell" ||
+    feature.kind === "draft" ||
+    feature.kind === "align" ||
+    feature.kind === "combine" ||
+    feature.kind === "mirror" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern" ||
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
     feature.kind === "fillet"

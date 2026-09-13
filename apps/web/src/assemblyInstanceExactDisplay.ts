@@ -1,8 +1,13 @@
-import type {
-  AssemblyInstanceSnapshot,
-  AssemblySnapshot,
-  Transform
-} from "@web-cad/cad-protocol";
+import type { AssemblySnapshot, Transform, Vec3 } from "@web-cad/cad-protocol";
+import {
+  flattenAssemblyOccurrences,
+  resolveAssemblyOccurrence,
+  assemblyTransformFromMatrix,
+  assemblyTransformToMatrix,
+  multiplyAssemblyMatrices,
+  IDENTITY_ASSEMBLY_TRANSFORM,
+  type AssemblyOccurrence
+} from "@web-cad/cad-core";
 import type {
   RenderPrimitive,
   RenderTransform,
@@ -17,6 +22,8 @@ export interface AssemblyInstanceExactDisplayRef {
   readonly name: string;
   readonly transform: Transform;
   readonly renderTargetId: string;
+  readonly rootAssemblyId?: string;
+  readonly instancePath?: readonly string[];
 }
 
 const ASSEMBLY_INSTANCE_RENDER_ID_PREFIX = "assembly-instance:";
@@ -29,38 +36,82 @@ export function createAssemblySceneView(input: {
   };
   readonly assemblies: readonly AssemblySnapshot[];
   readonly view: "assembly" | "parts";
+  readonly definitionColorsByBodyId?: ReadonlyMap<string, Vec3>;
+  readonly bodyRenderIdsByBodyId?: ReadonlyMap<string, string>;
 }) {
+  const base = input.definitionColorsByBodyId?.size
+    ? {
+        ...input.base,
+        meshes: input.base.meshes.map((mesh) => {
+          const color = input.definitionColorsByBodyId?.get(mesh.id);
+          return color ? { ...mesh, color } : mesh;
+        })
+      }
+    : input.base;
   if (
     input.view === "parts" ||
     !input.assemblies.some((assembly) => assembly.instances.length > 0)
   ) {
-    return input.base;
+    return base;
+  }
+  const instantiatedBodyIds = new Set(
+    flattenAssemblyOccurrences(input.assemblies).map(
+      (occurrence) => occurrence.bodyId
+    )
+  );
+  const instantiatedRenderIds = new Set(
+    [...instantiatedBodyIds].map(
+      (bodyId) => input.bodyRenderIdsByBodyId?.get(bodyId) ?? bodyId
+    )
+  );
+  const meshesById = new Map(base.meshes.map((mesh) => [mesh.id, mesh]));
+  const meshesByBodyId = new Map(meshesById);
+  for (const [bodyId, renderId] of input.bodyRenderIdsByBodyId ?? []) {
+    const mesh = meshesById.get(renderId);
+    if (mesh) meshesByBodyId.set(bodyId, mesh);
   }
   return {
-    primitives: [],
-    meshes: createAssemblyInstanceExactDisplayMeshes({
-      assemblies: input.assemblies,
-      definitionMeshesByBodyId: new Map(
-        input.base.meshes.map((mesh) => [mesh.id, mesh])
-      )
-    })
+    primitives: base.primitives.filter(
+      (primitive) => !instantiatedRenderIds.has(primitive.id)
+    ),
+    meshes: [
+      ...base.meshes.filter(
+        (mesh) =>
+          mesh.source !== "sketch" &&
+          !mesh.id.startsWith("sketch:") &&
+          !instantiatedBodyIds.has(mesh.id) &&
+          !instantiatedRenderIds.has(mesh.id)
+      ),
+      ...createAssemblyInstanceExactDisplayMeshes({
+        assemblies: input.assemblies,
+        definitionMeshesByBodyId: meshesByBodyId
+      })
+    ]
   };
 }
 
 export function createAssemblyInstanceRenderId(
   assemblyId: string,
-  instanceId: string
+  instanceId: string | readonly string[]
 ): string {
+  const path = typeof instanceId === "string" ? [instanceId] : instanceId;
   return documentTreeSelectionKey({
     kind: "assembly-instance",
     assemblyId,
-    id: instanceId
+    id: path.at(-1) ?? "",
+    ...(path.length > 1
+      ? { rootAssemblyId: assemblyId, instancePath: path }
+      : {})
   });
 }
 
-export function parseAssemblyInstanceRenderId(
-  renderId: string | undefined
-): { readonly assemblyId: string; readonly instanceId: string } | undefined {
+export function parseAssemblyInstanceRenderId(renderId: string | undefined):
+  | {
+      readonly assemblyId: string;
+      readonly instanceId: string;
+      readonly instancePath?: readonly string[];
+    }
+  | undefined {
   if (!renderId?.startsWith(ASSEMBLY_INSTANCE_RENDER_ID_PREFIX)) {
     return undefined;
   }
@@ -69,9 +120,21 @@ export function parseAssemblyInstanceRenderId(
   if (separator <= 0 || separator >= remainder.length - 1) {
     return undefined;
   }
+  let path: string[], assemblyId: string;
+  try {
+    path = remainder
+      .slice(separator + 1)
+      .split("/")
+      .map(decodeURIComponent);
+    assemblyId = decodeURIComponent(remainder.slice(0, separator));
+  } catch {
+    return undefined;
+  }
+  if (path.some((part) => !part)) return undefined;
   return {
-    assemblyId: remainder.slice(0, separator),
-    instanceId: remainder.slice(separator + 1)
+    assemblyId,
+    instanceId: path.at(-1)!,
+    ...(path.length > 1 ? { instancePath: path } : {})
   };
 }
 
@@ -84,17 +147,12 @@ export function createAssemblyInstanceExactDisplayMeshes(input: {
   readonly definitionMeshesByBodyId: ReadonlyMap<string, RenderTriangleMesh>;
 }): readonly RenderTriangleMesh[] {
   const meshes: RenderTriangleMesh[] = [];
-  for (const assembly of input.assemblies) {
-    for (const instance of assembly.instances) {
-      if (instance.definition.kind !== "body") continue;
-      const definitionMesh = input.definitionMeshesByBodyId.get(
-        instance.definition.bodyId
-      );
-      if (!definitionMesh) continue;
-      meshes.push(
-        createInstanceDisplayMesh(assembly.id, instance, definitionMesh)
-      );
-    }
+  for (const occurrence of flattenAssemblyOccurrences(input.assemblies)) {
+    const definitionMesh = input.definitionMeshesByBodyId.get(
+      occurrence.bodyId
+    );
+    if (!definitionMesh) continue;
+    meshes.push(createInstanceDisplayMesh(occurrence, definitionMesh));
   }
   return meshes;
 }
@@ -104,24 +162,14 @@ export function listAssemblyInstanceExactDisplayRefs(input: {
   readonly definitionBodyIds?: ReadonlySet<string>;
 }): readonly AssemblyInstanceExactDisplayRef[] {
   const refs: AssemblyInstanceExactDisplayRef[] = [];
-  for (const assembly of input.assemblies) {
-    for (const instance of assembly.instances) {
-      if (instance.definition.kind !== "body") continue;
-      if (
-        input.definitionBodyIds &&
-        !input.definitionBodyIds.has(instance.definition.bodyId)
-      ) {
-        continue;
-      }
-      refs.push({
-        assemblyId: assembly.id,
-        instanceId: instance.id,
-        bodyId: instance.definition.bodyId,
-        name: instance.name,
-        transform: instance.transform,
-        renderTargetId: createAssemblyInstanceRenderId(assembly.id, instance.id)
-      });
+  for (const occurrence of flattenAssemblyOccurrences(input.assemblies)) {
+    if (
+      input.definitionBodyIds &&
+      !input.definitionBodyIds.has(occurrence.bodyId)
+    ) {
+      continue;
     }
+    refs.push(occurrenceDisplayRef(occurrence));
   }
   return refs;
 }
@@ -132,62 +180,116 @@ export function resolveAssemblyInstanceBodyPick(input: {
 }): AssemblyInstanceExactDisplayRef | undefined {
   const parsed = parseAssemblyInstanceRenderId(input.pickedRenderId);
   if (!parsed) return undefined;
-  const assembly = input.assemblies.find(
-    (candidate) => candidate.id === parsed.assemblyId
+  const path = parsed.instancePath ?? [parsed.instanceId];
+  const resolved = resolveAssemblyOccurrence(
+    input.assemblies,
+    parsed.assemblyId,
+    path
   );
-  const instance = assembly?.instances.find(
-    (candidate) => candidate.id === parsed.instanceId
-  );
-  if (!assembly || !instance || instance.definition.kind !== "body") {
+  if (!resolved || resolved.instance.definition.kind !== "body") {
     return undefined;
   }
-  return {
-    assemblyId: assembly.id,
-    instanceId: instance.id,
-    bodyId: instance.definition.bodyId,
-    name: instance.name,
-    transform: instance.transform,
-    renderTargetId: createAssemblyInstanceRenderId(assembly.id, instance.id)
-  };
+  let matrix = assemblyTransformToMatrix(IDENTITY_ASSEMBLY_TRANSFORM);
+  const byId = new Map(
+    input.assemblies.map((assembly) => [assembly.id, assembly])
+  );
+  let parent = byId.get(parsed.assemblyId);
+  for (const id of path) {
+    const instance = parent?.instances.find((candidate) => candidate.id === id);
+    if (!instance) return undefined;
+    matrix = multiplyAssemblyMatrices(
+      matrix,
+      assemblyTransformToMatrix(instance.transform)
+    );
+    if (instance.definition.kind === "assembly")
+      parent = byId.get(instance.definition.assemblyId);
+  }
+  return occurrenceDisplayRef({
+    rootAssemblyId: parsed.assemblyId,
+    assemblyId: resolved.assembly.id,
+    instanceId: resolved.instance.id,
+    path,
+    bodyId: resolved.instance.definition.bodyId,
+    name: resolved.instance.name,
+    transform: assemblyTransformFromMatrix(matrix)
+  });
 }
 
 export function findAssemblyInstanceDefinitionBodyId(input: {
   readonly assemblies: readonly AssemblySnapshot[];
   readonly assemblyId: string;
   readonly instanceId: string;
+  readonly rootAssemblyId?: string;
+  readonly instancePath?: readonly string[];
 }): string | undefined {
-  const assembly = input.assemblies.find(
-    (candidate) => candidate.id === input.assemblyId
-  );
-  const instance = assembly?.instances.find(
-    (candidate) => candidate.id === input.instanceId
-  );
+  const instance = resolveAssemblyOccurrence(
+    input.assemblies,
+    input.rootAssemblyId ?? input.assemblyId,
+    input.instancePath ?? [input.instanceId]
+  )?.instance;
   return instance?.definition.kind === "body"
     ? instance.definition.bodyId
     : undefined;
 }
 
 function createInstanceDisplayMesh(
-  assemblyId: string,
-  instance: AssemblyInstanceSnapshot,
+  occurrence: AssemblyOccurrence,
   definitionMesh: RenderTriangleMesh
 ): RenderTriangleMesh {
-  const bodyId = instance.definition.bodyId;
+  const bodyId = occurrence.bodyId;
   return {
     ...definitionMesh,
-    id: createAssemblyInstanceRenderId(assemblyId, instance.id),
+    id: createAssemblyInstanceRenderId(
+      occurrence.rootAssemblyId,
+      occurrence.path
+    ),
     parentId: definitionMesh.id,
     source: bodyId,
-    label: `${instance.name} · instance of ${bodyId}`,
+    label: `${occurrence.name} · instance of ${bodyId}`,
+    ...(occurrence.color ? { color: occurrence.color } : {}),
     // Instances are transforms over the shared definition mesh.
-    transform: toRenderTransform(instance.transform)
+    transform: toRenderTransform(
+      assemblyTransformFromMatrix(
+        multiplyAssemblyMatrices(
+          assemblyTransformToMatrix(occurrence.transform),
+          assemblyTransformToMatrix(definitionMesh.transform)
+        )
+      )
+    )
+  };
+}
+
+function occurrenceDisplayRef(
+  occurrence: AssemblyOccurrence
+): AssemblyInstanceExactDisplayRef {
+  return {
+    assemblyId: occurrence.assemblyId,
+    instanceId: occurrence.instanceId,
+    bodyId: occurrence.bodyId,
+    name: occurrence.name,
+    transform: toRenderTransform(occurrence.transform),
+    renderTargetId: createAssemblyInstanceRenderId(
+      occurrence.rootAssemblyId,
+      occurrence.path
+    ),
+    ...(occurrence.path.length > 1
+      ? {
+          rootAssemblyId: occurrence.rootAssemblyId,
+          instancePath: occurrence.path
+        }
+      : {})
   };
 }
 
 function toRenderTransform(transform: Transform): RenderTransform {
+  const clean = (vector: Vec3): Vec3 => [
+    vector[0] === 0 ? 0 : vector[0],
+    vector[1] === 0 ? 0 : vector[1],
+    vector[2] === 0 ? 0 : vector[2]
+  ];
   return {
-    translation: transform.translation,
-    rotation: transform.rotation,
-    scale: transform.scale
+    translation: clean(transform.translation),
+    rotation: clean(transform.rotation),
+    scale: clean(transform.scale)
   };
 }

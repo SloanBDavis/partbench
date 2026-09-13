@@ -1,4 +1,8 @@
 import {
+  validateAssemblyHierarchy,
+  flattenAssemblyOccurrences
+} from "./assemblyHierarchy";
+import {
   isSpurGearOp,
   type SpurGearSource,
   type SpurGearInputs,
@@ -1082,10 +1086,11 @@ export interface ImportedBodyFeature {
   readonly kind: "importedBody";
   readonly name?: string;
   readonly sourceFileName: string;
-  readonly sourceFormat: "step";
+  readonly sourceFormat: "step" | "brep";
   readonly bodyId: BodyId;
   readonly checkpointId: string;
   readonly healingApplied: boolean;
+  readonly color?: Vec3;
 }
 
 export interface LinearPatternFeature {
@@ -1283,6 +1288,11 @@ export interface CadProjectImportStepResolverInput {
 
 export interface CadProjectImportStepResolverResult {
   readonly resolvedBodies: readonly ProjectImportStepResolvedBody[];
+  /** Ordinary assembly CADOps committed atomically with imported definitions. */
+  readonly assemblyOps?: readonly Extract<
+    CadOp,
+    { readonly op: "assembly.create" | "assembly.instance.insert" }
+  >[];
   readonly previewBodies?: readonly CadProjectImportStepPreviewBody[];
   readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
   readonly diagnostics?: readonly CadStepImportDiagnostic[];
@@ -1413,10 +1423,24 @@ export function getCadProjectFormatVersionForDocument(
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
   | typeof CAD_PROJECT_FORMAT_VERSION_V21
   | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
+  const currentCheckpointIds = new Set(
+    (document.topologyIdentity?.checkpoints ?? []).map(
+      (checkpoint) => checkpoint.checkpointId
+    )
+  );
   if (
     historyBaseline !== undefined ||
     documentHasV22SourceRecords(document) ||
-    [...history, ...redoStack].some(transactionRequiresV22)
+    [...history, ...redoStack].some(transactionRequiresV22) ||
+    [...history, ...redoStack].some((transaction) => {
+      const refs = transaction.diff.references;
+      return [
+        ...(refs?.topologyCheckpointsCreated ?? []),
+        ...(refs?.topologyCheckpointsDeleted ?? [])
+      ].some(
+        (checkpoint) => !currentCheckpointIds.has(checkpoint.checkpointId)
+      );
+    })
   ) {
     return CAD_PROJECT_FORMAT_VERSION_V22;
   }
@@ -2219,8 +2243,10 @@ export class CadEngine {
     fork.#nextTransactionNumber = this.#nextTransactionNumber;
     fork.#sourceAuthorityEpoch = this.#sourceAuthorityEpoch;
     fork.#trustedQuerySourceRevision = this.#trustedQuerySourceRevision;
-    fork.#trustedQuerySolverEvaluationIdentity = this.#trustedQuerySolverEvaluationIdentity;
-    fork.#parameterExpressionImportDiagnostics = this.#parameterExpressionImportDiagnostics;
+    fork.#trustedQuerySolverEvaluationIdentity =
+      this.#trustedQuerySolverEvaluationIdentity;
+    fork.#parameterExpressionImportDiagnostics =
+      this.#parameterExpressionImportDiagnostics;
     return fork;
   }
 
@@ -2580,6 +2606,52 @@ export class CadEngine {
       }
 
       case "project.structure": {
+        if (request.query.projection === "occurrences") {
+          const query = request.query;
+          const occurrences = flattenAssemblyOccurrences([
+            ...this.#document.assemblies.values()
+          ]).filter(
+            (item) =>
+              (!query.assemblyIds ||
+                query.assemblyIds.includes(item.assemblyId)) &&
+              (!query.instanceIds ||
+                query.instanceIds.includes(item.instanceId))
+          );
+          const offset = query.offset ?? 0,
+            limit = query.limit ?? 100;
+          const page = occurrences.slice(offset, offset + limit);
+          return {
+            ok: true,
+            query: "project.structure",
+            cadOpsVersion: request.version,
+            projection: "occurrences",
+            partCount: 1,
+            featureCount:
+              this.#document.features.size + this.#document.objects.size,
+            bodyCount:
+              this.#document.features.size + this.#document.objects.size,
+            parts: [],
+            features: [],
+            bodies: [],
+            objectSources: [],
+            totalInstanceCount: occurrences.length,
+            instancePoses: page.map((item) => ({
+              id: item.instanceId,
+              localInstanceId: item.instanceId,
+              name: item.name,
+              assemblyId: item.assemblyId,
+              ownerAssemblyId: item.assemblyId,
+              rootAssemblyId: item.rootAssemblyId,
+              instancePath: [...item.path],
+              definition: { kind: "body", bodyId: item.bodyId },
+              transform: cloneTransform(item.transform),
+              ...(item.color ? { color: [...item.color] as Vec3 } : {})
+            })),
+            ...(offset + page.length < occurrences.length
+              ? { nextOffset: offset + page.length }
+              : {})
+          };
+        }
         if (request.query.projection === "poses") {
           const query = request.query;
           const assemblyIds = query.assemblyIds
@@ -3388,6 +3460,9 @@ export class CadEngine {
           units: this.#document.units,
           ownerPartId: DEFAULT_PART_ID,
           checkpointId: request.query.checkpointId,
+          offset: request.query.offset,
+          limit: request.query.limit,
+          includeSnapshot: request.query.includeSnapshot,
           derivedExactMetadata: request.query.derivedExactMetadata,
           bodyExists: (candidateBodyId) =>
             structure.bodies.some((body) => body.id === candidateBodyId)
@@ -4527,9 +4602,6 @@ export class AsyncCadCommandExecutor {
       const featureId = `feat_${nextFeatureNumber}` as FeatureId;
       const bodyId = `body_${nextBodyNumber}` as BodyId;
       const checkpointId = `checkpoint_${bodyId}`;
-      nextFeatureNumber += 1;
-      nextBodyNumber += 1;
-
       const resolution = await resolver.resolveProjectImportStep({
         op,
         opIndex,
@@ -4538,6 +4610,8 @@ export class AsyncCadCommandExecutor {
         bodyId,
         checkpointId
       });
+      nextFeatureNumber += resolution.resolvedBodies.length;
+      nextBodyNumber += resolution.resolvedBodies.length;
 
       previewBodies.push(...(resolution.previewBodies ?? []));
       checkpointPayloads.push(...(resolution.checkpointPayloads ?? []));
@@ -4546,6 +4620,7 @@ export class AsyncCadCommandExecutor {
         ...op,
         resolvedBodies: resolution.resolvedBodies
       });
+      ops.push(...(resolution.assemblyOps ?? []));
     }
 
     return {
@@ -7353,11 +7428,11 @@ function applyOperation(
     }
 
     case "feature.spurGear": {
-      applySpurGear(state,op,diff,opIndex);
+      applySpurGear(state, op, diff, opIndex);
       return;
     }
     case "feature.updateSpurGear": {
-      applySpurGearUpdate(state,op,diff,opIndex);
+      applySpurGearUpdate(state, op, diff, opIndex);
       return;
     }
     case "feature.extrude": {
@@ -7835,6 +7910,134 @@ function applyOperation(
       return;
     }
 
+    case "feature.copyBody": {
+      validateDirectFaceTarget(state, op.sourceBodyId, opIndex);
+      const topology = ensureTopologyIdentitySource(state);
+      const source = topology.checkpoints.find(
+        (checkpoint) => checkpoint.checkpointId === op.sourceCheckpointId
+      );
+      if (
+        !source ||
+        source.bodyId !== op.sourceBodyId ||
+        source.status !== "active"
+      )
+        throwValidationError({
+          code: "INVALID_TOPOLOGY_CHECKPOINT",
+          message:
+            "Independent copy requires an active exact checkpoint owned by sourceBodyId.",
+          opIndex
+        });
+      const id = op.id ?? createFeatureId(),
+        bodyId = op.bodyId ?? createBodyId();
+      const checkpointId = op.checkpointId ?? `checkpoint_copy_${bodyId}`;
+      if (
+        !checkpointId.trim() ||
+        topology.checkpoints.some(
+          (checkpoint) => checkpoint.checkpointId === checkpointId
+        )
+      )
+        throwValidationError({
+          code: "INVALID_TOPOLOGY_CHECKPOINT",
+          message:
+            "Independent copy requires a unique destination checkpointId.",
+          opIndex
+        });
+      const paths = createWcadV2CheckpointEntryPaths(checkpointId);
+      const checkpoint = {
+        ...source,
+        checkpointId,
+        bodyId,
+        sourceFeatureId: id,
+        brepEntryPath: paths.brep,
+        topologyEntryPath: paths.topology,
+        signatureEntryPath: paths.signature
+      };
+      const sourceFeature = findFeatureByBodyId(
+        state.features,
+        op.sourceBodyId
+      );
+      const feature: ImportedBodyFeature = {
+        id,
+        bodyId,
+        kind: "importedBody",
+        name: normalizeOptionalFeatureName(op.name, opIndex, id),
+        sourceFileName: `${sourceFeature?.name ?? op.sourceBodyId}.brep`,
+        sourceFormat: "brep",
+        checkpointId,
+        healingApplied: false,
+        ...(sourceFeature?.kind === "importedBody" && sourceFeature.color
+          ? { color: [...sourceFeature.color] as Vec3 }
+          : {})
+      };
+      addFeature(state, feature, diff, opIndex);
+      state.topologyIdentity = {
+        ...topology,
+        checkpoints: [...topology.checkpoints, checkpoint]
+      };
+      pushTopologyCheckpointCreated(diff, checkpoint);
+      return;
+    }
+
+    case "feature.faceOffset": {
+      if (!Number.isFinite(op.distance) || op.distance === 0)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: "Face offset distance must be finite and nonzero.",
+          opIndex
+        });
+      if (op.targetBodyId !== op.faceRef.bodyId)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: "Face offset anchor must belong to targetBodyId.",
+          opIndex
+        });
+      const source = validateOffsetSource(
+        state,
+        { kind: "directFace", face: op.faceRef },
+        opIndex
+      );
+      const feature: OffsetFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "offset",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        source: source.source,
+        targetBodyId: op.targetBodyId,
+        distance: Math.abs(op.distance),
+        side: op.distance > 0 ? "outward" : "inward",
+        bodyId: op.bodyId ?? createBodyId()
+      };
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+    case "feature.updateFaceOffset": {
+      const feature = state.features.get(op.id);
+      if (feature?.kind !== "offset" || feature.source.kind !== "directFace")
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "feature.updateFaceOffset requires a direct face offset feature.",
+          opIndex
+        });
+      if (!Number.isFinite(op.distance) || op.distance === 0)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: "Face offset distance must be finite and nonzero.",
+          opIndex
+        });
+      updateOffsetFeature(
+        state,
+        {
+          op: "feature.updateOffset",
+          id: op.id,
+          distance: Math.abs(op.distance),
+          side: op.distance > 0 ? "outward" : "inward"
+        },
+        diff,
+        opIndex
+      );
+      return;
+    }
+
     case "feature.offset": {
       const source = validateOffsetSource(state, op.source, opIndex);
       const feature: OffsetFeature = {
@@ -7951,17 +8154,27 @@ function applyOperation(
 
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
-      for (const sketch of state.sketches.values()) if (sketch.spurGear?.featureId === op.id) {
-        const {spurGear: _source, ...plain} = sketch; void _source;
-        state.sketches.set(sketch.id,plain); pushSketchModified(diff,sketchRef(plain));
-      }
+      for (const sketch of state.sketches.values())
+        if (sketch.spurGear?.featureId === op.id) {
+          const { spurGear: _source, ...plain } = sketch;
+          void _source;
+          state.sketches.set(sketch.id, plain);
+          pushSketchModified(diff, sketchRef(plain));
+        }
       return;
     }
 
     case "feature.updateExtrude": {
-      const gearSketch = [...state.sketches.values()].find(s=>s.spurGear?.featureId===op.id);
+      const gearSketch = [...state.sketches.values()].find(
+        (s) => s.spurGear?.featureId === op.id
+      );
       if (gearSketch) {
-        applySpurGearUpdate(state,{op:'feature.updateSpurGear',id:op.id,faceWidth:op.depth},diff,opIndex);
+        applySpurGearUpdate(
+          state,
+          { op: "feature.updateSpurGear", id: op.id, faceWidth: op.depth },
+          diff,
+          opIndex
+        );
         return;
       }
       updateExtrudeFeature(state, op, diff, opIndex);
@@ -8617,6 +8830,9 @@ function isCadOperationKind(value: string): boolean {
     case "feature.circularPattern":
     case "feature.mirror":
     case "feature.combine":
+    case "feature.copyBody":
+    case "feature.faceOffset":
+    case "feature.updateFaceOffset":
     case "feature.offset":
     case "feature.align":
     case "feature.draft":
@@ -8883,7 +9099,8 @@ function applyResolvedProjectImportStep(
       sourceFormat: op.sourceFormat,
       bodyId: body.bodyId,
       checkpointId: body.checkpointId,
-      healingApplied: body.healingApplied
+      healingApplied: body.healingApplied,
+      ...(body.color ? { color: [...body.color] as Vec3 } : {})
     };
 
     addFeature(state, feature, diff, opIndex);
@@ -8918,6 +9135,13 @@ function validateResolvedProjectImportStepBody(
   opIndex: number,
   bodyIndex: number
 ): void {
+  if (body.color !== undefined && !isCadColor(body.color))
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        "Imported body color must contain three finite RGB values between zero and one.",
+      opIndex
+    });
   const path = (field: string): string =>
     operationPath(opIndex, `resolvedBodies[${bodyIndex}].${field}`) ??
     `$.ops[${opIndex}].resolvedBodies[${bodyIndex}].${field}`;
@@ -9490,6 +9714,15 @@ function isCadQuery(value: unknown): boolean {
     case "body.topologyIdentity":
       return (
         typeof value.bodyId === "string" &&
+        (value.offset === undefined ||
+          (Number.isSafeInteger(value.offset) &&
+            (value.offset as number) >= 0)) &&
+        (value.limit === undefined ||
+          (Number.isSafeInteger(value.limit) &&
+            (value.limit as number) >= 1 &&
+            (value.limit as number) <= 1000)) &&
+        (value.includeSnapshot === undefined ||
+          typeof value.includeSnapshot === "boolean") &&
         (value.checkpointId === undefined ||
           typeof value.checkpointId === "string") &&
         (value.derivedExactMetadata === undefined ||
@@ -10039,6 +10272,9 @@ function isCadSelectionReferenceOperation(
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
     value === "feature.shell" ||
+    value === "feature.copyBody" ||
+    value === "feature.faceOffset" ||
+    value === "feature.updateFaceOffset" ||
     value === "feature.offset" ||
     value === "feature.align" ||
     value === "feature.draft" ||
@@ -14599,6 +14835,56 @@ function addAssembly(
   pushAssemblyCreated(diff, assemblyRef(assembly));
 }
 
+function validateAssemblyDefinition(
+  state: MutableDocumentState,
+  definition: AssemblyDefinitionRef,
+  opIndex: number
+): void {
+  if (!isAssemblyDefinitionRef(definition)) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "Assembly definition must reference a body or assembly.",
+      opIndex
+    });
+  }
+  if (
+    definition.kind === "body" &&
+    !documentBodyExists(state, definition.bodyId)
+  ) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Assembly definition body does not exist: ${definition.bodyId}`,
+      opIndex
+    });
+  }
+  if (
+    definition.kind === "assembly" &&
+    !state.assemblies.has(definition.assemblyId)
+  ) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Assembly definition does not exist: ${definition.assemblyId}`,
+      opIndex
+    });
+  }
+}
+
+function validateAssemblyGraph(
+  state: MutableDocumentState,
+  opIndex: number
+): void {
+  try {
+    validateAssemblyHierarchy([...state.assemblies.values()]);
+  } catch (error) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        error instanceof Error ? error.message : "Invalid assembly hierarchy.",
+      opIndex
+    });
+  }
+}
+
 function applyAssemblyInstanceInsert(
   state: MutableDocumentState,
   op: Extract<CadOp, { readonly op: "assembly.instance.insert" }>,
@@ -14618,27 +14904,7 @@ function applyAssemblyInstanceInsert(
     });
   }
 
-  if (op.definition.kind !== "body") {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.instance.insert definition.kind must be body.",
-      opIndex,
-      path: operationPath(opIndex, "definition.kind"),
-      expected: "body",
-      received: describeReceived(op.definition.kind)
-    });
-  }
-
-  if (!documentBodyExists(state, op.definition.bodyId)) {
-    throwValidationError({
-      code: "BODY_NOT_FOUND",
-      message: `Assembly definition body does not exist: ${op.definition.bodyId}`,
-      opIndex,
-      path: operationPath(opIndex, "definition.bodyId"),
-      expected: "existing completed solid body id",
-      received: op.definition.bodyId
-    });
-  }
+  validateAssemblyDefinition(state, op.definition, opIndex);
 
   const instanceId = op.id ?? createInstanceId();
   if (assembly.instances.some((instance) => instance.id === instanceId)) {
@@ -14664,10 +14930,18 @@ function applyAssemblyInstanceInsert(
     }
   }
 
+  if (op.color !== undefined && !isCadColor(op.color))
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        "Assembly color must contain three finite RGB values between zero and one.",
+      opIndex
+    });
   const instance: AssemblyInstanceSnapshot = {
     id: instanceId,
     name: normalizeAssemblyName(op.name, opIndex, instanceId),
-    definition: { kind: "body", bodyId: op.definition.bodyId },
+    definition: { ...op.definition },
+    ...(op.color ? { color: [...op.color] as Vec3 } : {}),
     transform: mergeTransform(op.transform)
   };
   const updated: AssemblySnapshot = {
@@ -14675,6 +14949,7 @@ function applyAssemblyInstanceInsert(
     instances: [...assembly.instances, instance]
   };
   state.assemblies.set(assembly.id, updated);
+  validateAssemblyGraph(state, opIndex);
   pushAssemblyModified(diff, assemblyRef(updated));
   pushAssemblyInstanceCreated(diff, assemblyInstanceRef(assembly.id, instance));
 }
@@ -14869,27 +15144,7 @@ function applyAssemblyInstanceReplace(
     });
   }
 
-  if (op.definition.kind !== "body") {
-    throwValidationError({
-      code: "INVALID_OPERATION",
-      message: "assembly.instance.replace definition.kind must be body.",
-      opIndex,
-      path: operationPath(opIndex, "definition.kind"),
-      expected: "body",
-      received: describeReceived(op.definition.kind)
-    });
-  }
-
-  if (!documentBodyExists(state, op.definition.bodyId)) {
-    throwValidationError({
-      code: "BODY_NOT_FOUND",
-      message: `Assembly definition body does not exist: ${op.definition.bodyId}`,
-      opIndex,
-      path: operationPath(opIndex, "definition.bodyId"),
-      expected: "existing completed solid body id",
-      received: op.definition.bodyId
-    });
-  }
+  validateAssemblyDefinition(state, op.definition, opIndex);
 
   const instanceIndex = assembly.instances.findIndex(
     (instance) => instance.id === op.instanceId
@@ -14908,7 +15163,7 @@ function applyAssemblyInstanceReplace(
   const existing = assembly.instances[instanceIndex]!;
   const replaced: AssemblyInstanceSnapshot = {
     ...existing,
-    definition: { kind: "body", bodyId: op.definition.bodyId }
+    definition: { ...op.definition }
   };
   const nextInstances = assembly.instances.map((instance, index) =>
     index === instanceIndex ? replaced : instance
@@ -14918,6 +15173,7 @@ function applyAssemblyInstanceReplace(
     instances: nextInstances
   };
   state.assemblies.set(assembly.id, updated);
+  validateAssemblyGraph(state, opIndex);
   pushAssemblyModified(diff, assemblyRef(updated));
   pushAssemblyInstanceModified(
     diff,
@@ -15210,7 +15466,8 @@ function assemblyInstanceRef(
     assemblyId,
     name: instance.name,
     definition: { ...instance.definition },
-    transform: cloneTransform(instance.transform)
+    transform: cloneTransform(instance.transform),
+    ...(instance.color ? { color: [...instance.color] as Vec3 } : {})
   };
 }
 
@@ -15504,8 +15761,50 @@ function addFeature(
   }
 
   state.features.set(feature.id, feature);
+  if (isTargetConsumingFeature(feature)) {
+    followAssemblyBodyResult(
+      state,
+      getTargetConsumingFeatureBodyId(feature, state.features),
+      feature.bodyId,
+      diff
+    );
+  }
   pushFeatureCreated(diff, featureRef(state, feature));
   pushBodyCreated(diff, bodyRef(feature));
+}
+
+/** Definitions follow their normal feature result; occurrence placement is unchanged. */
+function followAssemblyBodyResult(
+  state: MutableDocumentState,
+  previousBodyId: BodyId,
+  resultBodyId: BodyId,
+  diff: MutableSemanticDiff
+): void {
+  for (const assembly of state.assemblies.values()) {
+    let changed = false;
+    const instances = assembly.instances.map((instance) => {
+      if (
+        instance.definition.kind !== "body" ||
+        instance.definition.bodyId !== previousBodyId
+      )
+        return instance;
+      changed = true;
+      const updated = {
+        ...instance,
+        definition: { ...instance.definition, bodyId: resultBodyId }
+      };
+      pushAssemblyInstanceModified(
+        diff,
+        assemblyInstanceRef(assembly.id, updated)
+      );
+      return updated;
+    });
+    if (changed) {
+      const updated = { ...assembly, instances };
+      state.assemblies.set(assembly.id, updated);
+      pushAssemblyModified(diff, assemblyRef(updated));
+    }
+  }
 }
 
 function getFeatureEntityProfile(
@@ -15602,6 +15901,14 @@ function deleteFeature(
     });
   }
 
+  if (isTargetConsumingFeature(feature)) {
+    followAssemblyBodyResult(
+      state,
+      feature.bodyId,
+      getTargetConsumingFeatureBodyId(feature, state.features),
+      diff
+    );
+  }
   state.features.delete(featureId);
   pushFeatureDeleted(diff, featureRef(state, feature));
   pushBodyDeleted(diff, bodyRef(feature));
@@ -15713,18 +16020,6 @@ function updateExtrudeFeature(
   const isCompositeBoolean =
     feature.operationMode !== "newBody" &&
     (storedProfileKind === "wire" || storedProfileKind === "regions");
-  if (feature.operationMode !== "newBody" && !isCompositeBoolean) {
-    throwValidationError({
-      code: "FEATURE_NOT_EDITABLE",
-      message: "This extrude result is not editable.",
-      opIndex,
-      featureId,
-      bodyId: feature.bodyId,
-      path: operationPath(opIndex, "id"),
-      expected: "authored newBody or composite wire boolean extrude feature id",
-      received: feature.operationMode
-    });
-  }
 
   const requestedProfile = resolveUpdateExtrudeCommandInputProfile(op, opIndex);
 
@@ -16731,7 +17026,9 @@ function updateOffsetFeature(
         : validateOffsetSide(op.side, opIndex)
   };
 
-  if (updated.targetBodyId) {
+  if (updated.targetBodyId && updated.source.kind === "directFace") {
+    validateDirectFaceTarget(state, updated.targetBodyId, opIndex, feature.id);
+  } else if (updated.targetBodyId) {
     validateOffsetFaceTargetBodyId(
       state,
       updated.targetBodyId,
@@ -19071,6 +19368,18 @@ function validateOffsetSource(
     };
   }
 
+  if (value.kind === "directFace") {
+    const face = validateOffsetFaceRef(state, value.face, opIndex);
+    if (face.kind !== "topologyAnchor")
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: "Direct face offset requires a public topology anchor.",
+        opIndex
+      });
+    validateDirectFaceTarget(state, face.bodyId, opIndex);
+    return { source: { kind: "directFace", face }, targetBodyId: face.bodyId };
+  }
+
   if (value.kind === "face") {
     const face = validateOffsetFaceRef(state, value.face, opIndex);
     const targetBodyId = resolveOffsetFaceBodyId(state, face, opIndex);
@@ -19089,6 +19398,29 @@ function validateOffsetSource(
     expected: "sketchProfile | face",
     received: describeReceived(value.kind)
   });
+}
+
+function validateDirectFaceTarget(
+  state: MutableDocumentState,
+  bodyId: BodyId,
+  opIndex?: number,
+  ignoreFeatureId?: FeatureId
+): void {
+  if (!documentBodyExists(state, bodyId))
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Direct face target body does not exist: ${bodyId}`,
+      opIndex,
+      bodyId
+    });
+  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
+  if (consumer && consumer.id !== ignoreFeatureId)
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `Direct face target is consumed by ${consumer.id}.`,
+      opIndex,
+      bodyId
+    });
 }
 
 function validateAlignInputs(
@@ -20627,7 +20959,8 @@ function isSupportedCutTargetProfileKind(
     profileKind === "circle" ||
     profileKind === "wire" ||
     profileKind === "regions" ||
-    profileKind === "importedBody"
+    profileKind === "importedBody" ||
+    profileKind === "exactBody"
   );
 }
 
@@ -21905,9 +22238,14 @@ function createTopologyAnchorProofCommandOperations(
     );
   }
 
+  if (proof.kind === "planarFace")
+    return ["feature.attachSketchPlane", "feature.faceOffset"];
+  if (proof.kind === "cylindricalFace") return ["feature.faceOffset"];
   if (proof.kind === "axisAlignedPlanarFace") {
     return [
+      "feature.attachSketchPlane",
       "feature.shell",
+      "feature.faceOffset",
       "feature.offset",
       "feature.align",
       "feature.draft"
@@ -22703,17 +23041,7 @@ function validateExtrudeTargetBodyId(
     return targetBodyId;
   }
 
-  if (isPrimitiveBodyId(state, targetBodyId)) {
-    throwValidationError({
-      code: "TARGET_BODY_NOT_SUPPORTED",
-      message: `Primitive-derived body cannot be targeted by feature.extrude ${operationMode}: ${targetBodyId}`,
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "authored sketch-extrude target body id",
-      received: targetBodyId
-    });
-  }
+  if (isPrimitiveBodyId(state, targetBodyId)) return targetBodyId;
 
   throwValidationError({
     code: "BODY_NOT_FOUND",
@@ -22816,7 +23144,6 @@ function assertSupportedExtrudeOperation(
     })
   });
 }
-
 
 function validateBoxDimensions(
   dimensions: BoxDimensions,
@@ -23186,7 +23513,8 @@ function resolveTopologyAnchorSketchAttachmentTarget(
       topologyAnchorId: target.topologyAnchorId,
       checkpointId: target.checkpointId,
       planarAxis: proof.planarAxis,
-      planarCoordinate: proof.planarCoordinate
+      planarCoordinate: proof.planarCoordinate,
+      ...(proof.planeFrame ? { planeFrame: proof.planeFrame } : {})
     }
   };
 }
@@ -23891,7 +24219,13 @@ function createCurrentTopologySelectionCandidates(
       issues: consumed
     });
   }
-  if (topology.topology.status !== "healthy") {
+  // Source-only topology has no analytic recipe for imported, primitive and
+  // finished bodies. Current exact picks can still be promoted; checkpoint
+  // capture and exact command preflight verify their geometric evidence.
+  if (
+    topology.topology.status !== "healthy" &&
+    topology.topology.status !== "unsupported"
+  ) {
     return createCurrentTopologySelectionResult(
       evidence,
       topology.topology.status === "stale" ||
@@ -23943,6 +24277,7 @@ function createCurrentTopologySelectionCandidates(
 const CURRENT_EXACT_FACE_PROMOTABLE_OPERATIONS = [
   "feature.attachSketchPlane",
   "feature.shell",
+  "feature.faceOffset",
   "feature.offset",
   "feature.align",
   "feature.draft",
@@ -25064,6 +25399,21 @@ function validateTopologyAnchorFaceProof(
   readonly planarCoordinate: number;
 } {
   if (
+    proof.kind === "planarFace" &&
+    proof.entityKind === "face" &&
+    proof.evidenceSource === "checkpointSnapshot" &&
+    proof.exposesCheckpointLocalIds === false &&
+    isExactPlanarFrame(proof.planeFrame)
+  ) {
+    return {
+      ...proof,
+      kind: "axisAlignedPlanarFace",
+      entityKind: "face",
+      planarAxis: "z",
+      planarCoordinate: proof.planeFrame.origin[2]
+    };
+  }
+  if (
     proof.kind === "axisAlignedPlanarFace" &&
     proof.entityKind === "face" &&
     proof.evidenceSource === "checkpointSnapshot" &&
@@ -25090,6 +25440,40 @@ function validateTopologyAnchorFaceProof(
       "axisAlignedPlanarFace proof with finite planar axis and coordinate",
     received: describeReceived(proof)
   });
+}
+
+function isCadColor(value: unknown): value is Vec3 {
+  return (
+    isVec3Shape(value) &&
+    value.every((component) => component >= 0 && component <= 1)
+  );
+}
+
+function isExactPlanarFrame(
+  value: unknown
+): value is NonNullable<CadTopologyAnchorCommandProof["planeFrame"]> {
+  if (
+    !isRecord(value) ||
+    !isVec3Shape(value.origin) ||
+    !isVec3Shape(value.xDirection) ||
+    !isVec3Shape(value.yDirection) ||
+    !isVec3Shape(value.normal)
+  )
+    return false;
+  const x = value.xDirection,
+    y = value.yDirection,
+    n = value.normal;
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross: Vec3 = [
+    x[1] * y[2] - x[2] * y[1],
+    x[2] * y[0] - x[0] * y[2],
+    x[0] * y[1] - x[1] * y[0]
+  ];
+  return (
+    [x, y, n].every((v) => Math.abs(dot(v, v) - 1) < 1e-7) &&
+    Math.abs(dot(x, y)) < 1e-7 &&
+    Math.abs(dot(cross, n) - 1) < 1e-7
+  );
 }
 
 function isPlanarAxis(value: unknown): value is "x" | "y" | "z" {
@@ -26676,23 +27060,85 @@ function scaleDocumentLengthValues(
   }
 }
 
-function scaleAssemblyLengthValues(assembly: AssemblySnapshot, factor: number): AssemblySnapshot {
-  const frame = (ref: Extract<AssemblyMateSnapshot, {kind: "revolute"}>["primary"]) => ({...ref, frame: ref.frame.kind === "local"
-    ? {...ref.frame, origin: scaleVec3(ref.frame.origin, factor)}
-    : {...ref.frame, ...(ref.frame.offset === undefined ? {} : {offset: scaleLength(ref.frame.offset, factor)})}});
-  const plane = (ref: Extract<AssemblyMateSnapshot, {kind: "distance"}>["primary"]) => ({...ref, ...(ref.offset === undefined ? {} : {offset: scaleLength(ref.offset, factor)})});
-  return {...assembly, instances: assembly.instances.map(instance => ({...instance, transform: scaleTransformTranslation(instance.transform, factor)})),
-    ...(assembly.mates ? {mates: assembly.mates.map((mate): AssemblyMateSnapshot => {
-      switch (mate.kind) {
-        case "fixed": return mate;
-        case "revolute": return {...mate, primary: frame(mate.primary), secondary: frame(mate.secondary), offset: scaleLength(mate.offset, factor)};
-        case "distance": return {...mate, primary: plane(mate.primary), secondary: plane(mate.secondary), distance: scaleLength(mate.distance, factor)};
-        case "coincident": return {...mate, primary: plane(mate.primary), secondary: plane(mate.secondary)};
-        case "concentric": return {...mate,
-          primary: {...mate.primary, ...(mate.primary.origin ? {origin: scaleVec3(mate.primary.origin, factor)} : {})},
-          secondary: {...mate.secondary, ...(mate.secondary.origin ? {origin: scaleVec3(mate.secondary.origin, factor)} : {})}};
-      }
-    })} : {})};
+function scaleAssemblyLengthValues(
+  assembly: AssemblySnapshot,
+  factor: number
+): AssemblySnapshot {
+  const frame = (
+    ref: Extract<AssemblyMateSnapshot, { kind: "revolute" }>["primary"]
+  ) => ({
+    ...ref,
+    frame:
+      ref.frame.kind === "local"
+        ? { ...ref.frame, origin: scaleVec3(ref.frame.origin, factor) }
+        : {
+            ...ref.frame,
+            ...(ref.frame.offset === undefined
+              ? {}
+              : { offset: scaleLength(ref.frame.offset, factor) })
+          }
+  });
+  const plane = (
+    ref: Extract<AssemblyMateSnapshot, { kind: "distance" }>["primary"]
+  ) => ({
+    ...ref,
+    ...(ref.offset === undefined
+      ? {}
+      : { offset: scaleLength(ref.offset, factor) })
+  });
+  return {
+    ...assembly,
+    instances: assembly.instances.map((instance) => ({
+      ...instance,
+      transform: scaleTransformTranslation(instance.transform, factor)
+    })),
+    ...(assembly.mates
+      ? {
+          mates: assembly.mates.map((mate): AssemblyMateSnapshot => {
+            switch (mate.kind) {
+              case "fixed":
+                return mate;
+              case "revolute":
+                return {
+                  ...mate,
+                  primary: frame(mate.primary),
+                  secondary: frame(mate.secondary),
+                  offset: scaleLength(mate.offset, factor)
+                };
+              case "distance":
+                return {
+                  ...mate,
+                  primary: plane(mate.primary),
+                  secondary: plane(mate.secondary),
+                  distance: scaleLength(mate.distance, factor)
+                };
+              case "coincident":
+                return {
+                  ...mate,
+                  primary: plane(mate.primary),
+                  secondary: plane(mate.secondary)
+                };
+              case "concentric":
+                return {
+                  ...mate,
+                  primary: {
+                    ...mate.primary,
+                    ...(mate.primary.origin
+                      ? { origin: scaleVec3(mate.primary.origin, factor) }
+                      : {})
+                  },
+                  secondary: {
+                    ...mate.secondary,
+                    ...(mate.secondary.origin
+                      ? { origin: scaleVec3(mate.secondary.origin, factor) }
+                      : {})
+                  }
+                };
+            }
+          })
+        }
+      : {})
+  };
 }
 
 function isAngularSketchDimensionTarget(
@@ -26774,20 +27220,50 @@ function scaleVec3(vector: Vec3, scaleFactor: number): Vec3 {
 }
 
 function scaleSketchLengthValues(sketch: Sketch, scaleFactor: number): Sketch {
-  const spurGear = sketch.spurGear ? cloneJsonSource(sketch.spurGear) : undefined;
+  const spurGear = sketch.spurGear
+    ? cloneJsonSource(sketch.spurGear)
+    : undefined;
   if (spurGear) {
-    const lengthFields = ["module", "faceWidth", "boreDiameter", "backlash", "profileTolerance"] as const;
-    const inputs = {...spurGear.inputs};
-    const values = {...spurGear.values};
+    const lengthFields = [
+      "module",
+      "faceWidth",
+      "boreDiameter",
+      "backlash",
+      "profileTolerance"
+    ] as const;
+    const inputs = { ...spurGear.inputs };
+    const values = { ...spurGear.values };
     for (const field of lengthFields) {
-      if (typeof inputs[field] === "number") inputs[field] = scaleLength(inputs[field], scaleFactor);
+      if (typeof inputs[field] === "number")
+        inputs[field] = scaleLength(inputs[field], scaleFactor);
       values[field] = scaleLength(values[field], scaleFactor);
     }
-    Object.assign(spurGear, {inputs, values});
+    Object.assign(spurGear, { inputs, values });
   }
   return {
     ...sketch,
-    ...(spurGear ? {spurGear} : {}),
+    ...(sketch.attachment?.kind === "topologyAnchorFace"
+      ? {
+          attachment: {
+            ...sketch.attachment,
+            planarCoordinate: scaleLength(
+              sketch.attachment.planarCoordinate,
+              scaleFactor
+            ),
+            ...(sketch.attachment.planeFrame
+              ? {
+                  planeFrame: {
+                    ...sketch.attachment.planeFrame,
+                    origin: sketch.attachment.planeFrame.origin.map((value) =>
+                      scaleLength(value, scaleFactor)
+                    ) as unknown as Vec3
+                  }
+                }
+              : {})
+          }
+        }
+      : {}),
+    ...(spurGear ? { spurGear } : {}),
     entities: new Map(
       [...sketch.entities.entries()].map(([id, entity]) => [
         id,
@@ -27246,7 +27722,17 @@ function cloneSketchAttachment(
   attachment: SketchAttachmentSnapshot
 ): SketchAttachmentSnapshot {
   return {
-    ...attachment
+    ...attachment,
+    ...(attachment.kind === "topologyAnchorFace" && attachment.planeFrame
+      ? {
+          planeFrame: {
+            origin: [...attachment.planeFrame.origin] as Vec3,
+            xDirection: [...attachment.planeFrame.xDirection] as Vec3,
+            yDirection: [...attachment.planeFrame.yDirection] as Vec3,
+            normal: [...attachment.planeFrame.normal] as Vec3
+          }
+        }
+      : {})
   };
 }
 
@@ -27288,6 +27774,7 @@ function cloneAssemblyInstance(
     id: instance.id,
     name: instance.name,
     definition: { ...instance.definition },
+    ...(instance.color ? { color: [...instance.color] as Vec3 } : {}),
     transform: cloneTransform(instance.transform)
   };
 }
@@ -27314,7 +27801,8 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
       sourceFormat: snapshot.sourceFormat,
       bodyId: snapshot.bodyId,
       checkpointId: snapshot.checkpointId,
-      healingApplied: snapshot.healingApplied
+      healingApplied: snapshot.healingApplied,
+      ...(snapshot.color ? { color: [...snapshot.color] as Vec3 } : {})
     };
   }
 
@@ -27619,6 +28107,7 @@ const SUMMARY_REFERENCE_OPERATIONS = [
   "feature.chamfer",
   "feature.fillet",
   "feature.shell",
+  "feature.faceOffset",
   "feature.offset",
   "feature.align",
   "feature.draft",
@@ -27847,7 +28336,7 @@ function createBodyImportedBodyStatus(
       diagnosticCount: diagnostics.length,
       diagnostics,
       sourceBoundaryNote:
-        "This body is an authoritative imported STEP body source record with topology identity stored through checkpoint metadata.",
+        "This body is an authoritative exact base source record with topology identity stored through checkpoint metadata.",
       derivedBoundaryNote:
         "Imported-body commandability must come from cad-core topology checkpoint and anchor proof, not renderer or mesh state."
     };
@@ -28102,7 +28591,16 @@ function createProjectStructure(
     ...authoredFeatures
   ];
   const bodies = [
-    ...objects.map(createPrimitiveBodySnapshot),
+    ...objects.map((object) => ({
+      ...createPrimitiveBodySnapshot(object),
+      ...(consumedBodyIds.get(createPrimitiveBodyId(object.id))
+        ? {
+            consumedByFeatureId: consumedBodyIds.get(
+              createPrimitiveBodyId(object.id)
+            )
+          }
+        : {})
+    })),
     ...[...document.features.values()].map((feature) =>
       createFeatureBodySnapshot(
         document,
@@ -31318,7 +31816,7 @@ function runOperations(
         nextMateNumber = result.nextMateNumber;
         return result.id;
       };
-      assertGeneratedGearSourceEdit(state,op,opIndex);
+      assertGeneratedGearSourceEdit(state, op, opIndex);
       if (isSketchConvenienceOp(op)) {
         assertV19SketchConvenienceOp(op, opIndex);
         getSketchOrThrow(state.sketches, op.sketchId, opIndex);
@@ -31455,7 +31953,8 @@ function runOperations(
         allocateMateId,
         opIndex
       );
-      if (op.op.startsWith("parameter.")) reevaluateSpurGears(state,diff,opIndex);
+      if (op.op.startsWith("parameter."))
+        reevaluateSpurGears(state, diff, opIndex);
       appliedOps.push(op);
       if (op.op === "assembly.mate.create") {
         const mateId =
@@ -31489,9 +31988,21 @@ function runOperations(
   }
 
   try {
-    const previousAssemblies = diff.document?.units?.mode === "preservePhysicalSize"
-      ? new Map([...document.assemblies].map(([id, assembly]) => [id, scaleAssemblyLengthValues(assembly, diff.document!.units!.scaleFactor)] as const))
-      : document.assemblies;
+    const previousAssemblies =
+      diff.document?.units?.mode === "preservePhysicalSize"
+        ? new Map(
+            [...document.assemblies].map(
+              ([id, assembly]) =>
+                [
+                  id,
+                  scaleAssemblyLengthValues(
+                    assembly,
+                    diff.document!.units!.scaleFactor
+                  )
+                ] as const
+            )
+          )
+        : document.assemblies;
     solveDocumentAssemblies(state, diff, previousAssemblies);
   } catch (error) {
     if (error instanceof AssemblySolveError) {
@@ -32589,8 +33100,14 @@ function createProjectState(project: CadProject): {
 
   return {
     document: createCadDocumentFromSnapshot(projectForReplay.document),
-    history: retainImportedGearCoordinates(historyState.entries, projectForReplay.document),
-    redoStack: retainImportedGearCoordinates([...redoEntriesInApplyOrder.entries].reverse(), projectForReplay.document),
+    history: retainImportedGearCoordinates(
+      historyState.entries,
+      projectForReplay.document
+    ),
+    redoStack: retainImportedGearCoordinates(
+      [...redoEntriesInApplyOrder.entries].reverse(),
+      projectForReplay.document
+    ),
     ...(projectForReplay.historyBaseline
       ? {
           historyBaseline: cloneJsonSource(projectForReplay.historyBaseline)
@@ -32945,7 +33462,13 @@ function cadDocumentsEqual(
   for (const [id, leftSketch] of left.sketches) {
     const rightSketch = right.sketches.get(id);
 
-    if (!rightSketch || !(sketchesEqual(leftSketch, rightSketch) || generatedGearSketchesEqualForReplay(leftSketch, rightSketch))) {
+    if (
+      !rightSketch ||
+      !(
+        sketchesEqual(leftSketch, rightSketch) ||
+        generatedGearSketchesEqualForReplay(leftSketch, rightSketch)
+      )
+    ) {
       return false;
     }
   }
@@ -33009,7 +33532,9 @@ function cadDocumentsEqual(
           // Legacy mate edits removed/reinserted the relation. Its array
           // position is not authored constraint data; compare identity/content
           // without changing the saved order or accepting duplicate IDs.
-          mates: [...(leftAssembly.mates ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
+          mates: [...(leftAssembly.mates ?? [])].sort((a, b) =>
+            a.id.localeCompare(b.id)
+          ),
           instances: leftAssembly.instances.map((instance, index) =>
             reconcileAssemblyReplayPose(
               instance,
@@ -33020,7 +33545,9 @@ function cadDocumentsEqual(
         },
         {
           ...rightAssembly,
-          mates: [...(rightAssembly.mates ?? [])].sort((a, b) => a.id.localeCompare(b.id))
+          mates: [...(rightAssembly.mates ?? [])].sort((a, b) =>
+            a.id.localeCompare(b.id)
+          )
         }
       )
     )
@@ -33198,7 +33725,7 @@ function sketchesEqual(left: Sketch, right: Sketch): boolean {
     left.name !== right.name ||
     left.plane !== right.plane ||
     !sketchAttachmentsEqual(left.attachment, right.attachment) ||
-    !stableJsonEqual(left.spurGear,right.spurGear) ||
+    !stableJsonEqual(left.spurGear, right.spurGear) ||
     left.entities.size !== right.entities.size
   ) {
     return false;
@@ -34555,7 +35082,10 @@ type ImportExtrudeFeatureSnapshot = Omit<
 > & {
   readonly entityId?: SketchEntityId;
   readonly profileKind: FeatureExtrudeProfileKind | "wire" | "regions";
-  readonly profile?: Extract<SketchProfileRefV22, { readonly kind: "wire" | "regions" }>;
+  readonly profile?: Extract<
+    SketchProfileRefV22,
+    { readonly kind: "wire" | "regions" }
+  >;
 };
 
 type ImportFeatureSnapshot =
@@ -35237,7 +35767,11 @@ function validateCadDocumentSnapshot(
         );
       }
 
-      validateFeatureTargetBodyReferences(authoredFeatureByBodyId, issues);
+      validateFeatureTargetBodyReferences(
+        authoredFeatureByBodyId,
+        issues,
+        primitiveBodyIds
+      );
       validateSketchAttachments(
         sketchAttachments,
         extrudeFeatureByBodyId,
@@ -35280,7 +35814,7 @@ function validateCadDocumentSnapshot(
     }
   }
 
-  validateSpurGearSources(value,path,issues);
+  validateSpurGearSources(value, path, issues);
 
   validateEdgeFinishNamedReferenceSnapshots(
     authoredFeatureByBodyId,
@@ -35703,6 +36237,18 @@ function validateSketchAttachmentSnapshot(
       }
     }
 
+    if (
+      value.planeFrame !== undefined &&
+      !isExactPlanarFrame(value.planeFrame)
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.planeFrame`,
+        "Attached plane frame must be finite, orthonormal and right handed."
+      );
+      valid = false;
+    }
     if (!isPlanarAxis(value.planarAxis)) {
       addProjectIssue(
         issues,
@@ -35778,6 +36324,7 @@ function validateAssemblySnapshots(
     return;
   }
 
+  const issueCount = issues.length;
   const seenAssemblyIds = new Set<string>();
   const seenInstanceIds = new Set<string>();
   for (const [index, assembly] of value.entries()) {
@@ -35861,12 +36408,19 @@ function validateAssemblySnapshots(
           "Assembly instance name must be a string."
         );
       }
+      if (instance.color !== undefined && !isCadColor(instance.color))
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${instancePath}.color`,
+          "Instance color must contain three finite RGB values between zero and one."
+        );
       if (!isAssemblyDefinitionRef(instance.definition)) {
         addProjectIssue(
           issues,
           "INVALID_DOCUMENT",
           `${instancePath}.definition`,
-          'Assembly instance definition must be { kind: "body", bodyId }.'
+          "Assembly instance definition must reference a body or assembly."
         );
       }
       if (
@@ -36222,6 +36776,20 @@ function validateAssemblySnapshots(
           }
         }
       }
+    }
+  }
+  if (issues.length === issueCount) {
+    try {
+      validateAssemblyHierarchy(
+        value as unknown as readonly AssemblySnapshot[]
+      );
+    } catch (error) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        path,
+        error instanceof Error ? error.message : "Invalid assembly hierarchy."
+      );
     }
   }
 }
@@ -38814,11 +39382,12 @@ function collectValidAuthoredFeatureByBodyId(
     isRecord(value) && value.kind === "extrude"
       ? validateSketchProfileRefSource(value.profile)
       : undefined;
-  const compositeProfile = isRecord(value) && isSketchRegionsProfileRef(value.profile)
-    ? value.profile
-    : normalizedProfile?.ok && normalizedProfile.value.kind === "wire"
-      ? normalizedProfile.value
-      : undefined;
+  const compositeProfile =
+    isRecord(value) && isSketchRegionsProfileRef(value.profile)
+      ? value.profile
+      : normalizedProfile?.ok && normalizedProfile.value.kind === "wire"
+        ? normalizedProfile.value
+        : undefined;
   if (
     isRecord(value) &&
     value.kind === "extrude" &&
@@ -39015,7 +39584,7 @@ function collectValidAuthoredFeatureByBodyId(
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
     typeof value.sourceFileName === "string" &&
-    value.sourceFormat === "step" &&
+    (value.sourceFormat === "step" || value.sourceFormat === "brep") &&
     typeof value.bodyId === "string" &&
     typeof value.checkpointId === "string" &&
     typeof value.healingApplied === "boolean"
@@ -39025,7 +39594,7 @@ function collectValidAuthoredFeatureByBodyId(
       kind: "importedBody",
       name: value.name,
       sourceFileName: value.sourceFileName,
-      sourceFormat: "step",
+      sourceFormat: value.sourceFormat,
       bodyId: value.bodyId,
       checkpointId: value.checkpointId,
       healingApplied: value.healingApplied,
@@ -39295,7 +39864,8 @@ function validateFeatureTargetBodyReferences(
     BodyId,
     ImportFeatureSnapshot & { readonly path: string }
   >,
-  issues: CadProjectImportIssue[]
+  issues: CadProjectImportIssue[],
+  primitiveBodyIds: ReadonlySet<string> = new Set()
 ): void {
   for (const feature of featuresByBodyId.values()) {
     const targetBodyId = getImportFeatureTargetBodyId(feature);
@@ -39306,7 +39876,7 @@ function validateFeatureTargetBodyReferences(
 
     const target = featuresByBodyId.get(targetBodyId);
 
-    if (!target) {
+    if (!target && !primitiveBodyIds.has(targetBodyId)) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
@@ -39316,7 +39886,7 @@ function validateFeatureTargetBodyReferences(
       continue;
     }
 
-    if (target.id === feature.id) {
+    if (target?.id === feature.id) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
@@ -39342,6 +39912,8 @@ function validateFeatureTargetBodyReferences(
       );
       continue;
     }
+
+    if (!target) continue;
 
     if (
       feature.kind === "extrude" &&
@@ -39535,16 +40107,8 @@ function isSupportedBooleanExtrudeCombination(
     return false;
   }
 
-  if (target.kind === "importedBody") {
-    return (
-      feature.targetTopologyAnchorId !== undefined &&
-      (operationMode === "add" || operationMode === "cut")
-    );
-  }
-
-  if (!isExtrudeFeatureSnapshot(target)) {
-    return false;
-  }
+  if (!isExtrudeFeatureSnapshot(target))
+    return operationMode === "add" || operationMode === "cut";
 
   const targetProfileKind = resolveImportBooleanTargetProfileKind(
     featuresByBodyId,
@@ -39610,6 +40174,8 @@ function resolveImportBooleanTargetProfileKind(
     }
 
     const parent = featuresByBodyId.get(current.targetBodyId);
+    if (parent && !isExtrudeFeatureSnapshot(parent))
+      return parent.kind === "importedBody" ? "importedBody" : "exactBody";
     current = parent && isExtrudeFeatureSnapshot(parent) ? parent : undefined;
   }
 
@@ -42296,6 +42862,13 @@ function validateImportedBodyFeatureSnapshotFields(
   issues: CadProjectImportIssue[],
   seenBodyIds: Set<string>
 ): void {
+  if (value.color !== undefined && !isCadColor(value.color))
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.color`,
+      "Body color must contain three finite RGB values between zero and one."
+    );
   if (
     typeof value.sourceFileName !== "string" ||
     value.sourceFileName.trim().length === 0
@@ -42308,12 +42881,12 @@ function validateImportedBodyFeatureSnapshotFields(
     );
   }
 
-  if (value.sourceFormat !== "step") {
+  if (value.sourceFormat !== "step" && value.sourceFormat !== "brep") {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.sourceFormat`,
-      "Imported body feature sourceFormat must be step."
+      "Exact base feature sourceFormat must be step or brep."
     );
   }
 
@@ -44261,6 +44834,30 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.copyBody")
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      isOptionalString(value.checkpointId) &&
+      typeof value.sourceBodyId === "string" &&
+      typeof value.sourceCheckpointId === "string"
+    );
+  if (value.op === "feature.faceOffset") {
+    return (
+      (value.id === undefined || typeof value.id === "string") &&
+      (value.bodyId === undefined || typeof value.bodyId === "string") &&
+      (value.name === undefined || typeof value.name === "string") &&
+      typeof value.targetBodyId === "string" &&
+      isRecord(value.faceRef) &&
+      value.faceRef.kind === "topologyAnchor" &&
+      isFeatureShellOpenFaceRefShape(value.faceRef) &&
+      typeof value.distance === "number"
+    );
+  }
+  if (value.op === "feature.updateFaceOffset")
+    return typeof value.id === "string" && typeof value.distance === "number";
+
   if (value.op === "feature.offset") {
     return (
       isOptionalString(value.id) &&
@@ -45221,7 +45818,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     return (
       typeof value.sourceFileName === "string" &&
       value.sourceFileName.trim() !== "" &&
-      value.sourceFormat === "step" &&
+      (value.sourceFormat === "step" || value.sourceFormat === "brep") &&
       typeof value.checkpointId === "string" &&
       value.checkpointId.trim() !== "" &&
       typeof value.healingApplied === "boolean"
@@ -45623,9 +46220,8 @@ function isAssemblyDefinitionRef(
 ): value is AssemblyDefinitionRef {
   return (
     isRecord(value) &&
-    value.kind === "body" &&
-    typeof value.bodyId === "string" &&
-    value.bodyId.length > 0
+    ((value.kind === "body" && isNonEmptyString(value.bodyId)) ||
+      (value.kind === "assembly" && isNonEmptyString(value.assemblyId)))
   );
 }
 
@@ -45986,6 +46582,15 @@ function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
 function isTopologyAnchorFaceProofInput(
   value: unknown
 ): value is CadTopologyAnchorCommandProof {
+  if (
+    isRecord(value) &&
+    value.kind === "planarFace" &&
+    value.entityKind === "face" &&
+    value.evidenceSource === "checkpointSnapshot" &&
+    value.exposesCheckpointLocalIds === false &&
+    isExactPlanarFrame(value.planeFrame)
+  )
+    return true;
   return (
     isRecord(value) &&
     value.kind === "axisAlignedPlanarFace" &&
@@ -46341,6 +46946,13 @@ function isFeatureOffsetSourceShape(
       value.profile.kind === "entity" &&
       typeof value.profile.sketchId === "string" &&
       typeof value.profile.entityId === "string"
+    );
+  }
+  if (value.kind === "directFace") {
+    return (
+      isRecord(value.face) &&
+      value.face.kind === "topologyAnchor" &&
+      isFeatureShellOpenFaceRefShape(value.face)
     );
   }
   if (value.kind === "face") {

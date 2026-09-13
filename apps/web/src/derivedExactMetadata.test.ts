@@ -2245,17 +2245,19 @@ function createMetadataResult(
             ? "importedBody"
             : sourceKind === "bodyArtifact"
               ? "importedBody"
-              : sourceKind === "artifactHole"
-                ? "hole"
-                : sourceKind === "artifactLinearPattern"
-                  ? "linearPattern"
-                  : sourceKind === "artifactCircularPattern"
-                    ? "circularPattern"
-                    : sourceKind === "artifactMirror"
-                      ? "mirror"
-                      : sourceKind === "artifactShell"
-                        ? "shell"
-                        : sourceKind;
+              : sourceKind === "artifactBoolean"
+                ? "booleanExtrudes"
+                : sourceKind === "artifactHole"
+                  ? "hole"
+                  : sourceKind === "artifactLinearPattern"
+                    ? "linearPattern"
+                    : sourceKind === "artifactCircularPattern"
+                      ? "circularPattern"
+                      : sourceKind === "artifactMirror"
+                        ? "mirror"
+                        : sourceKind === "artifactShell"
+                          ? "shell"
+                          : sourceKind;
   return {
     metadata: {
       sourceKind: metadataSourceKind,

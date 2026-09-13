@@ -1,0 +1,528 @@
+{
+  "id": "editable-interchange",
+  "kind": "cadops",
+  "seed": [
+    {
+      "op": "parameter.create",
+      "id": "pin_radius",
+      "name": "Pin radius",
+      "value": 3
+    },
+    {
+      "op": "sketch.create",
+      "id": "pin_profile",
+      "name": "Pin profile",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addCircle",
+      "sketchId": "pin_profile",
+      "id": "pin_circle",
+      "center": [0, 0],
+      "radius": 3
+    },
+    {
+      "op": "sketch.dimension.create",
+      "id": "pin_radius_dimension",
+      "name": "Pin radius",
+      "sketchId": "pin_profile",
+      "target": {
+        "kind": "entityScalar",
+        "entityId": "pin_circle",
+        "entityKind": "circle",
+        "role": "radius"
+      },
+      "parameterId": "pin_radius"
+    },
+    {
+      "op": "feature.extrude",
+      "id": "pin_extrude",
+      "name": "Pin definition",
+      "bodyId": "pin_body",
+      "sketchId": "pin_profile",
+      "entityId": "pin_circle",
+      "depth": 6
+    },
+    {
+      "op": "sketch.create",
+      "id": "pads_profile",
+      "name": "Twin pads",
+      "plane": "XY"
+    },
+    {
+      "op": "sketch.addRectangle",
+      "sketchId": "pads_profile",
+      "id": "pad_a",
+      "center": [-5, 0],
+      "width": 4,
+      "height": 6
+    },
+    {
+      "op": "feature.extrude",
+      "id": "pad_extrude",
+      "name": "Pad seed",
+      "bodyId": "pad_seed",
+      "sketchId": "pads_profile",
+      "entityId": "pad_a",
+      "depth": 2
+    },
+    {
+      "op": "feature.linearPattern",
+      "id": "pads_pattern",
+      "name": "Two-solid definition",
+      "bodyId": "pads_body",
+      "seedBodyId": "pad_seed",
+      "axis": "x",
+      "spacing": 10,
+      "instanceCount": 2
+    },
+    {
+      "op": "assembly.create",
+      "id": "fixture",
+      "name": "Fixture"
+    },
+    {
+      "op": "assembly.create",
+      "id": "module",
+      "name": "Module"
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "module",
+      "id": "pin",
+      "name": "Pin",
+      "definition": {
+        "kind": "body",
+        "bodyId": "pin_body"
+      },
+      "color": [0.8, 0.2, 0.1]
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "module",
+      "id": "pads",
+      "name": "Twin pads",
+      "definition": {
+        "kind": "body",
+        "bodyId": "pads_body"
+      },
+      "transform": {
+        "translation": [0, 0, -2]
+      },
+      "color": [0.2, 0.8, 0.3]
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "fixture",
+      "id": "left",
+      "name": "Left module",
+      "definition": {
+        "kind": "assembly",
+        "assemblyId": "module"
+      },
+      "transform": {
+        "translation": [20, 0, 0],
+        "rotation": [0, 0, 1.5707963267948966]
+      }
+    },
+    {
+      "op": "assembly.instance.insert",
+      "assemblyId": "fixture",
+      "id": "right",
+      "name": "Right module",
+      "definition": {
+        "kind": "assembly",
+        "assemblyId": "module"
+      },
+      "transform": {
+        "translation": [-20, 10, 5],
+        "rotation": [1.5707963267948966, 0, 0]
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "revise-shared-pin-parameter",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "pin_radius",
+          "value": 4
+        }
+      ],
+      "expect": {
+        "ops": ["parameter.update"]
+      },
+      "queries": [
+        {
+          "query": {
+            "query": "parameter.list"
+          },
+          "expect": {
+            "ok": true,
+            "parameterCount": 1,
+            "parameters": [
+              {
+                "id": "pin_radius",
+                "value": 4
+              }
+            ]
+          }
+        },
+        {
+          "query": {
+            "query": "project.sketches"
+          },
+          "expect": {
+            "ok": true,
+            "sketchCount": 2,
+            "sketches": [
+              {
+                "id": "pin_profile",
+                "entities": [
+                  {
+                    "id": "pin_circle",
+                    "kind": "circle",
+                    "radius": 4
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "query": {
+            "query": "project.structure",
+            "projection": "occurrences"
+          },
+          "expect": {
+            "ok": true,
+            "projection": "occurrences",
+            "bodyCount": 3,
+            "totalInstanceCount": 4,
+            "instancePoses": [
+              {
+                "rootAssemblyId": "fixture",
+                "instancePath": ["left", "pin"],
+                "definition": {
+                  "kind": "body",
+                  "bodyId": "pin_body"
+                },
+                "transform": {
+                  "translation": [20, 0, 0]
+                }
+              },
+              {
+                "rootAssemblyId": "fixture",
+                "instancePath": ["left", "pads"],
+                "definition": {
+                  "kind": "body",
+                  "bodyId": "pads_body"
+                }
+              },
+              {
+                "rootAssemblyId": "fixture",
+                "instancePath": ["right", "pin"],
+                "definition": {
+                  "kind": "body",
+                  "bodyId": "pin_body"
+                },
+                "transform": {
+                  "translation": [-20, 10, 5]
+                }
+              },
+              {
+                "rootAssemblyId": "fixture",
+                "instancePath": ["right", "pads"],
+                "definition": {
+                  "kind": "body",
+                  "bodyId": "pads_body"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject-cycle-and-rollback-earlier-parameter-edit",
+      "ops": [
+        {
+          "op": "parameter.update",
+          "id": "pin_radius",
+          "value": 9
+        },
+        {
+          "op": "assembly.instance.insert",
+          "assemblyId": "module",
+          "id": "illegal_cycle",
+          "definition": {
+            "kind": "assembly",
+            "assemblyId": "fixture"
+          }
+        }
+      ],
+      "expect": {
+        "error": {
+          "code": "INVALID_OPERATION",
+          "messageIncludes": "cycle"
+        }
+      }
+    },
+    {
+      "id": "preserve-source-after-rejection-and-project-round-trip",
+      "persistRoundTrip": true,
+      "queries": [
+        {
+          "query": {
+            "query": "parameter.list"
+          },
+          "expect": {
+            "ok": true,
+            "parameterCount": 1,
+            "parameters": [
+              {
+                "id": "pin_radius",
+                "value": 4
+              }
+            ]
+          }
+        },
+        {
+          "query": {
+            "query": "project.sketches"
+          },
+          "expect": {
+            "ok": true,
+            "sketchCount": 2,
+            "sketches": [
+              {
+                "id": "pin_profile",
+                "entities": [
+                  {
+                    "id": "pin_circle",
+                    "radius": 4
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "query": {
+            "query": "project.structure",
+            "projection": "occurrences"
+          },
+          "expect": {
+            "ok": true,
+            "bodyCount": 3,
+            "totalInstanceCount": 4
+          }
+        }
+      ]
+    }
+  ],
+  "useSeed": [],
+  "use": [
+    {
+      "importStep": ".metrics/editable-interchange/authored-nested.step"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "[data-action-id=\"inspect.fit-all\"]"
+    },
+    {
+      "expectGpu": {
+        "definitions": 2,
+        "instances": 4
+      }
+    },
+    {
+      "screenshot": "interchange-imported-assembly"
+    },
+    {
+      "click": "[aria-controls=\"tree-group-assemblies\"]"
+    },
+    {
+      "click": "button[aria-label=\"Expand Fixture\"]"
+    },
+    {
+      "click": "button[aria-label=\"Expand Left module\"]"
+    },
+    {
+      "click": "[data-tree-select=\"assembly-instance:step_feat_1_assembly_2:step_feat_1_instance_3/step_feat_1_instance_1\"]"
+    },
+    {
+      "click": "[data-action-id=\"assembly.make-independent\"]"
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "screenshot": "interchange-independent-part"
+    },
+    {
+      "click": "button[title=\"Fit selected object\"]"
+    },
+    {
+      "click": "[data-action-id=\"inspect.top\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.offset\"]"
+    },
+    {
+      "select": {
+        "selector": "#solid-offset-source-kind",
+        "option": "directFace"
+      }
+    },
+    {
+      "select": {
+        "selector": ".pb-status-bar__filter select",
+        "option": "face"
+      }
+    },
+    {
+      "click": "[data-ui-smoke=\"pick\"]"
+    },
+    {
+      "clickCanvas": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "screenshot": "interchange-face-picked"
+    },
+    {
+      "type": {
+        "selector": "#solid-offset-distance",
+        "text": "1"
+      }
+    },
+    {
+      "apply": true
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "screenshot": "interchange-face-edited"
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "body_4",
+        "volume": 254.46900494077323
+      }
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "body_1",
+        "volume": 226.1946710584651
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectStructure": {
+        "featureCount": 3,
+        "bodyCount": 3
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "body_4",
+        "volume": 254.46900494077323
+      }
+    },
+    {
+      "saveWcad": ".metrics/editable-interchange/browser-edited.wcad"
+    },
+    {
+      "reload": true
+    },
+    {
+      "openWcad": ".metrics/editable-interchange/browser-edited.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Model view\"]",
+        "option": "parts"
+      }
+    },
+    {
+      "click": "[data-tree-select=\"feature:feat_4\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.edit\"]"
+    },
+    {
+      "type": {
+        "selector": "#solid-offset-distance",
+        "text": "2"
+      }
+    },
+    {
+      "apply": true
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "expectExactVolume": {
+        "bodyId": "body_4",
+        "volume": 282.7433388230814
+      }
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Model view\"]",
+        "option": "assembly"
+      }
+    },
+    {
+      "click": "[data-action-id=\"inspect.fit-all\"]"
+    },
+    {
+      "expectGpu": {
+        "definitions": 3,
+        "instances": 4
+      }
+    },
+    {
+      "screenshot": "interchange-native-reopened-edit"
+    },
+    {
+      "expectStructure": {
+        "featureCount": 4,
+        "bodyCount": 4
+      }
+    }
+  ],
+  "useBreak": [
+    {
+      "importStep": "examples/engine-step-trial/invalid.step",
+      "expectImportError": "could not read the file"
+    },
+    {
+      "screenshot": "interchange-invalid-import"
+    }
+  ],
+  "useExpect": {
+    "features": [
+      {
+        "id": "feat_4",
+        "kind": "offset"
+      }
+    ]
+  }
+}

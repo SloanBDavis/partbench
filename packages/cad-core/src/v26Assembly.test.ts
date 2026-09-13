@@ -63,7 +63,9 @@ describe("V26 slice A assembly definition vs instance", () => {
     });
 
     expect(first.transaction.diff.assemblies?.instancesCreated).toHaveLength(1);
-    expect(second.transaction.diff.assemblies?.instancesCreated).toHaveLength(1);
+    expect(second.transaction.diff.assemblies?.instancesCreated).toHaveLength(
+      1
+    );
     expect(first.transaction.diff.features?.bodiesCreated).toBeUndefined();
     expect(second.transaction.diff.features?.bodiesCreated).toBeUndefined();
 
@@ -99,7 +101,11 @@ describe("V26 slice A assembly definition vs instance", () => {
     const definitionIds = new Set(
       structure.ok && "assemblies" in structure
         ? (structure.assemblies ?? []).flatMap((assembly) =>
-            assembly.instances.map((instance) => instance.definition.bodyId)
+            assembly.instances.flatMap((instance) =>
+              instance.definition.kind === "body"
+                ? [instance.definition.bodyId]
+                : []
+            )
           )
         : []
     );
@@ -149,7 +155,9 @@ describe("V26 slice A assembly definition vs instance", () => {
     const reexported = exportCadProject(restored);
     expect(reexported.schemaVersion).toBe(exported.schemaVersion);
     expect(reexported.schemaVersion).not.toBe("web-cad.project.v23");
-    expect(reexported.document.assemblies).toEqual(exported.document.assemblies);
+    expect(reexported.document.assemblies).toEqual(
+      exported.document.assemblies
+    );
 
     const restoredStructure = restored.executeQuery({
       version: "cadops.v1",
@@ -395,9 +403,9 @@ describe("V26 slice C coincident plane mate", () => {
         secondary: { instanceId: "inst_top", plane: "XY" }
       }
     ]);
-    expect(exported.document.assemblies?.[0]?.instances[1]?.transform.translation).toEqual([
-      0, 0, 20
-    ]);
+    expect(
+      exported.document.assemblies?.[0]?.instances[1]?.transform.translation
+    ).toEqual([0, 0, 20]);
 
     const restored = importCadProject(exported);
     expect(exportCadProject(restored).document.assemblies).toEqual(
@@ -587,9 +595,9 @@ describe("V26 slice D concentric axes mate", () => {
         secondary: { instanceId: "inst_pin", axis: "Z" }
       }
     ]);
-    expect(exported.document.assemblies?.[0]?.instances[1]?.transform.translation).toEqual([
-      0, 0, 5
-    ]);
+    expect(
+      exported.document.assemblies?.[0]?.instances[1]?.transform.translation
+    ).toEqual([0, 0, 5]);
 
     const restored = importCadProject(exported);
     expect(exportCadProject(restored).document.assemblies).toEqual(
@@ -783,9 +791,9 @@ describe("V26 slice E distance offset mate", () => {
         distance: 30
       }
     ]);
-    expect(exported.document.assemblies?.[0]?.instances[1]?.transform.translation).toEqual([
-      0, 0, 30
-    ]);
+    expect(
+      exported.document.assemblies?.[0]?.instances[1]?.transform.translation
+    ).toEqual([0, 0, 30]);
 
     const restored = importCadProject(exported);
     expect(exportCadProject(restored).document.assemblies).toEqual(
@@ -955,7 +963,9 @@ describe("V26 slice F instance and mate CRUD", () => {
         name: "Gap wide"
       })
     ]);
-    expect(edited.transaction.diff.assemblies?.matesCreated ?? []).toHaveLength(0);
+    expect(edited.transaction.diff.assemblies?.matesCreated ?? []).toHaveLength(
+      0
+    );
     const structure = engine.executeQuery({
       version: "cadops.v1",
       query: { query: "project.structure" }
@@ -1004,7 +1014,10 @@ describe("V26 slice F instance and mate CRUD", () => {
       assemblies: [
         {
           instances: [
-            { id: "inst_base", definition: { kind: "body", bodyId: "body_bolt" } },
+            {
+              id: "inst_base",
+              definition: { kind: "body", bodyId: "body_bolt" }
+            },
             {
               id: "inst_top",
               definition: { kind: "body", bodyId: "body_nut" },

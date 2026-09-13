@@ -128,7 +128,7 @@ describe("assemblyInstanceExactDisplay", () => {
     expect(meshes).toEqual([]);
   });
 
-  it("shows only posed instances in assembly view and restores definitions in parts view", () => {
+  it("keeps loose active parts beside posed assemblies and restores definitions in parts view", () => {
     const base = {
       primitives: [],
       meshes: [
@@ -143,6 +143,7 @@ describe("assemblyInstanceExactDisplay", () => {
       view: "assembly"
     });
     expect(assemblyView.meshes.map((mesh) => mesh.id)).toEqual([
+      "loose_part",
       "assembly-instance:asm_bolts:inst_a",
       "assembly-instance:asm_bolts:inst_b"
     ]);
@@ -159,6 +160,173 @@ describe("assemblyInstanceExactDisplay", () => {
         view: "assembly"
       }).meshes
     ).toEqual([]);
+  });
+
+  it("renders repeated nested definitions once per root occurrence, composes transforms, and resolves the authoritative pick owner", () => {
+    const identity = {
+      translation: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    } as const;
+    const nested: readonly AssemblySnapshot[] = [
+      {
+        id: "child",
+        name: "Subassembly",
+        instances: [
+          {
+            id: "bolt",
+            name: "Bolt",
+            definition: { kind: "body", bodyId: "body_bolt" },
+            transform: { ...identity, translation: [3, 0, 0] }
+          },
+          {
+            id: "pin",
+            name: "Pin",
+            definition: { kind: "body", bodyId: "body_bolt" },
+            transform: identity,
+            color: [1, 0, 0]
+          }
+        ]
+      },
+      {
+        id: "root",
+        name: "Engine",
+        instances: [
+          {
+            id: "left",
+            name: "Left",
+            definition: { kind: "assembly", assemblyId: "child" },
+            transform: {
+              ...identity,
+              translation: [10, 0, 0],
+              rotation: [0, 0, Math.PI / 2]
+            },
+            color: [0, 0, 1]
+          },
+          {
+            id: "right",
+            name: "Right",
+            definition: { kind: "assembly", assemblyId: "child" },
+            transform: { ...identity, translation: [30, 0, 0] }
+          }
+        ]
+      }
+    ];
+    const definitionMesh = {
+      ...createMesh("body_bolt"),
+      color: [0, 1, 0] as const
+    };
+    const meshes = createAssemblyInstanceExactDisplayMeshes({
+      assemblies: nested,
+      definitionMeshesByBodyId: new Map([["body_bolt", definitionMesh]])
+    });
+    expect(meshes.map((mesh) => mesh.id)).toEqual([
+      "assembly-instance:root:left/bolt",
+      "assembly-instance:root:left/pin",
+      "assembly-instance:root:right/bolt",
+      "assembly-instance:root:right/pin"
+    ]);
+    expect(
+      meshes.every(
+        (mesh) =>
+          mesh.vertices === definitionMesh.vertices &&
+          mesh.indices === definitionMesh.indices
+      )
+    ).toBe(true);
+    expect(meshes[0]?.transform.translation).toEqual([10, 3, 0]);
+    expect(meshes[2]?.transform.translation).toEqual([33, 0, 0]);
+    expect(meshes.map((mesh) => mesh.color)).toEqual([
+      [0, 0, 1],
+      [1, 0, 0],
+      [0, 1, 0],
+      [1, 0, 0]
+    ]);
+    const pick = resolveAssemblyInstanceBodyPick({
+      assemblies: nested,
+      pickedRenderId: meshes[0]!.id
+    });
+    expect(pick).toMatchObject({
+      assemblyId: "child",
+      instanceId: "bolt",
+      rootAssemblyId: "root",
+      instancePath: ["left", "bolt"],
+      bodyId: "body_bolt",
+      transform: { translation: [10, 3, 0] }
+    });
+    expect(
+      listAssemblyInstanceExactDisplayRefs({ assemblies: nested })
+    ).toHaveLength(4);
+    expect(
+      findAssemblyInstanceDefinitionBodyId({
+        assemblies: nested,
+        assemblyId: "child",
+        instanceId: "bolt",
+        rootAssemblyId: "root",
+        instancePath: ["left", "bolt"]
+      })
+    ).toBe("body_bolt");
+    expect(
+      resolveAssemblyInstanceBodyPick({
+        assemblies: nested,
+        pickedRenderId: "assembly-instance:root:left/missing"
+      })
+    ).toBeUndefined();
+    const coloredParts = createAssemblySceneView({
+      base: { primitives: [], meshes: [createMesh("body_bolt")] },
+      assemblies: nested,
+      view: "parts",
+      definitionColorsByBodyId: new Map([["body_bolt", [0.2, 0.4, 0.6]]])
+    });
+    expect(coloredParts.meshes[0]?.color).toEqual([0.2, 0.4, 0.6]);
+  });
+
+  it("encodes path separators in caller IDs without confusing nested occurrences", () => {
+    const renderId = createAssemblyInstanceRenderId("root:1", [
+      "one/two",
+      "leaf%id"
+    ]);
+    expect(parseAssemblyInstanceRenderId(renderId)).toEqual({
+      assemblyId: "root:1",
+      instanceId: "leaf%id",
+      instancePath: ["one/two", "leaf%id"]
+    });
+    expect(
+      parseAssemblyInstanceRenderId("assembly-instance:root:bad%ZZ")
+    ).toBeUndefined();
+  });
+
+  it("maps authored primitive body identities explicitly and keeps loose primitives visible", () => {
+    const mesh = {
+      ...createMesh("bolt_object"),
+      transform: {
+        translation: [2, 0, 0] as const,
+        rotation: [0, 0, 0] as const,
+        scale: [1, 1, 1] as const
+      }
+    };
+    const result = createAssemblySceneView({
+      base: {
+        meshes: [mesh],
+        primitives: [
+          {
+            id: "loose_box",
+            kind: "box",
+            dimensions: { width: 2, height: 2, depth: 2 },
+            transform: mesh.transform
+          }
+        ]
+      },
+      assemblies,
+      view: "assembly",
+      bodyRenderIdsByBodyId: new Map([["body_bolt", "bolt_object"]])
+    });
+    expect(result.meshes.map((part) => part.id)).toEqual([
+      "assembly-instance:asm_bolts:inst_a",
+      "assembly-instance:asm_bolts:inst_b"
+    ]);
+    expect(result.meshes[0]?.transform.translation).toEqual([2, 0, 0]);
+    expect(result.meshes[1]?.transform.translation).toEqual([42, 0, 0]);
+    expect(result.primitives.map((part) => part.id)).toEqual(["loose_box"]);
   });
 });
 

@@ -72,8 +72,13 @@ describe("assembly definition/instance protocol", () => {
     expect(insertA.transform).not.toEqual(insertB.transform);
     expect(snapshot.instances).toHaveLength(2);
     expect(
-      new Set(snapshot.instances.map((instance) => instance.definition.bodyId))
-        .size
+      new Set(
+        snapshot.instances.map((instance) =>
+          instance.definition.kind === "body"
+            ? instance.definition.bodyId
+            : instance.definition.assemblyId
+        )
+      ).size
     ).toBe(1);
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v22");
     expect(CAD_V19_PROJECT_SCHEMA_VERSION).not.toBe("web-cad.project.v23");
@@ -312,7 +317,12 @@ describe("assembly instance/mate CRUD protocol", () => {
       assemblyId: "asm_crud",
       mateId: "mate_gap"
     };
-    const ops: readonly CadOp[] = [replace, deleteInstance, editMate, deleteMate];
+    const ops: readonly CadOp[] = [
+      replace,
+      deleteInstance,
+      editMate,
+      deleteMate
+    ];
     expect(ops.map((op) => op.op)).toEqual([
       "assembly.instance.replace",
       "assembly.instance.delete",

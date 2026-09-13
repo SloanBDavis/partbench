@@ -1,10 +1,12 @@
-import type {
-  CadBodyExactTopologySnapshot,
-  CadTopologyAnchorSourceRecord,
-  CadTopologyCheckpointSourceRecord,
-  WcadPackageEntryRole,
-  WcadPackageValidationIssue,
-  WcadTopologyCheckpointSignaturePayload
+import {
+  CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+  CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+  type CadBodyExactTopologySnapshot,
+  type CadTopologyAnchorSourceRecord,
+  type CadTopologyCheckpointSourceRecord,
+  type WcadPackageEntryRole,
+  type WcadPackageValidationIssue,
+  type WcadTopologyCheckpointSignaturePayload
 } from "@web-cad/cad-protocol";
 
 import type {
@@ -13,7 +15,10 @@ import type {
   WcadTopologyCheckpointPayloadInput
 } from "./index";
 import { CanonicalCborDecodeError, decodeCanonicalCbor } from "./canonicalCbor";
-import { createWcadV2CheckpointEntryPaths } from "./topologyIdentitySourceContract";
+import {
+  createEmptyTopologyIdentitySourceSnapshot,
+  createWcadV2CheckpointEntryPaths
+} from "./topologyIdentitySourceContract";
 
 type CheckpointEntryPaths = ReturnType<typeof createWcadV2CheckpointEntryPaths>;
 
@@ -560,6 +565,47 @@ function validateSourceCheckpointPaths(
   }
 }
 
+/** Checkpoint bytes remain source assets while undo or redo can restore them. */
+export function createProjectHistoricalTopologySources(
+  project: Pick<CadProject, "history" | "redoStack">
+) {
+  return (["history", "redoStack"] as const).flatMap((kind) =>
+    project[kind].flatMap((transaction, index) => {
+      const refs = transaction.diff.references;
+      if (!refs) return [];
+      const checkpoints = [
+        ...(refs.topologyCheckpointsCreated ?? []),
+        ...(refs.topologyCheckpointsDeleted ?? [])
+      ].map((ref) => {
+        const paths = createWcadV2CheckpointEntryPaths(ref.checkpointId);
+        return {
+          ...ref,
+          packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+          projectSchemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+          brepEntryPath: paths.brep,
+          topologyEntryPath: paths.topology,
+          signatureEntryPath: paths.signature,
+          diagnostics: []
+        };
+      });
+      // Historical anchor summaries omit their full geometric matching data.
+      // Keep their immutable checkpoint assets; validate complete anchor records
+      // from the current document and history baseline rather than inventing them.
+      return checkpoints.length
+        ? [
+            {
+              path: `$.${kind}[${index}].diff.references`,
+              snapshot: {
+                ...createEmptyTopologyIdentitySourceSnapshot(),
+                checkpoints
+              }
+            }
+          ]
+        : [];
+    })
+  );
+}
+
 function collectCheckpointSources(
   project: CadProject,
   stringify: (value: unknown) => string
@@ -578,7 +624,8 @@ function collectCheckpointSources(
     {
       path: "$.historyBaseline.topologyIdentity",
       snapshot: project.historyBaseline?.topologyIdentity
-    }
+    },
+    ...createProjectHistoricalTopologySources(project)
   ];
 
   for (const source of sources) {

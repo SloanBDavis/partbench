@@ -393,6 +393,7 @@ function getMetadataSourceKind(
     case "checkpointBody":
       return source.topologySourceKind;
     case "checkpointBoolean":
+    case "artifactBoolean":
       return "booleanExtrudes";
     case "checkpointHole":
       return "hole";

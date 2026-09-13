@@ -52,6 +52,8 @@ export type ViewportPickIntent =
       readonly selectedId?: undefined;
       readonly assemblyId: string;
       readonly instanceId: string;
+      readonly rootAssemblyId?: string;
+      readonly instancePath?: readonly string[];
       readonly bodyId: string;
       readonly renderTargetId: string;
       readonly semanticSelection: CadSelectionReferenceInput;
@@ -370,6 +372,12 @@ export function resolveViewportPickIntent({
         kind: "assemblyInstance",
         assemblyId: assemblyInstance.assemblyId,
         instanceId: assemblyInstance.instanceId,
+        ...(assemblyInstance.rootAssemblyId
+          ? {
+              rootAssemblyId: assemblyInstance.rootAssemblyId,
+              instancePath: assemblyInstance.instancePath
+            }
+          : {}),
         bodyId: assemblyInstance.bodyId,
         renderTargetId: assemblyInstance.renderTargetId,
         semanticSelection: selection,

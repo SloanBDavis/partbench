@@ -263,6 +263,8 @@ export function formatSelectionReferenceOperationLabel(
       return "Fillet";
     case "feature.shell":
       return "Shell";
+    case "feature.faceOffset":
+      return "Offset solid face";
     case "feature.offset":
       return "Offset face";
     case "feature.align":
@@ -315,7 +317,7 @@ export function createSelectionReferenceCandidateSummary(
       "stableId" in candidate.reference
         ? candidate.reference.stableId
         : candidate.target.type === "topologyAnchor"
-          ? candidate.target.topologyAnchorId ?? candidate.label
+          ? (candidate.target.topologyAnchorId ?? candidate.label)
           : candidate.label,
     commandOperations: candidate.commandOperations,
     issues: issueMessages

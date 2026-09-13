@@ -7,7 +7,12 @@ import {
   type CadMcpProjectFilesPort,
   type CadProjectToolResult
 } from "@web-cad/mcp-adapter";
-import { WorkspaceFiles, ProjectFileError, hasCode } from "./workspaceFiles.ts";
+import {
+  WorkspaceFiles,
+  ProjectFileError,
+  WORKSPACE_FILE_LIMITS,
+  hasCode
+} from "./workspaceFiles.ts";
 
 export interface HeadlessAgentHost {
   readonly server: ReturnType<typeof createCadMcpServer>;
@@ -69,14 +74,46 @@ export async function createHeadlessAgentHost(options: {
         fileTools: [
           "cad.project_open",
           "cad.project_save",
+          "cad.project_import_file",
           "cad.project_export_file"
         ],
+        assemblyTools: ["cad.assembly_make_independent"],
+        fileFormats: {
+          native: {
+            formats: ["wcad"],
+            behavior:
+              "Complete editable source and history; open replaces the current project."
+          },
+          import: {
+            formats: ["step", "dxf", "svg"],
+            behavior:
+              "Creates ordinary editable parts/assemblies or sketch curves in the current document. STEP does not recreate foreign feature history."
+          },
+          export: {
+            formats: ["step", "dxf", "svg"],
+            selectors: {
+              step: "bodyIds or assemblyIds",
+              dxf: "sketchIds",
+              svg: "sketchIds"
+            }
+          },
+          maxInputBytes: WORKSPACE_FILE_LIMITS
+        },
         workflow: [
           "Use cad.operation_schema to discover commands, then cad.batch with responseDetail summary, version cadops.v1, mode commit, allowCommit true, and caller-supplied IDs to create or revise related operations in one transaction.",
           "Inspect cad.project_structure for body/feature IDs; use projection poses with filters for compact motion checks. Use cad.body_mass_properties for exact volume, area and center of mass, and reference/readiness queries before topology-dependent edits.",
           "Use mode dryRun to validate a proposed batch without committing. A rejected batch preserves the project.",
-          "Save .wcad with cad.project_save, reopen with cad.project_open, and export real STEP with cad.project_export_file. All file paths stay within this workspace."
+          "Import STEP/DXF/SVG with cad.project_import_file; inspect created IDs and warnings. dryRun true validates without committing. Unitless DXF requires unit; sketch scale is an explicit positive multiplier. Imported content uses the same cad.batch editing commands as authored content.",
+          "Before editing just one repeated part, use cad.assembly_make_independent with its rootAssemblyId and instancePath; continue ordinary feature/sketch edits against the returned bodyId. Other occurrences retain their shared definitions.",
+          "Save full source/history as .wcad with cad.project_save and reopen with cad.project_open. Use cad.project_export_file for STEP bodies/assemblies or local DXF/SVG sketch curves; read metadata omission notices. All file paths stay within this workspace."
         ]
+      })),
+    makeOccurrenceIndependent: ({ rootAssemblyId, instancePath }) =>
+      projectTask(async () => ({
+        ...(await cad.makeOccurrenceIndependent({
+          rootAssemblyId,
+          instancePath: [...instancePath]
+        }))
       })),
     openProject: ({ path }) =>
       projectTask(async () => {
@@ -87,6 +124,32 @@ export async function createHeadlessAgentHost(options: {
           path: artifact.path,
           byteLength: artifact.bytes.byteLength,
           format: "wcad"
+        };
+      }),
+    importProjectFile: ({ path, format, dryRun, unit, scale }) =>
+      projectTask(async () => {
+        const artifact = await files.readExchange(path, format);
+        if (
+          artifact.format === "step" &&
+          (unit !== undefined || scale !== undefined)
+        )
+          throw new ProjectFileError(
+            "INVALID_ARGUMENTS",
+            "STEP uses its declared units; explicit unit/scale options apply to sketch imports only."
+          );
+        const imported = await cad.importFile({
+          bytes: artifact.bytes,
+          fileName: basename(artifact.path),
+          format: artifact.format,
+          mode: dryRun ? "dryRun" : "commit",
+          ...(unit !== undefined ? { unit } : {}),
+          ...(scale !== undefined ? { scale } : {})
+        });
+        return {
+          ...imported,
+          path: artifact.path,
+          byteLength: artifact.bytes.byteLength,
+          format: artifact.format
         };
       }),
     saveProject: ({ path, overwrite }) =>
@@ -102,10 +165,20 @@ export async function createHeadlessAgentHost(options: {
           sourceIdentity: info.sourceIdentity
         };
       }),
-    exportProjectFile: ({ path, overwrite, bodyIds }) =>
+    exportProjectFile: ({
+      path,
+      format,
+      overwrite,
+      bodyIds,
+      assemblyIds,
+      sketchIds
+    }) =>
       projectTask(async () => {
-        const output = await files.outputPath(path, "step", overwrite);
-        const { bytes, ...metadata } = await cad.exportStep({ bodyIds });
+        const output = await files.outputPath(path, format, overwrite);
+        const { bytes, ...metadata } =
+          format === "step"
+            ? await cad.exportStep({ bodyIds, assemblyIds })
+            : await cad.exportSketches({ format, sketchIds });
         await files.write(output, bytes, overwrite);
         const info = await cad.getSessionInfo();
         return {
@@ -113,6 +186,7 @@ export async function createHeadlessAgentHost(options: {
           fileName: basename(output),
           path: output,
           byteLength: bytes.byteLength,
+          format,
           sourceIdentity: info.sourceIdentity
         };
       })

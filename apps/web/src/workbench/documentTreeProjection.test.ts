@@ -348,6 +348,88 @@ function createTransform() {
 }
 
 describe("document tree assembly projection", () => {
+  it("nests repeated subassemblies under roots with unique occurrence keys and authoritative editing targets", () => {
+    const transform = {
+      translation: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    } as const;
+    const projection = createDocumentTreeProjection({
+      ...createProjectionInput(),
+      assemblies: [
+        {
+          id: "child",
+          name: "Cylinder",
+          instances: [
+            {
+              id: "bolt",
+              name: "Bolt",
+              definition: { kind: "body", bodyId: "body_bolt" },
+              transform
+            }
+          ],
+          mates: [
+            { id: "ground", name: "Ground", kind: "fixed", instanceId: "bolt" }
+          ]
+        },
+        {
+          id: "root",
+          name: "Engine",
+          instances: [
+            {
+              id: "left",
+              name: "Left",
+              definition: { kind: "assembly", assemblyId: "child" },
+              transform
+            },
+            {
+              id: "right",
+              name: "Right",
+              definition: { kind: "assembly", assemblyId: "child" },
+              transform
+            }
+          ]
+        }
+      ],
+      capabilitiesBySelectionKey: new Map([
+        ["assembly-instance:child:bolt", { canEdit: true }]
+      ])
+    });
+    expect(
+      projection.groups
+        .find((group) => group.id === "assemblies")
+        ?.rows.map((row) => row.id)
+    ).toEqual(["assembly:root"]);
+    const left = projection.rowsById.get("assembly-instance:root:left")!;
+    expect(left.icon).toBe("project");
+    expect(left.detail).toBe("Assembly · Cylinder");
+    expect(left.children.map((row) => row.id)).toEqual([
+      "assembly-instance:root:left/bolt",
+      "assembly-mate:root:left/ground"
+    ]);
+    const rightBolt = projection.rowsById.get(
+      "assembly-instance:root:right/bolt"
+    )!;
+    expect(rightBolt.selection).toEqual({
+      kind: "assembly-instance",
+      assemblyId: "child",
+      id: "bolt",
+      rootAssemblyId: "root",
+      instancePath: ["right", "bolt"]
+    });
+    expect(documentTreeSelectionKey(rightBolt.selection)).toBe(rightBolt.id);
+    expect(rightBolt.capabilities.canEdit).toBe(true);
+    expect(
+      projection.rowsById.get("assembly-mate:root:right/ground")?.selection
+    ).toEqual({
+      kind: "assembly-mate",
+      assemblyId: "child",
+      id: "ground",
+      rootAssemblyId: "root",
+      instancePath: ["right"]
+    });
+  });
+
   it("lists instances and mates without selecting definition faces", () => {
     const projection = createDocumentTreeProjection({
       ...createProjectionInput(),
@@ -460,10 +542,10 @@ describe("document tree assembly projection", () => {
         }
       ]
     });
-    const mateRow = projection.rowsById.get("assembly-mate:asm_stack:mate_stack");
-    expect(mateRow?.detail).toBe(
-      "Coincident · inst_base/XY ~ inst_top/XY"
+    const mateRow = projection.rowsById.get(
+      "assembly-mate:asm_stack:mate_stack"
     );
+    expect(mateRow?.detail).toBe("Coincident · inst_base/XY ~ inst_top/XY");
   });
 
   it("labels concentric mates with axis refs", () => {
@@ -507,10 +589,10 @@ describe("document tree assembly projection", () => {
         }
       ]
     });
-    const mateRow = projection.rowsById.get("assembly-mate:asm_pin:mate_concentric");
-    expect(mateRow?.detail).toBe(
-      "Concentric · inst_bore/Z ~ inst_pin/Z"
+    const mateRow = projection.rowsById.get(
+      "assembly-mate:asm_pin:mate_concentric"
     );
+    expect(mateRow?.detail).toBe("Concentric · inst_bore/Z ~ inst_pin/Z");
   });
 
   it("labels distance mates with plane refs and separation", () => {
@@ -556,8 +638,6 @@ describe("document tree assembly projection", () => {
       ]
     });
     const mateRow = projection.rowsById.get("assembly-mate:asm_gap:mate_gap");
-    expect(mateRow?.detail).toBe(
-      "Distance · inst_base/XY ~ inst_top/XY @ 30"
-    );
+    expect(mateRow?.detail).toBe("Distance · inst_base/XY ~ inst_top/XY @ 30");
   });
 });

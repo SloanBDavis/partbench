@@ -1162,6 +1162,14 @@ describe("occt-wasm", () => {
       Message_ProgressRange_1: Progress,
       STEPControl_Reader_1: FailingReader,
       STEPControl_Reader: ReaderBindings,
+      STEPCAFControl_Reader_1: FailingReader,
+      STEPCAFControl_Reader: class {
+        ReadFile() {}
+        Transfer_1() {}
+      },
+      XCAFDoc_ShapeTool: { GetReferredShape() {}, GetComponents() {} },
+      XCAFDoc_DocumentTool: { ShapeTool() {} },
+      BRepCheck_Analyzer: class {},
       ShapeFix_Shape_1: ShapeFixBindings,
       ShapeFix_Shape: ShapeFixBindings,
       IFSelect_ReturnStatus: { IFSelect_RetDone: 1 },
@@ -3078,7 +3086,7 @@ describe("occt-wasm", () => {
       expect(body).toMatchObject({
         sourceFormat: "step",
         sourceFileName: "roundtrip-import.step",
-        bodyName: "roundtrip-import",
+        bodyName: "body_step_import_source",
         shapeType: "solid",
         solidCount: 1,
         checkpointPayload: {
@@ -3990,7 +3998,10 @@ describe("occt-wasm", () => {
       });
       const blockVolume = 20 * 12 * 8;
       const removedPerEdge = 1 * 12 * (1 - Math.PI / 4);
-      expect(filleted.metadata.volume).toBeCloseTo(blockVolume - removedPerEdge, 5);
+      expect(filleted.metadata.volume).toBeCloseTo(
+        blockVolume - removedPerEdge,
+        5
+      );
       expect(featurePattern.metadata.topologyCounts.solidCount).toBe(1);
       expect(featurePattern.metadata.volume).toBeCloseTo(
         blockVolume - 2 * removedPerEdge,

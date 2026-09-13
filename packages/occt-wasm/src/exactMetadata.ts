@@ -211,7 +211,7 @@ export interface OcctExactBodyMetadataInput {
 }
 
 export interface OcctExactBodyMetadata {
-  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly sourceKind: OcctExactTopologySourceKind;
   readonly bounds: {
     readonly min: readonly [number, number, number];
     readonly max: readonly [number, number, number];
@@ -246,7 +246,8 @@ export interface OcctExactBodyMetadata {
 export type OcctTopologySnapshotStatus = "ready" | "partial";
 export type OcctExactTopologySourceKind =
   | OcctExactBodyMetadataSource["kind"]
-  | "importedBody";
+  | "importedBody"
+  | "faceOffset";
 export type OcctTopologyEntityKind =
   | "body"
   | "solid"
@@ -276,7 +277,15 @@ export interface OcctTopologyEntityDescriptor {
   readonly point?: readonly [number, number, number];
   readonly midpoint?: readonly [number, number, number];
   readonly normal?: readonly [number, number, number];
+  /** Geometric surface frame in the evaluated body's coordinates and units. */
+  readonly planeFrame?: {
+    readonly origin: readonly [number, number, number];
+    readonly xDirection: readonly [number, number, number];
+    readonly yDirection: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  };
   readonly axis?: readonly [number, number, number];
+  readonly axisOrigin?: readonly [number, number, number];
   readonly radius?: number;
   readonly area?: number;
   readonly length?: number;
@@ -650,6 +659,10 @@ function withOcctExactPrimitiveShape<T>(
   let transform: InstanceType<OpenCascadeInstance["gp_GTrsf_3"]> | undefined;
   let transformed:
     | InstanceType<OpenCascadeInstance["BRepBuilderAPI_GTransform_2"]>
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_Transform_2"]>
+    | undefined;
+  let rigidTransform:
+    | InstanceType<OpenCascadeInstance["gp_Trsf_1"]>
     | undefined;
   let worldShape: TopoDS_Shape | undefined;
 
@@ -659,11 +672,44 @@ function withOcctExactPrimitiveShape<T>(
     matrix = new oc.gp_Mat_2(...affine.matrix);
     translation = new oc.gp_XYZ_2(...affine.translation);
     transform = new oc.gp_GTrsf_3(matrix, translation);
-    transformed = new oc.BRepBuilderAPI_GTransform_2(
-      localShape,
-      transform,
-      true
-    );
+    // A general affine transform converts analytic surfaces into B-splines.
+    // Preserve planes/cylinders for similarity transforms so authored geometry
+    // retains the same editable surface evidence as imported analytic geometry.
+    const [sx, sy, sz] = source.transform.scale;
+    if (
+      sx === sy &&
+      sy === sz &&
+      typeof oc.BRepBuilderAPI_Transform_2 === "function"
+    ) {
+      rigidTransform = new oc.gp_Trsf_1();
+      const m = affine.matrix,
+        t = affine.translation;
+      rigidTransform.SetValues(
+        m[0],
+        m[1],
+        m[2],
+        t[0],
+        m[3],
+        m[4],
+        m[5],
+        t[1],
+        m[6],
+        m[7],
+        m[8],
+        t[2]
+      );
+      transformed = new oc.BRepBuilderAPI_Transform_2(
+        localShape,
+        rigidTransform,
+        true
+      );
+    } else {
+      transformed = new oc.BRepBuilderAPI_GTransform_2(
+        localShape,
+        transform,
+        true
+      );
+    }
     worldShape = transformed.Shape();
     if (worldShape.IsNull()) {
       throw new Error(
@@ -674,6 +720,7 @@ function withOcctExactPrimitiveShape<T>(
   } finally {
     worldShape?.delete();
     transformed?.delete();
+    rigidTransform?.delete();
     transform?.delete();
     translation?.delete();
     matrix?.delete();
@@ -853,9 +900,13 @@ export function withImportedBrepShape<T>(
 export function readExactBodyMetadata(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
-  sourceKind: OcctExactBodyMetadataSource["kind"]
+  sourceKind: OcctExactTopologySourceKind,
+  /** Evidence already extracted from this unchanged shape in this evaluation. */
+  topologySnapshot?: OcctExactTopologySnapshot
 ): OcctExactBodyMetadata {
-  const bounds = readBounds(oc, shape);
+  const bounds =
+    topologySnapshot?.entities.find((entity) => entity.kind === "body")
+      ?.bounds ?? readBounds(oc, shape);
   let volumeProps:
     | InstanceType<OpenCascadeInstance["GProp_GProps_1"]>
     | undefined;
@@ -892,10 +943,18 @@ export function readExactBodyMetadata(
         momentsOfInertia,
         principalMoments: eigenvaluesOfSymmetricTensor(momentsOfInertia),
         topologyCounts: {
-          solidCount: countSubshapes(oc, shape, "TopAbs_SOLID"),
-          faceCount: countSubshapes(oc, shape, "TopAbs_FACE"),
-          edgeCount: countSubshapes(oc, shape, "TopAbs_EDGE"),
-          vertexCount: countSubshapes(oc, shape, "TopAbs_VERTEX")
+          solidCount:
+            topologySnapshot?.entityCounts.solidCount ??
+            countSubshapes(oc, shape, "TopAbs_SOLID"),
+          faceCount:
+            topologySnapshot?.entityCounts.faceCount ??
+            countSubshapes(oc, shape, "TopAbs_FACE"),
+          edgeCount:
+            topologySnapshot?.entityCounts.edgeCount ??
+            countSubshapes(oc, shape, "TopAbs_EDGE"),
+          vertexCount:
+            topologySnapshot?.entityCounts.vertexCount ??
+            countSubshapes(oc, shape, "TopAbs_VERTEX")
         },
         measurementSource: "kernel-derived",
         measurementConfidence: "kernel-derived",
@@ -968,25 +1027,11 @@ export function readExactTopologySnapshot(
   let vertexIndex: TopologyShapeIndex | undefined;
 
   try {
-    solidIndex = createTopologyShapeIndex(
-      oc,
-      shape,
-      "solid",
-      "TopAbs_SOLID",
-      sourceKind
-    );
     faceIndex = createTopologyShapeIndex(
       oc,
       shape,
       "face",
       "TopAbs_FACE",
-      sourceKind
-    );
-    wireIndex = createTopologyShapeIndex(
-      oc,
-      shape,
-      "wire",
-      "TopAbs_WIRE",
       sourceKind
     );
     edgeIndex = createTopologyShapeIndex(
@@ -1003,13 +1048,34 @@ export function readExactTopologySnapshot(
       "TopAbs_VERTEX",
       sourceKind
     );
+    // Aggregate bounds are unions of the same exact face/free-edge/free-vertex
+    // boxes that AddOptimal traverses. Reuse those boxes instead of repeatedly
+    // solving surface and curve extrema for every enclosing wire, solid and body.
+    const indexedBounds = (target: TopoDS_Shape) =>
+      readIndexedBounds(oc, target, faceIndex!, edgeIndex!, vertexIndex!);
+    wireIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "wire",
+      "TopAbs_WIRE",
+      sourceKind,
+      indexedBounds
+    );
+    solidIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "solid",
+      "TopAbs_SOLID",
+      sourceKind,
+      indexedBounds
+    );
     const bodyEntity = createTopologyEntity({
       oc,
       kind: "body",
       shape,
       index: 1,
       sourceKind,
-      bounds: readBounds(oc, shape)
+      bounds: indexedBounds(shape)
     });
     const relationshipEvidence = createTopologyRelationshipEvidence(oc, {
       sourceKind,
@@ -1128,7 +1194,10 @@ function createTopologyShapeIndex(
     | "TopAbs_WIRE"
     | "TopAbs_EDGE"
     | "TopAbs_VERTEX",
-  sourceKind: OcctExactTopologySourceKind
+  sourceKind: OcctExactTopologySourceKind,
+  boundsForShape: (target: TopoDS_Shape) => OcctExactBodyMetadata["bounds"] = (
+    target
+  ) => readBounds(oc, target)
 ): TopologyShapeIndex {
   const shapeType = oc.TopAbs_ShapeEnum[shapeTypeKey] as unknown as Parameters<
     typeof oc.TopExp.MapShapes_1
@@ -1144,7 +1213,7 @@ function createTopologyShapeIndex(
 
       try {
         current = shapeMap.FindKey(index);
-        const bounds = readBounds(oc, current);
+        const bounds = boundsForShape(current);
         entries.push({
           kind,
           index,
@@ -1352,7 +1421,7 @@ function createLoopTopologyEntity(
     readonly loopRole?: OcctTopologyEntityDescriptor["loopRole"];
   }
 ): OcctTopologyEntityDescriptor {
-  const bounds = readBounds(oc, input.wireShape);
+  const bounds = input.wireEntry?.bounds ?? readBounds(oc, input.wireShape);
   const localId = createTopologyEntityLocalId("loop", input.index);
 
   return {
@@ -1987,7 +2056,24 @@ function readSurfaceGeometryEvidence(
     const plane = surface.Plane();
 
     try {
-      return { normal: readAxisDirection(plane.Axis()) };
+      const normal = readAxisDirection(plane.Axis());
+      const xDirection = readAxisDirection(plane.XAxis());
+      // Reflected placements may make OCCT's parametric axes indirect. A
+      // sketch frame is always right handed in the actual geometric plane.
+      const yDirection = normalizeVector([
+        normal[1] * xDirection[2] - normal[2] * xDirection[1],
+        normal[2] * xDirection[0] - normal[0] * xDirection[2],
+        normal[0] * xDirection[1] - normal[1] * xDirection[0]
+      ]);
+      return {
+        normal,
+        planeFrame: {
+          origin: readOwnedPoint(plane.Location()),
+          xDirection,
+          yDirection,
+          normal
+        }
+      };
     } finally {
       plane.delete();
     }
@@ -1999,6 +2085,7 @@ function readSurfaceGeometryEvidence(
     try {
       return {
         axis: readAxisDirection(cylinder.Axis()),
+        axisOrigin: readOwnedPoint(cylinder.Location()),
         radius: Math.abs(cylinder.Radius())
       };
     } finally {
@@ -2113,6 +2200,16 @@ function readDirection(
     return normalizeVector([direction.X(), direction.Y(), direction.Z()]);
   } finally {
     direction.delete();
+  }
+}
+
+function readOwnedPoint(
+  point: OcctDeletablePointLike
+): readonly [number, number, number] {
+  try {
+    return readPoint(point);
+  } finally {
+    point.delete();
   }
 }
 
@@ -2284,6 +2381,55 @@ function readBounds(
   } finally {
     bounds.delete();
   }
+}
+
+/** Match AddOptimal's decomposition, including loose geometry in compounds. */
+function readIndexedBounds(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  faceIndex: TopologyShapeIndex,
+  edgeIndex: TopologyShapeIndex,
+  vertexIndex: TopologyShapeIndex
+): OcctExactBodyMetadata["bounds"] {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  const traversals = [
+    ["TopAbs_FACE", "TopAbs_SHAPE", faceIndex],
+    ["TopAbs_EDGE", "TopAbs_FACE", edgeIndex],
+    ["TopAbs_VERTEX", "TopAbs_EDGE", vertexIndex]
+  ] as const;
+  let found = false;
+
+  for (const [type, avoid, index] of traversals) {
+    const explorer = new oc.TopExp_Explorer_2(
+      shape,
+      oc.TopAbs_ShapeEnum[type] as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[1],
+      oc.TopAbs_ShapeEnum[avoid] as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[2]
+    );
+    try {
+      for (; explorer.More(); explorer.Next()) {
+        const child = explorer.Current();
+        try {
+          const bounds = index.find(child)?.bounds ?? readBounds(oc, child);
+          for (const axis of AXIS_INDICES) {
+            min[axis] = Math.min(min[axis], bounds.min[axis]);
+            max[axis] = Math.max(max[axis], bounds.max[axis]);
+          }
+          found = true;
+        } finally {
+          child.delete();
+        }
+      }
+    } finally {
+      explorer.delete();
+    }
+  }
+
+  return found ? { min, max } : readBounds(oc, shape);
 }
 
 function countSubshapes(

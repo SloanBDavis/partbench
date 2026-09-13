@@ -260,6 +260,11 @@ function localFrame(
       "INVALID_OPERATION",
       "Assembly sketch frames currently require an unattached standard-plane sketch."
     );
+  if (instance.definition.kind !== "body")
+    throw new AssemblySolveError(
+      "INVALID_OPERATION",
+      "A sketch frame must reference a part instance."
+    );
   if (!definitionUsesSketch(source, instance.definition.bodyId, sketch.id))
     throw new AssemblySolveError(
       "INVALID_OPERATION",

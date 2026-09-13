@@ -65,6 +65,7 @@ export type {
   CadMcpProjectFilesPort,
   CadProjectFileRequest,
   CadProjectExportFileRequest,
+  CadProjectImportFileRequest,
   CadProjectToolResult
 } from "./projectFiles";
 
@@ -816,7 +817,7 @@ export class CadMcpServer {
     ) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_structure expects {} or { projection: 'poses', assemblyIds?: string[], instanceIds?: string[], offset?: nonnegative integer, limit?: integer (1–1000) }."
+        "cad.project_structure expects {} or { projection: 'poses' | 'occurrences', assemblyIds?: string[], instanceIds?: string[], offset?: nonnegative integer, limit?: integer (1–1000) }."
       );
     }
     const response = this.#adapter.query(
@@ -1407,7 +1408,7 @@ export class CadMcpServer {
     if (!isBodyTopologyIdentityToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.body_topology_identity expects arguments shaped as { bodyId: string, checkpointId?: string, derivedExactMetadata?: object }."
+        "cad.body_topology_identity expects arguments shaped as { bodyId: string, checkpointId?: string, offset?: number, limit?: number, includeSnapshot?: boolean, derivedExactMetadata?: object }."
       );
     }
 
@@ -1419,6 +1420,9 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "body.topologyIdentity",
+            offset: request.arguments.offset,
+            limit: request.arguments.limit,
+            includeSnapshot: request.arguments.includeSnapshot,
             bodyId: request.arguments.bodyId,
             checkpointId: request.arguments.checkpointId,
             derivedExactMetadata: request.arguments.derivedExactMetadata
@@ -3125,12 +3129,12 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_structure",
     description:
-      "Inspect part definitions, features/bodies, source mappings, and assemblies with resolved transforms and mates. For motion inspection use projection:'poses' with optional assemblyIds/instanceIds filters: returns instancePoses only, totalInstanceCount and nextOffset, without building definition/sketch/feature data. Page defaults to 100 instances, maximum 1000; offset indexes the stable matching instance order. Full projection remains the backward-compatible default. Definition arrays are empty in pose projections; counts describe the whole document.",
+      "Inspect part definitions, features/bodies, source mappings, and assemblies with resolved transforms and mates. For placed nested parts use projection:'occurrences': each row includes rootAssemblyId and instancePath for cad.assembly_make_independent, the owner assemblyId/local instance ID and composed world transform. For local motion inspection use projection:'poses' with optional assemblyIds/instanceIds filters: returns instancePoses only, totalInstanceCount and nextOffset, without building definition/sketch/feature data. Page defaults to 100 instances, maximum 1000; offset indexes the stable matching instance order. Full projection remains the backward-compatible default. Definition arrays are empty in pose projections; counts describe the whole document.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
-        projection: { enum: ["full", "poses"] },
+        projection: { enum: ["full", "poses", "occurrences"] },
         assemblyIds: {
           type: "array",
           maxItems: 1000,
@@ -3153,7 +3157,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       },
       then: {
         required: ["projection"],
-        properties: { projection: { const: "poses" } }
+        properties: { projection: { enum: ["poses", "occurrences"] } }
       }
     }
   },
@@ -3682,12 +3686,15 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.body_topology_identity",
     description:
-      "Returns V13 non-mutating topology identity candidates for generated references on one body, optionally binding them to a topology checkpoint and derived exact topology snapshot.",
+      "Inspect public topology identities for authored or imported exact bodies. Face/edge candidate stableIds feed cad.topology_anchor_creation_plan; execute its proposedBatch through cad.batch. Results are bounded (offset, limit 1–1000); includeSnapshot:false omits full topology. Re-query after editing, because identities are scoped to the exact source version. Ambiguous duplicate geometry remains explicit.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["bodyId"],
       properties: {
+        offset: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1, maximum: 1000 },
+        includeSnapshot: { type: "boolean", default: true },
         bodyId: {
           type: "string",
           description: "Body ID to inspect for topology identity candidates."
@@ -4593,10 +4600,31 @@ function isBodyTopologyToolArguments(value: unknown): value is {
 function isBodyTopologyIdentityToolArguments(value: unknown): value is {
   readonly bodyId: string;
   readonly checkpointId?: string;
+  readonly offset?: number;
+  readonly limit?: number;
+  readonly includeSnapshot?: boolean;
   readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 } {
   return (
     isRecord(value) &&
+    Object.keys(value).every((key) =>
+      [
+        "bodyId",
+        "checkpointId",
+        "derivedExactMetadata",
+        "offset",
+        "limit",
+        "includeSnapshot"
+      ].includes(key)
+    ) &&
+    (value.offset === undefined ||
+      (Number.isSafeInteger(value.offset) && Number(value.offset) >= 0)) &&
+    (value.limit === undefined ||
+      (Number.isSafeInteger(value.limit) &&
+        Number(value.limit) >= 1 &&
+        Number(value.limit) <= 1000)) &&
+    (value.includeSnapshot === undefined ||
+      typeof value.includeSnapshot === "boolean") &&
     typeof value.bodyId === "string" &&
     value.bodyId !== "" &&
     (value.checkpointId === undefined ||

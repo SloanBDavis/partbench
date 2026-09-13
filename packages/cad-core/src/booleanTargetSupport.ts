@@ -9,6 +9,7 @@ import type {
   SketchProfileRefV22
 } from "@web-cad/cad-protocol";
 
+import { isPrimitiveBodyId } from "./primitiveBodyIdentity";
 import { getSupportedEntityProfileKind } from "./normalizedFeatureInputs";
 
 export interface BooleanTargetSupportFeature {
@@ -25,6 +26,7 @@ export interface BooleanTargetSupportDocument<
   TFeature extends BooleanTargetSupportFeature
 > {
   readonly features: ReadonlyMap<FeatureId, TFeature>;
+  readonly objects?: ReadonlyMap<string, unknown>;
   readonly sketches: ReadonlyMap<
     SketchId,
     {
@@ -40,7 +42,8 @@ export type SupportedBooleanTargetKind =
   | FeatureExtrudeProfileKind
   | "wire"
   | "regions"
-  | "importedBody";
+  | "importedBody"
+  | "exactBody";
 
 export function createSupportedBooleanBodyTargetOperations<
   TFeature extends BooleanTargetSupportFeature
@@ -130,9 +133,34 @@ export function resolveSupportedBooleanTargetProfileKind<
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
 ): SupportedBooleanTargetKind | undefined {
-  if (targetFeature?.kind === "importedBody") {
-    return targetTopologyAnchorId !== undefined ? "importedBody" : undefined;
-  }
+  if (
+    !targetFeature &&
+    activeResultBodyId &&
+    document.objects &&
+    isPrimitiveBodyId({ objects: document.objects }, activeResultBodyId)
+  )
+    return "exactBody";
+  if (targetFeature?.kind === "importedBody") return "importedBody";
+  if (
+    targetFeature &&
+    [
+      "offset",
+      "hole",
+      "chamfer",
+      "fillet",
+      "combine",
+      "shell",
+      "sweep",
+      "loft",
+      "mirror",
+      "linearPattern",
+      "circularPattern",
+      "align",
+      "draft",
+      "revolve"
+    ].includes(targetFeature.kind)
+  )
+    return "exactBody";
 
   if (
     targetFeature?.kind !== "extrude" ||
@@ -184,7 +212,11 @@ export function resolveSupportedBooleanTargetProfileKind<
     current = findFeatureByBodyId(document.features, current.targetBodyId);
   }
 
-  return undefined;
+  return current?.kind === "importedBody"
+    ? "importedBody"
+    : current
+      ? "exactBody"
+      : undefined;
 }
 
 function resolveProfileKind<TFeature extends BooleanTargetSupportFeature>(
@@ -227,7 +259,8 @@ function isSupportedCutTargetProfileKind(
     profileKind === "circle" ||
     profileKind === "wire" ||
     profileKind === "regions" ||
-    profileKind === "importedBody"
+    profileKind === "importedBody" ||
+    profileKind === "exactBody"
   );
 }
 

@@ -687,7 +687,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
   readonly assemblies?: readonly AssemblySnapshot[];
-  readonly projection?: "poses";
+  readonly projection?: "poses" | "occurrences";
   readonly instancePoses?: readonly (AssemblyInstanceSnapshot & {
     readonly assemblyId: string;
   })[];
@@ -2477,7 +2477,7 @@ function createOperationReview(
         index,
         op,
         "create",
-        `Insert assembly instance ${op.id ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
+        `Insert assembly instance ${op.id ?? "with generated ID"} of ${op.definition.kind === "body" ? op.definition.bodyId : op.definition.assemblyId} into ${op.assemblyId}`
       );
 
     case "assembly.instance.updateTransform":
@@ -2514,7 +2514,7 @@ function createOperationReview(
         index,
         op,
         "modify",
-        `Replace assembly instance ${op.instanceId} definition with ${op.definition.bodyId} in ${op.assemblyId}`
+        `Replace assembly instance ${op.instanceId} definition with ${op.definition.kind === "body" ? op.definition.bodyId : op.definition.assemblyId} in ${op.assemblyId}`
       );
 
     case "assembly.instance.delete":
@@ -3246,6 +3246,30 @@ function createOperationReview(
         targetBodyId: op.targetBodyId
       };
 
+    case "feature.copyBody":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Make independent exact copy of ${op.sourceBodyId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {})
+      };
+    case "feature.faceOffset":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Offset face of ${op.targetBodyId} by ${op.distance}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId
+      };
+
     case "feature.offset":
       return {
         ...operationReviewBase(
@@ -3347,6 +3371,7 @@ function createOperationReview(
         featureId: op.id
       };
 
+    case "feature.updateFaceOffset":
     case "feature.updateOffset":
       return {
         ...operationReviewBase(
@@ -4315,6 +4340,7 @@ function addCurrentExactEvidence(
           derivedExactMetadata: evidence.derivedExactMetadata
         }
       };
+    case "topology.anchorCreationPlan":
     case "body.topology":
     case "body.topologyIdentity":
     case "body.patternInstances":
@@ -4331,6 +4357,18 @@ function addCurrentExactEvidence(
             query: { ...query, derivedExactMetadata }
           }
         : { ...request, query };
+    }
+    case "topology.anchorRepairPlan": {
+      const bodyId = request.query.derivedExactMetadata.bodyId;
+      const current = evidence.derivedExactMetadata.find(
+        (entry) => entry.bodyId === bodyId
+      );
+      return current
+        ? {
+            ...request,
+            query: { ...request.query, derivedExactMetadata: current }
+          }
+        : request;
     }
     default:
       return request;
@@ -5154,6 +5192,15 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
             value.query.derivedExactMetadata
           ))) ||
       (value.query.query === "body.topologyIdentity" &&
+        (value.query.offset === undefined ||
+          (Number.isSafeInteger(value.query.offset) &&
+            Number(value.query.offset) >= 0)) &&
+        (value.query.limit === undefined ||
+          (Number.isSafeInteger(value.query.limit) &&
+            Number(value.query.limit) >= 1 &&
+            Number(value.query.limit) <= 1000)) &&
+        (value.query.includeSnapshot === undefined ||
+          typeof value.query.includeSnapshot === "boolean") &&
         typeof value.query.bodyId === "string" &&
         (value.query.checkpointId === undefined ||
           typeof value.query.checkpointId === "string") &&
@@ -5721,6 +5768,7 @@ function isCadSelectionReferenceOperation(
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
     value === "feature.shell" ||
+    value === "feature.faceOffset" ||
     value === "feature.offset" ||
     value === "feature.align" ||
     value === "feature.draft" ||
@@ -6235,8 +6283,10 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.assemblyId === "string" &&
       isOptionalString(value.name) &&
       isRecord(value.definition) &&
-      value.definition.kind === "body" &&
-      typeof value.definition.bodyId === "string" &&
+      ((value.definition.kind === "body" &&
+        typeof value.definition.bodyId === "string") ||
+        (value.definition.kind === "assembly" &&
+          typeof value.definition.assemblyId === "string")) &&
       isOptionalTransform(value.transform)
     );
   }
@@ -6274,8 +6324,10 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.assemblyId === "string" &&
       typeof value.instanceId === "string" &&
       isRecord(value.definition) &&
-      value.definition.kind === "body" &&
-      typeof value.definition.bodyId === "string"
+      ((value.definition.kind === "body" &&
+        typeof value.definition.bodyId === "string") ||
+        (value.definition.kind === "assembly" &&
+          typeof value.definition.assemblyId === "string"))
     );
   }
 
@@ -6638,6 +6690,40 @@ function isCadOp(value: unknown): value is CadOp {
       isFeatureCombineMode(value.mode) &&
       typeof value.targetBodyId === "string" &&
       typeof value.toolBodyId === "string"
+    );
+  }
+
+  if (value.op === "feature.copyBody") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      isOptionalString(value.checkpointId) &&
+      typeof value.sourceBodyId === "string" &&
+      typeof value.sourceCheckpointId === "string"
+    );
+  }
+  if (value.op === "feature.faceOffset") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      isRecord(value.faceRef) &&
+      value.faceRef.kind === "topologyAnchor" &&
+      typeof value.faceRef.bodyId === "string" &&
+      typeof value.faceRef.anchorId === "string" &&
+      typeof value.distance === "number" &&
+      Number.isFinite(value.distance) &&
+      value.distance !== 0
+    );
+  }
+  if (value.op === "feature.updateFaceOffset") {
+    return (
+      typeof value.id === "string" &&
+      typeof value.distance === "number" &&
+      Number.isFinite(value.distance) &&
+      value.distance !== 0
     );
   }
 
@@ -7679,6 +7765,14 @@ function isFeatureOffsetSourceShape(value: unknown): boolean {
       value.profile.kind === "entity" &&
       typeof value.profile.sketchId === "string" &&
       typeof value.profile.entityId === "string"
+    );
+  }
+  if (value.kind === "directFace") {
+    return (
+      isRecord(value.face) &&
+      value.face.kind === "topologyAnchor" &&
+      typeof value.face.bodyId === "string" &&
+      typeof value.face.anchorId === "string"
     );
   }
   if (value.kind === "face") {

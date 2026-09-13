@@ -8,8 +8,8 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Proof / close loop: [docs/verification.md](docs/verification.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Current user goal: [docs/editable-interchange.md](docs/editable-interchange.md) (fast, first-class imports, shared editing, and native/STEP round trips; implementation design recorded).
-- Latest user trial: [docs/engine-step-trial.md](docs/engine-step-trial.md) (trial complete; engine import blocked, rendering unverified).
+- Current user goal: [docs/editable-interchange.md](docs/editable-interchange.md) (shared STEP/DXF/SVG interchange, engine edit/round trip and browser proof pass; cold-load and frame-time targets remain open).
+- Latest user trial: [docs/engine-step-trial.md](docs/engine-step-trial.md) (historical engine import failure and source provenance; follow-up implementation evidence linked).
 - Last completed user goal: [docs/gearbox-workflow.md](docs/gearbox-workflow.md) (agent authoring, coherent revision and motion). V22–V26, [agent runtime](docs/agent-runtime.md), and [robot arm fixes](docs/robot-arm-fixes.md) are complete. Do not reopen or invent V27.
 
 Do not open [docs/archive/](docs/archive/), docs/implementation-plan.md, or per-gate markdown unless the current user-goal doc names them.
@@ -25,6 +25,7 @@ Node.js 22 and pnpm 10.
 - pnpm dev / test / typecheck / lint / verify
 - pnpm smoke:ui — Chromium engine gate (applyOps)
 - pnpm smoke:ui-use — Chromium Use path (clicks)
+- pnpm smoke:interchange — focused runtime/sketch tests and command scenario; engine and browser proofs run separately
 
 Per-save: focused tests and typecheck of the packages you touched. No Chromium on every save.
 Never rerun V7-V25 gauntlets. Proof: [docs/verification.md](docs/verification.md).

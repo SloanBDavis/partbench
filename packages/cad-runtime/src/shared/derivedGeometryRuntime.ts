@@ -1,4 +1,8 @@
 import type {
+  GeometryKernelStepAssembly,
+  GeometryKernelDocumentUnit
+} from "@web-cad/geometry-kernel/protocol";
+import type {
   ExactBodyArtifactRequest,
   GeometryKernelExactBodyArtifact,
   GeometryKernelExactTopologyCheckpointPayload,
@@ -449,11 +453,13 @@ export interface DerivedStepImportInput {
   readonly sourceFileName: string;
   readonly bytes: Uint8Array;
   readonly maxBodyCount?: number;
+  readonly units?: GeometryKernelDocumentUnit;
   readonly bodyId?: string;
   readonly checkpointId?: string;
 }
 
 export interface DerivedStepImportResult {
+  readonly assembly?: GeometryKernelStepAssembly;
   readonly sourceFormat: "step";
   readonly sourceFileName: string;
   readonly bodyCount: number;

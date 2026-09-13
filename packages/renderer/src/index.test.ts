@@ -920,9 +920,7 @@ describe("renderer", () => {
       meshes: [{ ...body.mesh, presentation: "subdued" }]
     });
 
-    expect(defaultRecorder.fillStyles).toContain(
-      "rgba(47, 111, 151, 0.08)"
-    );
+    expect(defaultRecorder.fillStyles).toContain("rgba(47, 111, 151, 0.08)");
     expect(defaultRecorder.strokes).toContainEqual(
       expect.objectContaining({
         lineWidth: 1.25,
@@ -936,6 +934,47 @@ describe("renderer", () => {
         strokeStyle: "rgba(53, 75, 91, 0.12)"
       })
     );
+  });
+
+  it("uses document mesh appearance while preserving selection feedback", () => {
+    const body = createExactPickBody("colored", 0);
+    const plain = createRecordingCanvasContext();
+    const selected = createRecordingCanvasContext();
+    const options = {
+      camera: exactPickCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [{ ...body.mesh, color: [1, 0.5, 0] as const }]
+    };
+    renderCanvasScene(plain.context, options);
+    renderCanvasScene(selected.context, {
+      ...options,
+      selectedId: body.mesh.id
+    });
+    expect(plain.fillStyles).toContain("rgba(255, 128, 0, 0.18)");
+    expect(selected.fillStyles).toContain("rgba(242, 165, 65, 0.16)");
+  });
+
+  it("draws the grid separately from GPU overlays without suppressing selection geometry", () => {
+    const background = createRecordingCanvasContext();
+    const overlay = createRecordingCanvasContext();
+    const scene = {
+      camera: exactPickCamera(),
+      size: { width: 800, height: 600 },
+      primitives: []
+    };
+    renderCanvasScene(background.context, scene);
+    renderCanvasScene(overlay.context, { ...scene, showGrid: false });
+    expect(background.strokes.length).toBeGreaterThan(0);
+    expect(overlay.strokes).toHaveLength(0);
+    const body = createExactPickBody("overlay", 0);
+    renderCanvasScene(overlay.context, {
+      ...scene,
+      showGrid: false,
+      meshes: [body.mesh],
+      selectedId: body.mesh.id
+    });
+    expect(overlay.fillStyles).toContain("rgba(242, 165, 65, 0.16)");
   });
 
   it("skips malformed mesh faces without discarding valid triangles", () => {

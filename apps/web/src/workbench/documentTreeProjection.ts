@@ -12,6 +12,10 @@ import type {
 } from "@web-cad/cad-protocol";
 import type { IconName } from "../ui/Icon";
 import {
+  getRootAssemblies,
+  validateAssemblyHierarchy
+} from "@web-cad/cad-core";
+import {
   getBodyHealthStatus,
   getFeatureHealthStatus,
   getHealthIssues,
@@ -37,11 +41,15 @@ export type DocumentTreeSelection =
       readonly kind: "assembly-instance";
       readonly assemblyId: string;
       readonly id: string;
+      readonly rootAssemblyId?: string;
+      readonly instancePath?: readonly string[];
     }
   | {
       readonly kind: "assembly-mate";
       readonly assemblyId: string;
       readonly id: string;
+      readonly rootAssemblyId?: string;
+      readonly instancePath?: readonly string[];
     };
 
 export interface DocumentTreeRowCapabilities {
@@ -122,9 +130,9 @@ export function documentTreeSelectionKey(
     case "sketch-entity":
       return `sketch-entity:${selection.sketchId}:${selection.id}`;
     case "assembly-instance":
-      return `assembly-instance:${selection.assemblyId}:${selection.id}`;
+      return `assembly-instance:${encodeURIComponent(selection.rootAssemblyId ?? selection.assemblyId)}:${(selection.instancePath ?? [selection.id]).map(encodeURIComponent).join("/")}`;
     case "assembly-mate":
-      return `assembly-mate:${selection.assemblyId}:${selection.id}`;
+      return `assembly-mate:${encodeURIComponent(selection.rootAssemblyId ?? selection.assemblyId)}:${[...(selection.instancePath ?? []), selection.id].map(encodeURIComponent).join("/")}`;
     default:
       return `${selection.kind}:${selection.id}`;
   }
@@ -163,7 +171,19 @@ export function createDocumentTreeProjection(
   const capabilitiesFor = (selection: DocumentTreeSelection) =>
     input.capabilitiesBySelectionKey?.get(
       documentTreeSelectionKey(selection)
-    ) ?? EMPTY_CAPABILITIES;
+    ) ??
+    ((selection.kind === "assembly-instance" ||
+      selection.kind === "assembly-mate") &&
+    selection.instancePath
+      ? input.capabilitiesBySelectionKey?.get(
+          documentTreeSelectionKey({
+            kind: selection.kind,
+            assemblyId: selection.assemblyId,
+            id: selection.id
+          })
+        )
+      : undefined) ??
+    EMPTY_CAPABILITIES;
   const bodiesByFeatureId = groupBy(input.bodies, (body) => body.featureId);
   const objectsById = new Map(
     input.objects.map((object) => [object.id, object])
@@ -357,32 +377,53 @@ export function createDocumentTreeProjection(
     });
   }
 
-  const assemblyRows = (input.assemblies ?? []).map((assembly) => {
-    const selection = {
-      kind: "assembly",
-      id: assembly.id
-    } as const satisfies DocumentTreeSelection;
-    const instanceRows = assembly.instances.map((instance) => {
-      const instanceSelection = {
-        kind: "assembly-instance",
-        assemblyId: assembly.id,
-        id: instance.id
-      } as const satisfies DocumentTreeSelection;
-      return {
-        id: documentTreeSelectionKey(instanceSelection),
-        label: instance.name,
-        detail: `Instance of ${instance.definition.bodyId}`,
-        icon: "solid" as const,
-        selection: instanceSelection,
-        capabilities: capabilitiesFor(instanceSelection),
-        children: []
-      };
-    });
+  const assemblies = input.assemblies ?? [];
+  validateAssemblyHierarchy(assemblies);
+  const assembliesById = new Map(
+    assemblies.map((assembly) => [assembly.id, assembly])
+  );
+  const assemblyChildren = (
+    assembly: AssemblySnapshot,
+    rootAssemblyId: string,
+    parentPath: readonly string[]
+  ): readonly DocumentTreeRow[] => {
+    const instanceRows: DocumentTreeRow[] = assembly.instances.map(
+      (instance) => {
+        const instancePath = [...parentPath, instance.id];
+        const instanceSelection = {
+          kind: "assembly-instance",
+          assemblyId: assembly.id,
+          id: instance.id,
+          ...(parentPath.length ? { rootAssemblyId, instancePath } : {})
+        } as const satisfies DocumentTreeSelection;
+        const nestedAssembly =
+          instance.definition.kind === "assembly"
+            ? assembliesById.get(instance.definition.assemblyId)
+            : undefined;
+        return {
+          id: documentTreeSelectionKey(instanceSelection),
+          label: instance.name,
+          detail:
+            instance.definition.kind === "body"
+              ? `Instance of ${instance.definition.bodyId}`
+              : `Assembly · ${nestedAssembly?.name ?? instance.definition.assemblyId}`,
+          icon: nestedAssembly ? ("project" as const) : ("solid" as const),
+          selection: instanceSelection,
+          capabilities: capabilitiesFor(instanceSelection),
+          children: nestedAssembly
+            ? assemblyChildren(nestedAssembly, rootAssemblyId, instancePath)
+            : []
+        };
+      }
+    );
     const mateRows = (assembly.mates ?? []).map((mate) => {
       const mateSelection = {
         kind: "assembly-mate",
         assemblyId: assembly.id,
-        id: mate.id
+        id: mate.id,
+        ...(parentPath.length
+          ? { rootAssemblyId, instancePath: parentPath }
+          : {})
       } as const satisfies DocumentTreeSelection;
       return {
         id: documentTreeSelectionKey(mateSelection),
@@ -396,13 +437,20 @@ export function createDocumentTreeProjection(
                 ? `Concentric · ${mate.primary.instanceId}/${mate.primary.axis} ~ ${mate.secondary.instanceId}/${mate.secondary.axis}`
                 : mate.kind === "revolute"
                   ? `Revolute · ${mate.primary.instanceId} ~ ${mate.secondary.instanceId} @ ${mate.angleDegrees}°${mate.angleParameterId ? ` (${mate.angleParameterId})` : ""}`
-                : `Distance · ${mate.primary.instanceId}/${mate.primary.plane} ~ ${mate.secondary.instanceId}/${mate.secondary.plane} @ ${mate.distance}`,
+                  : `Distance · ${mate.primary.instanceId}/${mate.primary.plane} ~ ${mate.secondary.instanceId}/${mate.secondary.plane} @ ${mate.distance}`,
         icon: "constraint" as const,
         selection: mateSelection,
         capabilities: capabilitiesFor(mateSelection),
         children: []
       };
     });
+    return [...instanceRows, ...mateRows];
+  };
+  const assemblyRows = getRootAssemblies(assemblies).map((assembly) => {
+    const selection = {
+      kind: "assembly",
+      id: assembly.id
+    } as const satisfies DocumentTreeSelection;
     return {
       id: documentTreeSelectionKey(selection),
       label: assembly.name,
@@ -412,7 +460,7 @@ export function createDocumentTreeProjection(
       icon: "project" as const,
       selection,
       capabilities: capabilitiesFor(selection),
-      children: [...instanceRows, ...mateRows]
+      children: assemblyChildren(assembly, assembly.id, [])
     };
   });
 

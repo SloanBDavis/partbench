@@ -1,0 +1,73 @@
+{
+  "id": "engine-editable-interchange-browser",
+  "description": "Public STEP engine import, shared GPU definitions, fit, native orbit and selection",
+  "use": [
+    {
+      "importStep": ".metrics/engine-step-trial/radial-engine.step"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "[data-action-id=\"inspect.fit-all\"]"
+    },
+    {
+      "expectGpu": {
+        "definitions": 51,
+        "instances": 246
+      }
+    },
+    {
+      "screenshot": "engine-interchange-isometric"
+    },
+    {
+      "orbit": true
+    },
+    {
+      "expectGpu": {
+        "definitions": 51,
+        "instances": 246
+      }
+    },
+    {
+      "screenshot": "engine-interchange-orbit"
+    },
+    {
+      "click": "[data-action-id=\"inspect.front\"]"
+    },
+    {
+      "screenshot": "engine-interchange-front"
+    },
+    {
+      "select": {
+        "selector": ".pb-status-bar__filter select",
+        "option": "body"
+      }
+    },
+    {
+      "clickCanvas": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "expectText": {
+        "selector": ".pb-status-bar__instruction",
+        "includes": "selected"
+      }
+    },
+    {
+      "screenshot": "engine-interchange-selected"
+    }
+  ],
+  "useBreak": [
+    {
+      "importStep": "examples/engine-step-trial/invalid.step",
+      "expectImportError": "could not read the file"
+    },
+    {
+      "screenshot": "engine-interchange-invalid-file"
+    }
+  ],
+  "useExpect": {}
+}

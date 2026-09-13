@@ -494,3 +494,16 @@ export async function createOcctStepImport(
 export async function getOcctStepReaderCapability(): Promise<OcctStepReaderCapability> {
   return getOcctStepReaderCapabilityWithLoader(loadBrowserOcct);
 }
+
+export type {
+  OcctStepAssembly,
+  OcctStepOccurrence,
+  OcctStepAssemblyDefinition,
+  OcctStepPlacement,
+  OcctStepColor
+} from "./stepAssembly";
+
+export type {
+  OcctFaceOffsetArtifactSource,
+  OcctArtifactBooleanSource
+} from "./exactCheckpointPayload";

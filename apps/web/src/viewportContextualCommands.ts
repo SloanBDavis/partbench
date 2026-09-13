@@ -686,6 +686,7 @@ function actionIdFromOperation(
       return "feature.fillet";
     case "feature.shell":
       return "feature.shell";
+    case "feature.faceOffset":
     case "feature.offset":
       return "solid.offset";
     case "feature.align":

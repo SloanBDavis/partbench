@@ -93,6 +93,13 @@ export default defineConfig(({ command, mode }) => {
   ).pathname;
 
   return {
+    // Prebundle the deferred kernel before serving a document. Discovering it
+    // during the first import otherwise reloads the page and loses that import.
+    optimizeDeps: {
+      include: [
+        "@web-cad/geometry-worker > @web-cad/geometry-kernel > @web-cad/occt-wasm > opencascade.js/dist/opencascade.full.js"
+      ]
+    },
     build: {
       reportCompressedSize: false,
       rollupOptions: {

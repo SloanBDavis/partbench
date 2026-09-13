@@ -277,6 +277,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       sourceFileName: response.response.sourceFileName,
       bodyCount: response.response.bodyCount,
       bodies: response.response.bodies,
+      ...(response.response.assembly
+        ? { assembly: response.response.assembly }
+        : {}),
       diagnostics: response.response.diagnostics,
       metrics: createDerivedExactMetadataMetrics({
         objectId: input.id,
@@ -695,6 +698,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           sourceFileName: input.sourceFileName,
           bytes: input.bytes,
           maxBodyCount: input.maxBodyCount,
+          units: input.units,
           bodyId: input.bodyId,
           checkpointId: input.checkpointId
         })

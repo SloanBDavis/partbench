@@ -75,7 +75,7 @@ export const PROJECT_ACTION_UNAVAILABLE = {
   openWcad: "This browser cannot open .wcad files.",
   save: "This browser cannot save directly to a file. Use Save As to download a copy.",
   saveAs: "This browser cannot download a .wcad project file.",
-  importStep: "This browser cannot import STEP files.",
+  importStep: "This browser cannot import local files.",
   downloadJson: "This browser cannot download JSON files.",
   loadJson: "This browser cannot load JSON files from disk.",
   downloadStep: "Exact STEP export is not available for the current model.",
@@ -140,6 +140,7 @@ export interface ProjectWorkspaceProps {
   readonly onRestoreCrashRecovery?: () => void;
   readonly onDiscardCrashRecovery?: () => void;
   readonly onClearCrashRecovery?: () => void;
+  readonly onDownloadSketches?: (format: "dxf" | "svg") => void;
   readonly onDownloadStep: (bodyIds?: readonly string[]) => void;
   readonly onCancelStep: () => void;
   readonly onDownloadVisualization: () => void;
@@ -218,6 +219,7 @@ export function ProjectWorkspace({
   onRestoreCrashRecovery,
   onDiscardCrashRecovery,
   onClearCrashRecovery,
+  onDownloadSketches,
   onDownloadStep,
   onCancelStep,
   onDownloadVisualization,
@@ -323,6 +325,7 @@ export function ProjectWorkspace({
           job={exactStepExportJob}
           visualization={visualizationExport}
           onUnavailableActivate={onUnavailableActivate}
+          onDownloadSketches={onDownloadSketches}
           onDownloadStep={onDownloadStep}
           onCancelStep={onCancelStep}
           onDownloadVisualization={onDownloadVisualization}
@@ -989,7 +992,7 @@ function ProjectFiles({
             onUnavailableActivate={onUnavailableActivate}
             onClick={() => void openStep()}
           >
-            Import STEP
+            Import STEP / DXF / SVG
           </Button>
         </ProjectCard>
       </div>
@@ -1167,7 +1170,7 @@ function ProjectFiles({
         type="file"
         tabIndex={-1}
         aria-hidden="true"
-        accept=".step,.stp,model/step,application/step"
+        accept=".step,.stp,.dxf,.svg,model/step,application/step,image/svg+xml"
         onChange={(event) => {
           void readBinaryFile(
             event.currentTarget.files?.[0],
@@ -1618,6 +1621,7 @@ function ProjectExport({
   job,
   visualization,
   onUnavailableActivate,
+  onDownloadSketches,
   onDownloadStep,
   onCancelStep,
   onDownloadVisualization
@@ -1628,6 +1632,7 @@ function ProjectExport({
   readonly job: ProjectExactStepExportJobState;
   readonly visualization?: ProjectVisualizationExportDisplayStatus;
   readonly onUnavailableActivate?: (reason: string) => void;
+  readonly onDownloadSketches?: (format: "dxf" | "svg") => void;
   readonly onDownloadStep: (bodyIds?: readonly string[]) => void;
   readonly onCancelStep: () => void;
   readonly onDownloadVisualization: () => void;
@@ -1724,6 +1729,29 @@ function ProjectExport({
         title="Export"
         detail="Create an exact STEP file or a visualization mesh when the current model is ready."
       />
+      {onDownloadSketches ? (
+        <ProjectCard title="Sketch curves">
+          <p className="pb-project-card-detail">
+            Export local 2D sketch geometry and names. Constraints, attachments,
+            construction flags, and feature history remain in the native .wcad
+            file.
+          </p>
+          <div className="pb-project-action-row">
+            <Button
+              disabled={disabled || running}
+              onClick={() => onDownloadSketches("dxf")}
+            >
+              Export sketches as DXF
+            </Button>
+            <Button
+              disabled={disabled || running}
+              onClick={() => onDownloadSketches("svg")}
+            >
+              Export sketches as SVG
+            </Button>
+          </div>
+        </ProjectCard>
+      ) : null}
       {!display ? (
         <div className="pb-project-empty-state">
           <h2>Export readiness unavailable</h2>
@@ -1738,8 +1766,8 @@ function ProjectExport({
             status={step?.statusLabel ?? display.statusLabel}
           >
             <p className="pb-project-card-detail">
-              Named STEP AP242DIS · {readiness?.units} · project body names ·
-              chosen order preserved.
+              Named STEP AP242DIS · {readiness?.units} · exact bodies and
+              assembly placements.
             </p>
             <p className="pb-project-card-detail">
               STEP export is all-or-nothing: every requested body must be ready.
@@ -1757,7 +1785,7 @@ function ProjectExport({
                 onUnavailableActivate={onUnavailableActivate}
                 onClick={() => onDownloadStep()}
               >
-                Export all bodies
+                Export model
               </Button>
               <Button
                 disabled={disabled || running}

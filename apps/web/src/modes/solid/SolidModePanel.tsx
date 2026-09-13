@@ -37,9 +37,7 @@ import type {
   DatumPlaneCreateForm,
   TransformCommandForm
 } from "../../cadCommands";
-import {
-  FeatureEditorShell
-} from "../../editors/FeatureEditorShell";
+import { FeatureEditorShell } from "../../editors/FeatureEditorShell";
 import { SelectionCollectorRow } from "../../editors/SelectionCollectorRow";
 import type {
   FeatureEditorPhase,
@@ -48,7 +46,11 @@ import type {
 import type { SelectionCollectorTarget } from "../../editors/selectionCollectorState";
 import { Button } from "../../ui/Button";
 import { NumberField, TextField, SelectField } from "./solidFormFields";
-import { RevoluteMateFields, InstancePoseFields, AssemblyScalarFields } from "./AssemblyEditorFields";
+import {
+  RevoluteMateFields,
+  InstancePoseFields,
+  AssemblyScalarFields
+} from "./AssemblyEditorFields";
 import { applyExactFeaturePreviewGripValue } from "../../exactFeaturePreviewGrips";
 import type {
   EdgeChoiceValue,
@@ -264,8 +266,10 @@ function SolidDraftEditor({
   const applyRef = useRef<(() => void | Promise<void>) | undefined>(undefined);
   const cancelRef = useRef<(() => void) | undefined>(undefined);
   const lastViewportGripEventSequenceRef = useRef(Number.NEGATIVE_INFINITY);
-  previewCallbackRef.current = onPreviewRequest;
-  gripDraftCallbackRef.current = onGripDraftChange;
+  useEffect(() => {
+    previewCallbackRef.current = onPreviewRequest;
+    gripDraftCallbackRef.current = onGripDraftChange;
+  }, [onPreviewRequest, onGripDraftChange]);
   const initialSerialized = useMemo(
     () => stableSerialize(request.initialDraft),
     [request.initialDraft]
@@ -303,9 +307,12 @@ function SolidDraftEditor({
     );
     if (stableSerialize(next) !== stableSerialize(draft)) {
       setDraft(next);
-      previewSuppressedRef.current = false;
     }
   }
+
+  useEffect(() => {
+    previewSuppressedRef.current = false;
+  }, [appliedCollectorSelectionKey]);
 
   // Publish preview intent without putting cleanup in this effect. React runs
   // effect cleanup before every dependency change; using cleanup here would
@@ -351,7 +358,12 @@ function SolidDraftEditor({
     const callback = gripDraftCallbackRef.current;
     if (!callback) return;
     callback(
-      presentSolidGripDraft(request.kind, draft, blockedReason, Boolean(onApply))
+      presentSolidGripDraft(
+        request.kind,
+        draft,
+        blockedReason,
+        Boolean(onApply)
+      )
     );
   }, [
     blockedReason,
@@ -639,9 +651,21 @@ function SolidDraftFields({
         />
       );
     case "revoluteMate":
-      return <RevoluteMateFields draft={draft as AssemblyRevoluteMateForm} choices={request.choices} onChange={onChange} />;
+      return (
+        <RevoluteMateFields
+          draft={draft as AssemblyRevoluteMateForm}
+          choices={request.choices}
+          onChange={onChange}
+        />
+      );
     case "instancePose":
-      return <InstancePoseFields draft={draft as AssemblyInstancePoseForm} choices={request.choices} onChange={onChange} />;
+      return (
+        <InstancePoseFields
+          draft={draft as AssemblyInstancePoseForm}
+          choices={request.choices}
+          onChange={onChange}
+        />
+      );
     case "transform":
       return (
         <TransformFields
@@ -699,7 +723,9 @@ function SolidDraftFields({
           draft={draft as FeatureSweepForm}
           choices={request.choices?.sweepPaths ?? []}
           collecting={collecting === "path"}
-          onCollect={() => onCollect("path", ["line", "arc", "spline", "tangent path"])}
+          onCollect={() =>
+            onCollect("path", ["line", "arc", "spline", "tangent path"])
+          }
           onChange={onChange}
         />
       );
@@ -802,7 +828,9 @@ function SolidDraftFields({
         <CombineFields
           draft={draft as FeatureCombineForm}
           targetChoices={request.choices?.targetBodies ?? []}
-          toolChoices={request.choices?.toolBodies ?? request.choices?.targetBodies ?? []}
+          toolChoices={
+            request.choices?.toolBodies ?? request.choices?.targetBodies ?? []
+          }
           lockedBodies={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
@@ -1078,9 +1106,15 @@ function FixedMateFields({
   onChange
 }: {
   readonly draft: AssemblyFixedMateForm;
-  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly assemblyChoices: readonly {
+    readonly value: string;
+    readonly label: string;
+  }[];
   readonly instanceChoices: readonly {
-    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly value: {
+      readonly assemblyId: string;
+      readonly instanceId: string;
+    };
     readonly label: string;
   }[];
   readonly onChange: (draft: AssemblyFixedMateForm) => void;
@@ -1111,8 +1145,7 @@ function FixedMateFields({
           onChange({
             ...draft,
             assemblyId,
-            instanceId:
-              draft.assemblyId === assemblyId ? draft.instanceId : ""
+            instanceId: draft.assemblyId === assemblyId ? draft.instanceId : ""
           })
         }
       />
@@ -1140,9 +1173,15 @@ function CoincidentMateFields({
   onChange
 }: {
   readonly draft: AssemblyCoincidentMateForm;
-  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly assemblyChoices: readonly {
+    readonly value: string;
+    readonly label: string;
+  }[];
   readonly instanceChoices: readonly {
-    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly value: {
+      readonly assemblyId: string;
+      readonly instanceId: string;
+    };
     readonly label: string;
   }[];
   readonly onChange: (draft: AssemblyCoincidentMateForm) => void;
@@ -1322,9 +1361,15 @@ function ConcentricMateFields({
   onChange
 }: {
   readonly draft: AssemblyConcentricMateForm;
-  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly assemblyChoices: readonly {
+    readonly value: string;
+    readonly label: string;
+  }[];
   readonly instanceChoices: readonly {
-    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly value: {
+      readonly assemblyId: string;
+      readonly instanceId: string;
+    };
     readonly label: string;
   }[];
   readonly onChange: (draft: AssemblyConcentricMateForm) => void;
@@ -1522,9 +1567,15 @@ function DistanceMateFields({
   readonly draft: AssemblyDistanceMateForm;
   readonly mateChoices: readonly SolidChoice<AssemblyDistanceMateForm>[];
   readonly parameterChoices: readonly SolidChoice<string>[];
-  readonly assemblyChoices: readonly { readonly value: string; readonly label: string }[];
+  readonly assemblyChoices: readonly {
+    readonly value: string;
+    readonly label: string;
+  }[];
   readonly instanceChoices: readonly {
-    readonly value: { readonly assemblyId: string; readonly instanceId: string };
+    readonly value: {
+      readonly assemblyId: string;
+      readonly instanceId: string;
+    };
     readonly label: string;
   }[];
   readonly onChange: (draft: AssemblyDistanceMateForm) => void;
@@ -1539,9 +1590,29 @@ function DistanceMateFields({
   ];
   return (
     <>
-      <SelectField label="Mate" name="distance-mate-existing" value={draft.mateId ?? ""}
-        options={[{ value: "", label: "Create new mate" }, ...mateChoices.filter((choice) => choice.value.assemblyId === draft.assemblyId).map((choice) => ({ value: choice.value.mateId!, label: choice.label }))]}
-        onChange={(mateId) => onChange(mateChoices.find((choice) => choice.value.assemblyId === draft.assemblyId && choice.value.mateId === mateId)?.value ?? { ...draft, mateId: undefined, name: "Distance" })} />
+      <SelectField
+        label="Mate"
+        name="distance-mate-existing"
+        value={draft.mateId ?? ""}
+        options={[
+          { value: "", label: "Create new mate" },
+          ...mateChoices
+            .filter((choice) => choice.value.assemblyId === draft.assemblyId)
+            .map((choice) => ({
+              value: choice.value.mateId!,
+              label: choice.label
+            }))
+        ]}
+        onChange={(mateId) =>
+          onChange(
+            mateChoices.find(
+              (choice) =>
+                choice.value.assemblyId === draft.assemblyId &&
+                choice.value.mateId === mateId
+            )?.value ?? { ...draft, mateId: undefined, name: "Distance" }
+          )
+        }
+      />
       <TextField
         label="Name"
         name="distance-mate-name"
@@ -1697,8 +1768,16 @@ function DistanceMateFields({
           })
         }
       />
-      <AssemblyScalarFields label="Distance" name="distance-mate-distance" value={draft.distance} parameterId={draft.distanceParameterId} parameters={parameterChoices}
-        onChange={(distance, distanceParameterId) => onChange({ ...draft, distance, distanceParameterId })} />
+      <AssemblyScalarFields
+        label="Distance"
+        name="distance-mate-distance"
+        value={draft.distance}
+        parameterId={draft.distanceParameterId}
+        parameters={parameterChoices}
+        onChange={(distance, distanceParameterId) =>
+          onChange({ ...draft, distance, distanceParameterId })
+        }
+      />
     </>
   );
 }
@@ -2243,7 +2322,9 @@ function CompositeSweepFields({
         selectedKey={findChoiceKey(paths, draft.path)}
         collecting={collecting === "path"}
         required
-        onCollect={() => onCollect("path", ["line", "arc", "spline", "tangent path"])}
+        onCollect={() =>
+          onCollect("path", ["line", "arc", "spline", "tangent path"])
+        }
         onChange={(path) => onChange({ ...draft, path })}
         onClear={() => undefined}
       />
@@ -2934,15 +3015,18 @@ function OffsetFields({
         value={draft.sourceKind}
         options={[
           { value: "sketchProfile", label: "Sketch profile" },
-          { value: "face", label: "Face" }
+          { value: "directFace", label: "Solid face" },
+          { value: "face", label: "Face profile" }
         ]}
         onChange={(sourceKind) =>
           onChange({
             ...draft,
             sourceKind: sourceKind as FeatureOffsetForm["sourceKind"],
-            face: sourceKind === "face" ? draft.face : undefined,
-            profileSketchId: sourceKind === "face" ? "" : draft.profileSketchId,
-            profileEntityId: sourceKind === "face" ? "" : draft.profileEntityId
+            face: sourceKind !== "sketchProfile" ? draft.face : undefined,
+            profileSketchId:
+              sourceKind !== "sketchProfile" ? "" : draft.profileSketchId,
+            profileEntityId:
+              sourceKind !== "sketchProfile" ? "" : draft.profileEntityId
           })
         }
       />
@@ -2960,8 +3044,10 @@ function OffsetFields({
             onChange({
               ...draft,
               sourceKind: "sketchProfile",
-              profileSketchId: profile.kind === "entity" ? profile.sketchId : "",
-              profileEntityId: profile.kind === "entity" ? profile.entityId : "",
+              profileSketchId:
+                profile.kind === "entity" ? profile.sketchId : "",
+              profileEntityId:
+                profile.kind === "entity" ? profile.entityId : "",
               face: undefined
             })
           }
@@ -2979,7 +3065,9 @@ function OffsetFields({
           label="Face"
           acceptedKinds={["face", "named face"]}
           choices={faceChoices}
-          selectedKey={draft.face ? findChoiceKey(faceChoices, draft.face) : undefined}
+          selectedKey={
+            draft.face ? findChoiceKey(faceChoices, draft.face) : undefined
+          }
           collecting={collecting === "openFaces"}
           disabled={lockedSource}
           required
@@ -2987,7 +3075,8 @@ function OffsetFields({
           onChange={(face) =>
             onChange({
               ...draft,
-              sourceKind: "face",
+              sourceKind:
+                draft.sourceKind === "directFace" ? "directFace" : "face",
               face,
               profileSketchId: "",
               profileEntityId: ""
@@ -3080,7 +3169,8 @@ function AlignFields({
           draft.sourceFace
             ? faceChoices.find(
                 (choice) =>
-                  JSON.stringify(choice.value) === JSON.stringify(draft.sourceFace)
+                  JSON.stringify(choice.value) ===
+                  JSON.stringify(draft.sourceFace)
               )?.key
             : undefined
         }
@@ -3177,7 +3267,9 @@ function DraftFields({
   const selectedFaceKeys = draft.faces
     .map((face) => findChoiceKey(targetFaceChoices, face))
     .filter((key): key is string => Boolean(key));
-  const planeDatums = datumChoices.filter((choice) => choice.kind === "datum-plane");
+  const planeDatums = datumChoices.filter(
+    (choice) => choice.kind === "datum-plane"
+  );
   return (
     <>
       <FeatureIdentityFields

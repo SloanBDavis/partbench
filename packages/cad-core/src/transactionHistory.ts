@@ -113,7 +113,9 @@ function createOperationSummaries(
         ? transaction.diff.created[createdIndex++]
         : undefined;
     const createdSketchRef =
-      op.op === "sketch.create" || op.op === "sketch.createOnFace" || op.op === "feature.spurGear"
+      op.op === "sketch.create" ||
+      op.op === "sketch.createOnFace" ||
+      op.op === "feature.spurGear"
         ? transaction.diff.sketches?.created?.[createdSketchIndex++]
         : undefined;
     const createdDatumRef =
@@ -176,6 +178,8 @@ function createOperationSummaries(
       op.op === "feature.circularPattern" ||
       op.op === "feature.mirror" ||
       op.op === "feature.combine" ||
+      op.op === "feature.copyBody" ||
+      op.op === "feature.faceOffset" ||
       op.op === "feature.offset" ||
       op.op === "feature.align" ||
       op.op === "feature.draft" ||
@@ -474,7 +478,7 @@ function createOperationSummaries(
         const instanceId = op.id ?? createdAssemblyInstanceRef?.id;
         return {
           op: op.op,
-          label: `Insert assembly instance ${instanceId ?? "with generated ID"} of ${op.definition.bodyId} into ${op.assemblyId}`
+          label: `Insert assembly instance ${instanceId ?? "with generated ID"} of ${op.definition.kind === "body" ? op.definition.bodyId : op.definition.assemblyId} into ${op.assemblyId}`
         };
       }
 
@@ -501,7 +505,7 @@ function createOperationSummaries(
           op.instanceId ?? modifiedAssemblyInstanceRef?.id ?? "instance";
         return {
           op: op.op,
-          label: `Replace assembly instance ${instanceId} definition with ${op.definition.bodyId} in ${op.assemblyId}`
+          label: `Replace assembly instance ${instanceId} definition with ${op.definition.kind === "body" ? op.definition.bodyId : op.definition.assemblyId} in ${op.assemblyId}`
         };
       }
 
@@ -767,10 +771,23 @@ function createOperationSummaries(
         });
 
       case "feature.spurGear":
-        createdSketchEntityIndex += transaction.diff.sketches?.entitiesCreated?.filter(e=>e.sketchId===op.sketchId).length ?? 0;
-        return createFeatureOperationSummary({op:op.op,label:`Create parametric spur gear ${op.id}`,featureId:op.id,bodyId:op.bodyId,sketchId:op.sketchId});
+        createdSketchEntityIndex +=
+          transaction.diff.sketches?.entitiesCreated?.filter(
+            (e) => e.sketchId === op.sketchId
+          ).length ?? 0;
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create parametric spur gear ${op.id}`,
+          featureId: op.id,
+          bodyId: op.bodyId,
+          sketchId: op.sketchId
+        });
       case "feature.updateSpurGear":
-        return createFeatureOperationSummary({op:op.op,label:`Update parametric spur gear ${op.id}`,featureId:op.id});
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update parametric spur gear ${op.id}`,
+          featureId: op.id
+        });
       case "feature.extrude": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -987,6 +1004,27 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.copyBody": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Make independent exact copy of ${op.sourceBodyId}`,
+          featureId,
+          bodyId
+        });
+      }
+      case "feature.faceOffset": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Offset face of ${op.targetBodyId} by ${op.distance}`,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId
+        });
+      }
       case "feature.offset": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -1249,6 +1287,7 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.updateFaceOffset":
       case "feature.updateOffset": {
         const modifiedFeatureRef = transaction.diff.features?.modified?.find(
           (feature) => feature.id === op.id

@@ -13,6 +13,10 @@
     "./shared/*": {
       "types": "./src/shared/*.ts",
       "default": "./src/shared/*.ts"
+    },
+    "./sketchExchange": {
+      "types": "./src/sketchExchange.ts",
+      "default": "./src/sketchExchange.ts"
     }
   },
   "scripts": {

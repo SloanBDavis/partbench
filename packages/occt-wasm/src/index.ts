@@ -481,3 +481,16 @@ export async function createOcctLoftMesh(
 ): Promise<OcctMeshData> {
   return createOcctLoftMeshWithLoader(loadOcct, input);
 }
+
+export type {
+  OcctStepAssembly,
+  OcctStepOccurrence,
+  OcctStepAssemblyDefinition,
+  OcctStepPlacement,
+  OcctStepColor
+} from "./stepAssembly";
+
+export type {
+  OcctFaceOffsetArtifactSource,
+  OcctArtifactBooleanSource
+} from "./exactCheckpointPayload";

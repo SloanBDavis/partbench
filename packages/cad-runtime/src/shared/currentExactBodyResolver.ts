@@ -76,6 +76,14 @@ type CurrentExactPatternBooleanTool = {
 export type CurrentExactArtifactOperationSource =
   | {
       readonly id: string;
+      readonly kind: "faceOffset";
+      readonly targetTopologySignature: string;
+      readonly checkpointEntityId: string;
+      readonly distance: number;
+      readonly sourceIdentitySignature: string;
+    }
+  | {
+      readonly id: string;
       readonly kind: "linearPattern";
       readonly direction: readonly [number, number, number];
       readonly spacing: number;
@@ -260,7 +268,7 @@ const BODY_SOURCE_RESOLVERS = {
   },
   offsetFeature: {
     featureKind: "offset",
-    resolve: resolveLegacyRuntimeSource
+    resolve: resolveFaceOffsetSource
   },
   alignFeature: {
     featureKind: "align",
@@ -324,7 +332,13 @@ export function getReadyRuntimeExactSources(
 ): readonly DerivedExactMetadataSource[] {
   return resolutions.flatMap((resolution) => {
     if (resolution.status !== "ready") return [];
-    if (isArtifactOperationSource(resolution.source)) return [];
+    // Dependent results are built once from their exact target artifact. Do not
+    // also schedule a legacy recipe/placeholder for the same displayed body.
+    if (
+      resolution.artifactDependency ||
+      isArtifactOperationSource(resolution.source)
+    )
+      return [];
     if (
       isExactMetadataSource(resolution.source) &&
       resolution.source.kind !== "importedBody"
@@ -383,6 +397,17 @@ export function createCurrentExactBodyArtifactSource(
   return runtimeSource;
 }
 
+export function getCurrentExactArtifactSourceGraphNodeCount(
+  source: CurrentExactBodySource
+): number {
+  if (source.kind === "extrudeBoolean" || source.kind === "checkpointBoolean") {
+    const graph = validateExactSourceGraph(source.tool);
+    if (!graph.ok) throw new Error(graph.message);
+    return 2 + graph.nodeCount;
+  }
+  return 2;
+}
+
 export function createCurrentExactArtifactOperandSource(
   source: CurrentExactBodySource,
   dependencyArtifact?:
@@ -391,7 +416,7 @@ export function createCurrentExactArtifactOperandSource(
   shellOpenFaceLocalIds?: readonly string[]
 ): ExactBodyArtifactSource {
   const operation = createArtifactOperationDescriptor(source);
-  if (!operation) {
+  if (!operation || (source.kind === "extrudeBoolean" && !dependencyArtifact)) {
     return createCurrentExactBodyArtifactSource(source);
   }
   if (!dependencyArtifact) {
@@ -406,6 +431,19 @@ export function createCurrentExactArtifactOperandSource(
   const leaf = createCurrentExactBodyArtifactLeaf(dependencyArtifact);
 
   switch (operation.kind) {
+    case "artifactBoolean":
+      return { ...operation, target: leaf };
+    case "faceOffset": {
+      if (
+        source.kind !== "faceOffset" ||
+        dependencyArtifact.topologySnapshot.signature !==
+          source.targetTopologySignature
+      )
+        throw new Error(
+          "Direct face offset anchor is stale for the current exact target; repair the face reference before editing."
+        );
+      return { ...operation, target: leaf };
+    }
     case "artifactHole":
       return { ...operation, target: leaf };
     case "artifactLinearPattern":
@@ -466,6 +504,33 @@ export function preflightCurrentExactArtifactOperandSource(
   dependencyShapePolicy?: ExactBodyArtifactShapePolicy
 ): ExactBodyArtifactShapePolicy {
   switch (source.kind) {
+    case "extrudeBoolean":
+      // An authored region with holes uses an internal recipe boolean; a
+      // target-body feature uses the current external artifact dependency.
+      if (source.tool.placementError)
+        throw new Error(source.tool.placementError);
+      return (
+        dependencyShapePolicy ??
+        getCurrentExactBodyArtifactShapePolicy(
+          createCurrentExactBodyArtifactSource(source)
+        )
+      );
+    case "checkpointBoolean":
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (source.tool.placementError)
+        throw new Error(source.tool.placementError);
+      return dependencyShapePolicy!;
+
+    case "faceOffset":
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (
+        !Number.isFinite(source.distance) ||
+        source.distance === 0 ||
+        !/^snapshot-local:face:[1-9][0-9]*$/.test(source.checkpointEntityId)
+      )
+        throw new Error("Invalid exact face offset parameters.");
+      return dependencyShapePolicy!;
+
     case "hole":
     case "checkpointHole":
       requireArtifactDependency(source.kind, dependencyShapePolicy);
@@ -654,7 +719,10 @@ function resolveCurrentExactBody(
     );
   }
   const graph = dependencyBodyId
-    ? { ok: true as const, nodeCount: 2 }
+    ? {
+        ok: true as const,
+        nodeCount: getCurrentExactArtifactSourceGraphNodeCount(resolved)
+      }
     : validateExactSourceGraph(resolved);
   if (!graph.ok) {
     return blocked(
@@ -848,7 +916,10 @@ function resolveArtifactDependency(
       );
     }
     const graph = childBodyId
-      ? { ok: true as const, nodeCount: 2 }
+      ? {
+          ok: true as const,
+          nodeCount: getCurrentExactArtifactSourceGraphNodeCount(resolved)
+        }
       : validateExactSourceGraph(resolved);
     if (!graph.ok) {
       return artifactDependencyError(
@@ -909,11 +980,33 @@ function createArtifactOperationCacheKey(
   const operation = createArtifactOperationDescriptor(source);
   if (!operation) return createCurrentExactSourceCacheKey(source);
   const { kind, ...parameters } = operation;
-  return JSON.stringify({ kind, dependency, ...parameters });
+  return JSON.stringify({
+    kind,
+    dependency,
+    ...parameters,
+    ...(source.kind === "faceOffset"
+      ? { targetTopologySignature: source.targetTopologySignature }
+      : {})
+  });
 }
 
 function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
   switch (source.kind) {
+    case "extrudeBoolean":
+    case "checkpointBoolean":
+      return {
+        kind: "artifactBoolean",
+        operation: source.operation,
+        tool: createBooleanExtrudeRuntimeSource(source.tool)
+      } as const;
+
+    case "faceOffset":
+      return {
+        kind: "faceOffset",
+        checkpointEntityId: source.checkpointEntityId,
+        distance: source.distance
+      } as const;
+
     case "hole":
     case "checkpointHole":
       return {
@@ -973,6 +1066,12 @@ function getArtifactOperationError(
   }
 
   switch (feature.kind) {
+    case "extrude":
+      return source.kind === "extrudeBoolean" ||
+        source.kind === "checkpointBoolean"
+        ? source.tool.placementError
+        : "Sketch boolean is missing its exact tool source.";
+
     case "hole": {
       if (source.kind !== "hole" && source.kind !== "checkpointHole") {
         return `Hole feature ${feature.id} has no current artifact operation source.`;
@@ -1479,6 +1578,16 @@ function getArtifactDependencyBodyId(
   context: ResolverContext
 ): string | undefined {
   switch (feature.kind) {
+    case "extrude":
+      return feature.operationMode === "newBody"
+        ? undefined
+        : feature.targetBodyId;
+
+    case "offset":
+      return feature.offsetSource.kind === "directFace"
+        ? feature.targetBodyId
+        : undefined;
+
     case "hole":
       return feature.targetBodyId;
     case "shell":
@@ -1521,6 +1630,57 @@ function resolvePrimitiveSource(
     );
   }
   return { ...source, id: body.id, sourceIdentitySignature };
+}
+
+function resolveFaceOffsetSource(
+  body: CadBodySnapshot,
+  context: ResolverContext,
+  sourceIdentitySignature: string
+): CurrentExactBodySource | CurrentExactBodyResolution {
+  const feature = context.featuresById.get(body.featureId);
+  if (feature?.kind !== "offset" || feature.offsetSource.kind !== "directFace")
+    return resolveLegacyRuntimeSource(body, context, sourceIdentitySignature);
+  const ref = feature.offsetSource.face;
+  const anchor = context.document.topologyIdentity?.anchors.find(
+    (item) => item.anchorId === ref.anchorId
+  );
+  const checkpoint = context.document.topologyIdentity?.checkpoints.find(
+    (item) => item.checkpointId === anchor?.checkpointId
+  );
+  if (
+    !anchor ||
+    anchor.bodyId !== feature.targetBodyId ||
+    anchor.entityKind !== "face" ||
+    anchor.state !== "active" ||
+    checkpoint?.status !== "active"
+  )
+    return blocked(
+      body,
+      "blocked",
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      "Direct face offset requires an active exact face anchor."
+    );
+  const payload = context.checkpointPayloads?.find(
+    (item) => item.checkpointId === anchor.checkpointId
+  );
+  const evidence = payload
+    ? readCheckpointTopologyEvidence(payload)
+    : undefined;
+  if (!evidence)
+    return blocked(
+      body,
+      "blocked",
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      "Direct face offset requires exact checkpoint evidence."
+    );
+  return {
+    id: body.id,
+    kind: "faceOffset",
+    checkpointEntityId: anchor.checkpointEntityId,
+    targetTopologySignature: evidence.signature,
+    distance: feature.side === "outward" ? feature.distance : -feature.distance,
+    sourceIdentitySignature
+  };
 }
 
 function resolveLegacyRuntimeSource(
@@ -1672,27 +1832,16 @@ function resolveExtrudeSource(
   if (!source || source.kind !== "extrudeBoolean") {
     return resolveLegacyRuntimeSource(body, context, sourceIdentitySignature);
   }
-  if (!source.placementError) return { ...source, sourceIdentitySignature };
-
-  const target = resolveCheckpointLeaf(feature.targetBodyId ?? "", context);
-  if (!target.ok)
-    return blocked(body, target.status, target.code, target.message);
-  if (source.tool.placementError) {
+  // The target is the ordinary exact artifact dependency, independent of how it
+  // was created. Only the tool frame is needed from the sketch recipe here.
+  if (source.tool.placementError)
     return blocked(
       body,
       "blocked",
       "EXPORT_EXACT_SOURCE_UNAVAILABLE",
       source.tool.placementError
     );
-  }
-  return {
-    id: body.id,
-    kind: "checkpointBoolean",
-    operation: feature.operationMode,
-    target: target.source,
-    tool: source.tool,
-    sourceIdentitySignature
-  };
+  return { ...source, sourceIdentitySignature };
 }
 
 function resolveEdgeFinishSource(
@@ -1991,7 +2140,9 @@ function isCheckpointTopologySourceKind(
     "circularPattern",
     "mirror",
     "shell",
-    "importedBody"
+    "importedBody",
+    "faceOffset",
+    "draft"
   ].includes(value);
 }
 
@@ -2142,7 +2293,8 @@ function isArtifactOperationSource(
     source.kind === "linearPattern" ||
     source.kind === "circularPattern" ||
     source.kind === "mirror" ||
-    source.kind === "shell"
+    source.kind === "shell" ||
+    source.kind === "faceOffset"
   );
 }
 

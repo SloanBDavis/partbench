@@ -1,13 +1,38 @@
-# Engine STEP import trial
+# Engine STEP import trial — historical baseline
 
 User goal: have an independent agent import a publicly available engine STEP
 assembly into Partbench and inspect whether it renders correctly. Record the
 actual workflow, screenshots, and obstacles before deciding on product changes.
 
-This is an import and viewing trial, not a new modeling release. It authorizes
-no new schema, modeling family, package, or production dependency.
+This original import and viewing trial authorized no new schema, modeling
+family, package, or production dependency. Its failed result below is preserved
+as evidence from `9f5daa16`, not a description of the current importer.
 
-## Method
+## Implementation follow-up — 2026-09-13
+
+The subsequent [editable interchange work](./editable-interchange.md) implements
+shared assembly-aware STEP import/export and normal exact-body editing. The
+[full headless engine evidence](../examples/editable-interchange/engine-evidence.json)
+now passes all 18 stages: import, make one repeated occurrence independent,
+resize its bore, add a sketch cut, move it, native save/reopen, update an existing
+feature with undo/redo, STEP export/reimport, and another bore edit and sketch
+cut. The unchanged source yields 51 body definitions, 246 leaf occurrences, and
+266 placed solids; an independent copy raises definitions to 52 while preserving
+the placed counts.
+
+The isolated Apple M4 / Node 22 run records 49.75 seconds for import plus
+0.48 seconds for exact readiness, 11.36 seconds for STEP export, and
+48.24 seconds plus 0.50 seconds for reimport/readiness. The 10-second cold-view
+target remains unmet. Body and occurrence RGB colors are supported; the engine
+reports omitted face/edge colors or transparency on `43-Compression Spring`.
+The separate [Chromium evidence](../examples/editable-interchange/browser-evidence.json)
+now verifies full-engine rendering, Fit, native orbit, component selection, and
+a responsive invalid-file failure. Import through readiness takes 59.6 seconds.
+Shared WebGL2 displays 51 definitions as 246 occurrences; orbit reuses the mesh
+buffers. Screenshots were visually inspected. SwiftShader frame-time spikes
+leave the 60-fps target open; see [verification](./verification.md).
+
+## Original method
 
 - Start from refreshed `main`, `9f5daa16`.
 - Give a fresh agent the import/view task without previous development history.
@@ -39,7 +64,7 @@ These are source record counts, not expanded placed-component counts.
 The source model and reference image remain in ignored local evidence; they are
 not redistributed in this repository.
 
-## Results — 2026-09-13
+## Original results — 2026-09-13
 
 **The engine did not import, so correct rendering is not demonstrated.** A fresh
 agent clicked Project → Import STEP in real Chromium 153. After 168,747 ms the
@@ -75,7 +100,7 @@ assumption, and fixing the runner to distinguish an expected import error from
 a freeze. This control proves the test interaction and basic single-solid
 rendering; it does not establish engine rendering.
 
-### Findings and next work
+### Findings at the original revision
 
 1. **Browser import is limited to one solid.** `importProjectStepBytes` in
    `apps/web/src/App.tsx` hardcodes `maxBodyCount: 1`; the browser resolver also
@@ -98,10 +123,10 @@ rendering; it does not establish engine rendering.
    and reported its solid count. Report current runtime capability and the
    actionable import error consistently.
 
-The next implementation goal should be to import this unchanged engine,
-preserve its component names/placements/reuse, and inspect real rendered views
-and component selection with a responsive UI. Until that succeeds, do not claim
-engine rendering or assembly STEP import is complete.
+These findings prompted the next goal: import this unchanged engine, preserve
+its component names/placements/reuse, and inspect rendered views and component
+selection with a responsive UI. The follow-up above records which checks now
+pass; the original failure is not retroactively counted as rendering evidence.
 
 ## Reproduction and evidence
 
@@ -114,9 +139,11 @@ pnpm smoke:ui-use -- examples/engine-step-trial/trial.json
 ```
 
 The scenario is outside the daily scenario suite because it is an external
-model diagnostic with a known product failure. Its later viewing steps remain
-unverified until import works. No automatic download or slow engine trial was
-added to the fast E2E suite.
+model diagnostic. At the recorded revision it failed before the viewing steps.
+Rerunning it on a later revision produces new evidence; it does not reproduce
+the historical implementation automatically. No automatic download or slow
+engine trial was added to the fast E2E suite. Current acceptance commands are
+documented in the [interchange example](../examples/editable-interchange/README.md).
 
 Committed evidence:
 
@@ -133,8 +160,9 @@ Local raw evidence:
 - `.metrics/engine-step-trial/agent-observations.md`.
 - `.metrics/engine-step-trial/inspect-step.mjs` (direct kernel diagnostic).
 
-The only implementation change for this trial is the existing UI runner's
+The only implementation change during this original trial was the UI runner's
 `importStep` file-picker interaction, documented in
-[UI smoke](./skills/ui-smoke.md). Product import and rendering code are unchanged.
+[UI smoke](./skills/ui-smoke.md). Product import and rendering code were unchanged.
 Changed-runner ESLint, syntax checking, and `git diff --check` passed. The engine
-trial remains a recorded failure; no successful engine closer is claimed.
+trial remains a recorded failure. Later implementation results are recorded
+separately above and in the current goal.

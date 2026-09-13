@@ -410,6 +410,7 @@ export type {
   ExactBodyArtifactSource,
   ExactArtifactDownstreamSource,
   ExactArtifactHoleSource,
+  ExactArtifactBooleanSource,
   ExactArtifactLinearPatternSource,
   ExactArtifactCircularPatternSource,
   ExactArtifactMirrorSource,
@@ -420,6 +421,7 @@ export type {
   ExactCheckpointBodyArtifactSource,
   ExactCheckpointBooleanArtifactSource,
   ExactCheckpointEdgeFinishArtifactSource,
+  ExactFaceOffsetArtifactSource,
   ExactCheckpointHoleArtifactSource,
   GeometryKernelExactBodyArtifact,
   GeometryKernelExactBodyMeshFactory,
@@ -446,3 +448,5 @@ export type {
   GeometryKernelExactBodyDataArtifact,
   GeometryKernelExactBodyDataArtifactResponse
 } from "./kernel";
+
+export type { GeometryKernelStepAssembly } from "./kernel";

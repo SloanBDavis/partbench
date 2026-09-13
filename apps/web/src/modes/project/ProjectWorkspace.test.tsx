@@ -268,7 +268,7 @@ describe("ProjectWorkspace", () => {
 
     expect(idle).toContain("Named STEP AP242DIS");
     expect(idle).toContain("all-or-nothing");
-    expect(idle).toContain("Export all bodies");
+    expect(idle).toContain("Export model");
     expect(idle).toContain("Export selected body");
     expect(idle).toContain("Export chosen bodies");
     expect(idle).toContain("Export 1 ready body");

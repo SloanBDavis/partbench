@@ -71,7 +71,8 @@ export function createTopologyAnchorCreationPlan(
     ...(requestedCheckpoint
       ? { checkpointId: requestedCheckpoint.checkpointId }
       : {}),
-    derivedExactMetadata: options.derivedExactMetadata
+    derivedExactMetadata: options.derivedExactMetadata,
+    candidateStableId: options.stableId
   });
 
   if (!topologyIdentity.ok) {
@@ -90,10 +91,10 @@ export function createTopologyAnchorCreationPlan(
       createDiagnostic(
         "TOPOLOGY_MATCH_LOW_CONFIDENCE",
         "warning",
-        `No generated reference candidate exists for ${options.stableId}.`,
+        `No current reference candidate exists for ${options.stableId}.`,
         {
           bodyId: options.bodyId,
-          expected: "known generated reference stable id",
+          expected: "known public reference stable id",
           received: options.stableId
         }
       )

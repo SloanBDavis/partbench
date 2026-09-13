@@ -1,0 +1,173 @@
+{
+  "description": "Isolated cold OCCT processes on the unchanged radial engine; aggregate exact bounds reuse only, before additive plane/cylinder frame fields.",
+  "method": "Run examples/engine-step-trial/profile-import.mjs with wrappers timing BRepBndLib.AddOptimal, BRepGProp.SurfaceProperties_1, BRepGProp.LinearProperties, and TopExp.MapShapes_1 only during topology extraction. No concurrent engine run.",
+  "change": "Reuse exact face, loose-edge and loose-vertex bounds for solids and bodies, indexed edge bounds for wires, and existing wire bounds for loops. Preserve every descriptor and its original topology order.",
+  "comparison": {
+    "fullSnapshotJsonIdentical": true,
+    "signatureUnchanged": true,
+    "snapshotReductionPercent": 62.6
+  },
+  "before": {
+    "kind": "Isolated direct OCCT stage diagnostic; no browser or concurrent CAD run",
+    "inputSha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0",
+    "inputBytes": 13389913,
+    "node": "v22.22.1",
+    "platform": "darwin/arm64",
+    "cpu": "Apple M4",
+    "logicalCpus": 10,
+    "stages": [
+      {
+        "name": "loadOcct",
+        "milliseconds": 1927.1
+      },
+      {
+        "name": "readStep",
+        "milliseconds": 2719.9
+      },
+      {
+        "name": "transferRoots",
+        "milliseconds": 10823.8
+      },
+      {
+        "name": "healShape",
+        "milliseconds": 16848.2
+      },
+      {
+        "name": "topologySnapshot",
+        "milliseconds": 161796.4
+      },
+      {
+        "name": "writeBrep",
+        "milliseconds": 607.5
+      }
+    ],
+    "bindings": {
+      "STEPCAFControl_Reader_1": true,
+      "STEPCAFControl_Writer_1": true,
+      "XCAFDoc_DocumentTool": true,
+      "XCAFDoc_ShapeTool": true,
+      "TDocStd_Document": true,
+      "BRepTools_History": true
+    },
+    "transferredRoots": 1,
+    "healingApplied": true,
+    "topologyKernelTimings": {
+      "MapShapes_1": {
+        "calls": 5,
+        "milliseconds": 154.42887500000506
+      },
+      "AddOptimal": {
+        "calls": 83691,
+        "milliseconds": 151301.88160099697
+      },
+      "SurfaceProperties_1": {
+        "calls": 10330,
+        "milliseconds": 7158.724130000803
+      },
+      "LinearProperties": {
+        "calls": 29796,
+        "milliseconds": 245.711619001464
+      }
+    },
+    "snapshotSignature": "fnv1a32:d2cf357a",
+    "snapshotSha256": "391475baabd223962e297042beaf23bab7defcd0b07286b22d6663c5bd3d48e0",
+    "topologyCounts": {
+      "bodyCount": 1,
+      "solidCount": 266,
+      "faceCount": 10330,
+      "wireCount": 11888,
+      "edgeCount": 29796,
+      "vertexCount": 19522,
+      "loopCount": 11888,
+      "coedgeCount": 59412,
+      "axisCount": 0
+    },
+    "topologyEntities": 143103,
+    "brepBytes": 9889253,
+    "totalMilliseconds": 194722.9
+  },
+  "after": {
+    "kind": "Isolated direct OCCT stage diagnostic; no browser or concurrent CAD run",
+    "inputSha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0",
+    "inputBytes": 13389913,
+    "node": "v22.22.1",
+    "platform": "darwin/arm64",
+    "cpu": "Apple M4",
+    "logicalCpus": 10,
+    "stages": [
+      {
+        "name": "loadOcct",
+        "milliseconds": 1982
+      },
+      {
+        "name": "readStep",
+        "milliseconds": 3293.3
+      },
+      {
+        "name": "transferRoots",
+        "milliseconds": 11010.6
+      },
+      {
+        "name": "healShape",
+        "milliseconds": 17028.2
+      },
+      {
+        "name": "topologySnapshot",
+        "milliseconds": 60557.9
+      },
+      {
+        "name": "writeBrep",
+        "milliseconds": 654.8
+      }
+    ],
+    "bindings": {
+      "STEPCAFControl_Reader_1": true,
+      "STEPCAFControl_Writer_1": true,
+      "XCAFDoc_DocumentTool": true,
+      "XCAFDoc_ShapeTool": true,
+      "TDocStd_Document": true,
+      "BRepTools_History": true
+    },
+    "transferredRoots": 1,
+    "healingApplied": true,
+    "topologyKernelTimings": {
+      "MapShapes_1": {
+        "calls": 5,
+        "milliseconds": 160.8610020000051
+      },
+      "AddOptimal": {
+        "calls": 59648,
+        "milliseconds": 49125.84101799952
+      },
+      "SurfaceProperties_1": {
+        "calls": 10330,
+        "milliseconds": 7716.800377999956
+      },
+      "LinearProperties": {
+        "calls": 29796,
+        "milliseconds": 251.3037640004477
+      }
+    },
+    "snapshotSignature": "fnv1a32:d2cf357a",
+    "snapshotSha256": "391475baabd223962e297042beaf23bab7defcd0b07286b22d6663c5bd3d48e0",
+    "topologyCounts": {
+      "bodyCount": 1,
+      "solidCount": 266,
+      "faceCount": 10330,
+      "wireCount": 11888,
+      "edgeCount": 29796,
+      "vertexCount": 19522,
+      "loopCount": 11888,
+      "coedgeCount": 59412,
+      "axisCount": 0
+    },
+    "topologyEntities": 143103,
+    "brepBytes": 9889253,
+    "totalMilliseconds": 94526.8
+  },
+  "limitations": [
+    "Measures the expanded shape through the old plain STEP reader, not the newer XDE definition-aware import.",
+    "Does not include browser or headless runtime scheduling, meshes, document work, or editing.",
+    "Additive planeFrame/axisOrigin descriptors and reuse of verified topology within checkpoint evaluation were added after this comparison; those have focused correctness tests but are not included in these timings."
+  ]
+}

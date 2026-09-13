@@ -5,12 +5,13 @@ import {
   readdir,
   rm,
   symlink,
+  truncate,
   writeFile
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkspaceFiles } from "./workspaceFiles.ts";
+import { WorkspaceFiles, WORKSPACE_FILE_LIMITS } from "./workspaceFiles.ts";
 import { parseCliOptions } from "./cliOptions.ts";
 
 const directories: string[] = [];
@@ -85,6 +86,51 @@ describe("headless workspace files", () => {
     expect(await readdir(files.root)).toEqual(["part.wcad"]);
     await expect(files.outputPath("part.stl", "step")).rejects.toMatchObject({
       code: "INVALID_FILE_EXTENSION"
+    });
+  });
+
+  it("reads bounded exchange formats, infers extensions, and rejects mismatches or escaped files", async () => {
+    const { directory, files } = await fixture();
+    for (const [path, format] of [
+      ["engine.STP", "step"],
+      ["outline.dxf", "dxf"],
+      ["outline.svg", "svg"]
+    ] as const) {
+      await writeFile(join(files.root, path), format);
+      const read = await files.readExchange(path);
+      expect(read.format).toBe(format);
+      expect(new TextDecoder().decode(read.bytes)).toBe(format);
+      expect(await files.outputPath(`copy.${format}`, format)).toBe(
+        join(files.root, `copy.${format}`)
+      );
+    }
+    for (const path of ["model.obj", "source.wcad", "model", "outline.dxf.exe"])
+      await expect(files.readExchange(path)).rejects.toMatchObject({
+        code: "INVALID_FILE_EXTENSION"
+      });
+    await expect(
+      files.readExchange("outline.svg", "dxf")
+    ).rejects.toMatchObject({ code: "INVALID_FILE_EXTENSION" });
+    await writeFile(join(directory, "outside.step"), "outside");
+    await symlink(
+      join(directory, "outside.step"),
+      join(files.root, "linked.step")
+    );
+    for (const path of ["../outside.step", "linked.step"])
+      await expect(files.readExchange(path)).rejects.toMatchObject({
+        code: "PATH_OUTSIDE_WORKSPACE"
+      });
+    await mkdir(join(files.root, "folder.step"));
+    await expect(files.readExchange("folder.step")).rejects.toMatchObject({
+      code: "NOT_A_FILE"
+    });
+    await writeFile(join(files.root, "large.svg"), "");
+    await truncate(
+      join(files.root, "large.svg"),
+      WORKSPACE_FILE_LIMITS.svg + 1
+    );
+    await expect(files.readExchange("large.svg")).rejects.toMatchObject({
+      code: "FILE_TOO_LARGE"
     });
   });
 

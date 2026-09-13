@@ -395,6 +395,33 @@ function createCommandProof(
   entity: CadBodyExactTopologyEntityDescriptor
 ): CadTopologyAnchorCommandProof | undefined {
   if (entityKind === "face") {
+    if (entity.surfaceClass === "plane" && entity.planeFrame) {
+      return {
+        kind: "planarFace",
+        entityKind,
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        bounds: entity.bounds,
+        planeFrame: entity.planeFrame
+      };
+    }
+    if (
+      entity.surfaceClass === "cylinder" &&
+      entity.axis &&
+      entity.axisOrigin &&
+      entity.radius !== undefined
+    ) {
+      return {
+        kind: "cylindricalFace",
+        entityKind,
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        bounds: entity.bounds,
+        axis: entity.axis,
+        axisOrigin: entity.axisOrigin,
+        radius: entity.radius
+      };
+    }
     const plane = entity.bounds
       ? findAxisAlignedPlane(entity.bounds)
       : undefined;
@@ -476,9 +503,10 @@ function createCommandOperations(
 function createProofCommandOperations(
   proof: CadTopologyAnchorCommandProof
 ): readonly CadSelectionReferenceOperation[] {
-  if (proof.kind === "axisAlignedPlanarFace") {
-    return ["feature.attachSketchPlane"];
+  if (proof.kind === "axisAlignedPlanarFace" || proof.kind === "planarFace") {
+    return ["feature.attachSketchPlane", "feature.faceOffset"];
   }
+  if (proof.kind === "cylindricalFace") return ["feature.faceOffset"];
 
   return [];
 }

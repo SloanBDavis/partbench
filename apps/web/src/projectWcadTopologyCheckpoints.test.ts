@@ -543,6 +543,29 @@ describe("projectWcadTopologyCheckpoints", () => {
     );
   });
 
+  it("keeps exact payloads when an import exists only in redo history", async () => {
+    const { engine, checkpointPayload } = createImportedBodyCheckpointEngine();
+    engine.undo();
+    expect(engine.createSnapshot().features).toHaveLength(0);
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime: createCheckpointRuntime(),
+      importedCheckpointPayloads: [checkpointPayload]
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+    if (!read.ok) throw new Error(JSON.stringify(read.issues));
+    expect(
+      read.checkpointPayloads?.map((payload) => payload.checkpointId)
+    ).toContain(checkpointPayload.checkpointId);
+    const restored = CadEngine.fromProject(read.project);
+    restored.redo();
+    expect(restored.createSnapshot().features).toMatchObject([
+      { kind: "importedBody", checkpointId: checkpointPayload.checkpointId }
+    ]);
+  });
+
   it("preserves imported-body checkpoint payloads from the WCAD package cache", async () => {
     const { engine, checkpointPayload } = createImportedBodyCheckpointEngine();
     const runtime = createCheckpointRuntime();

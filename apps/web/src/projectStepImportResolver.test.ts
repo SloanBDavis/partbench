@@ -86,15 +86,7 @@ describe("projectStepImportResolver", () => {
             max: [4, 2, 1],
             size: [4, 2, 1],
             center: [2, 1, 0.5]
-          },
-          diagnostics: [
-            expect.objectContaining({
-              code: "STEP_READER_AVAILABLE",
-              featureId: "feat_1",
-              bodyId: "body_1",
-              checkpointId: "checkpoint_body_1"
-            })
-          ]
+          }
         }
       ],
       importedStepDiagnostics: [
@@ -111,8 +103,7 @@ describe("projectStepImportResolver", () => {
         sourceFileName: "bracket.step",
         bytes: payloadBytes,
         maxBodyCount: 1,
-        bodyId: "body_1",
-        checkpointId: "checkpoint_body_1"
+        units: "mm"
       })
     );
     expect(project.document.features).toEqual([
@@ -130,6 +121,175 @@ describe("projectStepImportResolver", () => {
     expect(json).not.toMatch(
       /occtShape|meshId|rendererId|selectionBufferId|fileHandle|localPath|opfsPath/i
     );
+  });
+
+  it("prepares multi-body assembly geometry once for dry-run and commit while allocating current document IDs", async () => {
+    const bytes = new TextEncoder().encode(
+      "ISO-10303-21; prepared assembly fixture"
+    );
+    const payloadStore = createProjectStepImportPayloadStore();
+    const importStep = vi.fn(
+      async (
+        input: DerivedStepImportInput
+      ): Promise<DerivedStepImportResult> => {
+        const single = createStepImportResult(input);
+        const transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] as const;
+        return {
+          ...single,
+          bodyCount: 2,
+          bodies: [
+            {
+              ...single.bodies[0]!,
+              definitionId: "part_a",
+              bodyName: "Bracket"
+            },
+            { ...single.bodies[0]!, definitionId: "part_b", bodyName: "Pin" }
+          ],
+          assembly: {
+            definitions: [
+              {
+                id: "module",
+                name: "Module",
+                components: [
+                  {
+                    id: "a",
+                    definitionId: "part_a",
+                    name: "Bracket A",
+                    transform
+                  },
+                  { id: "b", definitionId: "part_b", name: "Pin", transform },
+                  {
+                    id: "a_again",
+                    definitionId: "part_a",
+                    name: "Bracket B",
+                    transform
+                  }
+                ]
+              }
+            ],
+            roots: [
+              {
+                id: "module_root",
+                definitionId: "module",
+                name: "Module",
+                transform
+              }
+            ],
+            occurrenceCount: 3
+          }
+        };
+      }
+    );
+    const engine = new CadEngine();
+    const resolver = createProjectStepImportResolver({
+      getRuntime: () => ({ importStep }),
+      payloadStore
+    });
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new MockCadCommandWorker(),
+      { stepImportResolver: resolver }
+    );
+    payloadStore.putPayload("assembly", bytes);
+    const ops = [
+      {
+        op: "project.importStep",
+        sourceFileName: "module.step",
+        sourceFormat: "step",
+        payloadRef: {
+          kind: "transient",
+          payloadId: "assembly",
+          byteLength: bytes.byteLength
+        }
+      }
+    ] as const;
+    const before = engine.exportProject();
+    expect(
+      await executor.executeBatch({ version: "cadops.v1", mode: "dryRun", ops })
+    ).toMatchObject({ ok: true, createdBodyIds: ["body_1", "body_2"] });
+    expect(engine.exportProject()).toEqual(before);
+    engine.applyBatch([
+      { op: "sketch.create", id: "existing", name: "Existing", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "existing",
+        id: "circle",
+        center: [0, 0],
+        radius: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_1",
+        bodyId: "body_1",
+        sketchId: "existing",
+        entityId: "circle",
+        depth: 1
+      }
+    ]);
+    engine.applyBatch([
+      {
+        op: "assembly.create",
+        id: "step_feat_2_assembly_1",
+        name: "Existing reserved name"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_body_2",
+        bodyId: "body_1",
+        sourceFeatureId: "feat_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256: "a".repeat(64)
+        },
+        status: "active"
+      }
+    ]);
+    const committed = await executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops
+    });
+    expect(committed).toMatchObject({
+      ok: true,
+      createdBodyIds: ["body_2", "body_3"],
+      createdFeatureIds: ["feat_2", "feat_3"]
+    });
+    expect(
+      engine
+        .createSnapshot()
+        .topologyIdentity?.checkpoints.some(
+          (checkpoint) => checkpoint.checkpointId === "checkpoint_body_2_2"
+        )
+    ).toBe(true);
+    expect(
+      engine
+        .createSnapshot()
+        .assemblies?.find((assembly) => assembly.name === "Module")?.id
+    ).toBe("step_feat_2_assembly_1_2");
+    expect(importStep).toHaveBeenCalledTimes(1);
+    expect(importStep.mock.calls[0]![0]).not.toHaveProperty("maxBodyCount");
+    expect(importStep.mock.calls[0]![0]).not.toHaveProperty("bodyId");
+    const snapshot = engine.createSnapshot();
+    expect(
+      snapshot.features
+        .filter((feature) => feature.kind === "importedBody")
+        .map((feature) => feature.name)
+    ).toEqual(["Bracket", "Pin"]);
+    expect(
+      snapshot.assemblies
+        ?.flatMap((assembly) => assembly.instances)
+        .filter((instance) => instance.definition.kind === "body")
+        .map(
+          (instance) =>
+            instance.definition.kind === "body" && instance.definition.bodyId
+        )
+    ).toEqual(["body_2", "body_3", "body_2"]);
+    payloadStore.deletePayload("assembly");
+    const stable = engine.exportProject();
+    await expect(
+      executor.executeBatch({ version: "cadops.v1", mode: "commit", ops })
+    ).rejects.toThrow("no longer available");
+    expect(engine.exportProject()).toEqual(stable);
   });
 });
 

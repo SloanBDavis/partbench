@@ -1,5 +1,9 @@
 export { isProjectStructureQuery } from "./structureQuery";
-import type { FeatureSpurGearOp, FeatureUpdateSpurGearOp, SpurGearSource } from "./spurGear";
+import type {
+  FeatureSpurGearOp,
+  FeatureUpdateSpurGearOp,
+  SpurGearSource
+} from "./spurGear";
 export * from "./spurGear";
 export interface PackageInfo {
   readonly name: string;
@@ -612,6 +616,9 @@ export type CadOp =
   | FeatureMirrorOp
   | FeatureCombineOp
   | FeatureOffsetOp
+  | FeatureFaceOffsetOp
+  | FeatureCopyBodyOp
+  | FeatureUpdateFaceOffsetOp
   | FeatureAlignOp
   | FeatureDraftOp
   | FeatureShellOp
@@ -647,7 +654,11 @@ export const CAD_EXACT_DOWNSTREAM_GEOMETRY_OPS = [
   "feature.mirror",
   "feature.updateMirror",
   "feature.shell",
-  "feature.updateShell"
+  "feature.updateShell",
+  "feature.faceOffset",
+  "feature.updateFaceOffset",
+  "feature.offset",
+  "feature.updateOffset"
 ] as const satisfies readonly CadOp["op"][];
 
 export type CadExactDownstreamGeometryOp = Extract<
@@ -715,6 +726,7 @@ export interface ProjectImportStepResolvedBody {
   readonly bodyId: BodyId;
   readonly checkpointId: string;
   readonly name?: string;
+  readonly color?: Vec3;
   readonly sourceIdentity: WcadSourceIdentity;
   readonly checkpointStatus?: Extract<
     CadTopologyIdentityState,
@@ -1712,7 +1724,15 @@ export interface AssemblyBodyDefinitionRef {
   readonly bodyId: BodyId;
 }
 
-export type AssemblyDefinitionRef = AssemblyBodyDefinitionRef;
+/** A reusable subassembly, placed with the same instance transform as a part. */
+export interface AssemblySubassemblyDefinitionRef {
+  readonly kind: "assembly";
+  readonly assemblyId: AssemblyId;
+}
+
+export type AssemblyDefinitionRef =
+  | AssemblyBodyDefinitionRef
+  | AssemblySubassemblyDefinitionRef;
 
 export interface AssemblyCreateOp {
   readonly op: "assembly.create";
@@ -1727,6 +1747,7 @@ export interface AssemblyInstanceInsertOp {
   readonly name?: string;
   readonly definition: AssemblyDefinitionRef;
   readonly transform?: Partial<Transform>;
+  readonly color?: Vec3;
 }
 
 /** Move a free instance or grounded root; constrained descendants follow. */
@@ -2263,7 +2284,45 @@ export type FeatureOffsetSource =
   | {
       readonly kind: "face";
       readonly face: FeatureOffsetFaceRef;
+    }
+  | {
+      readonly kind: "directFace";
+      readonly face: Extract<
+        FeatureOffsetFaceRef,
+        { readonly kind: "topologyAnchor" }
+      >;
     };
+
+/** Independent exact base copy; host stages the corresponding checkpoint assets. */
+export interface FeatureCopyBodyOp {
+  readonly op: "feature.copyBody";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly sourceBodyId: BodyId;
+  readonly sourceCheckpointId: string;
+  readonly checkpointId?: string;
+}
+
+/** Signed normal offset: positive adds material; negative removes material. */
+export interface FeatureFaceOffsetOp {
+  readonly op: "feature.faceOffset";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly faceRef: Extract<
+    FeatureOffsetFaceRef,
+    { readonly kind: "topologyAnchor" }
+  >;
+  readonly distance: number;
+}
+
+export interface FeatureUpdateFaceOffsetOp {
+  readonly op: "feature.updateFaceOffset";
+  readonly id: FeatureId;
+  readonly distance: number;
+}
 
 export interface FeatureOffsetOp {
   readonly op: "feature.offset";
@@ -2572,6 +2631,7 @@ export interface CadAssemblyInstanceRef {
   readonly name: string;
   readonly definition: AssemblyDefinitionRef;
   readonly transform: Transform;
+  readonly color?: Vec3;
 }
 
 export type CadAssemblyMateRef =
@@ -2812,7 +2872,7 @@ export interface CadImportedBodyFeatureRef {
   readonly kind: "importedBody";
   readonly bodyId: BodyId;
   readonly sourceFileName: string;
-  readonly sourceFormat: "step";
+  readonly sourceFormat: "step" | "brep";
   readonly checkpointId: string;
   readonly healingApplied: boolean;
 }
@@ -3590,7 +3650,7 @@ export interface ProjectFeaturesQuery {
 
 export interface ProjectStructureQuery {
   readonly query: "project.structure";
-  readonly projection?: "full" | "poses";
+  readonly projection?: "full" | "poses" | "occurrences";
   readonly assemblyIds?: readonly AssemblyId[];
   readonly instanceIds?: readonly InstanceId[];
   readonly offset?: number;
@@ -3858,6 +3918,9 @@ export interface BodyTopologyIdentityQuery {
   readonly query: "body.topologyIdentity";
   readonly bodyId: BodyId;
   readonly checkpointId?: string;
+  readonly offset?: number;
+  readonly limit?: number;
+  readonly includeSnapshot?: boolean;
   readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 }
 
@@ -4402,6 +4465,13 @@ export interface SketchGeneratedFaceAttachmentSnapshot {
   readonly faceRole: CadGeneratedExtrudeFaceRole;
 }
 
+export interface CadPlanarFrame {
+  readonly origin: Vec3;
+  readonly xDirection: Vec3;
+  readonly yDirection: Vec3;
+  readonly normal: Vec3;
+}
+
 export interface SketchTopologyAnchorFaceAttachmentSnapshot {
   readonly kind: "topologyAnchorFace";
   readonly bodyId: BodyId;
@@ -4409,6 +4479,8 @@ export interface SketchTopologyAnchorFaceAttachmentSnapshot {
   readonly checkpointId: string;
   readonly planarAxis: "x" | "y" | "z";
   readonly planarCoordinate: number;
+  /** When present, this exact frame is authoritative over legacy axis fields. */
+  readonly planeFrame?: CadPlanarFrame;
 }
 
 export interface SketchSnapshot {
@@ -4451,6 +4523,7 @@ export interface AssemblyInstanceSnapshot {
   readonly name: string;
   readonly definition: AssemblyDefinitionRef;
   readonly transform: Transform;
+  readonly color?: Vec3;
 }
 
 /** Fixed/ground mate snapshot (slice B). */
@@ -4590,10 +4663,11 @@ export interface ImportedBodyFeatureSnapshot {
   readonly kind: "importedBody";
   readonly name?: string;
   readonly sourceFileName: string;
-  readonly sourceFormat: "step";
+  readonly sourceFormat: "step" | "brep";
   readonly bodyId: BodyId;
   readonly checkpointId: string;
   readonly healingApplied: boolean;
+  readonly color?: Vec3;
 }
 
 export interface LinearPatternFeatureSnapshot {
@@ -4848,6 +4922,7 @@ export interface CadAxisAlignedBounds {
 }
 
 export type CadStepImportDiagnosticCode =
+  | "STEP_APPEARANCE_PARTIAL"
   | "STEP_READER_AVAILABLE"
   | "STEP_TRANSFER_COMPLETE"
   | "STEP_HEALING_APPLIED"
@@ -5252,7 +5327,7 @@ export interface CadImportedBodyFeatureSummary {
   readonly bodyId: BodyId;
   readonly name?: string;
   readonly sourceFileName: string;
-  readonly sourceFormat: "step";
+  readonly sourceFormat: "step" | "brep";
   readonly checkpointId: string;
   readonly healingApplied: boolean;
   readonly source: CadImportedBodyFeatureSource;
@@ -7559,6 +7634,7 @@ export type CadSelectionReferenceOperation =
   | "feature.extrudeCutTarget"
   | "feature.extrudeAddTarget"
   | "feature.holeTarget"
+  | "feature.faceOffset"
   | "reference.nameGenerated";
 
 export type CadSelectionReferenceStatus =
@@ -8597,7 +8673,9 @@ export interface CadBodyExactTopologyEntityDescriptor {
   readonly point?: Vec3;
   readonly midpoint?: Vec3;
   readonly normal?: Vec3;
+  readonly planeFrame?: CadPlanarFrame;
   readonly axis?: Vec3;
+  readonly axisOrigin?: Vec3;
   readonly radius?: number;
   readonly area?: number;
   readonly length?: number;
@@ -9965,9 +10043,13 @@ export interface ProjectStructureQueryResponse {
   readonly datums?: readonly DatumSnapshot[];
   readonly assemblies?: readonly AssemblySnapshot[];
   /** Pose projection keeps definition arrays empty and returns only this bounded page. */
-  readonly projection?: "poses";
+  readonly projection?: "poses" | "occurrences";
   readonly instancePoses?: readonly (AssemblyInstanceSnapshot & {
     readonly assemblyId: AssemblyId;
+    readonly rootAssemblyId?: AssemblyId;
+    readonly ownerAssemblyId?: AssemblyId;
+    readonly localInstanceId?: InstanceId;
+    readonly instancePath?: readonly InstanceId[];
   })[];
   readonly totalInstanceCount?: number;
   readonly nextOffset?: number;
@@ -10173,6 +10255,8 @@ export type CadTopologyAnchorCommandReadinessStatus =
 export type CadTopologyAnchorCommandProofKind =
   | "checkpointEntityPresent"
   | "axisAlignedPlanarFace"
+  | "planarFace"
+  | "cylindricalFace"
   | "axisAlignedLinearEdge"
   | "pointVertex";
 
@@ -10184,6 +10268,10 @@ export interface CadTopologyAnchorCommandProof {
   readonly bounds?: CadTopologyEntityBounds;
   readonly planarAxis?: "x" | "y" | "z";
   readonly planarCoordinate?: number;
+  readonly planeFrame?: CadPlanarFrame;
+  readonly axis?: Vec3;
+  readonly axisOrigin?: Vec3;
+  readonly radius?: number;
   readonly linearAxis?: "x" | "y" | "z";
   readonly length?: number;
 }
@@ -10604,7 +10692,7 @@ export interface BodyImportedBodyStatusQueryResponse {
   readonly checkpointStatus: "not-imported" | "available" | "missing";
   readonly healingApplied: boolean;
   readonly sourceFileName?: string;
-  readonly sourceFormat?: "step";
+  readonly sourceFormat?: "step" | "brep";
   readonly checkpointId?: string;
   readonly availableDownstreamOperations: readonly CadSelectionReferenceOperation[];
   readonly diagnosticCount: number;
@@ -10632,6 +10720,8 @@ export interface BodyTopologyIdentityQueryResponse {
   readonly snapshot?: CadTopologyMatchSnapshotInput;
   readonly descriptor: CadTopologySnapshotDescriptor;
   readonly candidateCount: number;
+  readonly totalCandidateCount?: number;
+  readonly nextOffset?: number;
   readonly candidates: readonly CadTopologyGeneratedReferenceCandidate[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];

@@ -86,6 +86,8 @@ export interface RenderTriangleMesh {
   readonly lineStyle?: "solid" | "construction";
   readonly source?: string;
   readonly label?: string;
+  /** Optional normalized RGB appearance shared by authored and imported bodies. */
+  readonly color?: Vec3;
   /**
    * Renderer-only presentation for transient feature previews and their
    * temporarily replaced committed target. Omitted means the V21 display
@@ -234,6 +236,8 @@ export interface RenderSceneOptions {
   readonly camera: RenderCamera;
   readonly size: ViewportSize;
   readonly preserveDrawingBuffer?: boolean;
+  /** Disable when drawing overlays above a separately rendered background. */
+  readonly showGrid?: boolean;
   readonly selectedId?: string;
   readonly hoveredId?: string;
   readonly visualStates?: readonly RenderVisualStateInput[];
@@ -251,7 +255,8 @@ const MIN_PITCH = -Math.PI / 2 + 0.1;
 const MAX_PITCH = Math.PI / 2 - 0.1;
 const MIN_DISTANCE = 2;
 const MAX_DISTANCE = 500;
-const FOCAL_LENGTH = 700;
+export const RENDER_FOCAL_LENGTH = 700;
+const FOCAL_LENGTH = RENDER_FOCAL_LENGTH;
 
 export function createDefaultCamera(): RenderCamera {
   return {
@@ -552,7 +557,7 @@ export function renderCanvasScene(
   const visualStates = createRenderVisualStateMap(options);
   if (!options.preserveDrawingBuffer) {
     context.clearRect(0, 0, size.width, size.height);
-    drawGrid(context, camera, size);
+    if (options.showGrid !== false) drawGrid(context, camera, size);
   }
 
   const sorted = primitives
@@ -653,7 +658,15 @@ function drawExactVisualStates(
     addRenderVisualState(styles, "exact", state.state);
     const style = styles.get("exact") ?? createEmptyVisualStyle();
     if (state.entityKind === "body") {
-      drawTriangleMesh(context, body.mesh, camera, size, style, undefined, clipPlane);
+      drawTriangleMesh(
+        context,
+        body.mesh,
+        camera,
+        size,
+        style,
+        undefined,
+        clipPlane
+      );
       continue;
     }
 
@@ -1167,7 +1180,9 @@ function drawTriangleMesh(
 
   context.fillStyle = getVisualFillColor(
     style,
-    "rgba(47, 111, 151, 0.08)",
+    mesh.color
+      ? `rgba(${mesh.color.map((channel) => Math.round(Math.max(0, Math.min(1, channel)) * 255)).join(", ")}, 0.18)`
+      : "rgba(47, 111, 151, 0.08)",
     presentation
   );
   drawMeshFaces(context, mesh.indices, vertices, camera, size, clipPlane);
@@ -1213,11 +1228,7 @@ function drawTriangleMesh(
     context.lineWidth = presentation === "subdued" ? 1.25 : 7;
     strokeProjectedOutline(context, outline);
 
-    context.strokeStyle = getVisualStrokeColor(
-      style,
-      "#235f86",
-      presentation
-    );
+    context.strokeStyle = getVisualStrokeColor(style, "#235f86", presentation);
     context.lineWidth = getVisualLineWidth(style, 2, presentation);
     strokeProjectedOutline(context, outline);
   } else if (outline.length > 1) {
@@ -2422,3 +2433,9 @@ function normalizeVec3(vector: Vec3): Vec3 {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
+export {
+  createGpuMeshRenderer,
+  gpuModelMatrix,
+  gpuViewProjection
+} from "./gpuMeshRenderer";

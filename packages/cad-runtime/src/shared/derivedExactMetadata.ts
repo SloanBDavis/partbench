@@ -648,7 +648,17 @@ export function createExactMetadataRuntimeInput(
   if (source.kind === "importedBody") {
     return {
       id: source.id,
-      source: { kind: "importedBody", brepBytes: source.brepBytes }
+      source:
+        source.topologySourceKind && source.topologySignature
+          ? {
+              kind: "checkpointBody",
+              brepBytes: source.brepBytes,
+              brepByteLength: source.brepByteLength,
+              brepSha256: source.brepSha256,
+              topologySourceKind: source.topologySourceKind,
+              topologySignature: source.topologySignature
+            }
+          : { kind: "importedBody", brepBytes: source.brepBytes }
     };
   }
   if (

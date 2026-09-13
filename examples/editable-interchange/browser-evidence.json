@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-13",
+  "status": "passed",
+  "command": "pnpm smoke:engine-interchange:browser",
+  "source": {
+    "fileName": "radial-engine.step",
+    "byteLength": 13389913,
+    "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
+  },
+  "browser": "chrome (Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36)",
+  "rendering": "Chromium SwiftShader software WebGL2; not a hardware GPU benchmark",
+  "importThroughReadyMs": 59590,
+  "workflowSeconds": 72.4,
+  "gpu": {
+    "definitions": 51,
+    "instances": 246,
+    "triangles": 461173,
+    "uploads": 52,
+    "submitMs": 0.30000000074505806
+  },
+  "orbit": {
+    "frames": 54,
+    "medianFrameIntervalMs": 16.69999999999709,
+    "p95FrameIntervalMs": 116.60000000000582,
+    "uploadsBefore": 52,
+    "metrics": {
+      "definitions": 51,
+      "instances": 246,
+      "triangles": 461173,
+      "uploads": 52,
+      "submitMs": 0.19999999925494194
+    }
+  },
+  "assertions": [
+    "51 shared mesh definitions and 246 rendered occurrences",
+    "Fit all and native mouse orbit",
+    "Orbit does not upload new mesh buffers",
+    "Viewport component selection reports selected occurrence",
+    "Invalid STEP fails with structured diagnostic in a responsive app"
+  ],
+  "visualInspection": "Isometric, orbited and selected component screenshots reviewed; engine structure renders and selection highlights the chosen component.",
+  "screenshots": [
+    ".metrics/ui-smoke/engine-interchange-isometric.png",
+    ".metrics/ui-smoke/engine-interchange-orbit.png",
+    ".metrics/ui-smoke/engine-interchange-front.png",
+    ".metrics/ui-smoke/engine-interchange-selected.png",
+    ".metrics/ui-smoke/engine-interchange-invalid-file.png"
+  ],
+  "limitations": [
+    "Frame intervals are requestAnimationFrame samples during an automated software-WebGL orbit, not a sustained hardware frame-rate benchmark.",
+    "Cold view and selection targets of 10 and 20 seconds are unmet.",
+    "Cancellation during long import was not exercised by this browser journey."
+  ]
+}

@@ -36,6 +36,9 @@ export const CLI_HELP = `Partbench MCP server (line-delimited JSON-RPC)
 Headless file access is confined to DIR (default: current directory).
 DIR and any output subdirectories must already exist. Start with
 cad.session_info, then cad.batch / cad.project_structure / cad.body_mass_properties.
-Save .wcad with cad.project_save; write STEP with cad.project_export_file.
+Import editable STEP/DXF/SVG with cad.project_import_file.
+Use cad.assembly_make_independent before editing one repeated occurrence alone.
+Save .wcad with cad.project_save; reopen it with cad.project_open.
+Write STEP bodies/assemblies or DXF/SVG sketches with cad.project_export_file.
 All protocol responses go to stdout; launcher diagnostics go to stderr.
 `;

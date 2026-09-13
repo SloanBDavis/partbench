@@ -123,22 +123,37 @@ function expectSupported(
 
 describe("V22 exact feature preview planner", () => {
   it("requires exact commit preflight when editing an extrusion consumed by a finished result", () => {
-    const input = makeInput("extrude", {
-      id: "feature-existing",
-      bodyId: "body-existing",
-      name: "",
-      depth: 0.1,
-      side: "positive",
-      operationMode: "newBody"
-    } satisfies FeatureExtrudeForm, "edit", feature("extrude", { operationMode: "newBody" }));
-    expectSupported(planExactFeaturePreview({
-      ...input,
-      existingBody: { id: "body-existing", consumedByFeatureId: "rounding" }
-    }), "feature.updateExtrude", "body-existing", true);
-    expectSupported(planExactFeaturePreview({
-      ...input,
-      existingBody: { id: "body-existing" }
-    }), "feature.updateExtrude", "body-existing", false);
+    const input = makeInput(
+      "extrude",
+      {
+        id: "feature-existing",
+        bodyId: "body-existing",
+        name: "",
+        depth: 0.1,
+        side: "positive",
+        operationMode: "newBody"
+      } satisfies FeatureExtrudeForm,
+      "edit",
+      feature("extrude", { operationMode: "newBody" })
+    );
+    expectSupported(
+      planExactFeaturePreview({
+        ...input,
+        existingBody: { id: "body-existing", consumedByFeatureId: "rounding" }
+      }),
+      "feature.updateExtrude",
+      "body-existing",
+      true
+    );
+    expectSupported(
+      planExactFeaturePreview({
+        ...input,
+        existingBody: { id: "body-existing" }
+      }),
+      "feature.updateExtrude",
+      "body-existing",
+      false
+    );
   });
 
   it.each([
@@ -302,7 +317,8 @@ describe("V22 exact feature preview planner", () => {
         distance: 4,
         side: "outward" as const
       } satisfies FeatureOffsetForm,
-      op: "feature.offset"
+      op: "feature.offset",
+      exact: true
     },
     {
       kind: "align" as const,
@@ -512,7 +528,9 @@ describe("V22 exact feature preview planner", () => {
       distance: 2,
       side: "outward" as const
     } satisfies FeatureOffsetForm;
-    expect(planExactFeaturePreview(makeInput("offset", profileDraft, "create"))).toMatchObject({
+    expect(
+      planExactFeaturePreview(makeInput("offset", profileDraft, "create"))
+    ).toMatchObject({
       status: "supported",
       ops: [
         {
@@ -532,7 +550,9 @@ describe("V22 exact feature preview planner", () => {
         }
       ]
     });
-    expect(planExactFeaturePreview(makeInput("offset", faceDraft, "create"))).toMatchObject({
+    expect(
+      planExactFeaturePreview(makeInput("offset", faceDraft, "create"))
+    ).toMatchObject({
       status: "supported",
       ops: [
         {
@@ -629,7 +649,9 @@ describe("V22 exact feature preview planner", () => {
       targetFace: undefined,
       targetDatumId: "datum_axis_z"
     } satisfies FeatureAlignForm;
-    expect(planExactFeaturePreview(makeInput("align", ontoFace, "create"))).toMatchObject({
+    expect(
+      planExactFeaturePreview(makeInput("align", ontoFace, "create"))
+    ).toMatchObject({
       status: "supported",
       requiresExactDownstreamCommitPreflight: false,
       ops: [
@@ -654,7 +676,9 @@ describe("V22 exact feature preview planner", () => {
         }
       ]
     });
-    expect(planExactFeaturePreview(makeInput("align", ontoPlane, "create"))).toMatchObject({
+    expect(
+      planExactFeaturePreview(makeInput("align", ontoPlane, "create"))
+    ).toMatchObject({
       status: "supported",
       ops: [
         {
@@ -665,7 +689,9 @@ describe("V22 exact feature preview planner", () => {
         }
       ]
     });
-    expect(planExactFeaturePreview(makeInput("align", ontoAxis, "create"))).toMatchObject({
+    expect(
+      planExactFeaturePreview(makeInput("align", ontoAxis, "create"))
+    ).toMatchObject({
       status: "supported",
       ops: [
         {
@@ -705,7 +731,9 @@ describe("V22 exact feature preview planner", () => {
       },
       neutralDatumId: ""
     } satisfies FeatureDraftForm;
-    expect(planExactFeaturePreview(makeInput("draft", form, "create"))).toMatchObject({
+    expect(
+      planExactFeaturePreview(makeInput("draft", form, "create"))
+    ).toMatchObject({
       status: "supported",
       requiresExactDownstreamCommitPreflight: false,
       ops: [
@@ -1060,7 +1088,8 @@ describe("V22 exact feature preview planner", () => {
         distance: 4,
         side: "outward"
       }),
-      op: "feature.updateOffset"
+      op: "feature.updateOffset",
+      exact: true
     },
     {
       kind: "compositeSweep" as const,
@@ -1349,7 +1378,8 @@ describe("V22 exact feature preview planner", () => {
         bodyId: "body_rect_1",
         sourceIdentity: {
           algorithm: "partbench-source-v1" as const,
-          sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          sha256:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         },
         status: "active" as const
       },

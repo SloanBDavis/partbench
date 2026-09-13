@@ -46,10 +46,13 @@ export const UI_ACTION_AVAILABILITY_MESSAGES = {
   solidAlign: "Select a completed exact body and a planar face to move.",
   solidDraft: "Select a completed exact solid and a planar face set.",
   solidFixedMate: "Create an assembly with at least one instance to ground.",
-  solidCoincidentMate: "Create an assembly with at least two instances to mate.",
-  solidConcentricMate: "Create an assembly with at least two instances to mate.",
+  solidCoincidentMate:
+    "Create an assembly with at least two instances to mate.",
+  solidConcentricMate:
+    "Create an assembly with at least two instances to mate.",
   solidRevoluteMate: "Create an assembly with two instances at unit scale.",
-  solidInstancePose: "Create a free or grounded instance. Edit mates to move constrained children.",
+  solidInstancePose:
+    "Create a free or grounded instance. Edit mates to move constrained children.",
   solidDistanceMate: "Create an assembly with at least two instances to mate.",
   solidEdit: "Select an editable feature or object.",
   solidRename: "Select a renameable object or sketch.",
@@ -136,10 +139,10 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.import-step",
-    "Import STEP",
+    "Import",
     "File",
     ["project"],
-    ["step upload"],
+    ["STEP", "DXF", "SVG", "import file"],
     true
   ),
   action(
@@ -542,8 +545,26 @@ export const UI_ACTION_METADATA = [
     undefined,
     needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDistanceMate)
   ),
-  action("solid.revolute-mate", "Revolute mate", "Assemble", ["solid"], ["joint", "angle", "pivot", "hinge", "edit joint"], true, undefined, needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRevoluteMate)),
-  action("solid.instance-pose", "Instance pose", "Assemble", ["solid"], ["move instance", "rotate instance", "root pose"], true, undefined, needs(UI_ACTION_AVAILABILITY_MESSAGES.solidInstancePose)),
+  action(
+    "solid.revolute-mate",
+    "Revolute mate",
+    "Assemble",
+    ["solid"],
+    ["joint", "angle", "pivot", "hinge", "edit joint"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRevoluteMate)
+  ),
+  action(
+    "solid.instance-pose",
+    "Instance pose",
+    "Assemble",
+    ["solid"],
+    ["move instance", "rotate instance", "root pose"],
+    true,
+    undefined,
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidInstancePose)
+  ),
   action(
     "solid.edit",
     "Edit",

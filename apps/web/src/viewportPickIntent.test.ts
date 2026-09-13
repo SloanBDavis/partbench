@@ -384,6 +384,60 @@ describe("viewport pick intent", () => {
     });
     expect(intent).not.toHaveProperty("selectedId");
   });
+
+  it("retains the selected nested occurrence path while commands target its owning assembly", () => {
+    const transform = {
+      translation: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    } as const;
+    const renderId = createAssemblyInstanceRenderId("root", ["left", "bolt"]);
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: renderId,
+      bodies: [createExtrudeBody("body_bolt")],
+      objects: [],
+      assemblies: [
+        {
+          id: "child",
+          name: "Cylinder",
+          instances: [
+            {
+              id: "bolt",
+              name: "Bolt",
+              definition: { kind: "body", bodyId: "body_bolt" },
+              transform
+            }
+          ]
+        },
+        {
+          id: "root",
+          name: "Engine",
+          instances: [
+            {
+              id: "left",
+              name: "Left",
+              definition: { kind: "assembly", assemblyId: "child" },
+              transform
+            },
+            {
+              id: "right",
+              name: "Right",
+              definition: { kind: "assembly", assemblyId: "child" },
+              transform
+            }
+          ]
+        }
+      ]
+    });
+    expect(intent).toMatchObject({
+      kind: "assemblyInstance",
+      assemblyId: "child",
+      instanceId: "bolt",
+      rootAssemblyId: "root",
+      instancePath: ["left", "bolt"],
+      renderTargetId: renderId
+    });
+  });
 });
 
 function createPrimitiveBody(id: string, objectId: string): CadBodySnapshot {

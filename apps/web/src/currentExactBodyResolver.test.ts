@@ -466,7 +466,7 @@ describe("currentExactBodyResolver", () => {
     });
   });
 
-  it("uses checkpoint artifacts for every supported imported downstream operation", () => {
+  it("uses exact artifact dependencies for imported downstream operations", () => {
     for (const operation of ["add", "cut"] as const) {
       const resolution = resolveImportedDownstream({
         kind: "boolean",
@@ -474,17 +474,12 @@ describe("currentExactBodyResolver", () => {
       });
       expect(resolution).toMatchObject({
         status: "ready",
-        source: { kind: "checkpointBoolean", operation }
+        source: { kind: "extrudeBoolean", operation },
+        sourceGraphNodeCount: 3,
+        artifactDependency: {
+          source: { kind: "importedBody", topologySourceKind: "importedBody" }
+        }
       });
-      if (resolution.status === "ready") {
-        expect(
-          createCurrentExactBodyArtifactSource(resolution.source)
-        ).toMatchObject({
-          kind: "checkpointBoolean",
-          operation,
-          target: { topologySourceKind: "importedBody" }
-        });
-      }
     }
     for (const operation of ["chamfer", "fillet"] as const) {
       const resolution = resolveImportedDownstream({
@@ -814,12 +809,18 @@ describe("currentExactBodyResolver", () => {
     ];
     const sources = getReadyRuntimeExactSources(resolutions);
 
-    expect(sources).toHaveLength(3);
+    expect(sources).toHaveLength(1);
     expect(sources.map((source) => [source.id, source.kind])).toEqual([
-      ["downstream_result", "exactBody"],
-      ["downstream_result", "hole"],
       ["downstream_result", "exactBody"]
     ]);
+    expect(resolutions.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "ready",
+          artifactDependency: expect.any(Object)
+        })
+      ])
+    );
   });
 });
 

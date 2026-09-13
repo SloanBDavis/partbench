@@ -324,15 +324,14 @@ import type {
   DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
 import type {
+  CurrentExactBodyArtifactEvidence,
   CurrentExactBodyResolution
 } from "./currentExactBodyResolver";
 import type {
   CurrentExactProjectionArtifact,
   CurrentExactProjectionFailure
 } from "./currentExactPipeline";
-import type {
-  SolidSelectedSketchEntityContext
-} from "./modes/solid/exactFeaturePreviewPlan";
+import type { SolidSelectedSketchEntityContext } from "./modes/solid/exactFeaturePreviewPlan";
 import type { ExactFeaturePreviewGeometryResult } from "./exactFeaturePreviewGeometry";
 import type { SolidPreviewPresentationState } from "./modes/solid/SolidModePanel";
 import type { ProjectExactStepExportJobState } from "./projectExactStepExport";
@@ -554,8 +553,8 @@ const SolidModePanel = lazy(() =>
   }))
 );
 const SolidPreviewCoordinator = lazy(() =>
-  loadAfterFirstFrame(() =>
-    import("./modes/solid/SolidPreviewCoordinator")
+  loadAfterFirstFrame(
+    () => import("./modes/solid/SolidPreviewCoordinator")
   ).then((module) => ({ default: module.SolidPreviewCoordinator }))
 );
 const ProjectWorkspace = lazy(() =>
@@ -977,7 +976,7 @@ function formatStepImportDryRunPreview(
 
   if (previewBodies.length > 0) {
     lines.push("", "Bounding boxes:");
-    for (const body of previewBodies) {
+    for (const body of previewBodies.slice(0, 6)) {
       const label = body.name ?? body.bodyId;
       lines.push(
         `- ${label}: min ${formatStepImportVec3(body.bounds.min, units)}; max ${formatStepImportVec3(
@@ -986,6 +985,8 @@ function formatStepImportDryRunPreview(
         )}; size ${formatStepImportVec3(body.bounds.size, units)}`
       );
     }
+    if (previewBodies.length > 6)
+      lines.push(`- ${previewBodies.length - 6} more part definitions`);
   } else {
     lines.push("", "Bounding boxes: unavailable");
   }
@@ -1340,7 +1341,7 @@ function activeCurrentExactRequiredOperationFor(
     return "feature.fillet";
   }
   if (activeTool === "solid.offset") {
-    return "feature.offset";
+    return "feature.faceOffset";
   }
   if (activeTool === "solid.align") {
     return "feature.align";
@@ -1353,7 +1354,6 @@ function activeCurrentExactRequiredOperationFor(
   }
   return mapCollectorToRequiredOperation(collector);
 }
-
 
 function readParameters(): readonly CadParameterSnapshot[] {
   const response = engine.executeQuery({
@@ -2220,13 +2220,10 @@ export function App() {
     () => exportCadProjectForDocument(engine, document),
     [document]
   );
-  const currentPreviewSourceIdentityKey = useMemo(
-    () => {
-      const identity = createCadProjectSourceIdentity(exportCadProject(engine));
-      return `${identity.algorithm}:${identity.sha256}`;
-    },
-    [document]
-  );
+  const currentPreviewSourceIdentityKey = useMemo(() => {
+    const identity = createCadProjectSourceIdentity(exportCadProject(engine));
+    return `${identity.algorithm}:${identity.sha256}`;
+  }, [document]);
   const [
     curveEditSourceAuthorityRevision,
     setCurveEditSourceAuthorityRevision
@@ -2248,6 +2245,8 @@ export function App() {
     | { readonly kind: "assembly"; readonly id: string }
     | {
         readonly kind: "assembly-instance";
+        readonly rootAssemblyId?: string;
+        readonly instancePath?: readonly string[];
         readonly assemblyId: string;
         readonly id: string;
       }
@@ -2296,8 +2295,10 @@ export function App() {
   >([]);
   const [inspectSectionPlane, setInspectSectionPlane] =
     useState<InspectSectionPlaneSession>(EMPTY_INSPECT_SECTION_PLANE);
-  const [sketchDimensionAnnotationOffsets, setSketchDimensionAnnotationOffsets] =
-    useState<Readonly<Record<string, SketchDimensionAnnotationOffset>>>({});
+  const [
+    sketchDimensionAnnotationOffsets,
+    setSketchDimensionAnnotationOffsets
+  ] = useState<Readonly<Record<string, SketchDimensionAnnotationOffset>>>({});
   const [requestedSketchDimensionId, setRequestedSketchDimensionId] = useState<
     string | undefined
   >();
@@ -2602,9 +2603,7 @@ export function App() {
             setProjectMessage(
               status.lastResult ?? "Crash recovery is unavailable."
             );
-            setProjectMessageTone(
-              status.state === "failed" ? "error" : "info"
-            );
+            setProjectMessageTone(status.state === "failed" ? "error" : "info");
           }
         },
         isCurrent: (sourceIdentity) =>
@@ -3206,13 +3205,33 @@ export function App() {
       CurrentExactBodyResolution,
       { readonly status: "ready" }
     >[] = [];
+    const selectedDefinition =
+      selectedAssemblySelection?.kind === "assembly-instance"
+        ? findAssemblyInstanceDefinitionBodyId({
+            assemblies: projectStructure.assemblies,
+            assemblyId: selectedAssemblySelection.assemblyId,
+            instanceId: selectedAssemblySelection.id
+          })
+        : projectStructure.bodies.find(
+            (body) => body.id === selectedId || body.objectId === selectedId
+          )?.id;
     for (const resolution of currentExactSources.resolutions) {
-      if (resolution.status === "ready" && resolution.artifactDependency) {
+      if (
+        resolution.status === "ready" &&
+        (resolution.artifactDependency ||
+          resolution.bodyId === selectedDefinition)
+      ) {
         ready.push(resolution);
       }
     }
     return ready;
-  }, [currentExactSources.resolutions]);
+  }, [
+    currentExactSources.resolutions,
+    projectStructure.assemblies,
+    projectStructure.bodies,
+    selectedAssemblySelection,
+    selectedId
+  ]);
   const hasCurrentExactArtifactResolutions =
     currentExactArtifactResolutions.length > 0;
   const currentProjectSourceIdentity = useMemo(
@@ -3793,29 +3812,29 @@ export function App() {
   const selectedDocumentTreeKey = selectedAssemblySelection
     ? documentTreeSelectionKey(selectedAssemblySelection)
     : selectedNamedReferenceName
-    ? documentTreeSelectionKey({
-        kind: "named-reference",
-        name: selectedNamedReferenceName
-      })
-    : selectedSketchContext?.entityId
       ? documentTreeSelectionKey({
-          kind: "sketch-entity",
-          sketchId: selectedSketchContext.sketchId,
-          id: selectedSketchContext.entityId
+          kind: "named-reference",
+          name: selectedNamedReferenceName
         })
-      : selectedSketchContext
+      : selectedSketchContext?.entityId
         ? documentTreeSelectionKey({
-            kind: "sketch",
-            id: selectedSketchContext.sketchId
+            kind: "sketch-entity",
+            sketchId: selectedSketchContext.sketchId,
+            id: selectedSketchContext.entityId
           })
-        : selectedBody
-          ? documentTreeSelectionKey({ kind: "body", id: selectedBody.id })
-          : selectedObject
-            ? documentTreeSelectionKey({
-                kind: "object",
-                id: selectedObject.id
-              })
-            : undefined;
+        : selectedSketchContext
+          ? documentTreeSelectionKey({
+              kind: "sketch",
+              id: selectedSketchContext.sketchId
+            })
+          : selectedBody
+            ? documentTreeSelectionKey({ kind: "body", id: selectedBody.id })
+            : selectedObject
+              ? documentTreeSelectionKey({
+                  kind: "object",
+                  id: selectedObject.id
+                })
+              : undefined;
   const selectedTopologyAnchoredGeneratedReference = useMemo(
     () =>
       enrichSelectedGeneratedReferenceWithTopologyAnchor(
@@ -3976,10 +3995,16 @@ export function App() {
         }
       ];
     });
-  }, [projectStructure.bodies, projectStructure.features, solidSeedBodyChoices]);
+  }, [
+    projectStructure.bodies,
+    projectStructure.features,
+    solidSeedBodyChoices
+  ]);
   const solidShellTargetBodyChoices =
     exactDownstreamModelingState?.shellTargetBodyChoices ?? EMPTY_SOLID_CHOICES;
-  const solidCombineBodyChoices = useMemo<readonly SolidChoice<string>[]>(() => {
+  const solidCombineBodyChoices = useMemo<
+    readonly SolidChoice<string>[]
+  >(() => {
     const featuresByBodyId = new Map(
       projectStructure.features.map((feature) => [feature.bodyId, feature])
     );
@@ -4172,7 +4197,8 @@ export function App() {
     );
   useEffect(() => {
     setPendingCurrentExactPromotion((current) =>
-      current && current.requiredOperation !== activeCurrentExactRequiredOperation
+      current &&
+      current.requiredOperation !== activeCurrentExactRequiredOperation
         ? undefined
         : current
     );
@@ -4225,7 +4251,12 @@ export function App() {
   ]);
   const solidShellFaceChoices = useMemo(() => {
     const tool = workbenchUi.activeTool;
-    const faceTools = ["solid.shell", "solid.offset", "solid.align", "solid.draft"];
+    const faceTools = [
+      "solid.shell",
+      "solid.offset",
+      "solid.align",
+      "solid.draft"
+    ];
     const editingFaceFeature =
       tool === "solid.edit" &&
       selectedFeature &&
@@ -4265,8 +4296,10 @@ export function App() {
         ) ?? [])
       );
     }
-    return pendingCurrentExactPromotion?.requiredOperation === "feature.shell" ||
-      pendingCurrentExactPromotion?.requiredOperation === "feature.offset" ||
+    return pendingCurrentExactPromotion?.requiredOperation ===
+      "feature.shell" ||
+      pendingCurrentExactPromotion?.requiredOperation ===
+        "feature.faceOffset" ||
       pendingCurrentExactPromotion?.requiredOperation === "feature.align" ||
       pendingCurrentExactPromotion?.requiredOperation === "feature.draft"
       ? includeCurrentSolidChoice(
@@ -4423,7 +4456,7 @@ export function App() {
         );
   const selectedShellFaceChoice =
     pendingCurrentExactPromotion?.requiredOperation === "feature.shell" ||
-    pendingCurrentExactPromotion?.requiredOperation === "feature.offset"
+    pendingCurrentExactPromotion?.requiredOperation === "feature.faceOffset"
       ? (solidShellFaceChoices.find(
           (choice) => choice.key === pendingPromotionKey
         ) ??
@@ -4822,7 +4855,9 @@ export function App() {
         )?.id ??
         preferredAssembly?.instances[1]?.id ??
         "";
-      const hasPair = assemblies.some((assembly) => assembly.instances.length >= 2);
+      const hasPair = assemblies.some(
+        (assembly) => assembly.instances.length >= 2
+      );
       return {
         key,
         kind: "coincidentMate",
@@ -4893,7 +4928,9 @@ export function App() {
         )?.id ??
         preferredAssembly?.instances[1]?.id ??
         "";
-      const hasPair = assemblies.some((assembly) => assembly.instances.length >= 2);
+      const hasPair = assemblies.some(
+        (assembly) => assembly.instances.length >= 2
+      );
       return {
         key,
         kind: "concentricMate",
@@ -5242,7 +5279,7 @@ export function App() {
                 ? selectedFeature.offsetSource.profile.entityId
                 : "",
             face:
-              selectedFeature.offsetSource.kind === "face"
+              selectedFeature.offsetSource.kind !== "sketchProfile"
                 ? selectedFeature.offsetSource.face
                 : undefined,
             distance: selectedFeature.distance,
@@ -5739,7 +5776,12 @@ export function App() {
           id: "",
           bodyId: "",
           name: "",
-          sourceKind: face && !selectedEntityProfile ? "face" : "sketchProfile",
+          sourceKind:
+            face && !selectedEntityProfile
+              ? face.kind === "topologyAnchor"
+                ? "directFace"
+                : "face"
+              : "sketchProfile",
           profileSketchId: selectedEntityProfile?.sketchId ?? "",
           profileEntityId: selectedEntityProfile?.entityId ?? "",
           face,
@@ -5750,10 +5792,10 @@ export function App() {
           profiles: solidProfileChoices,
           openFaces: solidShellFaceChoices
         },
-        blockedReason:
-          selectedEntityProfile || face
-            ? undefined
-            : "Select a sketch profile or a face."
+        // Selection belongs to the live draft/collector, not the context in
+        // which the editor was opened. Draft validation keeps Apply blocked
+        // until a real profile or exact face has been collected.
+        blockedReason: undefined
       } as SolidEditorRequest;
     }
     if (actionId === "solid.combine") {
@@ -6433,57 +6475,58 @@ export function App() {
                     rows: currentExactInspectionResult.rows
                   }
                 : selectedBodyMeasurements.measurements
-                ? {
-                  title: "Body measurements",
-                  status: "ready" as const,
-                  confidence: "Source analytic",
-                  rows: createBodyMeasurementRows(
-                    selectedBodyMeasurements.measurements,
-                    document.units
-                  ).filter((row) => row.label !== "Model")
-                }
-              : selectedBodyExactMetadataEntry?.status === "ready"
-                ? {
-                    title: "Body measurements",
-                    status: "ready" as const,
-                    confidence: "Kernel derived",
-                    rows: [
-                      {
-                        label: "Volume",
-                        value: formatVolume(
-                          selectedBodyExactMetadataEntry.metadata.volume,
-                          document.units
-                        )
-                      },
-                      {
-                        label: "Surface area",
-                        value: formatArea(
-                          selectedBodyExactMetadataEntry.metadata.surfaceArea,
-                          document.units
-                        )
-                      },
-                      {
-                        label: "Bounds",
-                        value: formatBounds(
-                          selectedBodyExactMetadataEntry.metadata.bounds,
-                          document.units
-                        )
-                      },
-                      {
-                        label: "Centroid",
-                        value: formatVector(
-                          selectedBodyExactMetadataEntry.metadata.centroid
-                        )
+                  ? {
+                      title: "Body measurements",
+                      status: "ready" as const,
+                      confidence: "Source analytic",
+                      rows: createBodyMeasurementRows(
+                        selectedBodyMeasurements.measurements,
+                        document.units
+                      ).filter((row) => row.label !== "Model")
+                    }
+                  : selectedBodyExactMetadataEntry?.status === "ready"
+                    ? {
+                        title: "Body measurements",
+                        status: "ready" as const,
+                        confidence: "Kernel derived",
+                        rows: [
+                          {
+                            label: "Volume",
+                            value: formatVolume(
+                              selectedBodyExactMetadataEntry.metadata.volume,
+                              document.units
+                            )
+                          },
+                          {
+                            label: "Surface area",
+                            value: formatArea(
+                              selectedBodyExactMetadataEntry.metadata
+                                .surfaceArea,
+                              document.units
+                            )
+                          },
+                          {
+                            label: "Bounds",
+                            value: formatBounds(
+                              selectedBodyExactMetadataEntry.metadata.bounds,
+                              document.units
+                            )
+                          },
+                          {
+                            label: "Centroid",
+                            value: formatVector(
+                              selectedBodyExactMetadataEntry.metadata.centroid
+                            )
+                          }
+                        ]
                       }
-                    ]
-                  }
-                : {
-                    title: "Body measurements",
-                    status: "blocked" as const,
-                    message:
-                      selectedBodyMeasurements.error ??
-                      "Measurements are unavailable for this body."
-                  }
+                    : {
+                        title: "Body measurements",
+                        status: "blocked" as const,
+                        message:
+                          selectedBodyMeasurements.error ??
+                          "Measurements are unavailable for this body."
+                      }
           }
         : {}),
       ...(currentExactInspectionResult &&
@@ -6519,7 +6562,8 @@ export function App() {
                   : undefined,
                 rows: selectedGeneratedReferenceState.measurementRows,
                 message:
-                  selectedGeneratedReferenceState.measurement?.error ?? undefined
+                  selectedGeneratedReferenceState.measurement?.error ??
+                  undefined
               }
             }
           : {}),
@@ -6815,8 +6859,9 @@ export function App() {
   const selectedAssemblyInstanceRenderId =
     selectedAssemblySelection?.kind === "assembly-instance"
       ? createAssemblyInstanceRenderId(
-          selectedAssemblySelection.assemblyId,
-          selectedAssemblySelection.id
+          selectedAssemblySelection.rootAssemblyId ??
+            selectedAssemblySelection.assemblyId,
+          selectedAssemblySelection.instancePath ?? selectedAssemblySelection.id
         )
       : viewportPickIntent?.kind === "assemblyInstance"
         ? viewportPickIntent.renderTargetId
@@ -6831,14 +6876,32 @@ export function App() {
         selectedBody?.id ??
         selectedId);
   const renderScene = useMemo(() => {
+    const consumedObjectIds = new Set(
+      projectStructure.bodies
+        .filter((body) => body.consumedByFeatureId && body.objectId)
+        .map((body) => body.objectId)
+    );
     const base = modelingUiRuntime?.createRenderSceneInputs(
-      sceneObjects,
+      sceneObjects.filter((object) => !consumedObjectIds.has(object.id)),
       derivedGeometryBySourceId,
       derivedGeometrySources,
       sketches,
       sketchDisplayState.frames
     ) ?? { primitives: [], meshes: [] };
     return createAssemblySceneView({
+      bodyRenderIdsByBodyId: new Map(
+        projectStructure.bodies.map((body) => [
+          body.id,
+          body.objectId ?? body.id
+        ])
+      ),
+      definitionColorsByBodyId: new Map(
+        Array.from(document.features.values()).flatMap((feature) =>
+          feature.kind === "importedBody" && feature.color
+            ? [[feature.bodyId, feature.color] as const]
+            : []
+        )
+      ),
       base,
       assemblies: projectStructure.assemblies,
       view: assemblySceneView
@@ -6849,6 +6912,8 @@ export function App() {
     derivedGeometrySources,
     modelingUiRuntime,
     projectStructure.assemblies,
+    projectStructure.bodies,
+    document.features,
     sceneObjects,
     sketchDisplayState.frames,
     sketches
@@ -6866,19 +6931,32 @@ export function App() {
       ),
       ...solidPreviewResult.meshes
     ];
-  }, [
-    renderScene.meshes,
-    solidPreviewPresentation.status,
-    solidPreviewResult
-  ]);
+  }, [renderScene.meshes, solidPreviewPresentation.status, solidPreviewResult]);
   const currentExactPickBodies = useMemo(() => {
-    const meshes = new Map(renderScene.meshes.map((mesh) => [mesh.id, mesh]));
+    const renderIds = new Map(
+      projectStructure.bodies.map((body) => [body.id, body.objectId ?? body.id])
+    );
     return currentExactArtifactProjection.artifacts.flatMap((artifact) => {
-      const mesh = meshes.get(artifact.bodyId);
+      const renderId = renderIds.get(artifact.bodyId) ?? artifact.bodyId;
       const pickMap = artifact.viewportPickMap;
-      return mesh && pickMap ? [{ mesh, pickMap }] : [];
+      if (!pickMap) return [];
+      // Explicit face/edge picking uses placed geometry with the definition's
+      // public topology. Normal body selection keeps the occurrence identity.
+      return renderScene.meshes
+        .filter(
+          (mesh) =>
+            mesh.id === renderId ||
+            (workbenchUi.selectionFilter !== "body" &&
+              mesh.parentId === renderId)
+        )
+        .map((mesh) => ({ mesh, pickMap }));
     });
-  }, [currentExactArtifactProjection.artifacts, renderScene.meshes]);
+  }, [
+    currentExactArtifactProjection.artifacts,
+    renderScene.meshes,
+    projectStructure.bodies,
+    workbenchUi.selectionFilter
+  ]);
   useEffect(() => {
     setViewportExactCandidateSession(undefined);
     setViewportExactSelections([]);
@@ -7158,6 +7236,8 @@ export function App() {
       setSelectedAssemblySelection({
         kind: "assembly-instance",
         assemblyId: intent.assemblyId,
+        rootAssemblyId: intent.rootAssemblyId,
+        instancePath: intent.instancePath,
         id: intent.instanceId
       });
       setSelectedSketchContext(undefined);
@@ -7676,10 +7756,7 @@ export function App() {
 
     try {
       if (pending) {
-        ops = [
-          ...pending.ops,
-          buildCreateSketchOnFaceOp(commandForm)
-        ];
+        ops = [...pending.ops, buildCreateSketchOnFaceOp(commandForm)];
       } else {
         const { createSketchOnFaceCommandPlan } =
           await import("./sketchOnFacePromotion");
@@ -8042,6 +8119,85 @@ export function App() {
     return response?.ok === true;
   }
 
+  async function makeSelectedOccurrenceIndependent() {
+    if (
+      selectedAssemblySelection?.kind !== "assembly-instance" ||
+      !selectedBody
+    )
+      return;
+    const epoch = engine.getSourceAuthorityEpoch();
+    setCommandPending(true);
+    setCommandError(undefined);
+    try {
+      let artifact: CurrentExactBodyArtifactEvidence | undefined =
+        currentExactArtifactStoreRef.current.get(selectedBody.id);
+      if (!artifact) {
+        const resolution = currentExactSources.resolutions.find(
+          (item) => item.bodyId === selectedBody.id
+        );
+        if (!resolution || resolution.status !== "ready")
+          throw new Error("The selected part has no valid exact geometry.");
+        const { buildCurrentExactBodyArtifacts } =
+          await import("./projectExactStepExport");
+        [artifact] = await buildCurrentExactBodyArtifacts({
+          engine,
+          resolutions: [resolution],
+          runtime: getDerivedGeometryRuntime(),
+          units: document.units,
+          documentSourceIdentity: createCadProjectSourceIdentity(
+            engine.exportProject()
+          ),
+          assertCurrent: () => {
+            if (engine.getSourceAuthorityEpoch() !== epoch)
+              throw new Error("The selected component changed during copy.");
+          },
+          existingArtifacts: [...currentExactArtifactStoreRef.current.values()]
+        });
+      }
+      if (!artifact)
+        throw new Error("The selected component could not be evaluated.");
+      const { prepareIndependentOccurrence } =
+        await import("@web-cad/cad-runtime/shared/independentOccurrence");
+      const prepared = prepareIndependentOccurrence({
+        engine,
+        artifact,
+        rootAssemblyId:
+          selectedAssemblySelection.rootAssemblyId ??
+          selectedAssemblySelection.assemblyId,
+        instancePath: selectedAssemblySelection.instancePath ?? [
+          selectedAssemblySelection.id
+        ]
+      });
+      const previous = wcadTopologyCheckpointPayloadCache;
+      setWcadTopologyCheckpointPayloadCache([
+        ...new Map(
+          [...previous, ...prepared.checkpointPayloads].map((payload) => [
+            payload.checkpointId,
+            payload
+          ])
+        ).values()
+      ]);
+      const response = await commitOps(
+        prepared.ops,
+        () => prepared.bodyId,
+        epoch
+      );
+      if (!response?.ok) {
+        setWcadTopologyCheckpointPayloadCache(previous);
+        return;
+      }
+      setSelectedAssemblySelection(undefined);
+      setAssemblySceneView("parts");
+      setCommandNotice(
+        "This occurrence is now independent. Edits to its copied body leave the other occurrences unchanged."
+      );
+    } catch (error) {
+      setCommandError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCommandPending(false);
+    }
+  }
+
   async function runExactDownstreamGeometryPreflight(
     ops: readonly CadOp[],
     bodyId?: string,
@@ -8050,16 +8206,47 @@ export function App() {
   ) {
     const { preflightExactDownstreamGeometryCommand } =
       await import("./holeGeometryPreflight");
-    return preflightExactDownstreamGeometryCommand({
+    const payloads = new Map(
+      wcadTopologyCheckpointPayloadCache.map((payload) => [
+        payload.checkpointId,
+        payload
+      ])
+    );
+    for (const op of ops) {
+      if (
+        op.op !== "topology.checkpoint.create" ||
+        (op.status !== undefined && op.status !== "active")
+      )
+        continue;
+      const artifact = currentExactArtifactStoreRef.current.get(op.bodyId);
+      if (!artifact)
+        throw new Error(
+          "Select a current exact body before creating a face reference."
+        );
+      const { checkpointFromArtifact } =
+        await import("@web-cad/cad-runtime/shared/independentOccurrence");
+      payloads.set(
+        op.checkpointId,
+        checkpointFromArtifact(
+          artifact,
+          op.checkpointId,
+          op.bodyId,
+          op.sourceFeatureId
+        )
+      );
+    }
+    const checkpointPayloads = [...payloads.values()];
+    const result = await preflightExactDownstreamGeometryCommand({
       engine,
       ops,
       batch,
       bodyId,
       runtime: getDerivedGeometryRuntime(),
-      checkpointPayloads: wcadTopologyCheckpointPayloadCache,
+      checkpointPayloads,
       existingArtifacts: [...currentExactArtifactStoreRef.current.values()],
       expectedSourceAuthorityEpoch
     });
+    return { ...result, checkpointPayloads };
   }
 
   async function preflightExactDownstreamOps(
@@ -8100,12 +8287,15 @@ export function App() {
     for (const artifact of preflight.artifacts) {
       currentExactArtifactStoreRef.current.set(artifact.bodyId, artifact);
     }
+    const previousPayloads = wcadTopologyCheckpointPayloadCache;
+    setWcadTopologyCheckpointPayloadCache(preflight.checkpointPayloads);
     const response = await commitOps(
       ops,
       getNextSelectedId,
       preflight.sourceAuthorityEpoch
     );
     if (!response?.ok) {
+      setWcadTopologyCheckpointPayloadCache(previousPayloads);
       for (const [artifactBodyId, previous] of previousArtifacts) {
         if (previous) {
           currentExactArtifactStoreRef.current.set(artifactBodyId, previous);
@@ -8488,7 +8678,9 @@ export function App() {
     const pairIdentities = [
       viewportTwoTargetMeasurement.firstTarget?.exactIdentity,
       viewportTwoTargetMeasurement.secondTarget?.exactIdentity
-    ].filter((identity): identity is ExactInspectionIdentity => Boolean(identity));
+    ].filter((identity): identity is ExactInspectionIdentity =>
+      Boolean(identity)
+    );
     if (
       pairIdentities.length === 2 &&
       viewportTwoTargetMeasurement.status === "complete"
@@ -8516,7 +8708,8 @@ export function App() {
       );
       return;
     }
-    if (!currentExactInspectionIdentity || !currentExactInspectionResult) return;
+    if (!currentExactInspectionIdentity || !currentExactInspectionResult)
+      return;
     setInspectMeasurementPins((current) =>
       pinExactInspectionResult(
         current,
@@ -8547,7 +8740,12 @@ export function App() {
     const origin = entity.midpoint ?? entity.point ?? ([0, 0, 0] as const);
     const normal = entity.normal;
     setInspectSectionPlane((current) =>
-      createInspectFaceSectionPlane(origin, normal, current.offset, current.flip)
+      createInspectFaceSectionPlane(
+        origin,
+        normal,
+        current.offset,
+        current.flip
+      )
     );
   }
 
@@ -8942,9 +9140,9 @@ export function App() {
         multiple: false,
         types: [
           {
-            description: "STEP CAD file",
+            description: "CAD and sketch files",
             accept: {
-              "application/octet-stream": [".step", ".stp"]
+              "application/octet-stream": [".step", ".stp", ".dxf", ".svg"]
             }
           }
         ],
@@ -8987,6 +9185,39 @@ export function App() {
   }
 
   async function importProjectStepBytes(bytes: Uint8Array, fileName: string) {
+    const extension = fileName.split(".").at(-1)?.toLowerCase();
+    if (extension === "dxf" || extension === "svg") {
+      setCommandPending(true);
+      setCommandError(undefined);
+      try {
+        const { parseSketchExchange, buildSketchExchangeOps } =
+          await import("@web-cad/cad-runtime/sketchExchange");
+        const recipe = parseSketchExchange(
+          extension,
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+        );
+        const prefix = `exchange_${engine.createSnapshot().nextSketchNumber}`;
+        const ops = buildSketchExchangeOps(recipe, {
+          idPrefix: prefix,
+          targetUnits: document.units
+        });
+        const response = await commitOps(ops, () => null);
+        if (response?.ok) {
+          const sketchId = response.createdSketchIds?.[0];
+          if (sketchId) focusSketch(sketchId);
+          setProjectMessage(
+            `Imported ${fileName}: ${response.createdSketchIds?.length ?? 0} sketches. ${recipe.notices.join(" ")}`
+          );
+          setProjectMessageTone("info");
+        }
+      } catch (error) {
+        setCommandError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setCommandPending(false);
+      }
+      return;
+    }
+
     const payloadId = `step_import_${Date.now().toString(36)}_${Math.random()
       .toString(36)
       .slice(2)}`;
@@ -8998,10 +9229,10 @@ export function App() {
         kind: "transient",
         payloadId,
         byteLength: bytes.byteLength
-      },
-      maxBodyCount: 1
+      }
     };
 
+    const importEpoch = engine.getSourceAuthorityEpoch();
     stepImportPayloadStoreRef.current.putPayload(payloadId, bytes);
     setCommandPending(true);
     setCommandError(undefined);
@@ -9031,9 +9262,14 @@ export function App() {
         return;
       }
 
-      const response = await commandExecutor.executeBatch(
-        buildBatch("commit", [op], WEB_UI_ACTOR)
+      const response = await commandExecutor.executeBatchAtSourceAuthorityEpoch(
+        buildBatch("commit", [op], WEB_UI_ACTOR),
+        importEpoch
       );
+      if (!response)
+        throw new Error(
+          "The project changed during import preview. Import the file again."
+        );
 
       if (!response.ok) {
         setCommandError(response.error.message);
@@ -9050,13 +9286,13 @@ export function App() {
         return;
       }
 
-      await syncDocument(createdBodyIds[0]);
       setWcadTopologyCheckpointPayloadCache((current) =>
         mergeWcadTopologyCheckpointPayloadInputCache(
           current,
           response.importedStepCheckpointPayloads
         )
       );
+      await syncDocument(createdBodyIds[0]);
       setProjectFile((current) => markProjectFileDirty(current));
       setProjectMessage(
         `Imported ${fileName}: ${createdBodyIds.length} bod${
@@ -9397,6 +9633,35 @@ export function App() {
     }
   }
 
+  async function downloadSketchExchange(format: "dxf" | "svg") {
+    try {
+      const { exportSketchExchange } =
+        await import("@web-cad/cad-runtime/sketchExchange");
+      const result = exportSketchExchange(format, sketches, {
+        sourceUnits: document.units
+      });
+      const url = URL.createObjectURL(
+        new Blob([result.text], {
+          type: format === "svg" ? "image/svg+xml" : "application/dxf"
+        })
+      );
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = `partbench-sketches.${format}`;
+      window.document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setProjectMessage(
+        `Exported ${result.curveCount} curves. ${result.notices.join(" ")}`
+      );
+      setProjectMessageTone("info");
+    } catch (error) {
+      setProjectMessage(error instanceof Error ? error.message : String(error));
+      setProjectMessageTone("error");
+    }
+  }
+
   function downloadWcadPackage(bytes: Uint8Array, fileName: string) {
     const packageBytes = new Uint8Array(bytes);
     const blob = new Blob([packageBytes.buffer], { type: WCAD_MIME_TYPE });
@@ -9524,8 +9789,7 @@ export function App() {
         lastResult: {
           operation: "open",
           status: "opened",
-          message:
-            "Restored the crash-recovery snapshot as an unsaved project."
+          message: "Restored the crash-recovery snapshot as an unsaved project."
         }
       }));
       setCrashRecoveryOfferOpen(false);
@@ -9748,6 +10012,8 @@ export function App() {
         setSelectedAssemblySelection({
           kind: "assembly-instance",
           assemblyId: selection.assemblyId,
+          rootAssemblyId: selection.rootAssemblyId,
+          instancePath: selection.instancePath,
           id: selection.id
         });
         setSelectedId(undefined);
@@ -10851,7 +11117,7 @@ export function App() {
       "project.import-step": canOpenStep
         ? ready
         : blocked(
-            "Import STEP is unavailable because this browser cannot open local STEP files."
+            "Import is unavailable because this browser cannot open local files."
           ),
       "project.import-json": projectStorageCapabilities.jsonUploadAvailable
         ? ready
@@ -10941,34 +11207,38 @@ export function App() {
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDraft),
       "solid.datum-plane": ready,
       "solid.datum-axis": ready,
-      "solid.fixed-mate":
-        projectStructure.assemblies.some((assembly) => assembly.instances.length > 0)
-          ? ready
-          : {
-              status: "blocked" as const,
-              message: UI_ACTION_AVAILABILITY_MESSAGES.solidFixedMate
-            },
-      "solid.coincident-mate":
-        projectStructure.assemblies.some((assembly) => assembly.instances.length >= 2)
-          ? ready
-          : {
-              status: "blocked" as const,
-              message: UI_ACTION_AVAILABILITY_MESSAGES.solidCoincidentMate
-            },
-      "solid.concentric-mate":
-        projectStructure.assemblies.some((assembly) => assembly.instances.length >= 2)
-          ? ready
-          : {
-              status: "blocked" as const,
-              message: UI_ACTION_AVAILABILITY_MESSAGES.solidConcentricMate
-            },
-      "solid.distance-mate":
-        projectStructure.assemblies.some((assembly) => assembly.instances.length >= 2)
-          ? ready
-          : {
-              status: "blocked" as const,
-              message: UI_ACTION_AVAILABILITY_MESSAGES.solidDistanceMate
-            },
+      "solid.fixed-mate": projectStructure.assemblies.some(
+        (assembly) => assembly.instances.length > 0
+      )
+        ? ready
+        : {
+            status: "blocked" as const,
+            message: UI_ACTION_AVAILABILITY_MESSAGES.solidFixedMate
+          },
+      "solid.coincident-mate": projectStructure.assemblies.some(
+        (assembly) => assembly.instances.length >= 2
+      )
+        ? ready
+        : {
+            status: "blocked" as const,
+            message: UI_ACTION_AVAILABILITY_MESSAGES.solidCoincidentMate
+          },
+      "solid.concentric-mate": projectStructure.assemblies.some(
+        (assembly) => assembly.instances.length >= 2
+      )
+        ? ready
+        : {
+            status: "blocked" as const,
+            message: UI_ACTION_AVAILABILITY_MESSAGES.solidConcentricMate
+          },
+      "solid.distance-mate": projectStructure.assemblies.some(
+        (assembly) => assembly.instances.length >= 2
+      )
+        ? ready
+        : {
+            status: "blocked" as const,
+            message: UI_ACTION_AVAILABILITY_MESSAGES.solidDistanceMate
+          },
       "solid.revolute-mate": projectStructure.assemblies.some(
         (assembly) =>
           assembly.instances.filter((instance) =>
@@ -11080,6 +11350,7 @@ export function App() {
     focusedSketchId,
     modelingSelectionContext,
     projectExportReadiness,
+    projectStructure.assemblies,
     projectFile.mode,
     projectStorageCapabilities,
     selectedBody,
@@ -11240,11 +11511,15 @@ export function App() {
 
   const uiSmokeHostRef = useRef({} as UiSmokeHost);
   uiSmokeHostRef.current = {
-    executeQuery: (query) => engine.executeQuery({ version: "cadops.v1", query }),
+    executeQuery: (query) =>
+      engine.executeQuery({ version: "cadops.v1", query }),
     getDisplayState: () => ({
-      meshIds: renderScene.meshes.map(mesh=>mesh.id),
-      exactResults: currentExactResultProjections.map(({bodyId,status})=>({bodyId,status})),
-      displayStatuses: derivedGeometry.entries.map(entry=>entry.status)
+      meshIds: renderScene.meshes.map((mesh) => mesh.id),
+      exactResults: currentExactResultProjections.map(({ bodyId, status }) => ({
+        bodyId,
+        status
+      })),
+      displayStatuses: derivedGeometry.entries.map((entry) => entry.status)
     }),
     applyOps: async (ops: readonly CadOp[]) => {
       const response = await commitOps(ops, () => null);
@@ -11320,11 +11595,18 @@ export function App() {
             message
           }))
         })),
-        exactMeasurements: currentAgentExactEvidence.derivedExactMetadata.flatMap((entry) =>
-          entry.status === "ready" && entry.metadata
-            ? [{ bodyId: entry.bodyId, volume: entry.metadata.volume, bounds: entry.metadata.bounds }]
-            : []
-        ),
+        exactMeasurements:
+          currentAgentExactEvidence.derivedExactMetadata.flatMap((entry) =>
+            entry.status === "ready" && entry.metadata
+              ? [
+                  {
+                    bodyId: entry.bodyId,
+                    volume: entry.metadata.volume,
+                    bounds: entry.metadata.bounds
+                  }
+                ]
+              : []
+          ),
         displayStatuses: derivedGeometry.entries.map((entry) => entry.status),
         diagnostic: [
           commandError,
@@ -11446,7 +11728,9 @@ export function App() {
               replacement={projectReplacement}
               pending={projectReplacementSaving}
               onSave={() => void saveThenReplaceProject(projectReplacement)}
-              onDiscard={() => void executeProjectReplacement(projectReplacement)}
+              onDiscard={() =>
+                void executeProjectReplacement(projectReplacement)
+              }
               onCancel={() => setProjectReplacement(undefined)}
             />
           </Suspense>
@@ -11615,9 +11899,10 @@ export function App() {
                   projectStructure.assemblies.some(
                     (assembly) => assembly.instances.length > 0
                   ) ? (
-                    <label className="viewport-action-group">
-                      <span>View</span>
+                    <div className="viewport-action-group">
+                      <label htmlFor="assembly-model-view">View</label>
                       <select
+                        id="assembly-model-view"
                         aria-label="Model view"
                         value={assemblySceneView}
                         onChange={(event) =>
@@ -11629,7 +11914,20 @@ export function App() {
                         <option value="assembly">Assembly</option>
                         <option value="parts">Parts</option>
                       </select>
-                    </label>
+                      <button
+                        type="button"
+                        data-action-id="assembly.make-independent"
+                        disabled={
+                          commandPending ||
+                          selectedAssemblySelection?.kind !==
+                            "assembly-instance" ||
+                          !selectedBody
+                        }
+                        onClick={() => void makeSelectedOccurrenceIndependent()}
+                      >
+                        Make independent
+                      </button>
+                    </div>
                   ) : undefined
                 }
                 clipPlane={
@@ -11664,8 +11962,12 @@ export function App() {
                           disabled={commandPending}
                           modelingActions={modelingActions}
                           namedReferences={namedReferences}
-                          namedReferenceHealthByName={namedReferenceHealthByName}
-                          selectedNamedReferenceName={selectedNamedReferenceName}
+                          namedReferenceHealthByName={
+                            namedReferenceHealthByName
+                          }
+                          selectedNamedReferenceName={
+                            selectedNamedReferenceName
+                          }
                           selectionDisplay={viewportSelectionDisplay}
                           selectedGeneratedReferenceState={
                             selectedGeneratedReferenceState
@@ -11803,29 +12105,37 @@ export function App() {
                             setRequestedSketchDimensionId(dimensionId);
                           }}
                           onMove={(dimensionId, x, y) => {
-                            const annotation = createSketchDimensionAnnotations({
-                              sketchId: focusedSketchId,
-                              entities:
-                                sketches.find(
-                                  (sketch) => sketch.id === focusedSketchId
-                                )?.entities ?? [],
-                              dimensions:
-                                sketchDimensionsBySketchId.get(
-                                  focusedSketchId
-                                ) ?? [],
-                              displayFrame:
-                                getSketchViewportDisplayFrame(focusedSketchId)!,
-                              camera,
-                              size,
-                              units: document.units,
-                              offsets: sketchDimensionAnnotationOffsets
-                            }).find((item) => item.dimensionId === dimensionId);
+                            const annotation = createSketchDimensionAnnotations(
+                              {
+                                sketchId: focusedSketchId,
+                                entities:
+                                  sketches.find(
+                                    (sketch) => sketch.id === focusedSketchId
+                                  )?.entities ?? [],
+                                dimensions:
+                                  sketchDimensionsBySketchId.get(
+                                    focusedSketchId
+                                  ) ?? [],
+                                displayFrame:
+                                  getSketchViewportDisplayFrame(
+                                    focusedSketchId
+                                  )!,
+                                camera,
+                                size,
+                                units: document.units,
+                                offsets: sketchDimensionAnnotationOffsets
+                              }
+                            ).find((item) => item.dimensionId === dimensionId);
                             if (!annotation) return;
                             setSketchDimensionAnnotationOffsets((current) =>
-                              moveSketchDimensionAnnotation(current, dimensionId, {
-                                x: x - annotation.anchorX,
-                                y: y - annotation.anchorY
-                              })
+                              moveSketchDimensionAnnotation(
+                                current,
+                                dimensionId,
+                                {
+                                  x: x - annotation.anchorX,
+                                  y: y - annotation.anchorY
+                                }
+                              )
                             );
                           }}
                         />
@@ -11942,6 +12252,9 @@ export function App() {
                 }
                 onClearCrashRecovery={() =>
                   setCrashRecoveryDiscardConfirm(true)
+                }
+                onDownloadSketches={(format) =>
+                  void downloadSketchExchange(format)
                 }
                 onDownloadStep={(bodyIds) =>
                   void downloadExactStepExport(bodyIds)
@@ -12099,7 +12412,9 @@ export function App() {
                     }
                     onFlipSection={() =>
                       setInspectSectionPlane((current) =>
-                        updateInspectSectionPlane(current, { flip: !current.flip })
+                        updateInspectSectionPlane(current, {
+                          flip: !current.flip
+                        })
                       )
                     }
                     onResetSection={() =>

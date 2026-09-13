@@ -53,17 +53,34 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
         type: "string"
       },
       definition: {
-        type: "object",
-        additionalProperties: false,
-        required: ["kind", "bodyId"],
-        properties: {
-          kind: {
-            const: "body"
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "bodyId"],
+            properties: {
+              kind: {
+                const: "body"
+              },
+              bodyId: {
+                type: "string"
+              }
+            }
           },
-          bodyId: {
-            type: "string"
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "assemblyId"],
+            properties: {
+              kind: {
+                const: "assembly"
+              },
+              assemblyId: {
+                type: "string"
+              }
+            }
           }
-        }
+        ]
       },
       transform: {
         type: "object",
@@ -122,6 +139,22 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             maxItems: 3
           }
         }
+      },
+      color: {
+        type: "array",
+        items: [
+          {
+            type: "number"
+          },
+          {
+            type: "number"
+          },
+          {
+            type: "number"
+          }
+        ],
+        minItems: 3,
+        maxItems: 3
       }
     }
   },
@@ -140,17 +173,34 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
         type: "string"
       },
       definition: {
-        type: "object",
-        additionalProperties: false,
-        required: ["kind", "bodyId"],
-        properties: {
-          kind: {
-            const: "body"
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "bodyId"],
+            properties: {
+              kind: {
+                const: "body"
+              },
+              bodyId: {
+                type: "string"
+              }
+            }
           },
-          bodyId: {
-            type: "string"
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "assemblyId"],
+            properties: {
+              kind: {
+                const: "assembly"
+              },
+              assemblyId: {
+                type: "string"
+              }
+            }
           }
-        }
+        ]
       }
     }
   },
@@ -2953,6 +3003,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -3009,6 +3061,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -3123,6 +3281,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -3179,6 +3339,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -3379,6 +3645,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -3435,6 +3703,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -3487,6 +3861,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -3543,6 +3919,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -3679,6 +4161,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -3737,6 +4221,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
           planarCoordinate: {
             type: "number"
           },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
+            type: "number"
+          },
           linearAxis: {
             enum: ["x", "y", "z"]
           },
@@ -3780,6 +4370,34 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
         type: "string"
       },
       toolBodyId: {
+        type: "string"
+      }
+    }
+  },
+  "feature.copyBody": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "sourceBodyId", "sourceCheckpointId"],
+    properties: {
+      op: {
+        const: "feature.copyBody"
+      },
+      id: {
+        type: "string"
+      },
+      bodyId: {
+        type: "string"
+      },
+      name: {
+        type: "string"
+      },
+      sourceBodyId: {
+        type: "string"
+      },
+      sourceCheckpointId: {
+        type: "string"
+      },
+      checkpointId: {
         type: "string"
       }
     }
@@ -3962,6 +4580,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -4018,6 +4638,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -4456,6 +5182,47 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
       }
     ]
   },
+  "feature.faceOffset": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "targetBodyId", "faceRef", "distance"],
+    properties: {
+      op: {
+        const: "feature.faceOffset"
+      },
+      id: {
+        type: "string"
+      },
+      bodyId: {
+        type: "string"
+      },
+      name: {
+        type: "string"
+      },
+      targetBodyId: {
+        type: "string"
+      },
+      faceRef: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "bodyId", "anchorId"],
+        properties: {
+          kind: {
+            const: "topologyAnchor"
+          },
+          bodyId: {
+            type: "string"
+          },
+          anchorId: {
+            type: "string"
+          }
+        }
+      },
+      distance: {
+        type: "number"
+      }
+    }
+  },
   "feature.fillet": {
     type: "object",
     additionalProperties: false,
@@ -4496,6 +5263,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -4552,6 +5321,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -4710,6 +5585,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -4766,6 +5643,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -4998,6 +5981,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -5054,6 +6039,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -5173,6 +6264,32 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     }
                   }
                 ]
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "face"],
+            properties: {
+              kind: {
+                const: "directFace"
+              },
+              face: {
+                type: "object",
+                additionalProperties: false,
+                required: ["kind", "bodyId", "anchorId"],
+                properties: {
+                  kind: {
+                    const: "topologyAnchor"
+                  },
+                  bodyId: {
+                    type: "string"
+                  },
+                  anchorId: {
+                    type: "string"
+                  }
+                }
               }
             }
           }
@@ -6385,6 +7502,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -6441,6 +7560,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -6841,6 +8066,22 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
       }
     ]
   },
+  "feature.updateFaceOffset": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "id", "distance"],
+    properties: {
+      op: {
+        const: "feature.updateFaceOffset"
+      },
+      id: {
+        type: "string"
+      },
+      distance: {
+        type: "number"
+      }
+    }
+  },
   "feature.updateFillet": {
     type: "object",
     additionalProperties: false,
@@ -6975,6 +8216,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -7031,6 +8274,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -7242,6 +8591,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -7298,6 +8649,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {
@@ -8340,6 +9797,22 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             name: {
               type: "string"
             },
+            color: {
+              type: "array",
+              items: [
+                {
+                  type: "number"
+                },
+                {
+                  type: "number"
+                },
+                {
+                  type: "number"
+                }
+              ],
+              minItems: 3,
+              maxItems: 3
+            },
             sourceIdentity: {
               type: "object",
               additionalProperties: false,
@@ -8368,6 +9841,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 properties: {
                   code: {
                     enum: [
+                      "STEP_APPEARANCE_PARTIAL",
                       "STEP_READER_AVAILABLE",
                       "STEP_TRANSFER_COMPLETE",
                       "STEP_HEALING_APPLIED",
@@ -11758,6 +13232,8 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: [
               "checkpointEntityPresent",
               "axisAlignedPlanarFace",
+              "planarFace",
+              "cylindricalFace",
               "axisAlignedLinearEdge",
               "pointVertex"
             ]
@@ -11814,6 +13290,112 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
             enum: ["x", "y", "z"]
           },
           planarCoordinate: {
+            type: "number"
+          },
+          planeFrame: {
+            type: "object",
+            additionalProperties: false,
+            required: ["origin", "xDirection", "yDirection", "normal"],
+            properties: {
+              origin: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              xDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              yDirection: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              },
+              normal: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 3,
+                maxItems: 3
+              }
+            }
+          },
+          axis: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          axisOrigin: {
+            type: "array",
+            items: [
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              },
+              {
+                type: "number"
+              }
+            ],
+            minItems: 3,
+            maxItems: 3
+          },
+          radius: {
             type: "number"
           },
           linearAxis: {

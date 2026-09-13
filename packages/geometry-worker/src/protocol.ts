@@ -1,3 +1,5 @@
+import type { GeometryKernelStepAssembly } from "@web-cad/geometry-kernel/protocol";
+export type { GeometryKernelStepAssembly } from "@web-cad/geometry-kernel/protocol";
 import type {
   BooleanExtrudeSource,
   BooleanExtrudeToolSource,
@@ -848,6 +850,7 @@ export function createExactStepExportWorkerRequest(input: {
   readonly payloadId?: string;
   readonly units: GeometryKernelDocumentUnit;
   readonly bodies: readonly ExactStepExportBodySource[];
+  readonly assembly?: GeometryKernelStepAssembly;
 }): GeometryWorkerRequest<ExactStepExportRequest> {
   return {
     id: input.id,
@@ -858,7 +861,8 @@ export function createExactStepExportWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.exportStep",
       units: input.units,
-      bodies: input.bodies
+      bodies: input.bodies,
+      ...(input.assembly ? { assembly: input.assembly } : {})
     }
   };
 }
@@ -885,6 +889,7 @@ export function createStepImportWorkerRequest(input: {
   readonly sourceFileName: string;
   readonly bytes: Uint8Array;
   readonly maxBodyCount?: number;
+  readonly units?: GeometryKernelDocumentUnit;
   readonly bodyId?: string;
   readonly checkpointId?: string;
 }): GeometryWorkerRequest<StepImportRequest> {
@@ -899,6 +904,7 @@ export function createStepImportWorkerRequest(input: {
       sourceFileName: input.sourceFileName,
       bytes: input.bytes,
       maxBodyCount: input.maxBodyCount,
+      units: input.units,
       bodyId: input.bodyId,
       checkpointId: input.checkpointId
     }

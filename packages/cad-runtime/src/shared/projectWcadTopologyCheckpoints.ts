@@ -9,6 +9,7 @@ import type {
 } from "@web-cad/cad-core";
 import {
   CadEngine,
+  createProjectHistoricalTopologySources,
   createCadDocumentFromSnapshot,
   encodeWcadCanonicalCbor,
   exportCadProjectWcad,
@@ -56,6 +57,9 @@ export {
 export interface ProjectWcadTopologyCheckpointPayloadInput {
   readonly document: CadDocument;
   readonly historyBaseline?: CadDocumentSnapshot;
+  readonly historicalTopologySources?: ReturnType<
+    typeof createProjectHistoricalTopologySources
+  >;
   readonly features: readonly CadFeatureSummary[];
   readonly sketches: readonly SketchSnapshot[];
   readonly generatedFacesByKey?: ReadonlyMap<string, CadGeneratedFaceReference>;
@@ -585,6 +589,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
 export async function createProjectWcadTopologyCheckpointPayloadInputs({
   document,
   historyBaseline,
+  historicalTopologySources = [],
   features,
   sketches,
   generatedFacesByKey = new Map(),
@@ -599,6 +604,11 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
       features,
       sketches
     },
+    ...historicalTopologySources.map((source) => ({
+      document: { ...document, topologyIdentity: source.snapshot },
+      features,
+      sketches
+    })),
     ...(historyBaseline
       ? [createCheckpointDocumentContextFromSnapshot(historyBaseline)]
       : [])
@@ -614,15 +624,25 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
     return [];
   }
 
-  const sourcesByContext = contexts.map((context) =>
-    createCheckpointExactSourcesByBodyId(
-      context.features,
-      context.sketches,
-      generatedFacesByKey,
-      context.document.namedReferences,
-      context.document
-    )
-  );
+  const sourcesByContext = new Map<
+    number,
+    ReadonlyMap<string, DerivedExactMetadataSource>
+  >();
+  const sourcesFor = (index: number) => {
+    let sources = sourcesByContext.get(index);
+    if (!sources) {
+      const context = contexts[index]!;
+      sources = createCheckpointExactSourcesByBodyId(
+        context.features,
+        context.sketches,
+        generatedFacesByKey,
+        context.document.namedReferences,
+        context.document
+      );
+      sourcesByContext.set(index, sources);
+    }
+    return sources;
+  };
   const importedPayloadsByCheckpointId = new Map(
     importedCheckpointPayloads.map((payload) => [payload.checkpointId, payload])
   );
@@ -630,14 +650,28 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
 
   for (const checkpointSource of checkpointSources) {
     const { checkpoint } = checkpointSource;
+    // A captured checkpoint is an immutable historical exact body, including
+    // checkpoints made from downstream results. Preserve its verified bytes;
+    // rebuilding today's feature recipe can change or lose that evidence.
+    const captured = importedPayloadsByCheckpointId.get(
+      checkpoint.checkpointId
+    );
+    if (
+      captured &&
+      captured.bodyId === checkpoint.bodyId &&
+      (!checkpoint.sourceFeatureId ||
+        captured.sourceFeatureId === checkpoint.sourceFeatureId)
+    ) {
+      payloads.push(captured);
+      continue;
+    }
     const sourceContextIndex = checkpointSource.contextIndexes.find(
-      (contextIndex) =>
-        sourcesByContext[contextIndex]?.has(checkpoint.bodyId) === true
+      (contextIndex) => sourcesFor(contextIndex).has(checkpoint.bodyId)
     );
     const source =
       sourceContextIndex === undefined
         ? undefined
-        : sourcesByContext[sourceContextIndex]?.get(checkpoint.bodyId);
+        : sourcesFor(sourceContextIndex).get(checkpoint.bodyId);
     const sourceDocument =
       sourceContextIndex === undefined
         ? undefined
@@ -695,9 +729,9 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
       const normalizedPayload = normalizeCheckpointPayloadForSourceAnchors({
         topologySnapshot,
         signaturePayload: result.checkpointPayload.signaturePayload,
-        anchors: checkpointSource.contextIndexes.flatMap(
-          (contextIndex) =>
-            contexts[contextIndex]?.document.topologyIdentity?.anchors.filter(
+        anchors: contexts.flatMap(
+          (context) =>
+            context.document.topologyIdentity?.anchors.filter(
               (anchor) => anchor.checkpointId === checkpoint.checkpointId
             ) ?? []
         ),
@@ -1372,6 +1406,31 @@ function createTopologyAnchorCommandProofForTarget(
     return undefined;
   }
 
+  if (entity.surfaceClass === "plane" && entity.planeFrame)
+    return {
+      kind: "planarFace",
+      entityKind: "face",
+      evidenceSource: "checkpointSnapshot",
+      exposesCheckpointLocalIds: false,
+      bounds: entity.bounds,
+      planeFrame: entity.planeFrame
+    };
+  if (
+    entity.surfaceClass === "cylinder" &&
+    entity.axis &&
+    entity.axisOrigin &&
+    entity.radius !== undefined
+  )
+    return {
+      kind: "cylindricalFace",
+      entityKind: "face",
+      evidenceSource: "checkpointSnapshot",
+      exposesCheckpointLocalIds: false,
+      bounds: entity.bounds,
+      axis: entity.axis,
+      axisOrigin: entity.axisOrigin,
+      radius: entity.radius
+    };
   const bounds = entity.bounds;
   const plane = findAxisAlignedPlaneForTopologyAnchorProof(entity, bounds);
 
@@ -1584,6 +1643,8 @@ export async function exportProjectWcadWithTopologyCheckpoints({
     await createProjectWcadTopologyCheckpointPayloadInputs({
       document: engine.getDocument(),
       historyBaseline: project.historyBaseline,
+      historicalTopologySources:
+        createProjectHistoricalTopologySources(project),
       features,
       sketches,
       generatedFacesByKey,

@@ -95,7 +95,6 @@ scenarios passed; `node scripts/scenarios-run.mjs` passed 25/25 command cases.
 Success/break screenshots are in `.metrics/ui-smoke/`. Script ESLint,
 Prettier, Node syntax validation, and `git diff --check` passed.
 
-
 2026-09-07 follow-up: pre-Apply assertions reproduced a real app defect in both
 focused journeys: valid assembly mate drafts displayed an unsupported exact
 preview error. Preview routing now uses the same feature-kind classification
@@ -104,3 +103,67 @@ solid-feature previews. All four mate Use paths assert no preview/error before
 Apply (and before Cancel in the concentric path). The strengthened tests failed
 before the fix and all five UI workflows passed afterward. The app typecheck
 and 106 focused web tests passed. No geometry or command support changed.
+
+## Editable interchange
+
+`pnpm smoke:interchange` is the small default closer. It runs the two focused
+shared-runtime test files, writes its STEP/native fixtures under
+`.metrics/editable-interchange/`, and executes `scenarios/editable-interchange.json`.
+Then run `pnpm smoke:ui -- scenarios/editable-interchange.json` and
+`pnpm smoke:interchange:browser` for the command engine and real UI journeys.
+The `useSeed` override lets this scenario keep its authored command fixture while
+the Use path starts empty and imports the generated STEP file through Import.
+
+The Use journey imports a nested assembly, makes one occurrence independent,
+selects a real face in the viewport, offsets it, checks changed and unchanged
+body volumes, uses Undo/Redo, saves a native file, reloads the app, opens that
+file, and edits the saved feature again. An invalid STEP is the one break case.
+Native Open/Save use file-picker fixtures while exercising the real product
+reader/writer and controls. They do not test OS dialogs or filesystem permissions.
+Canvas selection uses native coordinates; orbit uses native Chromium mouse input
+through the existing Bun.WebView CDP connection. No browser API applies modeling
+commands during these interactions.
+
+The separate, deliberately slower `pnpm smoke:engine-interchange` uses the pinned
+public 13.4 MB engine. It checks import, an independent occurrence, a bore change,
+sketch cuts, movement, native reopen and parameter/history editing, STEP export
+and reimport, then further bore and sketch edits. Its checked report is
+[`engine-evidence.json`](../examples/editable-interchange/engine-evidence.json).
+Run `pnpm smoke:engine-interchange:browser` afterward for full-engine rendering,
+Fit, orbit and selection. Avoid concurrent large geometry runs when collecting
+performance evidence.
+
+The shared renderer uses WebGL2 when available. Chromium smoke explicitly uses
+SwiftShader software WebGL to make this path available in headless environments;
+these timings are not hardware-GPU benchmarks. `expectGpu` checks definitions
+and placed instance counts. Orbit checks that mesh buffers are reused and records
+requestAnimationFrame intervals. `submitMs` measures CPU draw submission only;
+it is not frame rate. Screenshots still require visual inspection.
+
+2026-09-13: the isolated full engine passed all 18 headless stages. Cold STEP
+import took 49.75 s and exact readiness another 0.48 s. STEP export took 11.36 s;
+reimport took 48.24 s plus 0.50 s readiness. All 246 part occurrences and 266
+solids survive; making one bushing independent changes 51 unique definitions
+to 52. The small browser import/edit/history/native-reopen journey and invalid
+file break passed in 10.3 s. The command-engine gate passed in 2.2 s; the
+two existing assembly regressions passed in 5.6 s and 6.2 s. The 10-second
+cold engine target remains unmet.
+
+The full-engine Chromium Use journey passed in 72.4 s, with 59.6 s for import
+through readiness. It rendered 51 shared mesh definitions as 246 occurrences
+(461,173 placed triangles), passed Fit/orbit/component selection, and reported
+the invalid-file failure without freezing. The 18-step native orbit produced
+54 requestAnimationFrame samples with median 16.7 ms and p95 116.6 ms intervals;
+mesh uploads stayed at 52. These are software-WebGL measurements, with visible
+frame-time spikes; they do not establish sustained 60-fps hardware rendering.
+Isometric, orbit, front, and selection screenshots were inspected. The compact
+[`browser-evidence.json`](../examples/editable-interchange/browser-evidence.json)
+records the command, fixture identity, checks, and timing limits.
+
+Final review added focused regression checks for checkpoint-ID reuse after Undo
+and native Save/Open/Redo when the imported geometry exists only in redo history.
+The importer, exact metadata, and display paths also prove strict evidence-cache
+reuse without repeated topology/property extraction, rejecting forged evidence.
+The final small UI journey passed in 9.8 s. Live reload and source watching are
+disabled in the smoke server, preventing concurrent file edits from resetting
+a running journey. No scenario retries are used.

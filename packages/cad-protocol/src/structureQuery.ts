@@ -1,7 +1,7 @@
 /** Pose pages are bounded independently of the number of edges in part definitions. */
 export function isProjectStructureQuery(value: unknown): value is {
   readonly query: "project.structure";
-  readonly projection?: "full" | "poses";
+  readonly projection?: "full" | "poses" | "occurrences";
   readonly assemblyIds?: readonly string[];
   readonly instanceIds?: readonly string[];
   readonly offset?: number;
@@ -29,7 +29,8 @@ export function isProjectStructureQuery(value: unknown): value is {
     ) &&
     (query.projection === undefined ||
       query.projection === "full" ||
-      query.projection === "poses") &&
+      query.projection === "poses" ||
+      query.projection === "occurrences") &&
     ids(query.assemblyIds) &&
     ids(query.instanceIds) &&
     (query.offset === undefined ||
@@ -39,6 +40,7 @@ export function isProjectStructureQuery(value: unknown): value is {
         (query.limit as number) >= 1 &&
         (query.limit as number) <= 1000)) &&
     (query.projection === "poses" ||
+      query.projection === "occurrences" ||
       ["assemblyIds", "instanceIds", "offset", "limit"].every(
         (key) => query[key] === undefined
       ))

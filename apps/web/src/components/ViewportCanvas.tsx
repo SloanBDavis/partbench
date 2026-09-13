@@ -1,5 +1,6 @@
 import {
   createDefaultCamera,
+  createGpuMeshRenderer,
   orbitCamera,
   panCamera,
   pickExactRenderBodies,
@@ -106,6 +107,31 @@ export function ViewportCanvas({
   readonly visualStates?: readonly RenderVisualStateInput[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gridCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gpuCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gpuRendererRef =
+    useRef<ReturnType<typeof createGpuMeshRenderer>>(undefined);
+  const [gpuRevision, setGpuRevision] = useState(0);
+  useEffect(() => {
+    const canvas = gpuCanvasRef.current;
+    const lost = (event: Event) => {
+      event.preventDefault();
+      setGpuRevision((value) => value + 1);
+    };
+    const restored = () => {
+      gpuRendererRef.current?.dispose();
+      gpuRendererRef.current = undefined;
+      setGpuRevision((value) => value + 1);
+    };
+    canvas?.addEventListener("webglcontextlost", lost);
+    canvas?.addEventListener("webglcontextrestored", restored);
+    return () => {
+      canvas?.removeEventListener("webglcontextlost", lost);
+      canvas?.removeEventListener("webglcontextrestored", restored);
+      gpuRendererRef.current?.dispose();
+      gpuRendererRef.current = undefined;
+    };
+  }, []);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [camera, setCamera] = useState<RenderCamera>(() =>
     createDefaultCamera()
@@ -343,6 +369,41 @@ export function ViewportCanvas({
       selectedId,
       visualStates: stableVisualStates
     };
+    const gpuCanvas = gpuCanvasRef.current;
+    const gridCanvas = gridCanvasRef.current;
+    if (gridCanvas) gridCanvas.style.display = "none";
+    if (gpuCanvas) {
+      gpuRendererRef.current ??= createGpuMeshRenderer(gpuCanvas);
+      const gpuDrawn =
+        gpuRendererRef.current?.draw(renderOptions, ratio) ?? false;
+      gpuCanvas.style.display = gpuDrawn ? "block" : "none";
+      canvas.dataset.renderer = gpuDrawn ? "webgl2" : "canvas2d";
+      if (gpuDrawn) {
+        if (gridCanvas) {
+          gridCanvas.width = canvas.width;
+          gridCanvas.height = canvas.height;
+          gridCanvas.style.width = `${size.width}px`;
+          gridCanvas.style.height = `${size.height}px`;
+          const gridContext = gridCanvas.getContext("2d");
+          if (gridContext) {
+            gridContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+            renderCanvasScene(gridContext, { primitives: [], camera, size });
+            gridCanvas.style.display = "block";
+          }
+        }
+        renderCanvasScene(context, {
+          ...renderOptions,
+          showGrid: false,
+          meshes: (meshes ?? []).filter(
+            (mesh) =>
+              mesh.source === "sketch" ||
+              Boolean(mesh.presentation) ||
+              !mesh.indices.length
+          )
+        });
+        return undefined;
+      }
+    }
     const sceneMeshes = meshes ?? [];
     const progressiveSketchScene =
       primitives.length === 0 &&
@@ -368,6 +429,7 @@ export function ViewportCanvas({
       cancelPaint?.();
     };
   }, [
+    gpuRevision,
     camera,
     clipPlane,
     exactPickBodies,
@@ -554,6 +616,19 @@ export function ViewportCanvas({
         ) : null}
         {sketchOverlay?.({ camera, size })}
         <canvas
+          ref={gridCanvasRef}
+          aria-hidden="true"
+          data-render-layer="grid"
+          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        />
+        <canvas
+          ref={gpuCanvasRef}
+          aria-hidden="true"
+          data-render-layer="solid"
+          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        />
+        <canvas
+          style={{ position: "relative" }}
           ref={canvasRef}
           aria-label="3D scene viewport"
           tabIndex={0}

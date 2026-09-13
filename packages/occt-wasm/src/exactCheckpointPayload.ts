@@ -1,3 +1,9 @@
+import {
+  readExactCheckpoint,
+  rememberExactCheckpoint,
+  metadataForVerifiedCheckpoint
+} from "./exactCheckpointCache";
+import { withOcctFaceOffsetResultShape } from "./faceOffset";
 import type {
   OpenCascadeInstance,
   TopoDS_Edge,
@@ -142,6 +148,13 @@ export interface OcctExactBodyArtifactLeaf {
   readonly topologySignature: string;
 }
 
+export interface OcctArtifactBooleanSource {
+  readonly kind: "artifactBoolean";
+  readonly target: OcctExactBodyArtifactLeaf;
+  readonly operation: OcctBooleanOperation;
+  readonly tool: OcctBooleanExtrudeToolSource;
+}
+
 export interface OcctArtifactHoleSource {
   readonly kind: "artifactHole";
   readonly target: OcctExactBodyArtifactLeaf;
@@ -185,13 +198,22 @@ export interface OcctArtifactShellSource {
 }
 
 export type OcctArtifactDownstreamSource =
+  | OcctArtifactBooleanSource
   | OcctArtifactHoleSource
   | OcctArtifactLinearPatternSource
   | OcctArtifactCircularPatternSource
   | OcctArtifactMirrorSource
   | OcctArtifactShellSource;
 
+export interface OcctFaceOffsetArtifactSource {
+  readonly kind: "faceOffset";
+  readonly target: OcctExactBodyArtifactLeaf | OcctCheckpointBodyArtifactSource;
+  readonly checkpointEntityId: string;
+  readonly distance: number;
+}
+
 export type OcctExactBodyArtifactSource =
+  | OcctFaceOffsetArtifactSource
   | OcctExactBodyMetadataSource
   | OcctCheckpointBodyArtifactSource
   | OcctCheckpointBooleanArtifactSource
@@ -328,7 +350,7 @@ export function createOcctExactBodyDataArtifactWithInstance(
   return withOcctExactBodyArtifactShape(
     oc,
     input.source,
-    (shape, sourceKind, generatedReferences) =>
+    (shape, sourceKind, generatedReferences, verifiedTopology) =>
       createExactBodyDataArtifact(
         oc,
         shape,
@@ -336,7 +358,8 @@ export function createOcctExactBodyDataArtifactWithInstance(
         generatedReferences,
         input.source.kind === "bodyArtifact"
           ? input.source.brepBytes
-          : undefined
+          : undefined,
+        verifiedTopology
       )
   );
 }
@@ -351,7 +374,7 @@ export function createOcctExactBodyArtifactWithInstance(
   return withOcctExactBodyArtifactShape(
     oc,
     input.source,
-    (shape, sourceKind, generatedReferences) =>
+    (shape, sourceKind, generatedReferences, verifiedTopology) =>
       createExactBodyArtifact(
         oc,
         shape,
@@ -359,7 +382,8 @@ export function createOcctExactBodyArtifactWithInstance(
         generatedReferences,
         input.source.kind === "bodyArtifact"
           ? input.source.brepBytes
-          : undefined
+          : undefined,
+        verifiedTopology
       )
   );
 }
@@ -407,8 +431,10 @@ export function createOcctExactBodyArtifactMetadataWithInstance(
   return withOcctExactBodyArtifactShape(
     oc,
     input.source,
-    (shape, sourceKind, generatedReferences) => ({
-      ...readExactBodyMetadata(oc, shape, sourceKind),
+    (shape, sourceKind, generatedReferences, verifiedTopology) => ({
+      ...((verifiedTopology &&
+        metadataForVerifiedCheckpoint(verifiedTopology)) ??
+        readExactBodyMetadata(oc, shape, sourceKind, verifiedTopology)),
       ...(generatedReferences ? { generatedReferences } : {})
     })
   );
@@ -420,11 +446,26 @@ export function withOcctExactBodyArtifactShape<T>(
   readResult: (
     shape: TopoDS_Shape,
     sourceKind: OcctExactTopologySourceKind,
-    generatedReferences?: OcctGeneratedReferences
+    generatedReferences?: OcctGeneratedReferences,
+    verifiedTopology?: OcctExactTopologySnapshot
   ) => T
 ): T {
+  if (source.kind === "faceOffset") {
+    return withOcctExactBodyArtifactShape(oc, source.target, (target) =>
+      withOcctFaceOffsetResultShape(
+        oc,
+        {
+          target,
+          checkpointEntityId: source.checkpointEntityId,
+          distance: source.distance
+        },
+        (shape) => readResult(shape, "faceOffset")
+      )
+    );
+  }
   if (
     source.kind === "bodyArtifact" ||
+    source.kind === "artifactBoolean" ||
     source.kind === "artifactHole" ||
     source.kind === "artifactLinearPattern" ||
     source.kind === "artifactCircularPattern" ||
@@ -460,103 +501,126 @@ function withArtifactBackedExactBodyShape<T>(
   source: OcctExactBodyArtifactLeaf | OcctArtifactDownstreamSource,
   readResult: (
     shape: TopoDS_Shape,
-    sourceKind: OcctExactTopologySourceKind
+    sourceKind: OcctExactTopologySourceKind,
+    generatedReferences?: OcctGeneratedReferences,
+    verifiedTopology?: OcctExactTopologySnapshot
   ) => T
 ): T {
   const leaf =
     source.kind === "bodyArtifact"
       ? source
-      : source.kind === "artifactHole" || source.kind === "artifactShell"
+      : source.kind === "artifactBoolean" ||
+          source.kind === "artifactHole" ||
+          source.kind === "artifactShell"
         ? source.target
         : source.seed;
-  return withVerifiedBodyArtifactShape(oc, leaf, (operand, solidCount) => {
-    if (source.kind === "bodyArtifact") {
-      return readResult(operand, source.sourceKind);
-    }
-    if (source.kind === "artifactHole") {
-      return withOcctHoleResultOnShape(oc, operand, source.tool, (shape) =>
-        readResult(shape, "hole")
-      );
-    }
-    let result: TopoDS_Shape | undefined;
-    try {
-      if (source.kind === "artifactLinearPattern") {
-        assertArtifactPatternInput(source);
-        result = source.holeTool
-          ? makeLinearHolePatternShape(oc, operand, source, source.holeTool)
-          : source.booleanTool
-            ? makeLinearBooleanPatternShape(
-                oc,
-                operand,
-                source,
-                source.booleanTool
-              )
-            : source.edgeFinishTool
-              ? makeLinearEdgeFinishPatternShape(
+  return withVerifiedBodyArtifactShape(
+    oc,
+    leaf,
+    (operand, solidCount, topology) => {
+      if (source.kind === "bodyArtifact") {
+        return readResult(operand, source.sourceKind, undefined, topology);
+      }
+      if (source.kind === "artifactBoolean") {
+        return withCheckpointBooleanResultShape(oc, operand, source, (shape) =>
+          readResult(shape, "booleanExtrudes")
+        );
+      }
+      if (source.kind === "artifactHole") {
+        return withOcctHoleResultOnShape(oc, operand, source.tool, (shape) =>
+          readResult(shape, "hole")
+        );
+      }
+      let result: TopoDS_Shape | undefined;
+      try {
+        if (source.kind === "artifactLinearPattern") {
+          assertArtifactPatternInput(source);
+          result = source.holeTool
+            ? makeLinearHolePatternShape(oc, operand, source, source.holeTool)
+            : source.booleanTool
+              ? makeLinearBooleanPatternShape(
                   oc,
                   operand,
                   source,
-                  source.edgeFinishTool
+                  source.booleanTool
                 )
-              : makeLinearPatternShape(oc, operand, source);
-        return readResult(result, "linearPattern");
-      }
-      if (source.kind === "artifactCircularPattern") {
-        assertArtifactPatternInput(source);
-        result = source.holeTool
-          ? makeCircularHolePatternShape(oc, operand, source, source.holeTool)
-          : source.booleanTool
-            ? makeCircularBooleanPatternShape(
-                oc,
-                operand,
-                source,
-                source.booleanTool
-              )
-            : source.edgeFinishTool
-              ? makeCircularEdgeFinishPatternShape(
+              : source.edgeFinishTool
+                ? makeLinearEdgeFinishPatternShape(
+                    oc,
+                    operand,
+                    source,
+                    source.edgeFinishTool
+                  )
+                : makeLinearPatternShape(oc, operand, source);
+          return readResult(result, "linearPattern");
+        }
+        if (source.kind === "artifactCircularPattern") {
+          assertArtifactPatternInput(source);
+          result = source.holeTool
+            ? makeCircularHolePatternShape(oc, operand, source, source.holeTool)
+            : source.booleanTool
+              ? makeCircularBooleanPatternShape(
                   oc,
                   operand,
                   source,
-                  source.edgeFinishTool
+                  source.booleanTool
                 )
-              : makeCircularPatternShape(oc, operand, source);
-        return readResult(result, "circularPattern");
+              : source.edgeFinishTool
+                ? makeCircularEdgeFinishPatternShape(
+                    oc,
+                    operand,
+                    source,
+                    source.edgeFinishTool
+                  )
+                : makeCircularPatternShape(oc, operand, source);
+          return readResult(result, "circularPattern");
+        }
+        if (source.kind === "artifactMirror") {
+          assertArtifactMirrorInput(source);
+          result = makeMirrorShape(oc, operand, source);
+          return readResult(result, "mirror");
+        }
+        if (solidCount !== 1) {
+          throw {
+            code: "INVALID_RESULT",
+            message: "Artifact shell requires a single-solid target artifact."
+          };
+        }
+        result = makeArtifactShellShape(oc, operand, source);
+        return readResult(result, "shell");
+      } finally {
+        result?.delete();
       }
-      if (source.kind === "artifactMirror") {
-        assertArtifactMirrorInput(source);
-        result = makeMirrorShape(oc, operand, source);
-        return readResult(result, "mirror");
-      }
-      if (solidCount !== 1) {
-        throw {
-          code: "INVALID_RESULT",
-          message: "Artifact shell requires a single-solid target artifact."
-        };
-      }
-      result = makeArtifactShellShape(oc, operand, source);
-      return readResult(result, "shell");
-    } finally {
-      result?.delete();
     }
-  });
+  );
 }
 
 function withVerifiedBodyArtifactShape<T>(
   oc: OpenCascadeInstance,
   leaf: OcctExactBodyArtifactLeaf,
-  readResult: (shape: TopoDS_Shape, solidCount: number) => T
+  readResult: (
+    shape: TopoDS_Shape,
+    solidCount: number,
+    topology: OcctExactTopologySnapshot
+  ) => T
 ): T {
   assertBodyArtifactLeaf(leaf);
   return withImportedBrepShape(oc, leaf.brepBytes, (shape) => {
-    const topology = readExactTopologySnapshot(oc, shape, leaf.sourceKind);
+    const topology = readVerifiedCheckpointTopology(
+      oc,
+      shape,
+      leaf.brepBytes,
+      leaf.brepSha256,
+      leaf.sourceKind,
+      leaf.topologySignature
+    );
     if (topology.signature !== leaf.topologySignature) {
       throw {
         code: "INVALID_RESULT",
         message: "Body artifact topology signature mismatched its BRep shape."
       };
     }
-    const solidCount = readExactBodyMetadata(oc, shape, leaf.sourceKind)
-      .topologyCounts.solidCount;
+    const solidCount = topology.entityCounts.solidCount;
     if (
       (leaf.shapePolicy === "singleSolid" && solidCount !== 1) ||
       (leaf.shapePolicy === "singleShapeOneOrMoreSolids" && solidCount < 1)
@@ -566,7 +630,7 @@ function withVerifiedBodyArtifactShape<T>(
         message: "Body artifact shape policy mismatched its BRep shape."
       };
     }
-    return readResult(shape, solidCount);
+    return readResult(shape, solidCount, topology);
   });
 }
 
@@ -690,6 +754,7 @@ function isExactTopologySourceKind(
       "circularPattern",
       "mirror",
       "shell",
+      "faceOffset",
       "importedBody"
     ].includes(value)
   );
@@ -704,15 +769,20 @@ function withCheckpointBackedExactBodyShape<T>(
     | OcctCheckpointEdgeFinishArtifactSource,
   readResult: (
     shape: TopoDS_Shape,
-    sourceKind: OcctExactTopologySourceKind
+    sourceKind: OcctExactTopologySourceKind,
+    generatedReferences?: OcctGeneratedReferences,
+    verifiedTopology?: OcctExactTopologySnapshot
   ) => T
 ): T {
   const checkpoint = source.kind === "checkpointBody" ? source : source.target;
   return withImportedBrepShape(oc, checkpoint.brepBytes, (target) => {
-    const topology = readExactTopologySnapshot(
+    const topology = readVerifiedCheckpointTopology(
       oc,
       target,
-      checkpoint.topologySourceKind
+      checkpoint.brepBytes,
+      checkpoint.brepSha256,
+      checkpoint.topologySourceKind,
+      checkpoint.topologySignature
     );
     if (topology.signature !== checkpoint.topologySignature) {
       throw {
@@ -721,7 +791,12 @@ function withCheckpointBackedExactBodyShape<T>(
       };
     }
     if (source.kind === "checkpointBody") {
-      return readResult(target, checkpoint.topologySourceKind);
+      return readResult(
+        target,
+        checkpoint.topologySourceKind,
+        undefined,
+        topology
+      );
     }
     if (source.kind === "checkpointHole") {
       return withOcctHoleResultOnShape(oc, target, source.tool, (shape) =>
@@ -770,7 +845,7 @@ function toMeshPrimitive(
 function withCheckpointBooleanResultShape<T>(
   oc: OpenCascadeInstance,
   target: TopoDS_Shape,
-  source: OcctCheckpointBooleanArtifactSource,
+  source: Pick<OcctCheckpointBooleanArtifactSource, "operation" | "tool">,
   readResult: (shape: TopoDS_Shape) => T
 ): T {
   const toolBuilder = makeBooleanExtrudeToolShape(oc, source.tool);
@@ -812,7 +887,8 @@ function createExactBodyDataArtifact(
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyArtifact["sourceKind"],
   generatedReferences?: OcctGeneratedReferences,
-  retainedBrepBytes?: Uint8Array
+  retainedBrepBytes?: Uint8Array,
+  verifiedTopology?: OcctExactTopologySnapshot
 ): OcctExactBodyDataArtifact {
   if (shape.IsNull()) {
     throw new Error(
@@ -825,21 +901,26 @@ function createExactBodyDataArtifact(
       message: "Open CASCADE exact artifact validation binding is unavailable."
     };
   }
-  const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
-  try {
-    if (!analyzer.IsValid_2()) {
-      throw new Error("Open CASCADE exact artifact source is not valid.");
+  const cachedMetadata = verifiedTopology
+    ? metadataForVerifiedCheckpoint(verifiedTopology)
+    : undefined;
+  if (!cachedMetadata) {
+    const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
+    try {
+      if (!analyzer.IsValid_2())
+        throw new Error("Open CASCADE exact artifact source is not valid.");
+    } finally {
+      analyzer.delete();
     }
-  } finally {
-    analyzer.delete();
   }
   const brepBytes = retainedBrepBytes ?? writeBrepCheckpointBytes(oc, shape);
-  const metadata = {
-    ...readExactBodyMetadata(oc, shape, sourceKind),
+  const topologySnapshot = {
+    ...(verifiedTopology ?? readExactTopologySnapshot(oc, shape, sourceKind)),
     ...(generatedReferences ? { generatedReferences } : {})
   };
-  const topologySnapshot = {
-    ...readExactTopologySnapshot(oc, shape, sourceKind),
+  const metadata = {
+    ...(cachedMetadata ??
+      readExactBodyMetadata(oc, shape, sourceKind, topologySnapshot)),
     ...(generatedReferences ? { generatedReferences } : {})
   };
   return {
@@ -858,14 +939,16 @@ function createExactBodyArtifact(
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyArtifact["sourceKind"],
   generatedReferences?: OcctGeneratedReferences,
-  retainedBrepBytes?: Uint8Array
+  retainedBrepBytes?: Uint8Array,
+  verifiedTopology?: OcctExactTopologySnapshot
 ): OcctExactBodyArtifact {
   const artifact = createExactBodyDataArtifact(
     oc,
     shape,
     sourceKind,
     generatedReferences,
-    retainedBrepBytes
+    retainedBrepBytes,
+    verifiedTopology
   );
   const mesher = new oc.BRepMesh_IncrementalMesh_2(
     shape,
@@ -1364,4 +1447,40 @@ function getOptionalOcctFs(oc: Partial<OpenCascadeInstance>):
       };
     }
   ).FS;
+}
+
+function readVerifiedCheckpointTopology(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  bytes: Uint8Array,
+  sha256: string,
+  sourceKind: OcctExactTopologySourceKind,
+  expectedSignature: string
+): OcctExactTopologySnapshot {
+  const cached = readExactCheckpoint(oc, sha256, bytes, sourceKind);
+  if (cached) {
+    if (cached.topology.signature !== expectedSignature)
+      throw {
+        code: "INVALID_RESULT",
+        message:
+          "Checkpoint topology signature mismatched its verified BRep evidence."
+      };
+    return cached.topology;
+  }
+  const topology = readExactTopologySnapshot(oc, shape, sourceKind);
+  if (topology.signature !== expectedSignature)
+    throw {
+      code: "INVALID_RESULT",
+      message: "Checkpoint topology signature mismatched its BRep shape."
+    };
+  const validity = new oc.BRepCheck_Analyzer(shape, true, false);
+  try {
+    if (!validity.IsValid_2())
+      throw new Error("Checkpoint BRep shape is not valid.");
+  } finally {
+    validity.delete();
+  }
+  const metadata = readExactBodyMetadata(oc, shape, sourceKind, topology);
+  rememberExactCheckpoint(oc, sha256, bytes, { topology, metadata });
+  return topology;
 }

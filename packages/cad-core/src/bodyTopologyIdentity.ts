@@ -34,6 +34,11 @@ export interface CreateBodyTopologyIdentityOptions {
   readonly ownerPartId: PartId;
   readonly bodyExists: (bodyId: BodyId) => boolean;
   readonly checkpointId?: string;
+  readonly offset?: number;
+  readonly limit?: number;
+  readonly includeSnapshot?: boolean;
+  /** Internal lookup for anchor planning; avoids paging away the requested ref. */
+  readonly candidateStableId?: string;
   readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 }
 
@@ -114,7 +119,7 @@ export function createBodyTopologyIdentity(
     options.bodyId,
     options.ownerPartId
   );
-  const candidates = generatedReferences
+  const generatedCandidates = generatedReferences
     ? createGeneratedReferenceCandidates({
         references: [
           generatedReferences.body,
@@ -127,6 +132,30 @@ export function createBodyTopologyIdentity(
         exactEntities: exactTopologySnapshot?.entities ?? []
       })
     : [];
+  const boundExactIds = new Set(
+    generatedCandidates.flatMap((candidate) =>
+      candidate.status === "bound" && candidate.checkpointEntityId
+        ? [candidate.checkpointEntityId]
+        : []
+    )
+  );
+  const exactCandidates = createCurrentExactReferenceCandidates({
+    bodyId: options.bodyId,
+    sourceFeatureId,
+    checkpointId: options.checkpointId,
+    sourceSignature: topology.topology.sourceIdentity.signature,
+    entities: (topology.topology.status === "healthy"
+      ? (exactTopologySnapshot?.entities ?? [])
+      : []
+    ).filter((entity) => !boundExactIds.has(entity.localId))
+  });
+  const allCandidates = [...generatedCandidates, ...exactCandidates];
+  const offset = options.offset ?? 0;
+  const candidates = options.candidateStableId
+    ? allCandidates.filter(
+        (candidate) => candidate.stableId === options.candidateStableId
+      )
+    : allCandidates.slice(offset, offset + (options.limit ?? 1000));
   const snapshot =
     exactTopologySnapshot &&
     diagnostics.every((issue) => issue.severity !== "error")
@@ -172,9 +201,14 @@ export function createBodyTopologyIdentity(
       ...(options.checkpointId ? { checkpointId: options.checkpointId } : {}),
       ...(sourceFeatureId ? { sourceFeatureId } : {}),
       ...(checkpoint ? { sourceIdentity: checkpoint.sourceIdentity } : {}),
-      ...(snapshot ? { snapshot } : {}),
+      ...(snapshot && options.includeSnapshot !== false ? { snapshot } : {}),
       descriptor,
       candidateCount: candidates.length,
+      totalCandidateCount: allCandidates.length,
+      ...(offset + candidates.length < allCandidates.length &&
+      !options.candidateStableId
+        ? { nextOffset: offset + candidates.length }
+        : {}),
       candidates,
       diagnosticCount: diagnostics.length,
       diagnostics,
@@ -248,6 +282,84 @@ function createCheckpointDiagnostics(
   }
 
   return diagnostics;
+}
+
+function createCurrentExactReferenceCandidates(input: {
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: string;
+  readonly checkpointId?: string;
+  readonly sourceSignature: string;
+  readonly entities: readonly CadBodyExactTopologyEntityDescriptor[];
+}): readonly CadTopologyGeneratedReferenceCandidate[] {
+  const groups = new Map<string, CadBodyExactTopologyEntityDescriptor[]>();
+  for (const entity of input.entities) {
+    if (
+      entity.kind !== "body" &&
+      entity.kind !== "face" &&
+      entity.kind !== "edge"
+    )
+      continue;
+    // The public discovery ID is scoped to source and exact geometric evidence,
+    // never an enumeration index. Indistinguishable entities remain ambiguous.
+    const key = sha256Hex(
+      new TextEncoder().encode(
+        JSON.stringify(
+          {
+            bodyId: input.bodyId,
+            sourceSignature: input.sourceSignature,
+            kind: entity.kind,
+            signature: entity.signature,
+            bounds: entity.bounds,
+            surfaceClass: entity.surfaceClass,
+            curveClass: entity.curveClass,
+            planeFrame: entity.planeFrame,
+            axis: entity.axis,
+            axisOrigin: entity.axisOrigin,
+            radius: entity.radius,
+            area: entity.area,
+            length: entity.length,
+            point: entity.point,
+            midpoint: entity.midpoint,
+            orientation: entity.orientation,
+            adjacency: entity.adjacency
+          },
+          (_key, value: unknown) =>
+            typeof value === "number" ? Number(value.toFixed(9)) : value
+        )
+      )
+    );
+    const group = groups.get(key) ?? [];
+    group.push(entity);
+    groups.set(key, group);
+  }
+  return [...groups.entries()].map(([hash, entities]) => {
+    const entity = entities[0]!,
+      unique = entities.length === 1;
+    const diagnostic = createDiagnostic(
+      unique ? "TOPOLOGY_MATCH_EXACT" : "TOPOLOGY_MATCH_AMBIGUOUS",
+      unique ? "info" : "warning",
+      unique
+        ? "One exact current-body entity."
+        : "Multiple entities share exact descriptor evidence; select or repair a distinguishing reference.",
+      { bodyId: input.bodyId, received: String(entities.length) }
+    );
+    return {
+      stableId: `exact:${entity.kind}:${hash}`,
+      kind: entity.kind as "body" | "face" | "edge",
+      bodyId: input.bodyId,
+      ...(input.sourceFeatureId
+        ? { sourceFeatureId: input.sourceFeatureId }
+        : {}),
+      ...(input.checkpointId ? { checkpointId: input.checkpointId } : {}),
+      ...(unique ? { checkpointEntityId: entity.localId } : {}),
+      status: unique ? ("bound" as const) : ("ambiguous" as const),
+      confidence: unique ? ("exact" as const) : ("low" as const),
+      geometrySignature: entity.signature,
+      sourceSemanticRole: `exact ${entity.surfaceClass ?? entity.curveClass ?? entity.kind}`,
+      diagnosticCount: 1,
+      diagnostics: [diagnostic]
+    };
+  });
 }
 
 function createGeneratedReferenceCandidates(input: {
@@ -351,7 +463,8 @@ function createDescriptor(input: {
     entityKinds:
       input.snapshot?.topologySnapshot.entities
         .filter(isPublicTopologyEntity)
-        .map((entity) => entity.kind) ?? [],
+        .map((entity) => entity.kind)
+        .filter((kind, index, kinds) => kinds.indexOf(kind) === index) ?? [],
     entityCount: input.snapshot?.topologySnapshot.entityCount ?? 0,
     status: input.status,
     diagnostics: input.diagnostics

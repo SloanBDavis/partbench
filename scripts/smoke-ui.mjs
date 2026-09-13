@@ -51,7 +51,13 @@ function assertChromium(userAgent) {
   }
 }
 function createChromeWebView(chromePath) {
-  const argv = ["--disable-dev-shm-usage"];
+  const argv = [
+    "--disable-dev-shm-usage",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--enable-webgl"
+  ];
   if (process.env.PARTBENCH_SMOKE_BROWSER_NO_SANDBOX === "1") {
     argv.push("--no-sandbox");
   }
@@ -181,10 +187,27 @@ async function startWorkbench(port) {
   const server = await createServer({
     configFile: resolve(repoRoot, "apps/web/vite.config.ts"),
     root: resolve(repoRoot, "apps/web"),
+    plugins: [
+      {
+        name: "ui-smoke-startup-errors",
+        transformIndexHtml() {
+          return [
+            {
+              tag: "script",
+              injectTo: "head-prepend",
+              children:
+                "window.__PARTBENCH_SMOKE_STARTUP_ERRORS__=[];addEventListener('error',e=>window.__PARTBENCH_SMOKE_STARTUP_ERRORS__.push(e.message));addEventListener('unhandledrejection',e=>window.__PARTBENCH_SMOKE_STARTUP_ERRORS__.push(String(e.reason?.stack??e.reason)));"
+            }
+          ];
+        }
+      }
+    ],
     server: {
       host: "127.0.0.1",
       port,
-      strictPort: true
+      strictPort: true,
+      watch: null,
+      hmr: false
     }
   });
   await server.listen();
@@ -203,6 +226,12 @@ async function waitForHook(view) {
       "Boolean(window.__PARTBENCH_UI_SMOKE__ && window.__PARTBENCH_UI_SMOKE__.ready)"
     );
     if (ready) return;
+    const errors = await evaluate(
+      view,
+      "window.__PARTBENCH_SMOKE_STARTUP_ERRORS__ ?? []"
+    );
+    if (errors.length)
+      throw new Error("Workbench startup failed: " + errors.join("; "));
     await delay(200);
   }
   throw new Error("Timed out waiting for the live workbench smoke hook");
@@ -745,9 +774,14 @@ async function runPromotionScenario(view, name, scenario) {
 async function typeField(view, selector, text) {
   const value = String(text ?? "");
   await clickVisibleControl(view, selector);
-  await view.click(selector, { clickCount: 3, timeout: 5_000 });
-  await view.press("Backspace");
-  if (value) await view.type(value);
+  await withDeadline(
+    view.click(selector, { clickCount: 3, timeout: 5_000 }),
+    7_000,
+    "select field text " + selector
+  );
+  await withDeadline(view.press("Backspace"), 7_000, "clear field " + selector);
+  if (value)
+    await withDeadline(view.type(value), 7_000, "type field " + selector);
   const actual = await evaluate(
     view,
     "document.querySelector(" + JSON.stringify(selector) + ")?.value"
@@ -850,8 +884,16 @@ async function clickVisibleControl(view, selector) {
   ) {
     await view.click(overflow, { timeout: 5_000 });
   }
-  await view.scrollTo(live, { block: "nearest", timeout: 5_000 });
-  await view.click(live, { timeout: 5_000 });
+  await withDeadline(
+    view.scrollTo(live, { block: "nearest", timeout: 5_000 }),
+    7_000,
+    "scroll to " + selector
+  );
+  await withDeadline(
+    view.click(live, { timeout: 5_000 }),
+    7_000,
+    "click " + selector
+  );
 }
 
 async function selectCollectorOption(view, spec) {
@@ -893,12 +935,13 @@ function someMatches(actualList, expectedItem) {
 }
 
 async function applyUseSeedSetup(view, name, scenario) {
-  if (!Array.isArray(scenario.seed) || scenario.seed.length === 0) {
+  const seed = scenario.useSeed ?? scenario.seed;
+  if (!Array.isArray(seed) || seed.length === 0) {
     return;
   }
   // applyOps(seed) is workbench SETUP so Use can operate the claimed feature.
   // It is not Use. Use is the clicks/typed fields/Apply that follow.
-  const seedResult = await applyOps(view, scenario.seed);
+  const seedResult = await applyOps(view, seed);
   if (!seedResult.ok)
     throw new Error(
       name + " seed failed: " + formatApplyError(seedResult.error)
@@ -1077,11 +1120,71 @@ async function openProjectFile(
   }
 }
 
+async function saveProjectFile(view, filePath) {
+  const fileName = filePath.split(/[\\/]/).at(-1);
+  await evaluate(
+    view,
+    `(() => {
+    window.__pbOriginalSavePicker=window.showSaveFilePicker;
+    window.__pbSavedFile={closed:false};
+    window.showSaveFilePicker=async()=>({kind:'file',name:${JSON.stringify(fileName)},queryPermission:async()=> 'granted',requestPermission:async()=> 'granted',createWritable:async()=>({
+      write:async data=>{window.__pbSavedFile.bytes=new Uint8Array(data instanceof Blob?await data.arrayBuffer():data);},
+      close:async()=>{window.__pbSavedFile.closed=true;}
+    })});return true;
+  })()`
+  );
+  try {
+    await clickVisibleControl(view, '[data-ribbon-roving-id="mode-project"]');
+    await clickVisibleControl(view, '[data-action-id="project.save-as"]');
+    const deadline = performance.now() + readyTimeoutMs;
+    while (!(await evaluate(view, "window.__pbSavedFile.closed"))) {
+      await assertNoErrorToast(view, "Save native project");
+      if (performance.now() > deadline)
+        throw new Error("Native save did not complete");
+      await delay(50);
+    }
+    const encoded = await evaluate(
+      view,
+      "(() => {const bytes=window.__pbSavedFile.bytes;let text='';for(let i=0;i<bytes.length;i+=32768)text+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(text);})()"
+    );
+    const path = resolve(repoRoot, filePath);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, Buffer.from(encoded, "base64"));
+    console.log(
+      "Native UI save",
+      JSON.stringify({
+        filePath,
+        byteLength: Buffer.from(encoded, "base64").length
+      })
+    );
+  } finally {
+    await evaluate(
+      view,
+      "(() => {window.showSaveFilePicker=window.__pbOriginalSavePicker;delete window.__pbOriginalSavePicker;delete window.__pbSavedFile;return true;})()"
+    );
+  }
+}
+
 async function runUseSteps(view, name, steps, label) {
   let sawScreenshot = false;
   let sawBreak = false;
   const clicks = [];
   for (const step of steps) {
+    if (process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1")
+      console.log(name + " " + label + " step", JSON.stringify(step));
+    if (step.reload) {
+      await withDeadline(
+        view.navigate(await evaluate(view, "location.href")),
+        60_000,
+        "reopen workbench"
+      );
+      await waitForHook(view);
+      continue;
+    }
+    if (step.saveWcad) {
+      await saveProjectFile(view, step.saveWcad);
+      continue;
+    }
     if (step.openWcad) {
       clicks.push('[data-action-id="project.open"]');
       await openProjectFile(view, step.openWcad);
@@ -1099,7 +1202,11 @@ async function runUseSteps(view, name, steps, label) {
       continue;
     }
     if (step.expectText) {
-      const { selector, text } = step.expectText;
+      const { selector, text, includes } = step.expectText;
+      const textMatches = (actual) =>
+        typeof includes === "string"
+          ? typeof actual === "string" && actual.includes(includes)
+          : actual === text;
       const deadline = performance.now() + 10_000;
       let actual;
       do {
@@ -1109,14 +1216,14 @@ async function runUseSteps(view, name, steps, label) {
             JSON.stringify(selector) +
             ")?.textContent?.trim()"
         );
-        if (actual === text) break;
+        if (textMatches(actual)) break;
         await delay(50);
       } while (performance.now() < deadline);
-      if (actual !== text)
+      if (!textMatches(actual))
         throw new Error(
           name +
             " expected text " +
-            JSON.stringify(text) +
+            JSON.stringify(includes ?? text) +
             ", got " +
             JSON.stringify(actual)
         );
@@ -1154,6 +1261,101 @@ async function runUseSteps(view, name, steps, label) {
             ", got " +
             actual
         );
+      continue;
+    }
+    if (step.orbit) {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: false
+      });
+      const rect = await evaluate(
+        view,
+        `(() => {
+        const canvas=document.querySelector('canvas[aria-label="3D scene viewport"]');
+        const r=canvas.getBoundingClientRect();
+        const monitor={times:[],active:true,frame:0,uploads:JSON.parse(document.querySelector('[data-render-layer="solid"]').dataset.gpuMetrics).uploads};
+        const sample=t=>{if(!monitor.active)return;monitor.times.push(t);monitor.frame=requestAnimationFrame(sample);};
+        monitor.frame=requestAnimationFrame(sample);window.__pbOrbitMonitor=monitor;
+        return {x:r.x+r.width*0.4,y:r.y+r.height*0.45,width:r.width,height:r.height};
+      })()`
+      );
+      const dispatch = (params) =>
+        withDeadline(
+          view.cdp("Input.dispatchMouseEvent", params),
+          7_000,
+          "viewport orbit input"
+        );
+      await dispatch({
+        type: "mousePressed",
+        x: rect.x,
+        y: rect.y,
+        button: "left",
+        buttons: 1,
+        clickCount: 1
+      });
+      for (let i = 1; i <= 18; i++) {
+        await dispatch({
+          type: "mouseMoved",
+          x: rect.x + (rect.width * 0.25 * i) / 18,
+          y: rect.y + (rect.height * 0.15 * i) / 18,
+          button: "left",
+          buttons: 1
+        });
+        await evaluate(
+          view,
+          "new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))"
+        );
+      }
+      await dispatch({
+        type: "mouseReleased",
+        x: rect.x + rect.width * 0.25,
+        y: rect.y + rect.height * 0.15,
+        button: "left",
+        buttons: 0,
+        clickCount: 1
+      });
+      const evidence = await evaluate(
+        view,
+        `(() => {
+        const m=window.__pbOrbitMonitor;m.active=false;cancelAnimationFrame(m.frame);delete window.__pbOrbitMonitor;
+        const intervals=m.times.slice(1).map((t,i)=>t-m.times[i]).sort((a,b)=>a-b);
+        const metrics=JSON.parse(document.querySelector('[data-render-layer="solid"]').dataset.gpuMetrics);
+        return {frames:m.times.length,medianFrameIntervalMs:intervals[Math.floor(intervals.length/2)],p95FrameIntervalMs:intervals[Math.floor(intervals.length*0.95)],uploadsBefore:m.uploads,metrics};
+      })()`
+      );
+      if (
+        evidence.frames < 18 ||
+        evidence.uploadsBefore !== evidence.metrics.uploads
+      )
+        throw new Error(
+          "Orbit rebuilt geometry or did not produce frames: " +
+            JSON.stringify(evidence)
+        );
+      console.log(name + " native orbit " + JSON.stringify(evidence));
+      clicks.push("canvas orbit");
+      continue;
+    }
+    if (step.clickCanvas) {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: false
+      });
+      const rect = await evaluate(
+        view,
+        "(() => {const r=document.querySelector('canvas[aria-label=\"3D scene viewport\"]').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()"
+      );
+      const { x, y } = step.clickCanvas;
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        x < 0 ||
+        x > 1 ||
+        y < 0 ||
+        y > 1
+      )
+        throw new Error("clickCanvas needs normalized x/y in [0,1]");
+      await view.click(rect.x + rect.width * x, rect.y + rect.height * y);
+      clicks.push('canvas[aria-label="3D scene viewport"]');
       continue;
     }
     if (step.click) {
@@ -1302,6 +1504,24 @@ async function runUseSteps(view, name, steps, label) {
       }
       continue;
     }
+    if (step.expectGpu) {
+      await waitForReady(view, {
+        timeoutMs: readyTimeoutMs,
+        allowEmpty: false
+      });
+      const gpu = await evaluate(
+        view,
+        `(() => {const canvas=document.querySelector('[data-render-layer="solid"]');return {backend:document.querySelector('canvas[aria-label="3D scene viewport"]')?.dataset.renderer,metrics:JSON.parse(canvas?.dataset.gpuMetrics??'null'),error:canvas?.dataset.gpuError};})()`
+      );
+      if (
+        gpu.backend !== "webgl2" ||
+        !gpu.metrics ||
+        !matches(gpu.metrics, step.expectGpu, true)
+      )
+        throw new Error(name + " GPU display mismatch: " + JSON.stringify(gpu));
+      console.log(name + " GPU display " + JSON.stringify(gpu));
+      continue;
+    }
     if (step.screenshot) {
       if (label === "use") await assertNoErrorToast(view, name + " " + label);
       await writeUseScreenshot(view, step.screenshot);
@@ -1397,8 +1617,31 @@ async function main() {
   const freshPage = async () => {
     if (view) view.close();
     view = createChromeWebView(chromePath);
-    await view.navigate(appUrl);
-    await waitForHook(view);
+    console.log("Opening workbench " + appUrl);
+    try {
+      await withDeadline(
+        view.navigate(appUrl),
+        60_000,
+        "initial workbench navigation"
+      );
+      await waitForHook(view);
+    } catch (error) {
+      try {
+        console.error(
+          "Startup document",
+          await evaluate(view, "document.body?.innerText?.slice(0, 4000)", 5000)
+        );
+      } catch {
+        /* Startup may have failed before a document was available. */
+      }
+      await captureFailure(
+        view,
+        join(screenshotDir, "startup-failure.png"),
+        "startup",
+        String(error)
+      );
+      throw error;
+    }
     return view;
   };
 

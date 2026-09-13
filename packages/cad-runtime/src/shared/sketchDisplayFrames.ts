@@ -127,6 +127,12 @@ export function createTopologyAnchorFaceDisplayFrame(
     { readonly kind: "topologyAnchorFace" }
   >
 ): SketchDisplayFrame {
+  if (attachment.planeFrame)
+    return {
+      origin: [...attachment.planeFrame.origin],
+      uAxis: [...attachment.planeFrame.xDirection],
+      vAxis: [...attachment.planeFrame.yDirection]
+    };
   switch (attachment.planarAxis) {
     case "x":
       return {

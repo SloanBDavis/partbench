@@ -21,7 +21,7 @@ import {
   createOcctExactBodyMeshWithInstance,
   createOcctExactTopologySnapshotWithInstance,
   createOcctExactTopologyCheckpointPayloadWithInstance,
-  createOcctStepImportWithInstance,
+  createOcctStepImportWithLoader,
   createOcctStepExportWithInstance,
   runOcctNamedStepProbeWithInstance,
   createOcctWireExtrudeMeshWithInstance
@@ -909,7 +909,9 @@ export async function executeTimedBrowserGeometryKernelRequest<
     const tessellationStart = performance.now();
 
     try {
-      return createOcctStepImportWithInstance(oc, input);
+      // Prime the same kernel-owned canonical evidence cache as headless import
+      // before the worker transfers the imported BRep payloads to its caller.
+      return await createOcctStepImportWithLoader(async () => oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;
@@ -976,3 +978,5 @@ export type {
   GeometryKernelExactViewportPickMapEntity,
   GeometryKernelExactViewportPickMapPayload
 } from "./kernel";
+
+export type { GeometryKernelStepAssembly } from "./kernel";

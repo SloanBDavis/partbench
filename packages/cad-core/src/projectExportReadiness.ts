@@ -740,38 +740,23 @@ function classifyBodySource(
           checkpoint.bodyId === body.id &&
           checkpoint.status === "active"
       ) === true);
-  const importedHoleUnsupported =
-    body.source.type === "sketchHoleFeature" &&
-    feature?.kind === "hole" &&
-    [...document.features.values()].some(
-      (candidate) =>
-        candidate.bodyId === feature.targetBodyId &&
-        candidate.kind === "importedBody"
-    );
 
   if (
     body.consumedByFeatureId ||
     !sourceRecordAvailable ||
-    !importedCheckpointAvailable ||
-    importedHoleUnsupported
+    !importedCheckpointAvailable
   ) {
     const capability = body.consumedByFeatureId
       ? classifyLegacyBodySource(document, body, derivedExactMetadata)
       : createUnresolvedBodySourceReadiness(body, sourceKind);
-    const status: CadCurrentExactResultStatus = importedHoleUnsupported
-      ? "unsupported"
-      : "blocked";
+    const status: CadCurrentExactResultStatus = "blocked";
     const diagnostic = createExactResultDiagnostic(
       body,
       status,
-      importedHoleUnsupported
-        ? "EXPORT_BODY_SOURCE_UNSUPPORTED"
-        : "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-      importedHoleUnsupported
-        ? `Hole body ${body.id} targets an imported body, which is outside the completed command matrix.`
-        : !importedCheckpointAvailable
-          ? `Imported body ${body.id} has no active checkpoint source record.`
-          : (capability.diagnostics[0]?.message ??
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      !importedCheckpointAvailable
+        ? `Imported body ${body.id} has no active checkpoint source record.`
+        : (capability.diagnostics[0]?.message ??
             `Body ${body.id} has no current authoritative source record.`)
     );
     return {
@@ -794,7 +779,8 @@ function classifyBodySource(
   if (
     (body.source.type === "sketchExtrudeFeature" ||
       body.source.type === "sketchRevolveFeature") &&
-    legacy.sourceStatus === "unavailable"
+    legacy.sourceStatus === "unavailable" &&
+    derivedExactMetadata?.status !== "ready"
   ) {
     const diagnostic = createExactResultDiagnostic(
       body,
@@ -818,36 +804,6 @@ function classifyBodySource(
       ]
     };
   }
-  if (
-    body.source.type === "sketchExtrudeFeature" &&
-    feature?.kind === "extrude" &&
-    feature.operationMode !== "newBody" &&
-    derivedExactMetadata?.status === "ready" &&
-    legacy.sourceStatus !== "supported"
-  ) {
-    const diagnostic = createExactResultDiagnostic(
-      body,
-      "blocked",
-      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-      legacy.diagnostics[0]?.message ??
-        `Body ${body.id} has unresolved boolean-result dependencies.`
-    );
-    return {
-      sourceKind,
-      sourceStatus: "supported",
-      currentExactResult: {
-        status: "blocked",
-        bodyId: body.id,
-        sourceType: body.source.type,
-        diagnostics: [diagnostic]
-      },
-      diagnostics: [
-        ...legacy.diagnostics,
-        exactDiagnosticToExportDiagnostic(diagnostic, sourceKind)
-      ]
-    };
-  }
-
   const currentExactResult = createCurrentExactResult(
     document,
     bodies,

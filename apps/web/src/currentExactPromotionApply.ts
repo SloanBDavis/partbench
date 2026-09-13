@@ -10,8 +10,7 @@ import type { SolidCollectorRequest } from "./modes/solid/solidEditorTypes";
 
 const AXES = ["x", "y", "z"] as const;
 
-export type CurrentExactPromotionCollector =
-  SolidCollectorRequest["collector"];
+export type CurrentExactPromotionCollector = SolidCollectorRequest["collector"];
 
 export interface CurrentExactPromotionApplyInput {
   readonly engine: CadEngine;
@@ -166,8 +165,43 @@ export function prependCurrentExactPromotionOps(
 
 export function createCurrentExactTopologyAnchorCommandProof(
   kind: CadCurrentTopologySelectionEvidence["entityKind"] | string,
-  entity: Pick<CadBodyExactTopologyEntityDescriptor, "bounds" | "length">
+  entity: Pick<
+    CadBodyExactTopologyEntityDescriptor,
+    | "bounds"
+    | "length"
+    | "surfaceClass"
+    | "planeFrame"
+    | "axis"
+    | "axisOrigin"
+    | "radius"
+  >
 ): CadTopologyAnchorCommandProof | undefined {
+  if (kind === "face" && entity.surfaceClass === "plane" && entity.planeFrame)
+    return {
+      kind: "planarFace",
+      entityKind: "face",
+      evidenceSource: "checkpointSnapshot",
+      exposesCheckpointLocalIds: false,
+      bounds: entity.bounds,
+      planeFrame: entity.planeFrame
+    };
+  if (
+    kind === "face" &&
+    entity.surfaceClass === "cylinder" &&
+    entity.axis &&
+    entity.axisOrigin &&
+    entity.radius !== undefined
+  )
+    return {
+      kind: "cylindricalFace",
+      entityKind: "face",
+      evidenceSource: "checkpointSnapshot",
+      exposesCheckpointLocalIds: false,
+      bounds: entity.bounds,
+      axis: entity.axis,
+      axisOrigin: entity.axisOrigin,
+      radius: entity.radius
+    };
   const bounds = entity.bounds;
   if (!bounds) {
     return undefined;
@@ -248,7 +282,7 @@ function rewriteConsumingOps(
     switch (op.op) {
       case "sketch.createOnFace":
         return {
-          ...omitFields(op, "faceStableId", "referenceName"),
+          ...omitFields(op, "bodyId", "faceStableId", "referenceName"),
           topologyAnchorId,
           topologyAnchorProof: proof
         };
@@ -265,11 +299,13 @@ function rewriteConsumingOps(
           ...op,
           openFaceRefs: [topologyAnchor]
         };
+      case "feature.faceOffset":
+        return { ...op, targetBodyId: bodyId, faceRef: topologyAnchor };
       case "feature.offset":
-        return op.source.kind === "face"
+        return op.source.kind === "face" || op.source.kind === "directFace"
           ? {
               ...op,
-              source: { kind: "face", face: topologyAnchor }
+              source: { kind: op.source.kind, face: topologyAnchor }
             }
           : op;
       case "feature.align": {

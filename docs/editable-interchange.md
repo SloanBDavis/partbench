@@ -3,12 +3,16 @@
 User goal: import an engine or another supported model, edit it with the same
 sketching, modeling, and assembly tools as a model created in Partbench, export
 it, reopen it, and continue editing. Imports are first-class document content.
-The browser and headless agent runtime share this behavior and stay fast.
+The browser and headless agent runtime share this behavior.
 
-Status: implementation design, informed by the
-[engine import trial](./engine-step-trial.md) and the code audit below. The trial
-record is pushed; assembly import and general direct editing are not implemented
-by this document.
+Status: shared STEP and sketch interchange are implemented. The unchanged public
+radial engine passes the full 18-stage headless import → edit → native reopen →
+STEP export/reimport → edit workflow. Cold import still takes about 50 seconds;
+the 10-second target is unmet. Full-engine Chromium import, rendering, Fit,
+orbit, and component selection pass; browser import through readiness takes
+59.6 seconds. See [verification](./verification.md)
+for the current close-loop record and the [original trial](./engine-step-trial.md)
+for the failure that prompted this work.
 
 ## One document and one modeling system
 
@@ -16,9 +20,8 @@ Format readers decode files into ordinary Partbench document objects. A STEP
 part starts with an exact BRep base feature; a created part starts with an
 authored recipe. Both produce versioned exact bodies through the same evaluator.
 Subsequent edits are ordinary CADOps features with the same transactions,
-undo/redo, references, preview, and export behavior. Imported curves become
-ordinary sketch entities. Imported placements become ordinary assembly
-instances. No conversion mode or import-only modeling tools should be needed.
+undo/redo, references, and export behavior. Imported curves become ordinary
+sketch entities. Imported placements become ordinary assembly instances.
 
 ```text
 File bytes → format decoder ─────────────┐
@@ -33,248 +36,241 @@ UI / headless agent → CADOps → cad-core document and feature graph
 ```
 
 XDE is an exchange adapter inside `occt-wasm`, not another document authority.
-Map its labels, component references, and locations into cad-core, then use
-Partbench IDs. Raw OCCT handles and checkpoint-local identifiers remain private.
-The browser and Node own file access; `cad-runtime` owns the common import
-preparation and application service. MCP remains an adapter over that service
-and CADOps.
+Its labels, component references, and locations map to normal cad-core IDs.
+`cad-runtime` owns common import preparation, exact source resolution, and
+export. Browser and Node hosts supply file access and delivery. MCP is a thin
+adapter over that shared session and CADOps.
 
-## What editability and round trips mean
+STEP preparation processes unique definitions and retains repeated occurrences,
+nested assemblies, names, placements, and multi-solid part grouping. It does not
+expand every placed solid into a separate body definition. A prepared import is
+reused across preview/dry-run and commit; failed validation leaves the document
+unchanged. Import allocates collision-safe IDs and applies its operations in one
+transaction. Opening a native project instead restores that project's complete
+source and history.
 
-Editable STEP solids must support component selection, moves, shared-part edits,
-independent copies, sketches on real planar faces in any orientation, add/cut,
-holes, supported edge finishes, and direct geometric edits such as changing a
-cylindrical bore or moving a planar face. Direct edits are saved as normal
-parameterized features, including their target references and kernel history.
-These operations must work equally on imported and authored bodies.
+Exact assets and detailed topology evidence are reused by body version and
+source identity. Moving occurrences changes placements without rebuilding their
+unchanged definitions. A shared definition edit recomputes the affected body and
+its dependents. Bounded derived caches accelerate this work; they do not replace
+native exact base assets or document authority.
+
+## Editing and compatible source extensions
+
+Assemblies use a tagged body-or-assembly definition reference, normal transforms,
+names, and optional RGB appearance. Root assemblies are definitions not referenced
+by another assembly; an occurrence path identifies one repeated nested part.
+Cycles and unrepresentable transforms reject before publication. Ordinary
+consuming edits update assembly references to the result body, including undo
+and redo, so a shared definition edit remains visible in every occurrence.
+
+Making one occurrence independent copies its current exact body and only the
+shared assembly ancestors along the selected path. `feature.copyBody` creates
+an exact base feature in the existing imported-body family with
+`sourceFormat: "brep"`. The transaction redirects that occurrence to its new
+body; other occurrences retain the original. This source representation also
+supports copying an authored exact body. It is not a standalone BRep file codec
+or reconstruction of foreign design history.
+
+Imported and authored bodies use the same planar-face sketch attachment,
+extrusion add/cut, hole, and supported edge-finish paths. Plane frames, cylinder
+axes, and public topology anchors derive from actual OCCT geometry. Occurrence
+picking and sketch placement account for the component's world transform before
+editing its definition. Eligibility depends on exact geometry and references,
+not whether the source was imported.
+
+Direct face edits are ordinary offset features with
+`source.kind: "directFace"`. `feature.faceOffset` and
+`feature.updateFaceOffset` expose signed distances: positive adds material;
+negative removes it and enlarges an internal bore. Current exact support is:
+
+- Planar faces in straight extrusions, with perpendicular planar neighbors or
+  cylinders parallel to the moved face normal.
+- Complete cylindrical walls bounded by perpendicular planar end faces,
+  including walls split into matching patches at a STEP seam.
+
+Partial/windowed cylinders, blended or incompatible neighboring surfaces,
+general freeform offsets, and edits that collapse or split the target solid are
+rejected by exact preflight. General delete/replace-face tools are not included.
+Ambiguous topology references require repair instead of selecting another face.
+The supported edits retain ordinary feature parameters and kernel history.
+
+These are additive fields and command variants in the existing native formats;
+missing optional fields preserve older projects' behavior. Native packages carry
+original and copied base assets, sketches, features, assemblies, and history.
+
+## Format contracts
 
 A normal geometry STEP file does not carry the original application's complete
-sketch constraints or feature timeline. New features can be added to that
-geometry without reconstructing its original recipe. Do not invent historical
-dimensions or claim that they survived export. See
-[Autodesk's explanation of imported design history](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/Imported-files-do-not-contain-timeline-features-in-Fusion-360.html).
+sketch constraints or feature timeline. New features can be added without
+recovering that recipe. A Partbench STEP export likewise represents the current
+geometry, not the source feature timeline. Native `.wcad` is the format for
+continuing parameter and transaction-history edits. See
+[Autodesk's explanation of imported design history](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/Imported-files-do-not-contain-timeline-features-in-Fusion-360.html).
 
-| Format | Content that must remain usable | Round-trip contract |
-| --- | --- | --- |
-| Native `.wcad` | Sketches, parameters, feature recipes, assemblies, mates, references, exact base assets, transaction history | Preserve the complete Partbench source model; reopen and continue parametric editing and history operations. |
-| STEP | Exact geometry, component definitions and occurrences, names, placements, units, and supported appearance | Export the current model or selected assembly; reopen the same placed geometry within stated tolerances and edit again. Original foreign feature history is not synthesized. |
-| IGES / BRep | Exact curves, surfaces, shells, and solids actually represented by the file | Reuse the same body/sketch/surface model and operations. Add shared entity support before claiming fidelity for types Partbench cannot yet represent. |
-| DXF / SVG | Sketch curves and profiles, scale, supported layers/names | Import into the ordinary sketch model. Export supported curve geometry; preserve full constraints and recipes through `.wcad`. Report unsupported entities or approximations. |
-| STL / OBJ / glTF | Mesh geometry and supported component/appearance data | Meshes share document placement, selection, and history. Smooth analytic surfaces and original sketches cannot be recovered losslessly from triangles. Reconstruction/conversion must be an explicit, recorded operation. |
+| Implemented format | Preserved content                                                                                                                              | Explicit limits                                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native `.wcad`     | Complete Partbench source, parameters, sketches, feature recipes, assemblies, mates, references, exact base assets, and transaction history    | Open restores the complete project. This slice does not add selected-native-source merge/export.                                                |
+| STEP               | Exact geometry, reusable definitions, nested occurrences, multi-solid grouping, names, rigid placements, units, body and occurrence RGB colors | No original feature history, sketch constraints, per-face/edge colors, or transparency. Non-rigid occurrence placements are rejected on export. |
+| ASCII DXF          | Supported local 2D analytic sketch curves, layer names, and units                                                                              | No 3D entities, arbitrary CAD entities, foreign constraints, styles, or feature history.                                                        |
+| SVG                | Supported local 2D analytic sketch curves, supported group names, and physical scale                                                           | No arbitrary artwork, text, raster images, external references, foreign constraints, or feature history.                                        |
 
-The sequence starts with native and STEP, then adds other codecs to the same
-service. Supporting a filename extension is not proof of editable fidelity.
-Export reports describe omitted or approximated data before delivery. Never
-silently discard components, sketches, units, or geometry to produce a file.
-Native selection export must include the source dependencies needed to reopen
-and edit that selection. Importing into an existing project must remap colliding
-IDs and their references transactionally; opening a native project restores that
-project's own source and history.
+STEP writes shared definitions and occurrences through XDE. Rotation and
+translation are supported; scaled or reflected occurrence placements fail with
+an actionable export error rather than changing geometry silently. Shear is not
+representable in the normal assembly transform. STEP file units convert once to
+document units. Round-trip checks compare placed geometry within tolerances;
+internal IDs, STEP entity order, and serialized bytes need not match.
 
-## Confirmed gaps in the current implementation
+Body and occurrence RGB survive supported STEP round trips. Face/edge colors and
+transparency are omitted with an appearance diagnostic. The engine specifically
+reports `STEP_APPEARANCE_PARTIAL` for `43-Compression Spring`; a successful import
+does not mean full source appearance survived.
 
-- `apps/web/src/App.tsx` hardcodes `maxBodyCount: 1`. Its resolver also defaults
-  to one and explicitly accepts one result body per operation.
-- `packages/occt-wasm/src/stepImport.ts` calls `OneShape()`, heals the expanded
-  compound, extracts its full topology, and only then checks the body limit.
-  One checkpoint is emitted for the entire engine.
-- `AsyncCadCommandExecutor` in `packages/cad-core/src/engine.ts` resolves an
-  unresolved STEP operation on each execution. The UI submits the same
-  unresolved operation for dry-run and commit; the resolver has no prepared
-  import cache. This can repeat costly import preparation on successful input.
-- STEP preparation lives in `apps/web`; `CadSession` does not install that
-  resolver. Headless native open and STEP export exist, but equivalent STEP
-  import is missing from the shared session.
-- The shared exact resolver already contains checkpoint-backed boolean, hole,
-  and edge-finish paths. They are foundations to unify and extend, not a reason
-  to build a second modeling stack. Checkpoint command proofs currently infer
-  axis-aligned planar faces and linear edges from bounds; this is insufficient
-  for general engine geometry. General face-edit commands are also missing.
-- The STEP writer already uses XDE but accepts a flat list of body artifacts;
-  it does not write the document's occurrence hierarchy. The current export
-  request limit is 256 body artifacts. Raising import's count alone would not
-  establish arbitrary assembly round trips.
-- The viewport currently projects and draws meshes with Canvas 2D. Large-model
-  drawing and picking need their own measured budget; successful STEP decoding
-  alone does not establish interactive rendering.
+DXF accepts `LINE`, `CIRCLE`, `ARC`, `LWPOLYLINE`, and planar legacy `POLYLINE`.
+Polyline bulges become exact circular arcs. Unsupported entities such as
+`INSERT` and splines, elevated/tilted geometry, and nonzero polyline widths reject
+the import. A unitless DXF requires an explicit unit; declared supported units
+or a requested override determine scale.
 
-The installed OCCT/WASM runtime exposes `STEPCAFControl_Reader_1`,
-`STEPCAFControl_Writer_1`, `XCAFDoc_ShapeTool`, and `BRepTools_History`. Bundled
-declarations include component enumeration, referred definitions, locations,
-and adding assembly components. No new kernel dependency is needed merely to
-begin implementing assembly-aware exchange. Method presence is not yet proof of
-the complete engine round trip.
+SVG accepts lines, circles, plain rectangles, polylines, polygons, and paths
+using `M/L/H/V/A/Z` (including relative forms), with circular arcs. Supported
+transforms preserve exact curves; a transform that would turn a circle into an
+ellipse is rejected. Text, images, `use`, clipping, masks, filters, Bezier paths,
+and geometry-changing CSS are outside this subset. An SVG `viewBox` needs
+consistent physical width/height or an explicit import unit. Otherwise standard
+CSS pixels use 96 pixels per inch. Import converts SVG's Y direction to the
+sketch's local Y-up frame. An optional positive finite scale is applied once.
 
-OCCT documents XDE's support for shape names, colors, and assembly structure in
-its [exchange guide](https://occt3d.com/dev/doc/overview/html/occt_user_guides__xde.html).
-Use the bundled API signatures, since that online guide documents a newer OCCT
-version than the application's pinned build.
+Sketch exports contain local lines, circles, arcs, and rectangle boundaries with
+sketch names. They report omitted dimensions, constraints, construction flags,
+attachments, and history. Unsupported geometry rejects the export; curves are
+not silently tessellated or discarded. Hole-bearing profiles can be imported,
+extruded, exported as curves, and imported again through ordinary sketch CADOps.
 
-## Implementation order
+IGES, standalone BRep exchange, STL, OBJ, glTF, proprietary codecs, and automatic
+recovery of unknown feature history are not implemented by this slice. Future
+codecs must enter this same source model and state their fidelity limits.
 
-An isolated stage profile on 2026-09-13 ran the existing reader, transfer,
-healing, full topology extraction, and BRep writer on the unchanged engine in a
-fresh Node 22 process on this Apple M4. No other CAD run was concurrent.
+## Browser and agent workflow
 
-| Stage | Observed duration |
-| --- | ---: |
-| Load OCCT | 2.18 s |
-| Read STEP text | 2.75 s |
-| Transfer shapes | 12.34 s |
-| Heal expanded shape | 19.35 s |
-| Full topology snapshot | 162.19 s |
-| Write BRep | 0.63 s |
-| Total measured stages | 199.44 s |
+Browser Import accepts STEP, DXF, and SVG. Imported curves appear as normal
+sketches. Project Export writes STEP assemblies or supported local sketch curves
+as DXF/SVG and reports format omissions. Native save preserves the complete
+editable document. Shared WebGL2 mesh rendering uses reusable buffers and
+instancing for both authored and imported parts; Canvas 2D supplies the grid,
+overlays, and fallback. The browser importer primes the same strict evidence
+cache as the headless importer; display and metadata reuse validated topology
+and measurements instead of extracting them again. Hash/signature mismatches
+still fail, and callers receive isolated metadata copies.
 
-Topology extraction creates 143,103 descriptors and accounts for about 81% of
-the measured time. This is the measured priority, not proof that all that cost
-can be eliminated. Detail inside topology extraction still needs profiling.
-The diagnostic does not include browser display, mesh generation, transaction
-serialization, or successful UI preview followed by commit.
+Headless agents use `cad.project_import_file`, `cad.project_structure`, ordinary
+CADOps, and `cad.project_export_file`. The occurrence projection of
+`cad.project_structure` supplies root assembly IDs, instance paths, and poses.
+`cad.assembly_make_independent` takes the root assembly and path for one occurrence.
+Import returns created IDs and diagnostics without returning raw BRep bytes.
+File access follows the workspace bounds, symlink, and size rules. Native
+`cad.project_open` / `cad.project_save` remain the complete-project workflow.
 
-[Raw stage evidence](../examples/engine-step-trial/stage-profile.json) and
-[reproducible diagnostic](../examples/engine-step-trial/profile-import.mjs) are
-checked in. After downloading the pinned model from the trial, run:
+STEP export accepts body or assembly selection; DXF/SVG export accepts sketch
+selection. Mixed selectors reject. With no explicit STEP selection, the scene
+includes root assemblies and active bodies outside assemblies.
 
-```sh
-node examples/engine-step-trial/profile-import.mjs
-```
+## Verified engine result — 2026-09-13
 
-Optional arguments select input STEP and output JSON paths. This diagnostic is
-deliberately outside the default test suite; it takes several minutes on the
-current implementation and does not modify product code.
+The [recorded full engine run](../examples/editable-interchange/engine-evidence.json)
+passed all 18 stages on Node 22.22.1, macOS arm64, Apple M4, with no concurrent CAD
+run. It used the unchanged 13,389,913-byte radial-engine source and hash recorded
+in the [historical trial](./engine-step-trial.md). Fresh sessions in this run share
+one process; these are headless measurements, not browser timings.
 
-Start assembly ingestion and shared evaluation performance together. Editing
-and export can proceed against their agreed body/reference contracts; the
-numbered slices below describe acceptance boundaries rather than requiring
-performance work to wait for every editing feature.
+| Stage                                                 |        Observed duration |
+| ----------------------------------------------------- | -----------------------: |
+| Cold STEP import                                      |                  49.75 s |
+| Initial exact readiness                               |                   0.48 s |
+| Make one nested occurrence independent                |                   0.52 s |
+| Resize its bore / add sketch cut                      |          0.60 s / 0.58 s |
+| Move that component                                   |                   0.50 s |
+| Open edited native / evaluate reopened source         |          0.89 s / 1.90 s |
+| Update saved cut depth, undo, redo                    | 0.51 s / 0.50 s / 0.50 s |
+| Export edited STEP                                    |                  11.36 s |
+| Reimport STEP / exact readiness                       |         48.24 s / 0.50 s |
+| Another bore edit / another sketch cut after reimport |          0.57 s / 0.59 s |
 
-### 1. Preserve and edit the engine through the shared runtime
+Initial import produces 51 unique body definitions and 14 assembly definitions,
+with 246 leaf occurrences containing 266 placed solids. Making one cylinder
+independent increases unique bodies to 52. The bore grows from 11 to 11.1 mm;
+three sibling occurrences retain the original definition. A sketch-driven oil
+port and component move survive native reopen. Changing the saved cut depth
+from 0.5 to 0.75 mm, undo, and redo all pass.
 
-Read STEP with `STEPCAFControl_Reader` and enumerate definitions, occurrences,
-local placements, and subassemblies. Preserve multi-body part grouping and
-repeated references; do not equate one STEP solid with one component. Units and
-transforms must be applied once. Map nested assemblies into shared cad-core
-structures, extending the normal assembly representation where necessary.
+STEP reimport retains 52 definitions, 246 occurrences, and 266 placed solids.
+The closer checks placed volume within 1 mm³ and placement bounds within
+0.001 mm. It then grows the reimported bore to 11.15 mm and adds a second sketch
+cut, demonstrating continued editing after the exchange round trip. Stage-end
+process RSS reaches about 2.50 GiB across the multi-session run; this is sampled
+memory, not a continuously measured peak or a cache heap limit.
 
-Prepare immutable exact assets once per file/options/kernel identity. Dry-run
-shows a bounded summary; commit checks current document revision and atomically
-adopts that prepared result. Allocate all IDs transactionally. Failed or
-cancelled imports leave the document intact and release staged assets. Cache
-ownership must outlive live document/history references and remain bounded.
+The original targets remain: usable cold browser view within 10 seconds, full
+component selection within 20 seconds, cached reopen within 2 seconds, orbit
+near 60 fps, and typical one-part edits below one second. Cold import exceeds
+the first target before browser display begins. Native open plus evaluation is
+about 2.79 seconds in this headless run. The measured local edits meet the
+one-second target here. The full-engine Chromium journey passes in 72.4 seconds,
+including a 59.6-second import through readiness, Fit, native orbit, selection,
+and an invalid-file break. It renders 246 occurrences from 51 mesh definitions
+with 461,173 placed triangles. Orbit adds no mesh uploads. Its 54 sampled
+requestAnimationFrame timestamps have median 16.7 ms and p95 116.6 ms intervals
+under SwiftShader software WebGL. This is not a sustained hardware frame-rate
+benchmark; the frame-time spikes leave the 60-fps target open. Cancellation
+during a long import is not exercised by this journey. See the
+[browser evidence](../examples/editable-interchange/browser-evidence.json).
 
-Move the resolver/payload preparation into `cad-runtime`; wire browser and
-headless files into the same service. Extend the existing `project.importStep`
-command and structured import response rather than exposing a bypass around
-CADOps. Add `cad.project_import_file` only as a thin headless file adapter to
-this service; query/command semantics remain shared with the browser.
+## Small proof and reproduction
 
-First useful outcome: open the complete engine, pick a component, move it, make
-one occurrence independent, add a sketch-driven cut to that part, and undo/redo.
-The unchanged instances must reuse their original exact assets and meshes.
+Keep the normal proof fast. `pnpm smoke:interchange` runs focused runtime and
+sketch-codec tests plus the ordinary CADOps scenario. The small authored fixture
+contains repeated, rotated, nested parts and a multi-solid definition. It checks
+shared edits, independent copies, moves without unchanged-body rebuilds, native
+history, a second STEP round trip into inch units, names/colors, and exact
+hole-bearing sketch exchange. Invalid imports, dry runs, and a cyclic assembly
+transaction leave the source unchanged.
 
-### 2. Generalize shared editing and topology references
+`pnpm smoke:interchange:browser` runs the focused Chromium Use scenario against
+those generated fixtures. Its recorded small journey passes in 10.3 seconds:
+nested import, independent copy, actual face pick and offset, unchanged-sibling
+volume check, undo/redo, native save, fresh browser reload/open, and a saved
+offset parameter edit. File-picker fixtures exercise product file code rather
+than operating-system dialogs. This does not establish large-engine rendering.
 
-Make operation eligibility depend on actual body geometry and target topology,
-not the part's import provenance or primitive recipe. Resolve real plane frames,
-cylinders, and curves from OCCT rather than bounding-box inference. Connect
-face/edge picking to the existing public topology anchors automatically.
+`pnpm smoke:engine-interchange` runs the separate full
+headless engine acceptance after the pinned source is downloaded. Neither the
+large engine nor browser work is added to every-save tests. Reproduction,
+artifacts, and format limits are linked in the
+[example README](../examples/editable-interchange/README.md). The
+[verification record](./verification.md) distinguishes commands from actual Use.
 
-Route sketches, booleans, holes, fillets/chamfers, and new move/offset/delete/replace
-face features through the same exact body evaluator for both source origins.
-Use operation history to propagate references through modifications. When a
-split/merge makes a reference ambiguous, give a repairable diagnostic instead
-of silently editing another face. Local component edits must transform sketch
-frames and picks between occurrence space and definition space correctly.
+## Historical performance baseline
 
-Keep editing a shared definition and making a single occurrence independent
-explicit in the document semantics. A bore edit on one cylinder must not
-unexpectedly modify every repeated cylinder.
+Before this implementation, browser import rejected 266 solids against a
+one-body limit after a long expanded-compound import. The original isolated
+2026-09-13 profile ran the old reader, transfer, healing, full topology snapshot,
+and BRep writer in a fresh Node 22 process on the same Apple M4.
 
-### 3. Close native and STEP round trips
+| Original stage         | Observed duration |
+| ---------------------- | ----------------: |
+| Load OCCT              |            2.18 s |
+| Read STEP text         |            2.75 s |
+| Transfer shapes        |           12.34 s |
+| Heal expanded shape    |           19.35 s |
+| Full topology snapshot |          162.19 s |
+| Write BRep             |            0.63 s |
+| Total measured stages  |          199.44 s |
 
-Write the assembly's definitions and placed occurrences using the existing XDE
-writer. Preserve names, supported appearance, units, nesting, and multi-body
-parts. Avoid rebuilding identical bodies for export or expanding every instance
-into a new serialized definition. Bounds/volume checks must use placed instances.
-
-Native save carries base assets plus the full feature/sketch/assembly source and
-history. Reopen in a fresh session, evaluate changed bodies, and continue editing.
-STEP reopen imports a new geometric model; do not require internal IDs, STEP
-entity order, or bytes to remain identical. Compare geometry and structure within
-documented tolerances and perform another edit after reimport.
-
-### 4. Make speed a shared property
-
-- Keep OCCT work in the existing worker/scheduler system with a warm kernel and
-  retained exact assets. Prove cancellation of long native calls via the existing
-  worker lifecycle; an async JavaScript wrapper alone is not cancellation.
-- Process each unique part once. Instance moves update transforms; editing one
-  definition recomputes that definition and its actual dependents only.
-- Split essential body readiness from full semantic topology/anchor evidence.
-  Build detailed metadata when a feature, pick, or query needs it; cache it by
-  exact body version. Do not delay the entire engine's display to enumerate and
-  hash every face, wire, edge, vertex, and coedge of every occurrence.
-- Validate each unique shape and repair when required. Preserve diagnostics and
-  valid exact geometry; measure removal of redundant whole-assembly healing.
-- Parse once for preview/commit. Use binary transfers and bounded query results,
-  avoiding repeated full BRep and topology serialization across UI and MCP.
-- Persist reusable native assets and derived caches so reopening does not parse
-  STEP or remesh unchanged parts. Kernel/options/tolerance changes invalidate
-  only incompatible caches. Caches never replace source authority.
-- Measure mesh generation, tree updates, draw time, picking, and memory separately.
-  Use reusable GPU mesh buffers and instancing in the shared renderer if Canvas
-  2D misses the frame budget. Prefer a focused WebGL2 renderer over a prerequisite
-  WebGPU rewrite; apply it equally to authored parts, imports, and sketch overlays.
-
-Initial engineering targets for the same 13.4 MB engine on the recorded Apple M4
-host: usable cold view within 10 seconds, full component selection within 20
-seconds, cached reopen within 2 seconds, and normal orbit near 60 fps. Typical
-single-part edits should complete in under a second without rebuilding siblings.
-These are targets, not achieved performance or universal guarantees for every
-model. Record cold/warm conditions, geometry counts, stage times, peak memory,
-frame times, and UI response during work; revise the targets only with evidence.
-
-Assembly ingestion/export, shared topology/editing, and shared evaluation/display
-performance are suitable parallel workstreams once their body and reference
-contracts agree. Integrate at each working import → edit → export slice; avoid
-waiting for a collection of disconnected subsystems to finish.
-
-## Small proof set
-
-Keep the normal suite fast: one editable solid round trip and one small assembly
-with repeated, rotated parts, nested/multi-body grouping, and an imported sketch.
-Check both authored and imported targets through the same operations. Include
-one invalid/cancelled import with atomic rollback, mixed-unit handling, and an
-ambiguous-reference failure. Use headless checks for command semantics and one
-real Chromium journey for import, picking, sketch/edit, and native reopen.
-
-The larger release closer uses the unchanged radial-engine source from the trial:
-
-1. Import the complete model in browser and headless sessions, matching source
-   structure against an independent XDE walk and preserving every placed solid.
-2. Fit/orbit/select; make one repeated cylinder independent; change a bore and
-   add a sketch-based mounting feature. Verify other cylinders are unchanged.
-3. Undo/redo, native save/reopen, then change an existing feature parameter.
-4. Export STEP, import in a fresh process, check placement/counts/names/units and
-   exact geometry tolerances, then make another direct and sketch-based edit.
-5. Run the reverse direction on an authored assembly and sketch-bearing native
-   project. No geometry may disappear and no imported-only edit restriction may
-   be introduced. Record the performance targets alongside correctness.
-
-Do not put the large engine in every-save tests or claim that a single rendered
-compound closes this goal. The closer is a usable editing and interchange loop.
-
-## Scope and persistence
-
-This user goal authorizes the assembly-aware STEP reader/writer, shared runtime
-file import, general topology references and direct-edit features, ordinary
-sketch import/export support, and shared renderer/evaluator changes needed by
-the workflow. Prefer the existing packages and schemas. If nested assemblies,
-appearance, base assets, or general geometry references require durable schema
-extensions, document the smallest compatible representation and migration before
-changing it. Native save must remain self-contained.
-
-Broader format coverage follows the contracts above; proprietary format codecs,
-automatic recovery of an unknown original feature history, and a standalone
-import renderer are not prerequisites for the engine milestone.
+That expanded topology snapshot created 143,103 descriptors, about 81% of measured
+time. The diagnostic excluded browser display, meshing, and transactions; it is
+not directly comparable to a complete current session import.
+[Raw stage evidence](../examples/engine-step-trial/stage-profile.json) and the
+[original profiling script](../examples/engine-step-trial/profile-import.mjs)
+remain available. The original browser failure and its overlapping timing caveat
+are preserved in the [trial record](./engine-step-trial.md).

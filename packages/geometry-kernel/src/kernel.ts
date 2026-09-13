@@ -1,3 +1,5 @@
+import type { OcctStepAssembly } from "@web-cad/occt-wasm";
+export type GeometryKernelStepAssembly = OcctStepAssembly;
 export type GeometryKernelVersion = "geometry-kernel.v1";
 export const MAX_EXACT_BODY_ARTIFACT_BYTES = 128 * 1024 * 1024;
 export const MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES = 512 * 1024 * 1024;
@@ -577,7 +579,8 @@ export type ExactBodyMetadataSource =
   | ExactImportedBodyMetadataSource;
 export type ExactTopologySourceKind =
   | ExactBodyMetadataSource["kind"]
-  | "importedBody";
+  | "importedBody"
+  | "faceOffset";
 
 export type ExactExtrudeMetadataSource = (
   | BooleanExtrudePrimitiveSource
@@ -779,6 +782,13 @@ export interface ExactBodyArtifactLeaf {
   readonly topologySignature: string;
 }
 
+export interface ExactArtifactBooleanSource {
+  readonly kind: "artifactBoolean";
+  readonly target: ExactBodyArtifactLeaf;
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly tool: BooleanExtrudeToolSource;
+}
+
 export interface ExactArtifactHoleSource {
   readonly kind: "artifactHole";
   readonly target: ExactBodyArtifactLeaf;
@@ -838,13 +848,22 @@ export interface ExactArtifactShellSource {
 }
 
 export type ExactArtifactDownstreamSource =
+  | ExactArtifactBooleanSource
   | ExactArtifactHoleSource
   | ExactArtifactLinearPatternSource
   | ExactArtifactCircularPatternSource
   | ExactArtifactMirrorSource
   | ExactArtifactShellSource;
 
+export interface ExactFaceOffsetArtifactSource {
+  readonly kind: "faceOffset";
+  readonly target: ExactBodyArtifactLeaf | ExactCheckpointBodyArtifactSource;
+  readonly checkpointEntityId: string;
+  readonly distance: number;
+}
+
 export type ExactBodyArtifactSource =
+  | ExactFaceOffsetArtifactSource
   | Exclude<ExactBodyMetadataSource, ExactImportedBodyMetadataSource>
   | ExactCheckpointBodyArtifactSource
   | ExactCheckpointBooleanArtifactSource
@@ -907,6 +926,7 @@ export interface ExactTopologyCheckpointPayloadRequest {
 }
 
 export interface ExactStepExportArtifactBodyInput {
+  readonly color?: readonly [number, number, number];
   readonly bodyId: string;
   readonly bodyName: string;
   readonly brepFormat: "occt-brep";
@@ -923,6 +943,7 @@ export interface ExactStepExportRequest {
   readonly op: "geometry.exportStep";
   readonly units: GeometryKernelDocumentUnit;
   readonly bodies: readonly ExactStepExportBodySource[];
+  readonly assembly?: GeometryKernelStepAssembly;
 }
 
 export interface NamedStepProbeRequest {
@@ -938,6 +959,7 @@ export interface StepImportRequest {
   readonly sourceFileName: string;
   readonly bytes: Uint8Array;
   readonly maxBodyCount?: number;
+  readonly units?: GeometryKernelDocumentUnit;
   readonly bodyId?: string;
   readonly checkpointId?: string;
 }
@@ -1286,7 +1308,8 @@ export type GeometryKernelStepImportDiagnosticCode =
   | "STEP_HEALING_APPLIED"
   | "STEP_HEALING_NOT_REQUIRED"
   | "STEP_TOPOLOGY_EXTRACTED"
-  | "STEP_CHECKPOINT_PAYLOAD_CREATED";
+  | "STEP_CHECKPOINT_PAYLOAD_CREATED"
+  | "STEP_APPEARANCE_PARTIAL";
 
 export interface GeometryKernelStepImportDiagnostic {
   readonly code: GeometryKernelStepImportDiagnosticCode;
@@ -1312,6 +1335,9 @@ export interface GeometryKernelImportedBodyCheckpointPayload {
 }
 
 export interface GeometryKernelImportedBodyPayload {
+  readonly metadata?: GeometryKernelExactBodyMetadata;
+  readonly definitionId?: string;
+  readonly color?: readonly [number, number, number];
   readonly sourceFormat: "step";
   readonly sourceFileName: string;
   readonly bodyName?: string;
@@ -1328,6 +1354,7 @@ export interface GeometryKernelImportedBodyPayload {
 }
 
 export interface GeometryKernelStepImportResult {
+  readonly assembly?: GeometryKernelStepAssembly;
   readonly sourceFormat: "step";
   readonly sourceFileName: string;
   readonly bodyCount: number;
@@ -1336,6 +1363,7 @@ export interface GeometryKernelStepImportResult {
 }
 
 export interface GeometryKernelStepImportSuccessResponse {
+  readonly assembly?: GeometryKernelStepAssembly;
   readonly ok: true;
   readonly id: string;
   readonly op: "geometry.importStep";
@@ -1444,7 +1472,7 @@ export interface GeometryKernelExactMetadataDiagnostic {
 }
 
 export interface GeometryKernelExactBodyMetadata {
-  readonly sourceKind: ExactBodyMetadataSource["kind"];
+  readonly sourceKind: ExactTopologySourceKind;
   readonly bounds: GeometryKernelBounds;
   readonly volume: number;
   readonly surfaceArea: number;
@@ -1505,6 +1533,13 @@ export interface GeometryKernelTopologyEntityDescriptor {
   readonly point?: readonly [number, number, number];
   readonly midpoint?: readonly [number, number, number];
   readonly normal?: readonly [number, number, number];
+  readonly planeFrame?: {
+    readonly origin: readonly [number, number, number];
+    readonly xDirection: readonly [number, number, number];
+    readonly yDirection: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  };
+  readonly axisOrigin?: readonly [number, number, number];
   readonly axis?: readonly [number, number, number];
   readonly radius?: number;
   readonly area?: number;
@@ -1949,6 +1984,7 @@ export async function executeGeometryKernelRequestWithMeshFactory<
         sourceFileName: importResult.sourceFileName,
         bodyCount: importResult.bodyCount,
         bodies: importResult.bodies,
+        ...(importResult.assembly ? { assembly: importResult.assembly } : {}),
         diagnostics: importResult.diagnostics,
         warnings: []
       } as unknown as GeometryKernelResponseForRequest<T>;
@@ -2443,6 +2479,12 @@ function validateRequest(
   } else if (request.op === "geometry.exactBodyArtifact") {
     const sourceError = validateExactBodyArtifactSource(request.source);
     if (sourceError) return sourceError;
+    const actualSourceNodes = countExactBodyArtifactSourceNodes(request.source);
+    if (actualSourceNodes !== request.sourceGraphNodeCount)
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: `Exact body artifact declares ${request.sourceGraphNodeCount} source nodes but contains ${actualSourceNodes ?? "an invalid graph"}.`
+      };
     if (
       !isNonEmptyBoundedString(request.bodyId) ||
       !isNonEmptyBoundedString(request.sourceType) ||
@@ -3107,6 +3149,7 @@ function createStepImport(
     sourceFileName: request.sourceFileName,
     bytes: request.bytes,
     maxBodyCount: request.maxBodyCount,
+    units: request.units,
     bodyId: request.bodyId,
     checkpointId: request.checkpointId
   });
@@ -3126,7 +3169,8 @@ function createExactStepExport(
 
   return factories.createExactStepExport({
     units: request.units,
-    bodies: request.bodies
+    bodies: request.bodies,
+    ...(request.assembly ? { assembly: request.assembly } : {})
   });
 }
 
@@ -4708,6 +4752,22 @@ function validateExactBodyArtifactSource(
         : createInvalidExactBodyMetadataSourceError())
     );
   }
+  if (source.kind === "faceOffset") {
+    if (
+      !isRecord(source.target) ||
+      (source.target.kind !== "bodyArtifact" &&
+        source.target.kind !== "checkpointBody")
+    )
+      return createInvalidExactBodyMetadataSourceError();
+    return (
+      validateExactBodyArtifactSource(source.target) ??
+      (/^snapshot-local:face:[1-9][0-9]*$/.test(source.checkpointEntityId) &&
+      Number.isFinite(source.distance) &&
+      Math.abs(source.distance) >= 1e-9
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
+  }
   if (source.kind === "checkpointEdgeFinish") {
     return (
       validateExactBodyArtifactSource(source.target) ??
@@ -4720,6 +4780,14 @@ function validateExactBodyArtifactSource(
   }
   if (source.kind === "bodyArtifact") {
     return validateExactBodyArtifactLeaf(source);
+  }
+  if (source.kind === "artifactBoolean") {
+    return (
+      validateExactBodyArtifactLeaf(source.target) ??
+      (isValidBooleanExtrudeToolSource(source.operation, source.tool)
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
   }
   if (source.kind === "artifactHole") {
     return (
@@ -4885,13 +4953,16 @@ function isArtifactBackedExactBodySource(
   | ExactCheckpointHoleArtifactSource
   | ExactCheckpointEdgeFinishArtifactSource
   | ExactBodyArtifactLeaf
-  | ExactArtifactDownstreamSource {
+  | ExactArtifactDownstreamSource
+  | ExactFaceOffsetArtifactSource {
   return (
+    source.kind === "faceOffset" ||
     source.kind === "checkpointBody" ||
     source.kind === "checkpointBoolean" ||
     source.kind === "checkpointHole" ||
     source.kind === "checkpointEdgeFinish" ||
     source.kind === "bodyArtifact" ||
+    source.kind === "artifactBoolean" ||
     source.kind === "artifactHole" ||
     source.kind === "artifactLinearPattern" ||
     source.kind === "artifactCircularPattern" ||
@@ -4928,6 +4999,7 @@ function getExactBodyArtifactSourceChildren(source: object): readonly object[] {
   };
   if (
     candidate.kind === "booleanExtrudes" ||
+    candidate.kind === "artifactBoolean" ||
     candidate.kind === "checkpointBoolean"
   ) {
     return isRecord(candidate.target) && isRecord(candidate.tool)
@@ -4940,6 +5012,7 @@ function getExactBodyArtifactSourceChildren(source: object): readonly object[] {
     candidate.kind === "shell" ||
     candidate.kind === "draft" ||
     candidate.kind === "checkpointHole" ||
+    candidate.kind === "faceOffset" ||
     candidate.kind === "checkpointEdgeFinish" ||
     candidate.kind === "artifactHole" ||
     candidate.kind === "artifactShell"
@@ -5034,23 +5107,7 @@ function isInvalidExactBodyMetadata(
   metadata: GeometryKernelExactBodyMetadata
 ): boolean {
   return (
-    (metadata.sourceKind !== "extrude" &&
-      metadata.sourceKind !== "box" &&
-      metadata.sourceKind !== "cylinder" &&
-      metadata.sourceKind !== "sphere" &&
-      metadata.sourceKind !== "cone" &&
-      metadata.sourceKind !== "torus" &&
-      metadata.sourceKind !== "booleanExtrudes" &&
-      metadata.sourceKind !== "revolve" &&
-      metadata.sourceKind !== "hole" &&
-      metadata.sourceKind !== "edgeFinish" &&
-      metadata.sourceKind !== "sweep" &&
-      metadata.sourceKind !== "loft" &&
-      metadata.sourceKind !== "linearPattern" &&
-      metadata.sourceKind !== "circularPattern" &&
-      metadata.sourceKind !== "mirror" &&
-      metadata.sourceKind !== "shell" &&
-      metadata.sourceKind !== "importedBody") ||
+    !isExactTopologySourceKind(metadata.sourceKind) ||
     !isVec3(metadata.bounds.min) ||
     !isVec3(metadata.bounds.max) ||
     !isVec3(metadata.centroid) ||
@@ -5508,6 +5565,7 @@ function getExactBodyArtifactSourceKind(
     case "checkpointBody":
       return source.topologySourceKind;
     case "checkpointBoolean":
+    case "artifactBoolean":
       return "booleanExtrudes";
     case "checkpointHole":
       return "hole";
@@ -5602,6 +5660,16 @@ function isInvalidExactTopologySnapshot(
         (entity.point !== undefined && !isVec3(entity.point)) ||
         (entity.midpoint !== undefined && !isVec3(entity.midpoint)) ||
         (entity.normal !== undefined && !isVec3(entity.normal)) ||
+        (entity.planeFrame !== undefined &&
+          (entity.kind !== "face" ||
+            entity.surfaceClass !== "plane" ||
+            !isVec3(entity.planeFrame.origin) ||
+            !isUnitVec3(entity.planeFrame.xDirection) ||
+            !isUnitVec3(entity.planeFrame.yDirection) ||
+            !isUnitVec3(entity.planeFrame.normal))) ||
+        (entity.axisOrigin !== undefined &&
+          ((entity.kind !== "face" && entity.kind !== "edge") ||
+            !isVec3(entity.axisOrigin))) ||
         (entity.axis !== undefined && !isVec3(entity.axis)) ||
         (entity.radius !== undefined && !isNonNegativeFinite(entity.radius)) ||
         (entity.area !== undefined && !isNonNegativeFinite(entity.area)) ||
@@ -5680,6 +5748,13 @@ function isInvalidStepImportResult(
         !isNonNegativeInteger(body.faceCount) ||
         !isNonNegativeInteger(body.edgeCount) ||
         !isNonNegativeInteger(body.vertexCount) ||
+        (body.metadata !== undefined &&
+          (isInvalidExactBodyMetadata(body.metadata) ||
+            body.metadata.sourceKind !== "importedBody" ||
+            body.metadata.topologyCounts.solidCount !== body.solidCount ||
+            body.metadata.topologyCounts.faceCount !== body.faceCount ||
+            body.metadata.topologyCounts.edgeCount !== body.edgeCount ||
+            body.metadata.topologyCounts.vertexCount !== body.vertexCount)) ||
         isInvalidExactTopologySnapshot(body.topologySnapshot) ||
         isInvalidExactTopologyCheckpointPayload(body.checkpointPayload) ||
         body.checkpointPayload.sourceKind !== "importedBody" ||
@@ -5714,6 +5789,7 @@ function isExactTopologySourceKind(
     value === "mirror" ||
     value === "shell" ||
     value === "draft" ||
+    value === "faceOffset" ||
     value === "importedBody"
   );
 }
@@ -5746,7 +5822,8 @@ function isStepImportDiagnosticCode(
     code === "STEP_HEALING_APPLIED" ||
     code === "STEP_HEALING_NOT_REQUIRED" ||
     code === "STEP_TOPOLOGY_EXTRACTED" ||
-    code === "STEP_CHECKPOINT_PAYLOAD_CREATED"
+    code === "STEP_CHECKPOINT_PAYLOAD_CREATED" ||
+    code === "STEP_APPEARANCE_PARTIAL"
   );
 }
 

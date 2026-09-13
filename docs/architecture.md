@@ -21,11 +21,12 @@ authority. Pose edits reuse exact artifacts only when body/dependency identity
 and document units still match. Public operation discovery and compact response
 projections describe the same CADOps authority.
 
-The [editable interchange goal](./editable-interchange.md) requires imported
-geometry and curves to enter the same document, feature graph, exact evaluator,
-and command system as authored content. Format decoders and encoders stay at
-the boundary; source provenance must not create separate editing tools or
-document authority. This goal is designed, not yet implemented.
+The [editable interchange goal](./editable-interchange.md) brings imported
+geometry and curves into the same document, feature graph, exact evaluator,
+and command system as authored content. STEP XDE definitions and occurrences
+map to normal body and nested assembly IDs. DXF/SVG readers produce ordinary
+sketch CADOps. Format decoders and encoders stay at the boundary; provenance
+does not create separate editing tools or document authority.
 
 ## Authorities
 
@@ -69,22 +70,43 @@ The native project format remains `web-cad.project.v22`. The native file
 format remains `partbench.wcad.v2`. Do not add a schema or `.wcad`
 version unless a user-goal doc says so.
 
-The document model is authoritative. Rendered meshes are derived
-views/caches.
+The document model is authoritative. Rendered meshes are derived views/caches.
+Imported and copied exact base assets are durable source dependencies. Native
+packages retain those assets together with feature recipes and history; STEP
+retains current supported geometry and assembly data without reconstructing a
+foreign feature timeline. DXF/SVG preserve their supported local curve subset.
+Unsupported geometry rejects; supported appearance/history omissions are
+reported. The [format contracts](./editable-interchange.md#format-contracts)
+define the current limits.
 
-Raw exact local IDs and signatures never enter commands, diffs, JSON,
-`.wcad`, agents/MCP, or visible text. Durable identity is the public
-topology-anchor ID after promotion.
+Durable public topology identity is the topology-anchor ID after promotion.
+Checkpoint-local IDs and signatures are private exact evidence, not public
+command targets. Native checkpoint payloads retain the private evidence needed
+to verify and reopen their source; it is not exposed as raw BRep through compact
+agent file-tool responses.
 
 Do not add a workspace package or production dependency unless a
 user-goal doc says so.
 
 ## Geometry and display
 
-OCCT/WASM owns exact B-rep. The current viewport is Canvas 2D.
+OCCT/WASM owns exact B-rep. `cad-runtime` shares exact evaluation, file
+preparation, and export across browser and headless hosts. Bounded caches are
+keyed by exact body/source identity and units. Repeated occurrences and pose
+edits reuse unchanged definition geometry; detailed topology is derived on
+demand. Caches must never substitute for durable source or history assets.
 
-Assemblies are allowed because [`docs/v26.md`](./v26.md) names them. Do not implement WebGPU or drawings unless a user-goal doc
-says so.
+The shared viewport uses WebGL2 instanced mesh rendering with reusable geometry
+buffers. Canvas 2D draws the background grid and overlays and supplies a solid
+fallback when WebGL is unavailable. Both paths consume the same derived scene
+for authored and imported parts. Browser readiness, picking, and frame rate
+require separate measured proof; a ready exact body is not rendering evidence.
+
+Nested assemblies retain reusable body/assembly definitions and occurrence
+paths. Consuming body edits update their assembly references transactionally;
+making one occurrence independent copies only its body and shared ancestors on
+that path. STEP export requires rigid occurrence placements. Do not implement
+WebGPU or drawings unless a user-goal doc says so.
 
 Do not couple the React UI directly to geometry internals. Keep renderer,
 command engine, protocol, storage, and WASM geometry boundaries separate.

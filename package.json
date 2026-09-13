@@ -97,7 +97,11 @@
     "smoke:robot-arm": "pnpm --filter @web-cad/mcp-stdio-server build && node scripts/smoke-robot-arm.mjs",
     "smoke:robot-arm:browser": "bun scripts/smoke-ui-use.mjs -- scenarios/robot-arm-revision.json examples/robot-arm-workflow/browser-use.json",
     "smoke:gearbox": "pnpm --filter @web-cad/mcp-stdio-server build && node scripts/smoke-gearbox.mjs",
-    "smoke:gearbox:browser": "bun scripts/smoke-ui-use.mjs -- examples/gearbox-workflow/browser-use.json"
+    "smoke:gearbox:browser": "bun scripts/smoke-ui-use.mjs -- examples/gearbox-workflow/browser-use.json",
+    "smoke:interchange": "node scripts/smoke-interchange.mjs",
+    "smoke:interchange:browser": "bun scripts/smoke-ui-use.mjs -- scenarios/editable-interchange.json",
+    "smoke:engine-interchange": "node scripts/smoke-editable-interchange.mjs",
+    "smoke:engine-interchange:browser": "bun scripts/smoke-ui-use.mjs -- examples/editable-interchange/engine-browser-use.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

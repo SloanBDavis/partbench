@@ -1,3 +1,5 @@
+import { createProjectStepExportScope } from "./projectStepAssembly";
+import type { GeometryKernelStepAssembly } from "@web-cad/geometry-kernel/protocol";
 import {
   createCadProjectSourceIdentity,
   exportCadProject,
@@ -29,6 +31,7 @@ import { assertExactBodyArtifactAggregateWithinLimit } from "@web-cad/geometry-k
 
 import {
   createCurrentExactArtifactOperandSource,
+  getCurrentExactArtifactSourceGraphNodeCount,
   preflightCurrentExactArtifactOperandSource,
   type CurrentExactBodyArtifactEvidence,
   type CurrentExactBodyArtifactDependency,
@@ -72,6 +75,7 @@ import { readProjectExactStepExport } from "./projectExactExportQueries";
 import { bindGeneratedFaceTopologySnapshot } from "./projectWcadTopologyCheckpoints";
 
 export interface ProjectExactStepExportExecutionInput {
+  readonly assembly?: GeometryKernelStepAssembly;
   readonly engine: CadEngine;
   readonly exactExport: ProjectExactExportQueryResponse;
   readonly resolutions: readonly CurrentExactBodyResolution[];
@@ -253,6 +257,9 @@ export async function runProjectExactStepExport(input: {
     const result = await executeProjectExactStepExport({
       engine: input.engine,
       exactExport,
+      assembly: createProjectStepExportScope(input.engine, {
+        bodyIds: requestedBodyIds
+      }).assembly,
       resolutions: input.resolutions,
       existingArtifacts: input.existingArtifacts,
       artifactCache: input.artifactCache,
@@ -794,7 +801,7 @@ export async function buildCurrentExactBodyArtifacts({
       sourceIdentitySignature: node.sourceIdentitySignature,
       sourceCacheKeySha256: node.cacheKeySha256,
       sourceGraphNodeCount: node.artifactDependency
-        ? 2
+        ? getCurrentExactArtifactSourceGraphNodeCount(node.source)
         : node.sourceGraphNodeCount,
       shapePolicy,
       units
@@ -852,7 +859,7 @@ export async function buildCurrentExactBodyArtifacts({
         shellOpenFaceLocalIds
       );
       const sourceGraphNodeCount = dependencyArtifact
-        ? 2
+        ? getCurrentExactArtifactSourceGraphNodeCount(node.source)
         : node.sourceGraphNodeCount;
       const shapePolicy = shapePoliciesByKey.get(key);
       if (!shapePolicy) {
@@ -1030,7 +1037,8 @@ export async function executeProjectExactStepExport({
   onProgress,
   generation: expectedGeneration,
   existingArtifacts,
-  artifactCache
+  artifactCache,
+  assembly
 }: ProjectExactStepExportExecutionInput): Promise<ProjectExactStepExportResult> {
   const plan = requireReadyPlan(exactExport);
   assertExactExportPlanCurrent(engine, plan);
@@ -1099,9 +1107,11 @@ export async function executeProjectExactStepExport({
     const request = createExactStepExportWorkerRequest({
       id: `exact-step-${plan.planIdentity.slice(0, 16)}`,
       units: plan.units,
+      ...(assembly ? { assembly } : {}),
       bodies: artifacts.map((artifact, index) => ({
         bodyId: plan.bodies[index]!.bodyId,
         bodyName: plan.bodies[index]!.bodyName,
+        ...bodyAppearance(engine, artifact.bodyId),
         brepFormat: artifact.brepFormat,
         brepByteLength: artifact.brepByteLength,
         brepSha256: artifact.brepSha256,
@@ -1508,4 +1518,26 @@ export function isGeometryCancellation(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function bodyAppearance(engine: CadEngine, bodyId: string) {
+  const document = engine.getDocument();
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!structure.ok || structure.query !== "project.structure") return {};
+  const bodies = new Map(structure.bodies.map((b) => [b.id, b]));
+  let body = bodies.get(bodyId);
+  const seen = new Set<string>();
+  while (body && !seen.has(body.id)) {
+    seen.add(body.id);
+    const feature = document.features.get(body.featureId);
+    if (feature?.kind === "importedBody")
+      return feature.color ? { color: feature.color } : {};
+    const target =
+      feature && "targetBodyId" in feature ? feature.targetBodyId : undefined;
+    body = typeof target === "string" ? bodies.get(target) : undefined;
+  }
+  return {};
 }
