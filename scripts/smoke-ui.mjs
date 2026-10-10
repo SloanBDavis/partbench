@@ -1042,8 +1042,10 @@ async function openProjectFile(
   view,
   filePath,
   format = "wcad",
-  expectedImportError
+  expectedImportError,
+  cancelImport = false
 ) {
+  const beforeImport = cancelImport ? await getState(view) : undefined;
   const bytes = readFileSync(resolve(repoRoot, filePath)).toString("base64");
   const fileName = filePath.split(/[\\/]/).at(-1);
   const isStep = format === "step";
@@ -1071,26 +1073,99 @@ async function openProjectFile(
   try {
     await clickVisibleControl(view, '[data-ribbon-roving-id="mode-project"]');
     await clickVisibleControl(view, '[data-action-id="' + actionId + '"]');
-    try {
-      await waitForReady(view, {
-        timeoutMs: readyTimeoutMs,
-        allowEmpty: false
-      });
-    } catch (error) {
-      if (!expectedImportError) throw error;
-      const state = await getState(view);
-      if (!state.commandError?.includes(expectedImportError)) throw error;
-      // An expected import failure legitimately sets rebuild=Update failed.
-      // Require responsive browser evaluation and a settled command instead.
-      const responsive = await evaluate(
+    if (cancelImport) {
+      const selector = '.pb-status-bar__model-work button[aria-busy="true"]';
+      const deadline = performance.now() + 10_000;
+      while (
+        !(await evaluate(
+          view,
+          `document.querySelector(${JSON.stringify(selector)})?.textContent === "Cancel import"`
+        ))
+      ) {
+        if (performance.now() > deadline)
+          throw new Error("Import did not expose an active Cancel control");
+        await delay(25);
+      }
+      const cancelledAt = performance.now();
+      if (cancelImport === "escape") {
+        await withDeadline(view.press("Escape"), 3_000, "cancel STEP import");
+      } else {
+        await clickVisibleControl(view, selector);
+      }
+      while ((await getState(view)).commandPending) {
+        if (performance.now() - cancelledAt > 3_000)
+          throw new Error(
+            "Import cancellation did not settle within 3 seconds"
+          );
+        await delay(25);
+      }
+      const afterImport = await getState(view);
+      if (
+        afterImport.commandError ||
+        !matches(
+          afterImport.structureQuery,
+          beforeImport.structureQuery,
+          true,
+          1e-7
+        ) ||
+        JSON.stringify(afterImport.viewport?.meshIds) !==
+          JSON.stringify(beforeImport.viewport?.meshIds)
+      ) {
+        throw new Error(
+          "Cancelled import changed the project or its rendered geometry"
+        );
+      }
+      const message = await evaluate(
         view,
-        "Boolean(window.__PARTBENCH_UI_SMOKE__?.ready)",
-        5_000
+        'document.body.textContent.includes("Import cancelled. Your project is unchanged.")'
       );
-      if (!responsive || state.commandPending) throw error;
-      console.log("expected STEP import error", state.commandError);
+      if (!message) throw new Error("Import did not report cancellation");
+      console.log(
+        "STEP cancellation",
+        JSON.stringify({
+          fileName,
+          control: cancelImport === "escape" ? "Escape" : "Cancel import",
+          settleMs: Math.round(performance.now() - cancelledAt)
+        })
+      );
       return;
     }
+    if (isStep) {
+      // An existing project can still be Ready while the file picker/reader
+      // yields. Wait for this import's preview or settled failure before using
+      // readiness; otherwise the previous model can produce a false pass.
+      const deadline = performance.now() + readyTimeoutMs;
+      while (true) {
+        const state = await getState(view);
+        if (state.commandError && !state.commandPending) {
+          if (
+            !expectedImportError ||
+            !state.commandError.includes(expectedImportError)
+          )
+            throw new Error("STEP import failed: " + state.commandError);
+          const responsive = await evaluate(
+            view,
+            "Boolean(window.__PARTBENCH_UI_SMOKE__?.ready)",
+            5_000
+          );
+          if (!responsive)
+            throw new Error("Workbench did not remain responsive");
+          console.log("expected STEP import error", state.commandError);
+          return;
+        }
+        if (await evaluate(view, "window.__pbStepImportPreview !== null"))
+          break;
+        if (performance.now() > deadline)
+          throw new Error(
+            "Import " + fileName + " did not produce a preview or error"
+          );
+        await delay(100);
+      }
+    }
+    await waitForReady(view, {
+      timeoutMs: readyTimeoutMs,
+      allowEmpty: false
+    });
     if (expectedImportError) {
       throw new Error(
         "Import " + fileName + " did not report " + expectedImportError
@@ -1196,9 +1271,10 @@ async function runUseSteps(view, name, steps, label) {
         view,
         step.importStep,
         "step",
-        step.expectImportError
+        step.expectImportError,
+        step.cancelImport
       );
-      if (step.expectImportError) sawBreak = true;
+      if (step.expectImportError || step.cancelImport) sawBreak = true;
       continue;
     }
     if (step.expectText) {

@@ -9,7 +9,8 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
 - Current user goal: [docs/parity-roadmap.md](docs/parity-roadmap.md) (fastest path to professional CAD parity; E2E-only development).
-- Latest implementation: [docs/editable-interchange.md](docs/editable-interchange.md) (shared editable STEP/DXF/SVG interchange; cold-load and frame-time targets remain open).
+- Latest implementation: [docs/import-performance.md](docs/import-performance.md) (faster repeated edits, exact import comparison and cancellation; cold-view and frame-time targets remain open).
+- Interchange contracts: [docs/editable-interchange.md](docs/editable-interchange.md) (shared editable STEP/DXF/SVG interchange).
 - Latest user trial: [docs/engine-step-trial.md](docs/engine-step-trial.md) (historical engine import failure and source provenance; follow-up implementation evidence linked).
 - Last completed user goal: [docs/gearbox-workflow.md](docs/gearbox-workflow.md) (agent authoring, coherent revision and motion). V22–V26, [agent runtime](docs/agent-runtime.md), and [robot arm fixes](docs/robot-arm-fixes.md) are complete. Do not reopen or invent V27.
 

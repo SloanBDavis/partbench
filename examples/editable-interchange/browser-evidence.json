@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-13",
+  "date": "2026-10-10",
   "status": "passed",
   "command": "pnpm smoke:engine-interchange:browser",
   "source": {
@@ -7,28 +7,28 @@
     "byteLength": 13389913,
     "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
   },
-  "browser": "chrome (Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36)",
+  "browser": "chrome (Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36)",
   "rendering": "Chromium SwiftShader software WebGL2; not a hardware GPU benchmark",
-  "importThroughReadyMs": 59590,
-  "workflowSeconds": 72.4,
+  "importThroughReadyMs": 133646,
+  "workflowSeconds": 181.9,
   "gpu": {
     "definitions": 51,
     "instances": 246,
     "triangles": 461173,
     "uploads": 52,
-    "submitMs": 0.30000000074505806
+    "submitMs": 0.7999999988824129
   },
   "orbit": {
-    "frames": 54,
-    "medianFrameIntervalMs": 16.69999999999709,
-    "p95FrameIntervalMs": 116.60000000000582,
+    "frames": 56,
+    "medianFrameIntervalMs": 16.70000000001164,
+    "p95FrameIntervalMs": 733.2999999999884,
     "uploadsBefore": 52,
     "metrics": {
       "definitions": 51,
       "instances": 246,
       "triangles": 461173,
       "uploads": 52,
-      "submitMs": 0.19999999925494194
+      "submitMs": 0.7999999988824129
     }
   },
   "assertions": [
@@ -36,19 +36,30 @@
     "Fit all and native mouse orbit",
     "Orbit does not upload new mesh buffers",
     "Viewport component selection reports selected occurrence",
-    "Invalid STEP fails with structured diagnostic in a responsive app"
+    "Invalid STEP fails with structured diagnostic in a responsive app",
+    "Cancel an active full-engine import through the visible button; command settles within 3 seconds",
+    "Cancellation preserves the prior project structure and rendered mesh identities",
+    "Prior solid remains visible after cancellation; subsequent invalid import reports its own error"
   ],
-  "visualInspection": "Isometric, orbited and selected component screenshots reviewed; engine structure renders and selection highlights the chosen component.",
+  "visualInspection": "Isometric engine, selected occurrence and preserved existing solid screenshots reviewed. The cancellation message and corrected Import card are visible in the Files panel.",
   "screenshots": [
     ".metrics/ui-smoke/engine-interchange-isometric.png",
     ".metrics/ui-smoke/engine-interchange-orbit.png",
     ".metrics/ui-smoke/engine-interchange-front.png",
     ".metrics/ui-smoke/engine-interchange-selected.png",
-    ".metrics/ui-smoke/engine-interchange-invalid-file.png"
+    ".metrics/ui-smoke/engine-interchange-invalid-file.png",
+    ".metrics/ui-smoke/engine-import-cancelled-existing-part.png",
+    ".metrics/ui-smoke/engine-import-preserved-solid.png"
   ],
   "limitations": [
-    "Frame intervals are requestAnimationFrame samples during an automated software-WebGL orbit, not a sustained hardware frame-rate benchmark.",
+    "Frame intervals are requestAnimationFrame samples during an automated SwiftShader orbit, not a sustained hardware frame-rate benchmark. Visible frame spikes remain.",
     "Cold view and selection targets of 10 and 20 seconds are unmet.",
-    "Cancellation during long import was not exercised by this browser journey."
-  ]
+    "No matched pre-change browser run on this host; the September macOS evidence is not a speed comparison.",
+    "An earlier run reached cancellation but failed at the invalid-file check because the helper accepted the old model readiness too early. The helper was fixed before this complete passing run."
+  ],
+  "cancellation": {
+    "fileName": "radial-engine.step",
+    "control": "Cancel import",
+    "settleMs": 59
+  }
 }

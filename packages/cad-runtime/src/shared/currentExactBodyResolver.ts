@@ -2001,13 +2001,12 @@ function resolveCheckpointLeaf(
       message: `Checkpoint ${checkpoint.checkpointId} has no matching body/feature payload.`
     };
   }
-  const actualSha256 = sha256Hex(payload.brepBytes);
   const topologyEvidence = readCheckpointTopologyEvidence(payload);
   if (
     payload.brepByteLength === undefined ||
     payload.brepSha256 === undefined ||
     payload.brepByteLength !== payload.brepBytes.byteLength ||
-    payload.brepSha256 !== actualSha256 ||
+    payload.brepSha256 !== topologyEvidence?.brepSha256 ||
     topologyEvidence === undefined
   ) {
     return {
@@ -2080,15 +2079,54 @@ function resolveCheckpointEdgeReference(
   };
 }
 
+interface CheckpointTopologyEvidence {
+  readonly sourceKind: NonNullable<
+    DerivedImportedBodyExactMetadataSource["topologySourceKind"]
+  >;
+  readonly signature: string;
+  readonly brepSha256: string;
+}
+
+interface VerifiedCheckpointBytes {
+  readonly checkpointId: string;
+  readonly brepBytes: Uint8Array;
+  readonly topologyBytes: Uint8Array;
+  readonly signatureBytes: Uint8Array;
+  readonly evidence: CheckpointTopologyEvidence;
+  readonly cost: number;
+}
+
+// Resolver inputs may be replaced or mutated by their owner. Retain owned byte
+// copies and compare every byte before reuse, never trust a supplied hash alone.
+// This bounded LRU avoids re-decoding entire topology trees on every pose/edit.
+const verifiedCheckpointBytes = new Map<string, VerifiedCheckpointBytes>();
+const MAX_VERIFIED_CHECKPOINT_BYTES = 64 * 1024 * 1024;
+let verifiedCheckpointByteCount = 0;
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let i = 0; i < left.byteLength; i++) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
 function readCheckpointTopologyEvidence(
   payload: WcadTopologyCheckpointPayloadInput
-):
-  | {
-      readonly sourceKind: DerivedImportedBodyExactMetadataSource["topologySourceKind"] &
-        string;
-      readonly signature: string;
-    }
-  | undefined {
+): CheckpointTopologyEvidence | undefined {
+  const key = `${payload.checkpointId}:${payload.brepSha256}`;
+  const cached = verifiedCheckpointBytes.get(key);
+  if (
+    cached &&
+    cached.checkpointId === payload.checkpointId &&
+    sameBytes(cached.brepBytes, payload.brepBytes) &&
+    sameBytes(cached.topologyBytes, payload.topologyBytes) &&
+    sameBytes(cached.signatureBytes, payload.signatureBytes)
+  ) {
+    verifiedCheckpointBytes.delete(key);
+    verifiedCheckpointBytes.set(key, cached);
+    return { ...cached.evidence };
+  }
   try {
     const value = decodeWcadCanonicalCbor(payload.signatureBytes);
     const topology = decodeWcadCanonicalCbor(payload.topologyBytes);
@@ -2112,7 +2150,44 @@ function readCheckpointTopologyEvidence(
     ) {
       return undefined;
     }
-    return { sourceKind: topology.sourceKind, signature: value.signature };
+    const evidence = {
+      sourceKind: topology.sourceKind,
+      signature: value.signature,
+      brepSha256: sha256Hex(payload.brepBytes)
+    };
+    const cost =
+      payload.brepBytes.byteLength +
+      payload.topologyBytes.byteLength +
+      payload.signatureBytes.byteLength;
+    if (
+      evidence.brepSha256 === payload.brepSha256 &&
+      cost <= MAX_VERIFIED_CHECKPOINT_BYTES
+    ) {
+      if (cached) {
+        verifiedCheckpointByteCount -= cached.cost;
+        verifiedCheckpointBytes.delete(key);
+      }
+      while (
+        verifiedCheckpointByteCount + cost > MAX_VERIFIED_CHECKPOINT_BYTES ||
+        verifiedCheckpointBytes.size >= 256
+      ) {
+        const oldestKey = verifiedCheckpointBytes.keys().next().value;
+        if (oldestKey === undefined) break;
+        verifiedCheckpointByteCount -=
+          verifiedCheckpointBytes.get(oldestKey)!.cost;
+        verifiedCheckpointBytes.delete(oldestKey);
+      }
+      verifiedCheckpointBytes.set(key, {
+        checkpointId: payload.checkpointId,
+        brepBytes: payload.brepBytes.slice(),
+        topologyBytes: payload.topologyBytes.slice(),
+        signatureBytes: payload.signatureBytes.slice(),
+        evidence,
+        cost
+      });
+      verifiedCheckpointByteCount += cost;
+    }
+    return { ...evidence };
   } catch {
     return undefined;
   }

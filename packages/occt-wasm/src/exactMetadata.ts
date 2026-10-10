@@ -403,6 +403,7 @@ interface TopologyShapeEntry {
   readonly localId: string;
   readonly shape: TopoDS_Shape;
   readonly bounds: OcctExactBodyMetadata["bounds"];
+  readonly curveBoundsBox?: InstanceType<OpenCascadeInstance["Bnd_Box_1"]>;
   readonly signature: string;
 }
 
@@ -1027,19 +1028,20 @@ export function readExactTopologySnapshot(
   let vertexIndex: TopologyShapeIndex | undefined;
 
   try {
-    faceIndex = createTopologyShapeIndex(
-      oc,
-      shape,
-      "face",
-      "TopAbs_FACE",
-      sourceKind
-    );
     edgeIndex = createTopologyShapeIndex(
       oc,
       shape,
       "edge",
       "TopAbs_EDGE",
       sourceKind
+    );
+    faceIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "face",
+      "TopAbs_FACE",
+      sourceKind,
+      (face) => readFaceBoundsWithIndexedEdges(oc, face, edgeIndex!)
     );
     vertexIndex = createTopologyShapeIndex(
       oc,
@@ -1210,16 +1212,24 @@ function createTopologyShapeIndex(
 
     for (let index = 1; index <= shapeMap.Size(); index += 1) {
       let current: TopoDS_Shape | undefined;
+      let curveBoundsBox:
+        | InstanceType<OpenCascadeInstance["Bnd_Box_1"]>
+        | undefined;
 
       try {
         current = shapeMap.FindKey(index);
-        const bounds = boundsForShape(current);
+        curveBoundsBox =
+          kind === "edge" ? createExactEdgeBoundsBox(oc, current) : undefined;
+        const bounds = curveBoundsBox
+          ? readBoundsBox(curveBoundsBox)
+          : boundsForShape(current);
         entries.push({
           kind,
           index,
           localId: createTopologyEntityLocalId(kind, index),
           shape: current,
           bounds,
+          ...(curveBoundsBox ? { curveBoundsBox } : {}),
           signature: createTopologyEntitySignature({
             sourceKind,
             entityKind: kind,
@@ -1227,7 +1237,9 @@ function createTopologyShapeIndex(
           })
         });
         current = undefined;
+        curveBoundsBox = undefined;
       } finally {
+        curveBoundsBox?.delete();
         current?.delete();
       }
     }
@@ -1245,6 +1257,7 @@ function createTopologyShapeIndex(
         if (disposed) return;
         disposed = true;
         for (const entry of entries) {
+          entry.curveBoundsBox?.delete();
           entry.shape.delete();
         }
 
@@ -1253,6 +1266,7 @@ function createTopologyShapeIndex(
     };
   } catch (error) {
     for (const entry of entries) {
+      entry.curveBoundsBox?.delete();
       entry.shape.delete();
     }
     shapeMap.delete();
@@ -2357,29 +2371,148 @@ function readBounds(
   try {
     oc.BRepBndLib.AddOptimal(shape, bounds, false, true);
 
-    if (bounds.IsVoid()) {
-      throw {
-        code: "EMPTY_RESULT",
-        message: "Open CASCADE returned an empty exact metadata bounds box."
-      } satisfies EmptyResultError;
-    }
-
-    let min: ReturnType<typeof bounds.CornerMin> | undefined;
-    let max: ReturnType<typeof bounds.CornerMax> | undefined;
-
-    try {
-      min = bounds.CornerMin();
-      max = bounds.CornerMax();
-      return {
-        min: [min.X(), min.Y(), min.Z()],
-        max: [max.X(), max.Y(), max.Z()]
-      };
-    } finally {
-      max?.delete();
-      min?.delete();
-    }
+    return readBoundsBox(bounds);
   } finally {
     bounds.delete();
+  }
+}
+
+function readBoundsBox(
+  bounds: InstanceType<OpenCascadeInstance["Bnd_Box_1"]>
+): OcctExactBodyMetadata["bounds"] {
+  if (bounds.IsVoid()) {
+    throw {
+      code: "EMPTY_RESULT",
+      message: "Open CASCADE returned an empty exact metadata bounds box."
+    } satisfies EmptyResultError;
+  }
+  const min = bounds.CornerMin();
+  let max: ReturnType<typeof bounds.CornerMax> | undefined;
+  try {
+    max = bounds.CornerMax();
+    return {
+      min: [min.X(), min.Y(), min.Z()],
+      max: [max.X(), max.Y(), max.Z()]
+    };
+  } finally {
+    max?.delete();
+    min.delete();
+  }
+}
+
+function createExactEdgeBoundsBox(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape
+): InstanceType<OpenCascadeInstance["Bnd_Box_1"]> | undefined {
+  const edge = oc.TopoDS.Edge_1(shape);
+  let curve:
+    | InstanceType<OpenCascadeInstance["BRepAdaptor_Curve_2"]>
+    | undefined;
+  let box: InstanceType<OpenCascadeInstance["Bnd_Box_1"]> | undefined;
+  try {
+    if (!oc.BRep_Tool.IsGeometric_2(edge)) return undefined;
+    curve = new oc.BRepAdaptor_Curve_2(edge);
+    box = new oc.Bnd_Box_1();
+    oc.BndLib_Add3dCurve.AddOptimal_1(
+      curve,
+      oc.BRep_Tool.Tolerance_2(edge),
+      box
+    );
+    const result = box;
+    box = undefined;
+    return result;
+  } finally {
+    box?.delete();
+    curve?.delete();
+    edge.delete();
+  }
+}
+
+/** Reuse exact edge boxes for the surface families where OCCT's AddOptimal
+ * itself computes a face box from its edges (BRepBndLib::CanUseEdges).
+ * General curved/trimmed surfaces still use the kernel's surface extrema.
+ * This preserves shape tolerances and the existing topology signatures; it
+ * never substitutes tessellation or control-polygon bounds for exact bounds.
+ */
+function readFaceBoundsWithIndexedEdges(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  edges: TopologyShapeIndex
+): OcctExactBodyMetadata["bounds"] {
+  const face = oc.TopoDS.Face_1(shape);
+  let surface:
+    | InstanceType<OpenCascadeInstance["BRepAdaptor_Surface_2"]>
+    | undefined;
+  try {
+    if (!oc.BRep_Tool.IsGeometric_1(face)) return readBounds(oc, shape);
+    surface = new oc.BRepAdaptor_Surface_2(face, false);
+    const type = surface.GetType();
+    const types = oc.GeomAbs_SurfaceType;
+    const canUseEdges =
+      type === types.GeomAbs_Plane ||
+      type === types.GeomAbs_Cylinder ||
+      type === types.GeomAbs_Cone ||
+      type === types.GeomAbs_SurfaceOfExtrusion ||
+      (type === types.GeomAbs_BSplineSurface &&
+        ((surface.UDegree() === 1 && surface.NbUKnots() === 2) ||
+          (surface.VDegree() === 1 && surface.NbVKnots() === 2))) ||
+      (type === types.GeomAbs_BezierSurface &&
+        (surface.UDegree() === 1 || surface.VDegree() === 1));
+    if (!canUseEdges) return readBounds(oc, shape);
+    // AddOptimal also includes any standalone vertices with their own
+    // tolerances. Keep its full path for those unusual faces.
+    const freeVertices = new oc.TopExp_Explorer_2(
+      face,
+      oc.TopAbs_ShapeEnum.TopAbs_VERTEX as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[1],
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[2]
+    );
+    try {
+      if (freeVertices.More()) return readBounds(oc, shape);
+    } finally {
+      freeVertices.delete();
+    }
+    const explorer = new oc.TopExp_Explorer_2(
+      face,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[1],
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[2]
+    );
+    const box = new oc.Bnd_Box_1();
+    try {
+      for (; explorer.More(); explorer.Next()) {
+        const child = explorer.Current();
+        const edge = oc.TopoDS.Edge_1(child);
+        try {
+          if (
+            oc.BRep_Tool.Degenerated(edge) ||
+            !oc.BRep_Tool.IsGeometric_2(edge)
+          )
+            continue;
+          const edgeBox = edges.find(child)?.curveBoundsBox;
+          if (!edgeBox) return readBounds(oc, shape);
+          // Bnd_Box::Add propagates the maximum edge tolerance to the whole
+          // face. Unioning already-expanded numeric min/max loses that gap.
+          box.Add_1(edgeBox);
+        } finally {
+          edge.delete();
+          child.delete();
+        }
+      }
+      return box.IsVoid() ? readBounds(oc, shape) : readBoundsBox(box);
+    } finally {
+      box.delete();
+      explorer.delete();
+    }
+  } finally {
+    surface?.delete();
+    face.delete();
   }
 }
 

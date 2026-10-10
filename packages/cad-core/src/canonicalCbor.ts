@@ -214,8 +214,11 @@ class CborByteWriter {
 
 class CborReader {
   #offset = 0;
+  readonly #view: DataView;
 
-  constructor(private readonly bytes: Uint8Array) {}
+  constructor(private readonly bytes: Uint8Array) {
+    this.#view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  }
 
   get done(): boolean {
     return this.#offset === this.bytes.byteLength;
@@ -334,7 +337,14 @@ class CborReader {
 
   #readText(length: number): string {
     try {
-      return textDecoder.decode(this.#readBytes(length));
+      this.#assertAvailable(length);
+      // TextDecoder consumes the view synchronously. Unlike returned byte
+      // strings, text does not need an owned copy of the input buffer.
+      const text = textDecoder.decode(
+        this.bytes.subarray(this.#offset, this.#offset + length)
+      );
+      this.#offset += length;
+      return text;
     } catch (error) {
       throw new CanonicalCborDecodeError(
         error instanceof Error ? error.message : "CBOR text is not valid UTF-8."
@@ -350,19 +360,20 @@ class CborReader {
   }
 
   #readUint8(): number {
-    const value = this.#readDataView(1).getUint8(0);
-    this.#offset += 1;
-    return value;
+    this.#assertAvailable(1);
+    return this.bytes[this.#offset++]!;
   }
 
   #readUint16(): number {
-    const value = this.#readDataView(2).getUint16(0, false);
+    this.#assertAvailable(2);
+    const value = this.#view.getUint16(this.#offset, false);
     this.#offset += 2;
     return value;
   }
 
   #readUint32(): number {
-    const value = this.#readDataView(4).getUint32(0, false);
+    this.#assertAvailable(4);
+    const value = this.#view.getUint32(this.#offset, false);
     this.#offset += 4;
     return value;
   }
@@ -382,18 +393,10 @@ class CborReader {
   }
 
   #readFloat64(): number {
-    const value = this.#readDataView(8).getFloat64(0, false);
+    this.#assertAvailable(8);
+    const value = this.#view.getFloat64(this.#offset, false);
     this.#offset += 8;
     return value;
-  }
-
-  #readDataView(length: number): DataView {
-    this.#assertAvailable(length);
-    return new DataView(
-      this.bytes.buffer,
-      this.bytes.byteOffset + this.#offset,
-      length
-    );
   }
 
   #assertCollectionCanFit(

@@ -104,13 +104,19 @@ Improve journey design and diagnostics within the E2E-only policy if those
 metrics regress. Recovery and DXF/SVG completeness are explicit coverage gaps in
 the initial small suite, not implied by a green run.
 
+## Current implementation
+
+See [import and editing performance](import-performance.md) for the first measured
+implementation, exact-geometry comparison and remaining latency targets.
+
 ## Next implementation slice
 
 Make the existing engine import usable within the performance targets before
-adding another 3D feature. Re-run the pinned engine in isolation, instrument the
-current stages, pick the largest measured cost, and deliver progressive usable
-rendering plus cancellation through the browser Import control. Verify that
-cancel leaves the prior project intact, then finish the same import, edit a bore,
-save/reopen, and capture latency and memory. In parallel at the planning level,
+adding another 3D feature. Exact bounds reuse, checkpoint verification reuse and
+import cancellation are implemented in the first performance slice. Next,
+shorten native STEP transfer and remaining general-surface bounds work, and
+deliver progressive usable rendering through the browser Import control. Keep
+the existing cancellation, edit, native reopen and exact-geometry assertions;
+measure time to an actually usable model and selection. In parallel at the planning level,
 settle the minimal drawing document contract and DWG integration feasibility so
 those decisions do not block the drafting workstream.

@@ -10,12 +10,12 @@ are not current commands or evidence for the new suite.
 
 `pnpm test` (also `pnpm smoke:e2e`) runs one consolidated suite:
 
-| Journey                   | User-visible coverage                                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Assembly distance         | Apply gap, exact pose, Undo/Redo, invalid distance                                                                             |
-| Assembly concentric       | Cancel, reopen/Apply, radial/axial placement, empty collector                                                                  |
-| Editable interchange      | STEP import, independent occurrence, face pick/offset, sibling volume, Undo/Redo, native save/reload/reopen/edit, invalid STEP |
-| Public MCP mounting plate | Real stdio process, author/exact inspect, atomic rejection, dry run, revise, WCAD save/reopen, STEP export/readback            |
+| Journey                   | User-visible coverage                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Assembly distance         | Apply gap, exact pose, Undo/Redo, invalid distance                                                                                          |
+| Assembly concentric       | Cancel, reopen/Apply, radial/axial placement, empty collector                                                                               |
+| Editable interchange      | STEP cancel/retry/import, independent occurrence, face pick/offset, sibling volume, Undo/Redo, native save/reload/reopen/edit, invalid STEP |
+| Public MCP mounting plate | Real stdio process, author/exact inspect, atomic rejection, dry run, revise, WCAD save/reopen, STEP export/readback                         |
 
 Browser cases share one Vite/Chrome startup and use fresh tabs for isolation.
 No retries or silent missing-tool skips. The STEP fixture is generated from real
@@ -52,6 +52,11 @@ run the relevant existing headless/browser pair, not every pair:
 Recovery after a crash, broad DXF/SVG fidelity, all feature combinations, and
 hardware GPU performance are not established by this small default suite. Add
 needed assertions to the nearest journey as the roadmap reaches those features.
+
+## Current performance slice
+
+See [import and editing performance](import-performance.md) for exact baseline
+comparison, full engine E2E results, and measured latency limits.
 
 ## Consolidation validation — 2026-10-10
 

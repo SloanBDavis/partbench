@@ -62,6 +62,31 @@
   ],
   "useBreak": [
     {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "click": "[data-action-id=\"solid.box\"]"
+    },
+    {
+      "apply": true
+    },
+    {
+      "waitReady": true
+    },
+    {
+      "importStep": ".metrics/engine-step-trial/radial-engine.step",
+      "cancelImport": true
+    },
+    {
+      "screenshot": "engine-import-cancelled-existing-part"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-solid\"]"
+    },
+    {
+      "screenshot": "engine-import-preserved-solid"
+    },
+    {
       "importStep": "examples/engine-step-trial/invalid.step",
       "expectImportError": "could not read the file"
     },

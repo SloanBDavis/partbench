@@ -327,58 +327,11 @@ export function createOcctStepImportWithInstance(
     const bodies: OcctImportedBodyPayload[] = [];
     for (const [definitionId, label] of leafLabels) {
       const shape = oc.XCAFDoc_ShapeTool.GetShape_2(label);
-      let repaired: TopoDS_Shape | undefined;
       try {
         if (shape.IsNull())
           throw new Error(`STEP part ${definitionId} has no geometry.`);
-        const validity = new oc.BRepCheck_Analyzer(shape, true, false);
-        let valid: boolean;
-        try {
-          valid = validity.IsValid_2();
-        } finally {
-          validity.delete();
-        }
-        const healed = valid
-          ? { shape, healingApplied: false }
-          : healStepShape(oc, shape, progress);
-        if (!valid) repaired = healed.shape;
-        // Checkpoint evidence describes the durable shape, including OCCT's
-        // serialization precision and topology traversal, rather than the
-        // transient exchange reader's in-memory representation.
-        const brepBytes = writeBrepCheckpointBytes(oc, healed.shape);
-        const { topologySnapshot, metadata } = withImportedBrepShape(
-          oc,
-          brepBytes,
-          (canonicalShape) => {
-            const analyzer = new oc.BRepCheck_Analyzer(
-              canonicalShape,
-              true,
-              false
-            );
-            try {
-              if (!analyzer.IsValid_2())
-                throw new Error(
-                  "STEP checkpoint serialization did not retain a valid solid."
-                );
-            } finally {
-              analyzer.delete();
-            }
-            const topologySnapshot = readExactTopologySnapshot(
-              oc,
-              canonicalShape,
-              "importedBody"
-            );
-            return {
-              topologySnapshot,
-              metadata: readExactBodyMetadata(
-                oc,
-                canonicalShape,
-                "importedBody",
-                topologySnapshot
-              )
-            };
-          }
-        );
+        const { brepBytes, topologySnapshot, metadata, healingApplied } =
+          prepareStepCheckpoint(oc, shape, progress);
         if (topologySnapshot.entityCounts.solidCount <= 0) {
           throw new Error(
             `STEP part ${readStepName(oc, label) ?? definitionId} is not a solid. Surface and curve imports are not yet supported.`
@@ -397,11 +350,11 @@ export function createOcctStepImportWithInstance(
           : `checkpoint_imported_${index}`;
         const bodyDiagnostics: OcctStepImportDiagnostic[] = [
           {
-            code: healed.healingApplied
+            code: healingApplied
               ? "STEP_HEALING_APPLIED"
               : "STEP_HEALING_NOT_REQUIRED",
             severity: "info",
-            message: healed.healingApplied
+            message: healingApplied
               ? "Repaired invalid part geometry with ShapeFix_Shape."
               : "Part geometry passed validation without repair."
           },
@@ -450,11 +403,10 @@ export function createOcctStepImportWithInstance(
               topologySnapshot
             )
           },
-          healingApplied: healed.healingApplied,
+          healingApplied,
           diagnostics: bodyDiagnostics
         });
       } finally {
-        repaired?.delete();
         shape.delete();
       }
     }
@@ -579,6 +531,73 @@ function healStepShape(
   } finally {
     fixer.delete();
   }
+}
+
+/** Validate the durable, round-tripped shape once. Previously the transient
+ * exchange shape was also fully checked even though no caller consumed it.
+ * Invalid canonical shapes still get repaired, serialized again and validated
+ * before any document data is returned. */
+function prepareStepCheckpoint(
+  oc: OpenCascadeInstance,
+  source: TopoDS_Shape,
+  progress: InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+): {
+  brepBytes: Uint8Array;
+  topologySnapshot: OcctExactTopologySnapshot;
+  metadata: OcctExactBodyMetadata;
+  healingApplied: boolean;
+} {
+  let brepBytes = writeBrepCheckpointBytes(oc, source);
+  let healingApplied = false;
+  const readCanonical = (
+    shape: TopoDS_Shape,
+    allowRepair: boolean
+  ): {
+    topologySnapshot: OcctExactTopologySnapshot;
+    metadata: OcctExactBodyMetadata;
+  } => {
+    const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
+    let valid: boolean;
+    try {
+      valid = analyzer.IsValid_2();
+    } finally {
+      analyzer.delete();
+    }
+    if (!valid) {
+      if (!allowRepair)
+        throw new Error(
+          "STEP checkpoint serialization did not retain a valid solid."
+        );
+      const repaired = healStepShape(oc, shape, progress);
+      try {
+        healingApplied = repaired.healingApplied;
+        brepBytes = writeBrepCheckpointBytes(oc, repaired.shape);
+        return withImportedBrepShape(oc, brepBytes, (canonical) =>
+          readCanonical(canonical, false)
+        );
+      } finally {
+        repaired.shape.delete();
+      }
+    }
+    const topologySnapshot = readExactTopologySnapshot(
+      oc,
+      shape,
+      "importedBody"
+    );
+    return {
+      topologySnapshot,
+      metadata: readExactBodyMetadata(
+        oc,
+        shape,
+        "importedBody",
+        topologySnapshot
+      )
+    };
+  };
+  const evidence = withImportedBrepShape(oc, brepBytes, (shape) =>
+    readCanonical(shape, true)
+  );
+  return { brepBytes, ...evidence, healingApplied };
 }
 
 function writeBrepCheckpointBytes(

@@ -6,7 +6,6 @@ import type {
   DocumentUnitUpdateMode,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
-  ProjectImportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse,
   ProjectPortabilityStatus,
   ProjectTopologyIdentityReadinessQueryResponse
@@ -95,7 +94,6 @@ export interface ProjectWorkspaceProps {
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly health?: ProjectHealthQueryResponse;
   readonly topologyIdentityReadiness?: ProjectTopologyIdentityReadinessQueryResponse;
-  readonly importReadiness?: ProjectImportReadinessQueryResponse;
   readonly exportReadiness?: ProjectExportReadinessQueryResponse;
   readonly selectedBodyId?: string;
   readonly exactStepExportJob: ProjectExactStepExportJobState;
@@ -178,7 +176,6 @@ export function ProjectWorkspace({
   storageCapabilities,
   health,
   topologyIdentityReadiness,
-  importReadiness,
   exportReadiness,
   selectedBodyId,
   exactStepExportJob,
@@ -265,7 +262,6 @@ export function ProjectWorkspace({
           disabled={disabled}
           projectFile={projectFile}
           storageCapabilities={storageCapabilities}
-          importReadiness={importReadiness}
           jsonDraft={jsonDraft}
           jsonWorkflow={jsonWorkflow}
           opfsCacheStatus={opfsCacheStatus}
@@ -777,7 +773,6 @@ function ProjectFiles({
   disabled,
   projectFile,
   storageCapabilities,
-  importReadiness,
   onUnavailableActivate,
   onNew,
   onOpenWcad,
@@ -810,7 +805,6 @@ function ProjectFiles({
   | "disabled"
   | "projectFile"
   | "storageCapabilities"
-  | "importReadiness"
   | "onUnavailableActivate"
   | "onNew"
   | "onOpenWcad"
@@ -980,11 +974,12 @@ function ProjectFiles({
           )}
         </ProjectCard>
         <ProjectCard
-          title="STEP import"
-          status={formatImportStatus(importReadiness?.status)}
+          title="Import"
+          status={canOpenStep ? "Ready" : "Unavailable"}
         >
           <p className="pb-project-card-detail">
-            {formatImportDetail(importReadiness)}
+            Import STEP solids and assemblies, or DXF/SVG sketch curves. Review
+            the STEP summary before adding parts to your project.
           </p>
           <Button
             disabled={disabled}
@@ -2133,32 +2128,6 @@ function formatHistoryActor(transaction: CadTransactionHistoryEntry): string {
   if (actor.type === "agent") return "Agent action";
   if (actor.type === "script") return "Scripted action";
   return "System action";
-}
-
-function formatImportStatus(
-  status: ProjectImportReadinessQueryResponse["status"] | undefined
-): string {
-  if (!status) return "Not checked";
-  if (status === "supported") return "Ready";
-  if (status === "deferred") return "Not ready yet";
-  return "Unavailable";
-}
-
-function formatImportDetail(
-  readiness: ProjectImportReadinessQueryResponse | undefined
-): string {
-  if (!readiness) {
-    return "Import readiness will be checked before a STEP file is committed.";
-  }
-  if (readiness.status === "supported") {
-    return `STEP import is ready. This project currently contains ${readiness.importedBodyCount} imported ${
-      readiness.importedBodyCount === 1 ? "body" : "bodies"
-    }.`;
-  }
-  return (
-    readiness.diagnostics.find((item) => item.severity === "blocking")
-      ?.message ?? "Select a STEP file to review import diagnostics."
-  );
 }
 
 async function readBinaryFile(

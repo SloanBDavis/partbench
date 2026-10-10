@@ -6,49 +6,19 @@ Run the small closer from the repository with Node.js 22 and pnpm 10 installed:
 pnpm smoke:interchange
 ```
 
-It runs the focused shared-runtime interchange and sketch-codec tests, generates
-small browser fixtures, and runs only
-[`scenarios/editable-interchange.json`](../../scenarios/editable-interchange.json).
-It does not download or run the radial engine, launch Chromium, or enable CI.
-The command scenario checks a shared sketch parameter change, four nested part
-occurrences, and an invalid cycle whose entire transaction must roll back.
+The consolidated E2E runner generates `authored-nested.step` from real CAD
+operations, then opens the real Chromium workbench. It cancels and retries an
+import, makes one nested occurrence independent, picks and offsets a face,
+checks changed/unchanged body volumes, uses Undo/Redo, saves native, reloads,
+reopens and edits again. An invalid STEP is the break case. Bun 1.4.2+ and
+Chrome/Chromium are required. No unit tests or engine download are involved.
 
-The exact runtime proof starts with two repeated, differently rotated modules.
-Each contains a cylindrical pin and a two-solid pad definition. It checks:
-
-- A shared definition edit rebuilds only that definition; repeated queries and
-  instance moves reuse unchanged exact geometry.
-- STEP import, dry run, and invalid-file rejection use the same document session.
-  Names, RGB appearance, repeated definitions, nested placements, and multi-solid
-  grouping survive export and import.
-- One occurrence becomes independent, gets an ordinary sketch-driven bore cut,
-  and moves while its sibling keeps the original definition. Consuming edits
-  automatically update assembly references to their result body.
-- Native save/open preserves source and transaction history. The reopened cut
-  remains editable, including undo/redo.
-- A second STEP import into an inch-based document preserves physical bounds,
-  volume, colors, names, and occurrence counts, then permits another independent
-  body edit.
-- SVG/DXF sketch curves round-trip through ordinary sketch commands and exact
-  hole-bearing extrusion; unsupported or malformed geometry rejects atomically.
-
-Generated files live in `.metrics/editable-interchange/`:
-
-| File                                          | Purpose                                                                 |
-| --------------------------------------------- | ----------------------------------------------------------------------- |
-| `authored-nested.step` / `.wcad`              | Small assembly exported from native authored features.                  |
-| `imported-nested.wcad`                        | First STEP import, ready for normal selection and editing.              |
-| `edited-nested.step` / `.wcad`                | One independently edited pin with a radius 1 mm, depth 4 mm bore.       |
-| `nested-fixture.json` / `edited-fixture.json` | Current body IDs, occurrence paths, dimensions, and exact measurements. |
-| `small-closer.json`                           | Exit status and elapsed time for each closer stage.                     |
-
-Initial pin radius is 3 mm; the runtime proof increases its extrusion depth from
-6 to 8 mm. Pads measure 4 × 6 × 2 mm and repeat with 10 mm spacing. The command
-scenario separately binds the pin radius to a parameter and changes it to 4 mm.
-Read the generated JSON for imported IDs rather than depending on STEP entity
-ordering. The standard test run writes no fixtures; this closer supplies the
-existing `PARTBENCH_INTERCHANGE_ARTIFACT_DIR` environment variable with an
-absolute directory resolved from the repository location.
+Fixtures and saved files live under `.metrics/editable-interchange/`; screenshots
+are under `.metrics/ui-smoke/`. The source assembly has two repeated, differently
+rotated modules: each has a radius 3 mm, depth 8 mm pin and two 4 × 6 × 2 mm pads.
+`pnpm test` includes this journey alongside assembly controls and a public MCP
+modeling journey. Older detailed codec/contract checks are historical evidence,
+not claims about today's consolidated suite.
 
 Native `.wcad` retains full Partbench source/history. STEP retains supported exact
 geometry and assembly data; it does not reconstruct foreign sketches or feature
@@ -65,7 +35,7 @@ See the complete [format contracts](../../docs/editable-interchange.md#format-co
 
 ## Small browser Use
 
-After generating the fixtures, run with the existing Bun/Chromium setup:
+The alias below generates its own fixture and runs the same consolidated journey:
 
 ```sh
 pnpm smoke:interchange:browser
@@ -76,8 +46,8 @@ make one occurrence independent, pick and offset an actual face, check exact
 volume and the unchanged sibling, undo/redo, save native, reload the browser,
 open the saved file, and edit the saved offset parameter. File-picker fixtures
 exercise the real product reader/writer; they do not automate the operating
-system's file dialog. This is separate from the command tests and is not a
-large-engine rendering or speed measurement. See the
+system's file dialog. These are historical timings, not a large-engine rendering or current speed
+measurement. See the
 [verification record](../../docs/verification.md) for current run evidence.
 
 ## Full radial-engine acceptance
@@ -132,3 +102,17 @@ perpendicular planar ends; unsupported neighborhoods reject atomically. STEP
 export rejects non-rigid occurrence placements. These limits and the remaining
 performance work are recorded in the
 [current goal](../../docs/editable-interchange.md).
+
+## Current performance work
+
+See [import and editing performance](../../docs/import-performance.md) for the
+2026-10-10 optimization and current measurements. To compare an import against a
+native file produced by an older checkout without weakening geometry checks:
+
+```sh
+pnpm smoke:engine-interchange --compare-native=/absolute/path/engine-initial.wcad
+```
+
+The optional comparison checks all imported BRep bytes and topology evidence,
+then continues the same complete editing/save/reopen/export/reimport workflow.
+The browser engine journey also proves cancellation with an existing solid.

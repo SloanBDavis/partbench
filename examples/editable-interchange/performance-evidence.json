@@ -1,0 +1,211 @@
+{
+  "date": "2026-10-10",
+  "baselineCommit": "f05e74e",
+  "source": {
+    "fileName": "radial-engine.step",
+    "byteLength": 13389913,
+    "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
+  },
+  "environment": {
+    "node": "v22.23.3",
+    "platform": "linux",
+    "architecture": "x64",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "logicalCpuCount": 5,
+    "physicalMemoryBytes": 18882699264,
+    "memorySampling": "Process memory observed at stage completion, not continuous peak measurement."
+  },
+  "method": "An isolated, unprofiled baseline full engine journey and the final isolated, unprofiled optimized journey on the same machine, in separate Node processes. Baseline ran in a detached worktree with the same locked dependencies. An earlier optimized iteration is also disclosed below. These observations are not distributions or performance guarantees.",
+  "geometryEquivalence": "All 51 imported checkpoint BRep and signature byte arrays and decoded topology objects exactly match the baseline native file.",
+  "afterRunExtraStage": "The optimized run additionally compares saved native geometry against the baseline after initial save; subsequent stage memory can include that comparison.",
+  "stages": [
+    {
+      "name": "cold STEP import through CadSession",
+      "beforeMs": 77435.3,
+      "afterMs": 83371.2,
+      "beforeRssBytes": 1135362048,
+      "afterRssBytes": 1025982464
+    },
+    {
+      "name": "ready exact engine",
+      "beforeMs": 1270.6,
+      "afterMs": 288.1,
+      "beforeRssBytes": 1192525824,
+      "afterRssBytes": 1026809856
+    },
+    {
+      "name": "save imported native source",
+      "beforeMs": 2173.2,
+      "afterMs": 2060.7,
+      "beforeRssBytes": 1304281088,
+      "afterRssBytes": 1136410624
+    },
+    {
+      "name": "make one nested engine occurrence independent",
+      "beforeMs": 1190.1,
+      "afterMs": 324.6,
+      "beforeRssBytes": 1364914176,
+      "afterRssBytes": 1359695872
+    },
+    {
+      "name": "resize only the independent bore",
+      "beforeMs": 1013.1,
+      "afterMs": 531.5,
+      "beforeRssBytes": 1550585856,
+      "afterRssBytes": 1366904832
+    },
+    {
+      "name": "sketch and cut the imported end face",
+      "beforeMs": 1157.7,
+      "afterMs": 336.9,
+      "beforeRssBytes": 1789706240,
+      "afterRssBytes": 1372418048
+    },
+    {
+      "name": "move the independent component",
+      "beforeMs": 1388.2,
+      "afterMs": 249.3,
+      "beforeRssBytes": 1907810304,
+      "afterRssBytes": 1374081024
+    },
+    {
+      "name": "save edited native",
+      "beforeMs": 1734.7,
+      "afterMs": 1711.1,
+      "beforeRssBytes": 1989992448,
+      "afterRssBytes": 1487892480
+    },
+    {
+      "name": "open edited native in fresh session",
+      "beforeMs": 1467.7,
+      "afterMs": 1260.2,
+      "beforeRssBytes": 1990672384,
+      "afterRssBytes": 1412562944
+    },
+    {
+      "name": "evaluate reopened native",
+      "beforeMs": 3599.5,
+      "afterMs": 3200.9,
+      "beforeRssBytes": 2009513984,
+      "afterRssBytes": 1425145856
+    },
+    {
+      "name": "update existing native oil-port depth",
+      "beforeMs": 1067.3,
+      "afterMs": 388.8,
+      "beforeRssBytes": 2009731072,
+      "afterRssBytes": 1425412096
+    },
+    {
+      "name": "undo native depth update",
+      "beforeMs": 777.9,
+      "afterMs": 204.1,
+      "beforeRssBytes": 2009808896,
+      "afterRssBytes": 1425543168
+    },
+    {
+      "name": "redo native depth update",
+      "beforeMs": 1304.6,
+      "afterMs": 206.2,
+      "beforeRssBytes": 2009808896,
+      "afterRssBytes": 1425592320
+    },
+    {
+      "name": "export edited engine STEP",
+      "beforeMs": 22697,
+      "afterMs": 28163.9,
+      "beforeRssBytes": 2231906304,
+      "afterRssBytes": 1624182784
+    },
+    {
+      "name": "reimport edited STEP in fresh session",
+      "beforeMs": 68721.1,
+      "afterMs": 74464.7,
+      "beforeRssBytes": 2410614784,
+      "afterRssBytes": 1752084480
+    },
+    {
+      "name": "evaluate reimported STEP",
+      "beforeMs": 762.6,
+      "afterMs": 201.8,
+      "beforeRssBytes": 2410614784,
+      "afterRssBytes": 1751953408
+    },
+    {
+      "name": "edit reimported engine bore again",
+      "beforeMs": 866,
+      "afterMs": 408.9,
+      "beforeRssBytes": 2411118592,
+      "afterRssBytes": 1752514560
+    },
+    {
+      "name": "sketch and cut the reimported engine again",
+      "beforeMs": 1028.4,
+      "afterMs": 294,
+      "beforeRssBytes": 2410213376,
+      "afterRssBytes": 1752842240
+    }
+  ],
+  "limitations": [
+    "Memory is sampled at stage boundaries, not peak RSS.",
+    "Cold view <=10 s, selection <=20 s and native open plus evaluation <=2 s remain unmet.",
+    "The final run does not establish faster cold import, STEP export or STEP reimport; all three were slower than baseline. Earlier optimized cold import was faster, so no reliable cold-import gain is claimed.",
+    "Browser/software WebGL timing is recorded separately in browser-evidence.json."
+  ],
+  "earlierOptimizedIteration": {
+    "cold STEP import through CadSession": 55528.9,
+    "ready exact engine": 189,
+    "export edited engine STEP": 25011.3,
+    "reimport edited STEP in fresh session": 68352.6
+  },
+  "validation": {
+    "workspaceTypecheck": "13 packages passed",
+    "consolidatedE2E": "Three Chromium journeys and public MCP mounting-plate passed",
+    "fullEngineHeadless": "19 stages passed, including exact native baseline comparison",
+    "fullEngineBrowser": "Passed; see browser-evidence.json",
+    "changedSourceLint": "No errors; six existing React hook warnings",
+    "unitTestsAdded": 0
+  },
+  "nativeProfile": {
+    "method": "Diagnostic instrumentation of the real full-engine OCCT import. Call counts establish work eliminated. Earlier profiling overlapped static checks, so before/after profiler times are not a controlled speed comparison. Final diagnostic ran in isolation.",
+    "beforeCalls": {
+      "load": 1,
+      "ReadFile": 1,
+      "Transfer_1": 1,
+      "BRepCheck_Analyzer": 102,
+      "Write_3": 51,
+      "Read_2": 51,
+      "AddOptimal": 19580,
+      "SurfaceProperties_1": 3472,
+      "LinearProperties": 9793,
+      "VolumeProperties_1": 51
+    },
+    "afterCalls": {
+      "load": 1,
+      "ReadFile": 1,
+      "Transfer_1": 1,
+      "Write_3": 51,
+      "Read_2": 51,
+      "BRepCheck_Analyzer": 51,
+      "AddOptimal": 6530,
+      "SurfaceProperties_1": 3472,
+      "LinearProperties": 9793,
+      "VolumeProperties_1": 51
+    },
+    "finalDiagnosticMs": {
+      "load": 3348.6,
+      "ReadFile": 3208.0,
+      "Transfer_1": 15006.3,
+      "Write_3": 732.3,
+      "Read_2": 623.6,
+      "BRepCheck_Analyzer": 5044.3,
+      "AddOptimal": 16480.1,
+      "SurfaceProperties_1": 4644.4,
+      "LinearProperties": 85.7,
+      "VolumeProperties_1": 1941.9
+    },
+    "finalDiagnosticTotalMs": 53437.8,
+    "bodyCount": 51,
+    "occurrenceCount": 246
+  }
+}

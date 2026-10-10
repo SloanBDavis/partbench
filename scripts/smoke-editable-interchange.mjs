@@ -8,8 +8,12 @@ import { cpus, totalmem } from "node:os";
 register(new URL("./ts-source-loader.mjs", import.meta.url), import.meta.url);
 const { createCadSession } =
   await import("../packages/cad-runtime/src/index.ts");
-const { flattenAssemblyOccurrences, assemblyTransformToMatrix } =
-  await import("../packages/cad-core/src/index.ts");
+const {
+  flattenAssemblyOccurrences,
+  assemblyTransformToMatrix,
+  readCadProjectWcad,
+  decodeWcadCanonicalCbor
+} = await import("../packages/cad-core/src/index.ts");
 const workspace = resolve(".metrics/editable-interchange");
 await mkdir(workspace, { recursive: true });
 const bytes = new Uint8Array(
@@ -211,6 +215,56 @@ try {
       await main.exportWcad()
     )
   );
+  const baselinePath = process.argv
+    .find((arg) => arg.startsWith("--compare-native="))
+    ?.slice("--compare-native=".length);
+  if (baselinePath) {
+    await stage(
+      "compare exact topology with baseline native import",
+      async () => {
+        const before = await readCadProjectWcad(
+          new Uint8Array(await readFile(baselinePath))
+        );
+        const after = await readCadProjectWcad(
+          new Uint8Array(
+            await readFile(resolve(workspace, "engine-initial.wcad"))
+          )
+        );
+        assert.ok(
+          before.ok && after.ok,
+          "Baseline and current native files must open"
+        );
+        assert.equal(
+          after.checkpointPayloads.length,
+          before.checkpointPayloads.length
+        );
+        for (const payload of after.checkpointPayloads) {
+          const original = before.checkpointPayloads.find(
+            (item) => item.checkpointId === payload.checkpointId
+          );
+          assert.ok(
+            original,
+            `Missing baseline checkpoint ${payload.checkpointId}`
+          );
+          assert.deepEqual(
+            decodeWcadCanonicalCbor(payload.topologyBytes),
+            decodeWcadCanonicalCbor(original.topologyBytes),
+            `${payload.checkpointId} exact topology changed`
+          );
+          assert.deepEqual(
+            payload.brepBytes,
+            original.brepBytes,
+            `${payload.checkpointId} geometry changed`
+          );
+          assert.deepEqual(
+            payload.signatureBytes,
+            original.signatureBytes,
+            `${payload.checkpointId} signature evidence changed`
+          );
+        }
+      }
+    );
+  }
   const structure = await query(main, { query: "project.structure" });
   const originalBody = structure.bodies.find(
     (body) => body.name === "04-Upper Rod Bush"

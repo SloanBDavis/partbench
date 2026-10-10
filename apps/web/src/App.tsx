@@ -58,7 +58,6 @@ import type {
   DocumentUnitUpdateMode,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
-  ProjectImportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
@@ -912,19 +911,6 @@ function readProjectHealth(
         sketchConstraints: [],
         namedReferences: []
       };
-}
-
-function readProjectImportReadiness():
-  | ProjectImportReadinessQueryResponse
-  | undefined {
-  const response = engine.executeQuery({
-    version: "cadops.v1",
-    query: { query: "project.importReadiness" }
-  });
-
-  return response.ok && response.query === "project.importReadiness"
-    ? response
-    : undefined;
 }
 
 function readProjectTopologyIdentityReadiness():
@@ -2172,6 +2158,12 @@ export function App() {
   const stepImportPayloadStoreRef = useRef(
     createProjectStepImportPayloadStore()
   );
+  const stepImportRunRef = useRef<
+    { cancelled: boolean; committing: boolean } | undefined
+  >(undefined);
+  const [stepImportStatus, setStepImportStatus] = useState<
+    { fileName: string; committing: boolean } | undefined
+  >(undefined);
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -3073,10 +3065,6 @@ export function App() {
       ),
     [projectStructure.bodies]
   );
-  const projectImportReadiness = useMemo(
-    () => readEngineStateForDocument(document, readProjectImportReadiness),
-    [document]
-  );
   const projectTopologyIdentityReadiness = useMemo(
     () =>
       readEngineStateForDocument(
@@ -3444,27 +3432,46 @@ export function App() {
     );
   }
 
-  const modelWorkControl = modelWorkSnapshot.active
+  function cancelStepImport() {
+    const run = stepImportRunRef.current;
+    if (!run || run.committing || run.cancelled) return;
+    run.cancelled = true;
+    // Stop the WASM worker, not just its spinner. Keep it stopped until the
+    // import promise settles so an in-progress file hash cannot queue late work.
+    getDerivedGeometryRuntime().cancelModelWork("STEP import was cancelled.");
+    setProjectMessage("Cancelling import...");
+    setProjectMessageTone("info");
+  }
+
+  const modelWorkControl = stepImportStatus
     ? {
-        label: "Model results are building",
-        actionLabel: "Cancel model work",
-        onAction: cancelModelWork
+        label: `${stepImportStatus.committing ? "Adding" : "Reading"} ${stepImportStatus.fileName}`,
+        actionLabel: "Cancel import",
+        busy: modelWorkSnapshot.active,
+        disabled: stepImportStatus.committing,
+        onAction: cancelStepImport
       }
-    : modelWorkSnapshot.stopped &&
-        modelWorkSnapshot.cancelledUserKinds.length > 0 &&
-        retryableModelResultCount === 0
+    : modelWorkSnapshot.active
       ? {
-          label: `${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)} cancelled`,
-          actionLabel: "Resume model worker",
-          onAction: resumeCancelledUserWork
+          label: "Model results are building",
+          actionLabel: "Cancel model work",
+          onAction: cancelModelWork
         }
-      : modelWorkSnapshot.stopped || retryableModelResultCount > 0
+      : modelWorkSnapshot.stopped &&
+          modelWorkSnapshot.cancelledUserKinds.length > 0 &&
+          retryableModelResultCount === 0
         ? {
-            label: "Model results need attention",
-            actionLabel: "Retry model results",
-            onAction: retryModelResults
+            label: `${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)} cancelled`,
+            actionLabel: "Resume model worker",
+            onAction: resumeCancelledUserWork
           }
-        : undefined;
+        : modelWorkSnapshot.stopped || retryableModelResultCount > 0
+          ? {
+              label: "Model results need attention",
+              actionLabel: "Retry model results",
+              onAction: retryModelResults
+            }
+          : undefined;
   const modelingResultState = useMemo(
     () =>
       modelingUiRuntime?.createModelingResultState({
@@ -9185,6 +9192,7 @@ export function App() {
   }
 
   async function importProjectStepBytes(bytes: Uint8Array, fileName: string) {
+    if (stepImportRunRef.current) return;
     const extension = fileName.split(".").at(-1)?.toLowerCase();
     if (extension === "dxf" || extension === "svg") {
       setCommandPending(true);
@@ -9233,6 +9241,10 @@ export function App() {
     };
 
     const importEpoch = engine.getSourceAuthorityEpoch();
+    const run = { cancelled: false, committing: false };
+    stepImportRunRef.current = run;
+    setStepImportStatus({ fileName, committing: false });
+    getDerivedGeometryRuntime().resumeModelWork();
     stepImportPayloadStoreRef.current.putPayload(payloadId, bytes);
     setCommandPending(true);
     setCommandError(undefined);
@@ -9244,6 +9256,12 @@ export function App() {
       const dryRun = await commandExecutor.executeBatch(
         buildBatch("dryRun", [op], WEB_UI_ACTOR)
       );
+
+      if (run.cancelled) return;
+      if (engine.getSourceAuthorityEpoch() !== importEpoch)
+        throw new Error(
+          "The project changed during import. Import the file again."
+        );
 
       if (!dryRun.ok) {
         setCommandError(dryRun.error.message);
@@ -9262,6 +9280,8 @@ export function App() {
         return;
       }
 
+      run.committing = true;
+      setStepImportStatus({ fileName, committing: true });
       const response = await commandExecutor.executeBatchAtSourceAuthorityEpoch(
         buildBatch("commit", [op], WEB_UI_ACTOR),
         importEpoch
@@ -9301,6 +9321,7 @@ export function App() {
       );
       setProjectMessageTone("info");
     } catch (error) {
+      if (run.cancelled) return;
       const message =
         error instanceof Error ? error.message : "Could not import STEP file.";
       setCommandError(message);
@@ -9308,6 +9329,14 @@ export function App() {
       setProjectMessageTone("error");
     } finally {
       stepImportPayloadStoreRef.current.deletePayload(payloadId);
+      stepImportRunRef.current = undefined;
+      setStepImportStatus(undefined);
+      if (run.cancelled) {
+        getDerivedGeometryRuntime().resumeModelWork();
+        setCommandError(undefined);
+        setProjectMessage("Import cancelled. Your project is unchanged.");
+        setProjectMessageTone("info");
+      }
       setCommandPending(false);
     }
   }
@@ -10360,6 +10389,11 @@ export function App() {
     ) {
       // Navigation guard owns Escape; do not compete with its stay handler.
       return false;
+    }
+
+    if (stepImportRunRef.current) {
+      cancelStepImport();
+      return true;
     }
 
     if (commandPending && modelWorkSnapshot.active) {
@@ -12177,7 +12211,6 @@ export function App() {
                 storageCapabilities={projectStorageCapabilities}
                 health={projectHealth}
                 topologyIdentityReadiness={projectTopologyIdentityReadiness}
-                importReadiness={projectImportReadiness}
                 exportReadiness={projectExportReadiness}
                 selectedBodyId={selectedBodyId}
                 exactStepExportJob={exactStepExportJob}
