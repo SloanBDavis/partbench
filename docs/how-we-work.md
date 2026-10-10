@@ -27,11 +27,14 @@ slice does not make the user goal more true, delete it.
 
 ## Proof
 
-See [`docs/verification.md`](./verification.md). CADOps scenarios are command truth.
-Chromium `applyOps` is the engine gate. Use is clicks in the workbench. All three for a UI slice.
-Never Playwright. Never a second bot. Never the historical gauntlet.
+See [verification.md](./verification.md). Only E2E tests: real workbench controls
+or the public MCP process, real geometry and file round trips. Never write unit,
+component, isolated integration, or mock-based tests. Extend existing journeys;
+add another only when the user workflow cannot fit one already present.
 
-Per-save: focused tests and typecheck of the packages you touched.
+Per-save: typecheck the packages touched. Before landing: `pnpm verify`.
+Use focused E2E journey selection during development. No Chromium on every save,
+no historical gauntlet, no second browser framework.
 
 ## Question, delete, then build
 

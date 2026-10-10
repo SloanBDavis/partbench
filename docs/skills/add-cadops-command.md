@@ -7,7 +7,8 @@ Add a command in this order. Do not skip a package.
 3. `apps/web` — Apply the same batch. React does not invent topology.
 4. `agent-adapter` — pass the same CADOps through.
 5. `mcp-adapter` — pass-through only. Do not add a new MCP tool.
-6. One focused test for the command.
+6. Extend an existing real-browser or public-MCP E2E journey for the command.
+   Never add unit, component, isolated integration, or mocked tests.
 
 Human UI, scripts, tests, and MCP submit the same CADOps. The browser
 does not invent a second command path.

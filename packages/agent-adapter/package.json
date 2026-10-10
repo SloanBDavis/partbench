@@ -13,7 +13,6 @@
   },
   "scripts": {
     "build": "node ../../scripts/generate-operation-schemas.mjs --check && tsc -p tsconfig.json",
-    "test": "node ../../scripts/generate-operation-schemas.mjs --check && vitest run",
     "typecheck": "node ../../scripts/generate-operation-schemas.mjs --check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

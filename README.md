@@ -21,16 +21,18 @@ pnpm install
 pnpm dev
 ```
 
-Verify (typecheck plus CADOps scenarios):
+Verify (typecheck and consolidated E2E journeys):
 
 ```sh
 pnpm verify
 ```
 
-Fast assembly E2E checks (Bun 1.4.2+ and Chrome required):
+E2E checks (Bun 1.4.2+ and Chrome required):
 
 ```sh
-pnpm smoke:e2e
+pnpm test
+# Focus on one workflow:
+pnpm test:e2e -- interchange
 ```
 
 Connected local MCP session:
@@ -51,6 +53,9 @@ See [agent runtime usage](docs/agent-runtime-usage.md) for modeling, exact
 inspection, revision, native save/reopen, STEP export, and current limits.
 `pnpm smoke:agent-runtime` verifies the two complete headless journeys locally;
 `pnpm benchmark:cad-runtime` reports startup and warm-operation measurements.
+
+Only E2E tests; no unit or component tests. See [testing policy](docs/verification.md)
+and the [CAD parity roadmap](docs/parity-roadmap.md).
 
 ## Documentation
 

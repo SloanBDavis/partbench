@@ -228,8 +228,9 @@ during a long import is not exercised by this journey. See the
 
 ## Small proof and reproduction
 
-Keep the normal proof fast. `pnpm smoke:interchange` runs focused runtime and
-sketch-codec tests plus the ordinary CADOps scenario. The small authored fixture
+Keep the normal proof fast. `pnpm smoke:interchange` now runs the consolidated browser import/edit/save/reopen
+journey, preparing its STEP fixture without unit tests. The following detailed
+checks describe the historical implementation evidence, not current suite coverage. The small authored fixture
 contains repeated, rotated, nested parts and a multi-solid definition. It checks
 shared edits, independent copies, moves without unchanged-body rebuilds, native
 history, a second STEP round trip into inch units, names/colors, and exact

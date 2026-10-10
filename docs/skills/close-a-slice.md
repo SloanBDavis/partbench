@@ -1,17 +1,14 @@
 # Close a slice
 
-A slice is done when:
+1. Typecheck and lint the change.
+2. Run the affected consolidated E2E journey: `pnpm test:e2e -- assembly`,
+   `interchange`, or `agent`. Extend an existing journey for new behavior.
+3. UI changes require actual controls, an observable result, a screenshot, and
+   one invalid-input or wrong-pick case. `applyOps` is fixture setup/diagnosis.
+4. Run `pnpm verify` before landing and record actual results and limitations.
 
-1. The named closer is green. Run that command only. Do not rerun V7-V25 gauntlets. No Playwright.
-2. The user-goal increment is visible via a `scenarios/` CADOps scenario and its semantic diffs. Command truth.
-3. If the slice has UI:
-   - `smoke:ui` green on the new scenarios (engine `applyOps` in the real app).
-   - Use path green: clicks/typed fields for THIS feature, success screenshot, break case. See [use-the-feature.md](./use-the-feature.md). Injecting `applyOps` is not Use.
-4. Proof lives in [docs/verification.md](../verification.md).
-
-Gzip ceilings are not a veto. The V25 named closer is completed history; do not reopen V22-V25. Do not invent V26.
+Only E2E tests. Never add unit/component/isolated integration tests. Do not replay
+historical gates. Large engine, robot arm and gearbox journeys are targeted
+checks when those workflows change; see [verification.md](../verification.md).
 
 Land on main as Sloan Davis <sloanbdavis@gmail.com>. Never open pull requests.
-
-If the slice closes a release, record the SHA in the user-goal doc.
-Do not invent the next release.

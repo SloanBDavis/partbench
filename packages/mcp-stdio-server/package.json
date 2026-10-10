@@ -15,7 +15,6 @@
     "build": "tsc -p tsconfig.json && esbuild src/stdio.ts --bundle --platform=node --format=esm --target=node22 --external:opencascade.js --outfile=dist/stdio.js",
     "start": "pnpm --filter @web-cad/web build && pnpm build && node dist/stdio.js",
     "start:headless": "pnpm build && node dist/stdio.js --headless",
-    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

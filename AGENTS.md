@@ -8,7 +8,8 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Proof / close loop: [docs/verification.md](docs/verification.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
-- Current user goal: [docs/editable-interchange.md](docs/editable-interchange.md) (shared STEP/DXF/SVG interchange, engine edit/round trip and browser proof pass; cold-load and frame-time targets remain open).
+- Current user goal: [docs/parity-roadmap.md](docs/parity-roadmap.md) (fastest path to professional CAD parity; E2E-only development).
+- Latest implementation: [docs/editable-interchange.md](docs/editable-interchange.md) (shared editable STEP/DXF/SVG interchange; cold-load and frame-time targets remain open).
 - Latest user trial: [docs/engine-step-trial.md](docs/engine-step-trial.md) (historical engine import failure and source provenance; follow-up implementation evidence linked).
 - Last completed user goal: [docs/gearbox-workflow.md](docs/gearbox-workflow.md) (agent authoring, coherent revision and motion). V22–V26, [agent runtime](docs/agent-runtime.md), and [robot arm fixes](docs/robot-arm-fixes.md) are complete. Do not reopen or invent V27.
 
@@ -20,21 +21,30 @@ Land on main as Sloan Davis <sloanbdavis@gmail.com>. Never open pull requests.
 
 Node.js 22 and pnpm 10.
 
-## Daily scripts
+## Testing policy and daily scripts
 
-- pnpm dev / test / typecheck / lint / verify
-- pnpm smoke:ui — Chromium engine gate (applyOps)
-- pnpm smoke:ui-use — Chromium Use path (clicks)
-- pnpm smoke:interchange — focused runtime/sketch tests and command scenario; engine and browser proofs run separately
+Only end-to-end tests. Never add unit, component, isolated integration, snapshot,
+or mocked tests; never restore Vitest or another unit-test runner. Extend an
+existing real browser or public MCP journey before adding a new one. Keep setup
+and assertions shared, and minimize the number of independent journeys.
 
-Per-save: focused tests and typecheck of the packages you touched. No Chromium on every save.
-Never rerun V7-V25 gauntlets. Proof: [docs/verification.md](docs/verification.md).
+- `pnpm dev` — workbench.
+- `pnpm typecheck` / `pnpm lint` — static checks; use package typechecks while editing.
+- `pnpm test` — consolidated E2E suite (browser assembly + interchange, public MCP).
+- `pnpm test:e2e -- assembly|interchange|agent` — affected journeys only; accepts multiple names.
+- `pnpm verify` — typecheck and consolidated E2E suite before landing.
 
-Completed closers: smoke:v26-assemblies, smoke:v25-part-toolkit, smoke:v24-finished-parts, smoke:v23-promotion-workflow.
+Do not run Chromium on every save. Do not replay historical version gauntlets.
+`scenarios/` CADOps are reusable fixtures. Browser `applyOps` alone is not E2E
+acceptance.
+See [docs/verification.md](docs/verification.md) for focused and large-workload checks.
 
 ## Slice close
 
-Named closer + (if UI) `smoke:ui` engine and Use path green. CADOps scenarios are command truth. `applyOps` is not Use. See [docs/verification.md](docs/verification.md).
+Static checks plus the affected real browser/public MCP journey. UI work must
+exercise actual controls, a visible result, and one rejected/blocked operation.
+Consolidate those assertions into the existing journey. Record actual results;
+never claim a skipped, missing-tool, or failed journey passed.
 
 ## Packages
 

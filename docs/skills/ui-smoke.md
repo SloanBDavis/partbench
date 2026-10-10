@@ -6,19 +6,17 @@ The script starts the real app (Vite, same as the dev script). Bun 1.4 chrome ba
 
 - `pnpm smoke:ui` — engine gate: `window.__PARTBENCH_UI_SMOKE__.applyOps` through live CadEngine Apply.
 - `pnpm smoke:ui-use` — Use path: clicks and typed fields from the scenario `use` array. Not applyOps.
-- `pnpm smoke:e2e` — two focused assembly journeys (distance/history and concentric/cancel).
+- `pnpm test` — consolidated browser assembly/interchange and public MCP journeys.
 
 If you cannot demonstrate it in the running app, you are not done. See [verification.md](../verification.md).
 
 ## When to run
 
-- Filtered slice close, engine: `pnpm smoke:ui -- scenarios/<new>.json`
-- Filtered slice close, Use: `pnpm smoke:ui-use -- scenarios/<new>.json`
-- New UI scenario without `use` fails `smoke:ui-use` / `--require-use`. Existing V25 scenarios without `use` still pass `smoke:ui`.
-- Full engine set at release close: `smoke:ui`
-- V25 closer: V25-added scenarios only (engine). Wrapper: `bun scripts/smoke-ui-v25.mjs`.
-- Per-save: focused tests + typecheck. Chromium is not on every save.
-- `verify` remains typecheck + in-process scenarios.
+- `pnpm test:e2e -- assembly` or `interchange` for focused browser acceptance.
+- `pnpm smoke:ui-use -- scenarios/<file>.json` for an additional affected journey.
+- `smoke:ui` is optional engine diagnosis, not an additional required gate.
+- Per-save: package typecheck. Before landing: `pnpm verify`.
+- Only E2E tests. Extend existing `use` / `useBreak` blocks; do not add unit tests.
 
 ## Chrome backend
 

@@ -136,7 +136,8 @@ existing checkpoint plus anchor path, then the consuming feature op.
 ## Invariants for changes
 
 1. The command protocol is the center of the system.
-2. Every implemented command has tests and a structured semantic diff.
+2. Every implemented command has a structured semantic diff and is exercised
+   through a consolidated end-to-end user journey (see verification.md).
 3. Do not add a production dependency, workspace package, schema, or
    `.wcad` version unless a user-goal doc says so.
 4. Do not expand OCCT/WASM, MCP, OPFS, STEP, WebGPU, hosted

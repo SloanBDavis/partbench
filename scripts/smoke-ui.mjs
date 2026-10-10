@@ -670,7 +670,7 @@ async function runCadopsScenario(view, name, scenario) {
   }
 
   for (const step of scenario.steps ?? []) {
-    // Persist round-trips are proven by scenarios-run; engine smoke has no export/import hook.
+    // Persistence is covered by the Use/MCP journeys; engine replay has no export/import hook.
     if (
       step.persistRoundTrip &&
       (!Array.isArray(step.ops) || step.ops.length === 0)

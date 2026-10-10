@@ -1,58 +1,81 @@
 # Verification
 
-Proof for a slice. Point here. Never a second bot.
+## Current policy — 2026-10-10
 
-- CADOps `scenarios/` = command truth.
-- `pnpm smoke:ui` `applyOps` = engine in the real Vite app.
-- `pnpm smoke:ui-use` = a person/agent operating the control (clicks and typed fields).
+Only end-to-end tests. Never add unit, component, isolated integration, mocked,
+or snapshot suites. Vitest and all 363 test files have been removed. Extend an
+existing workflow before creating another. Typecheck and lint remain static
+checks. Historical passing records below describe the tooling at that time and
+are not current commands or evidence for the new suite.
 
-All three for a UI slice. Injecting `window.__PARTBENCH_UI_SMOKE__.applyOps` is not Use. Never the historical gauntlet. Never Playwright.
+`pnpm test` (also `pnpm smoke:e2e`) runs one consolidated suite:
 
-## Build
+| Journey                   | User-visible coverage                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Assembly distance         | Apply gap, exact pose, Undo/Redo, invalid distance                                                                             |
+| Assembly concentric       | Cancel, reopen/Apply, radial/axial placement, empty collector                                                                  |
+| Editable interchange      | STEP import, independent occurrence, face pick/offset, sibling volume, Undo/Redo, native save/reload/reopen/edit, invalid STEP |
+| Public MCP mounting plate | Real stdio process, author/exact inspect, atomic rejection, dry run, revise, WCAD save/reopen, STEP export/readback            |
 
-Focused tests and typecheck of the packages you touched. No Chromium. No `smoke:ui` on every save.
+Browser cases share one Vite/Chrome startup and use fresh tabs for isolation.
+No retries or silent missing-tool skips. The STEP fixture is generated from real
+CAD operations by `scripts/prepare-interchange.mjs`, independently of any tests.
+The MCP executable is built once for its journey. Reports go to
+`.metrics/e2e/report.json`; browser screenshots go to `.metrics/ui-smoke/`.
 
-## Believe
+Use `pnpm test:e2e -- assembly`, `interchange`, or `agent` while editing (multiple
+names accepted). `pnpm verify` runs typecheck and this suite before landing.
+Per-save: affected package typecheck. No browser on every save.
 
-In-process `scenarios/` plus named closer packages green. You think the Must row is true.
+Requires Node 22, pnpm 10, Bun 1.4.2+ with `Bun.WebView`, and Chrome/Chromium.
+Set `PARTBENCH_SMOKE_BROWSER` if Chrome is not detected. Missing dependencies
+fail; they never turn into a passing result.
 
-## Use
+Only real controls count for UI acceptance. CADOps scenarios remain reusable setup; `smoke:ui` applyOps replay is optional
+browser diagnosis, not a required extra gate. The isolated scenario test runner
+and historical versioned runners have been removed. Geometry, persistence and rejection assertions belong inside E2E
+journeys. File-picker fixtures exercise product readers/writers but not OS dialogs.
+Screenshots are inspection artifacts, not pixel snapshot tests.
 
-Required if the slice has UI. Chromium on the real Vite app (bun + chrome force, headless is fine if screenshots are written). Perform the user-visible path for THIS feature: open the command, set the field, Apply or pick, see the solid. Screenshot success to `.metrics/ui-smoke/` (gitignored). Then one break case (illegal value, wrong pick, empty collector). If it fails: fix code, go back to Believe, Use again. Do not declare close until Use has a success screenshot and the break case is a structured fail or a blocked control, not a freeze.
+## Targeted larger workflows
 
-First landing: drive the UI once and write the scenario `use` / `useBreak` arrays from what worked. After that, `pnpm smoke:ui-use` is the hill-climb. Missing `use` on a new UI scenario fails close (`--require-use`, or `smoke:ui-use` filtered to that scenario). Existing V25 scenarios without `use` still pass `smoke:ui`.
+Keep expensive coverage outside the default loop. When changing these workflows,
+run the relevant existing headless/browser pair, not every pair:
 
-## Slice close
+- `smoke:robot-arm` then `smoke:robot-arm:browser`.
+- `smoke:gearbox` then `smoke:gearbox:browser`.
+- `smoke:engine-interchange` then `smoke:engine-interchange:browser`
+  (requires the pinned external engine fixture; see its example README).
+- `smoke:agent-runtime` runs both full MCP examples; the default suite selects
+  mounting-plate. `smoke:agent-runtime:browser` uses its generated native fixture.
 
-Named closer + `smoke:ui` (engine) + Use path green. See [close-a-slice.md](./skills/close-a-slice.md), [use-the-feature.md](./skills/use-the-feature.md), [ui-smoke.md](./skills/ui-smoke.md).
+Recovery after a crash, broad DXF/SVG fidelity, all feature combinations, and
+hardware GPU performance are not established by this small default suite. Add
+needed assertions to the nearest journey as the roadmap reaches those features.
 
-## Focused regression suite
+## Consolidation validation — 2026-10-10
 
-`pnpm smoke:e2e` runs two assembly journeys in the real Chromium workbench:
+The new `pnpm test` passed on Linux with Node 22, pnpm 10.14.0,
+Bun 1.4.2 and Chromium 154 (SwiftShader). Three browser journeys and their break
+cases passed, followed by the public MCP mounting-plate journey. Stage timings:
+fixture preparation 15.0 s, shared browser run 62.8 s, MCP build 23.8 s, MCP
+journey 20.5 s (about 122 s total). This first checkout run overlapped static
+checks; it is not a controlled performance benchmark or a warm-run speed claim.
+The native-reopened edited-assembly screenshot was visually inspected.
 
-- Distance mate: enter a gap, Apply, Undo, Redo; assert the exact instance
-  translations and mate counts at each step. An empty distance must block Apply
-  and preserve the original pose and mate list.
-- Concentric mate: Cancel a valid draft without changing the assembly, then
-  reopen and Apply; assert radial alignment while preserving axial position.
-  An empty instance collector must block Apply without source mutation.
+All 13 workspace packages pass `pnpm typecheck`. Changed scripts pass ESLint
+and Prettier; `git diff --check` passes. No test/spec
+files or Vitest dependencies remain. Root package commands shrink from 97 to 24.
+Explicit root Node type definitions replace the transitive types lost with Vitest.
 
-Requires Bun 1.4.2+ (`curl -fsSL https://bun.sh/install | bash`) and installed
-Chrome/Chromium. No new package dependency. The existing `smoke:ui-use` command
-still runs all scenarios that define Use paths; `smoke:e2e` selects only these
-two. Run the focused command before pushing changes to assembly workflows. It
-is deliberately separate from the per-save checks and `pnpm verify`.
+Repository-wide lint is not green: seven existing errors remain in unchanged
+`ViewportFeatureGrips`, `SketchIntentEditor`, `SketchModeDock`,
+`SolidPreviewCoordinator`, and `solidDraftValidation` source. They concern React
+ref/effect usage and a NaN comparison. This cleanup does not suppress those rules.
+Lint remains a separate command; `verify` retains typechecking and now runs E2E
+instead of the removed isolated scenario suite.
 
-The runner uses native, actionable button clicks and numeric typing. Dropdown
-selection uses the existing input/change helper, with a visible/enabled
-control check; dropdown keyboard navigation is not covered. Each journey and
-its break case gets a fresh tab while sharing Chrome and Vite. There are no
-scenario/seed retries. Assertions wait for observable document/geometry state;
-strict array lengths catch duplicate mates and failed undo. Screenshots are
-inspection artifacts, not visual snapshot comparisons. Save/reopen and recovery
-remain outside this deliberately small assembly suite. The separate
-[agent runtime checks](./agent-runtime-verification.md) cover native save/reopen
-through headless sessions and a browser Open/edit journey.
+## Historical evidence (before E2E consolidation)
 
 ## Passing record
 
