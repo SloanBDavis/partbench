@@ -58,6 +58,14 @@ preservation and a fractional/irrational-coordinate native round trip.
 See the [guide and passing record](drawing-precision.md) and
 [machine-readable report](../examples/drawing-precision/verification.json).
 
+## Drawing layers — 2026-10-12
+
+ORG-001 passes actual layer controls and public MCP commands, with inherited
+appearance, locks, visibility, print media, native assignments and Undo/Redo.
+The [layer guide](drawing-layers.md) and [record](../examples/drawing-layers/verification.json)
+document split verification: full matrix/typecheck, assembly regressions and the
+final affected browser/MCP rerun, including initial failures and fixes.
+
 ## Binary feature acceptance
 
 [The CAD matrix](cad-feature-matrix.md) is the feature backlog. Each row has only

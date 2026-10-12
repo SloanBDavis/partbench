@@ -60,7 +60,10 @@ empty, so existing projects remain readable. Both document and history-baseline
 snapshots retain drawing geometry. The native versions remain
 `web-cad.project.v22` and `partbench.wcad.v2`; no dependency or package is added.
 
-This is the independent drafting foundation. Rays, arcs, polylines, layers,
+For layer appearance, assignment, visibility, locks and printing, see
+[Drawing layers](drawing-layers.md).
+
+This is the independent drafting foundation. Rays, arcs, polylines,
 other annotations, drawing DXF/DWG exchange, and paper-space layouts remain separate
 feature-matrix contracts. Drawing entities are not exported by the existing
 sketch-only DXF/SVG export or solid STEP export.

@@ -40,6 +40,7 @@ schema; cad-core validates property ranges, assignments and locks atomically.
 report created, modified and deleted layers. Dry runs preserve source.
 
 Native snapshots add optional `drawingLayers`, including history baselines.
+An unchanged default-only layer is omitted to retain legacy source signatures.
 Existing files without layers load with the default layer. Native versions stay
 `web-cad.project.v22` / `partbench.wcad.v2`; no package or dependency is added.
 Native validation rejects malformed layers, duplicate identities/names, missing
@@ -60,5 +61,22 @@ layer deletion and invalid/duplicate properties atomically, save/reopen, reassig
 and delete. The remainder of the mounting-plate journey still runs.
 
 Run `pnpm test:e2e -- interchange agent` for the affected journeys, and
-`pnpm verify` plus changed-source lint before landing. Passing evidence is added
-only after those checks run against the integrated source.
+`pnpm verify` plus changed-source lint before landing. The passing record below covers the integrated source.
+
+
+### Passing record — 2026-10-12
+
+The [verification record](../examples/drawing-layers/verification.json) records
+ORG-001 on source `2a02f56`, integrated with associative dimensions. Matrix and
+all 13 typechecks passed in `pnpm verify`; the sandbox then blocked Vite from
+binding localhost. With local-server access, both assembly regressions passed.
+After correcting a dimension-label timing assertion and native layer-history
+validation, `pnpm test:e2e -- interchange agent` passed the complete affected
+journeys. The core typecheck passed again after that native fix.
+
+The final browser stage took 37.75 seconds and public MCP execution 15.45 seconds;
+these are verification timings, not performance targets. Layer controls, print
+media, geometry and dimension locks, native reopen and history Undo all passed.
+Success and invalid-input screenshots were visually inspected. Changed-source
+lint has zero errors and six existing App hook warnings; formatting and diff
+checks pass. The record retains the initial environment and acceptance failures.

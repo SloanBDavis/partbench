@@ -181,7 +181,7 @@
         "examples/editable-interchange/progressive-import-evidence.json",
         "examples/editable-interchange/engine-evidence.json"
       ],
-      "scope": "Five consecutive fresh-browser production runs: visible native orbit by 4.11\u20138.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62\u201389.23 s; no PERF-002 or hardware frame-budget claim. After DRAW-001 integration, the expanded full suite, 20-stage headless workflow and another production browser journey pass; orbit is verified at 6.31 s."
+      "scope": "Five consecutive fresh-browser production runs: visible native orbit by 4.11–8.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62–89.23 s; no PERF-002 or hardware frame-budget claim. After DRAW-001 integration, the expanded full suite, 20-stage headless workflow and another production browser journey pass; orbit is verified at 6.31 s."
     },
     "drawingPrecision": {
       "date": "2026-10-12",
@@ -211,6 +211,21 @@
         "examples/drawing-dimensions/verification.json"
       ],
       "scope": "Aligned/horizontal/vertical dimensions tied to geometry points; real create/select/edit/delete and canvas placement controls; derived measurements after geometry edits with fixed placement; rejection/history/units/native reopen; public MCP schema/dry run/atomic reference rejection/edit/query/native persistence."
+    },
+    "drawingLayers": {
+      "date": "2026-10-12",
+      "sourceCommit": "2a02f56",
+      "command": "pnpm verify (matrix/typecheck); pnpm test:e2e; pnpm test:e2e -- interchange agent (split verification, see record)",
+      "journeys": [
+        "scenarios/editable-interchange.json",
+        "scripts/smoke-agent-runtime.mjs",
+        "scripts/e2e-drawing-layers.mjs"
+      ],
+      "records": [
+        "docs/drawing-layers.md",
+        "examples/drawing-layers/verification.json"
+      ],
+      "scope": "Create and assign layers via actual controls and public MCP; color/linetype/lineweight/transparency; authoritative lock, visibility, print media, invalid-input and atomic rejection; dimension inheritance; native properties, assignments and Undo/Redo history. Split validation and initial failures recorded explicitly."
     }
   },
   "categories": [
@@ -1113,12 +1128,14 @@
       "id": "ORG-001",
       "category": "organization",
       "feature": "Layer properties",
-      "done": false,
+      "done": true,
       "acceptance": "Create and assign layers with color, linetype, weight, transparency, lock, visibility and print state; persist and Undo changes.",
       "dependsOn": [
         "DRAW-001"
       ],
-      "evidence": []
+      "evidence": [
+        "drawingLayers"
+      ]
     },
     {
       "id": "ORG-002",

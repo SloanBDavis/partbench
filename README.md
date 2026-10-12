@@ -16,9 +16,9 @@ Start at [AGENTS.md](./AGENTS.md).
 
 ## Professional CAD feature map
 
-[![CAD feature map: 339 features across 27 areas; 25 Done and 314 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
+[![CAD feature map: 339 features across 27 areas; 26 Done and 313 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
 
-**25 Done · 314 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
+**26 Done · 313 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
 
 [Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)
 
@@ -165,9 +165,9 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 </details>
 
 <details>
-<summary>Layers, styles, blocks and references — 0 Done · 12 Not done</summary>
+<summary>Layers, styles, blocks and references — 1 Done · 11 Not done</summary>
 
-- [ ] [ORG-001](docs/cad-feature-matrix.md#org-001) Layer properties
+- [x] [ORG-001](docs/cad-feature-matrix.md#org-001) Layer properties
 - [ ] [ORG-002](docs/cad-feature-matrix.md#org-002) Layer filters and states
 - [ ] [ORG-003](docs/cad-feature-matrix.md#org-003) Linetype and lineweight display
 - [ ] [ORG-004](docs/cad-feature-matrix.md#org-004) Reusable blocks

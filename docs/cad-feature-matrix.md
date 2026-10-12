@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 25 Done · 314 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 26 Done · 313 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -42,7 +42,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [PERF-012](#perf-012) | Not done | Repeatable performance corpus | None declared |
 | [DRAW-001](#draw-001) | Done | Independent drafting document | None declared |
 | [IO-005](#io-005) | Not done | DWG drawings | DRAW-001 |
-| [ORG-001](#org-001) | Not done | Layer properties | DRAW-001 |
+| [ORG-001](#org-001) | Done | Layer properties | DRAW-001 |
 | [ANN-002](#ann-002) | Done | Associative linear dimensions | DRAW-001 |
 | [SHEET-001](#sheet-001) | Not done | Paper space and sheet layouts | DRAW-001 |
 | [SHEET-004](#sheet-004) | Not done | Associative orthographic views | SHEET-001 |
@@ -58,7 +58,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [Document integrity and persistence](#area-document) | 1 | 4 | 10 |
 | [Workspace, input and selection](#area-interaction) | 1 | 4 | 11 |
 | [2D drawing geometry and editing](#area-drafting) | 1 | 1 | 17 |
-| [Layers, styles, blocks and references](#area-organization) | 1 | 0 | 12 |
+| [Layers, styles, blocks and references](#area-organization) | 1 | 1 | 11 |
 | [Annotation, dimensions and tolerancing](#area-annotation) | 1 | 1 | 13 |
 | [Sheets, drawings and deliverables](#area-sheets) | 1 | 0 | 12 |
 | [Parametric sketches and constraints](#area-sketch) | 2 | 0 | 14 |
@@ -195,7 +195,7 @@ Existing foundation to inspect: [packages/cad-protocol/src/index.ts](../packages
 
 | ID | Feature | Status | Done only when | Prerequisites | Passing evidence |
 | --- | --- | --- | --- | --- | --- |
-| <a id="org-001"></a>ORG-001 | Layer properties | **Not done** | Create and assign layers with color, linetype, weight, transparency, lock, visibility and print state; persist and Undo changes. | [DRAW-001](#draw-001) | — |
+| <a id="org-001"></a>ORG-001 | Layer properties | **Done** | Create and assign layers with color, linetype, weight, transparency, lock, visibility and print state; persist and Undo changes. | [DRAW-001](#draw-001) | [drawingLayers](#evidence-drawingLayers) |
 | <a id="org-002"></a>ORG-002 | Layer filters and states | **Not done** | Filter, isolate and restore named layer states including per-viewport overrides and locked-layer selection rules. | [ORG-001](#org-001) | — |
 | <a id="org-003"></a>ORG-003 | Linetype and lineweight display | **Not done** | Display and plot custom dash patterns, lineweights and scale rules consistently in model and paper space. | [ORG-001](#org-001) | — |
 | <a id="org-004"></a>ORG-004 | Reusable blocks | **Not done** | Create nested block definitions and instances with independent placements; editing the definition updates its instances after reopen. | [DRAW-001](#draw-001) | — |
@@ -841,6 +841,18 @@ Command: `pnpm verify`.
 Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs), [scripts/drawing-dimensions-journey.mjs](../scripts/drawing-dimensions-journey.mjs).
 
 Recorded results: [docs/drawing-dimensions.md](../docs/drawing-dimensions.md), [examples/drawing-dimensions/verification.json](../examples/drawing-dimensions/verification.json).
+
+<a id="evidence-drawingLayers"></a>
+
+### drawingLayers
+
+2026-10-12; source: 2a02f56. Create and assign layers via actual controls and public MCP; color/linetype/lineweight/transparency; authoritative lock, visibility, print media, invalid-input and atomic rejection; dimension inheritance; native properties, assignments and Undo/Redo history. Split validation and initial failures recorded explicitly.
+
+Command: `pnpm verify (matrix/typecheck); pnpm test:e2e; pnpm test:e2e -- interchange agent (split verification, see record)`.
+
+Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs), [scripts/e2e-drawing-layers.mjs](../scripts/e2e-drawing-layers.mjs).
+
+Recorded results: [docs/drawing-layers.md](../docs/drawing-layers.md), [examples/drawing-layers/verification.json](../examples/drawing-layers/verification.json).
 
 ## Professional catalog sources
 

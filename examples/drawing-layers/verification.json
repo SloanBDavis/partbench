@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-12",
+  "sourceCommit": "2a02f56",
+  "contracts": ["ORG-001"],
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.8037.57",
+    "platform": "Linux, SwiftShader"
+  },
+  "verification": {
+    "matrix": "pnpm cad:matrix --check passed (also executed within pnpm verify)",
+    "fullTypecheck": "All 13 package typechecks passed within pnpm verify; after the native validator fix, focused cad-core typecheck passed again.",
+    "assembly": "Concentric and distance browser journeys passed in the full E2E run (14.2 s and 14.4 s).",
+    "affectedCommand": "PARTBENCH_SMOKE_BROWSER_NO_SANDBOX=1 pnpm test:e2e -- interchange agent",
+    "changedSourceLint": "Passed with zero errors and six pre-existing App.tsx hook warnings.",
+    "formatAndDiff": "Changed files formatted; git diff --check passed."
+  },
+  "checks": [
+    "Real browser controls create a named layer and assign existing geometry; new geometry and dimensions use current layer.",
+    "Color, dashed linetype, physical lineweight and transparency reach SVG appearance; browser print media suppresses nonprinting layer.",
+    "Locked geometry and dimension editing/deletion plus current-layer creation are blocked; visibility responds to Undo/Redo.",
+    "Duplicate names and invalid transparency block controls without document/history changes.",
+    "Native save/reload/open preserves layer properties, assignments and history; Undo from reopened file restores original layers/entities.",
+    "Public MCP discovers layer schemas, checks dry-run diffs, creates/assigns/updates layers, rejects locked changes and missing layers, default/assigned deletion and duplicate/invalid properties atomically, saves/reopens, reassigns and deletes.",
+    "Existing precision, associative dimensions, imported assembly editing/native round trips and public mounting-plate exact geometry/STEP regression pass."
+  ],
+  "report": {
+    "status": "passed",
+    "journeys": ["interchange", "agent"],
+    "stages": [
+      {
+        "name": "prepare nested STEP fixture",
+        "milliseconds": 6847.743559,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "browser journeys",
+        "milliseconds": 37747.535365,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "build MCP executable",
+        "milliseconds": 15359.493800999997,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "MCP author/revise/save/reopen/STEP journey",
+        "milliseconds": 15452.015501000002,
+        "exitCode": 0,
+        "signal": null
+      }
+    ]
+  },
+  "screenshots": [
+    ".metrics/ui-smoke/drawing-layers-properties.png",
+    ".metrics/ui-smoke/drawing-layers-invalid.png"
+  ],
+  "notes": [
+    "Verification completed in stages: initial pnpm verify passed matrix and full typecheck, then sandbox blocked Vite localhost binding. Browser/MCP stages ran with approved local-server access.",
+    "The first full E2E run passed both assembly journeys but exposed a dimension-label assertion before the Undo render committed. The helper now waits boundedly for the same expected visible value; no journey retry or assertion weakening.",
+    "The first affected rerun reached layer native reopen and caught a missing layer operation predicate in saved-history validation. Fixed that predicate and added drawing-layer/entity native replay equality; final affected run passes.",
+    "Unchanged default-only layers are omitted from snapshots to preserve legacy source signatures; native layer arrays remain optional and format versions unchanged.",
+    "Screenshots visually inspected. File-picker fixtures exercise real readers/writers, not OS dialogs."
+  ]
+}
