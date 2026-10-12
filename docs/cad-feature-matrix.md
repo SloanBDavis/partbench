@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 22 Done · 317 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 24 Done · 315 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -56,7 +56,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | --- | ---: | ---: | ---: |
 | [Performance and large documents](#area-performance) | 0 | 3 | 9 |
 | [Document integrity and persistence](#area-document) | 1 | 4 | 10 |
-| [Workspace, input and selection](#area-interaction) | 1 | 2 | 13 |
+| [Workspace, input and selection](#area-interaction) | 1 | 4 | 11 |
 | [2D drawing geometry and editing](#area-drafting) | 1 | 1 | 17 |
 | [Layers, styles, blocks and references](#area-organization) | 1 | 0 | 12 |
 | [Annotation, dimensions and tolerancing](#area-annotation) | 1 | 0 | 14 |
@@ -145,8 +145,8 @@ Existing foundation to inspect: [apps/web/src/App.tsx](../apps/web/src/App.tsx).
 | <a id="ux-003"></a>UX-003 | Entity and subentity selection | **Not done** | Select faces, edges, vertices, bodies and components with filters, prehighlight and cycling through overlaps in perspective and orthographic views. | — | — |
 | <a id="ux-004"></a>UX-004 | Window and crossing selection | **Not done** | Left/right drag windows, lasso, additive and subtractive selection obey containment/intersection rules and filters for dense drawings and assemblies. | — | — |
 | <a id="ux-005"></a>UX-005 | Command line and aliases | **Not done** | Invoke modeling and drafting commands with aliases, typed options, repeat and history; Escape cancels without losing the prior document. | — | — |
-| <a id="ux-006"></a>UX-006 | Precise coordinate input | **Not done** | Enter absolute, relative, polar and unit-bearing coordinates with an explicit working frame and reproducible geometry. | — | — |
-| <a id="ux-007"></a>UX-007 | Object snaps and tracking | **Not done** | Endpoint, midpoint, center, quadrant, intersection, tangent, perpendicular and extension snaps preview and commit the same exact target. | — | — |
+| <a id="ux-006"></a>UX-006 | Precise coordinate input | **Done** | Enter absolute, relative, polar and unit-bearing coordinates with an explicit working frame and reproducible geometry. | — | [drawingPrecision](#evidence-drawingPrecision) |
+| <a id="ux-007"></a>UX-007 | Object snaps and tracking | **Done** | Endpoint, midpoint, center, quadrant, intersection, tangent, perpendicular and extension snaps preview and commit the same exact target. | — | [drawingPrecision](#evidence-drawingPrecision) |
 | <a id="ux-008"></a>UX-008 | Grid, ortho and polar modes | **Not done** | Toggle grid/snap spacing, orthographic locking and polar increments during creation and movement; typed coordinates override predictably. | — | — |
 | <a id="ux-009"></a>UX-009 | Named coordinate systems | **Not done** | Create, edit, restore and persist user coordinate systems; drafting, imports and transforms use the selected frame consistently. | — | — |
 | <a id="ux-010"></a>UX-010 | Direct manipulation grips | **Not done** | Drag supported feature, curve and placement grips with constraints, preview, precise override, Cancel and one atomic Undo step. | — | — |
@@ -817,6 +817,18 @@ Command: `pnpm smoke:engine-interchange; pnpm --filter @web-cad/web build; five 
 Journeys: [examples/editable-interchange/engine-browser-use.json](../examples/editable-interchange/engine-browser-use.json), [scripts/smoke-editable-interchange.mjs](../scripts/smoke-editable-interchange.mjs).
 
 Recorded results: [docs/import-performance.md](../docs/import-performance.md), [examples/editable-interchange/progressive-import-evidence.json](../examples/editable-interchange/progressive-import-evidence.json), [examples/editable-interchange/engine-evidence.json](../examples/editable-interchange/engine-evidence.json).
+
+<a id="evidence-drawingPrecision"></a>
+
+### drawingPrecision
+
+2026-10-12; source: 8e2dc28. Real drawing controls: absolute/relative/polar/unit-bearing coordinates, explicit World/custom frame, unit-bearing edits; all eight snap kinds with exact visible preview/commit parity, three intersection pair types, tracking, cycling, zoom-scaled tolerance, snaps off and invalid input preserving history; fractional/irrational native save/reload/open, stable IDs, Undo/Redo and unit conversion. Full consolidated browser/public MCP suite passes.
+
+Command: `pnpm verify`.
+
+Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-ui.mjs](../scripts/smoke-ui.mjs).
+
+Recorded results: [docs/drawing-precision.md](../docs/drawing-precision.md), [examples/drawing-precision/verification.json](../examples/drawing-precision/verification.json).
 
 ## Professional catalog sources
 

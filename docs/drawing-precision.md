@@ -115,7 +115,7 @@ the document and transaction authority. Undo/Redo and native save/reopen retain
 entity coordinates and identity through the established drawing contract.
 There is no new native format, dependency, or separate geometry-authoring path.
 
-## Acceptance and expected evidence
+## Acceptance and evidence
 
 The unchanged [feature-matrix contracts](cad-feature-matrix.md) are:
 
@@ -131,7 +131,7 @@ invokes the precision control sequence in
 toolbar controls, snap settings, and native mouse input; read-only document and
 DOM inspection compare results. No browser helper directly authors these entities.
 
-The expected evidence covers typed Cartesian/polar/relative forms, mixed units,
+The browser checks cover typed Cartesian/polar/relative forms, mixed units,
 fractional precision, a translated and rotated frame, and explicit input errors
 that preserve source and Undo/Redo history. Each snap kind must expose a visible
 target and commit the exact preview coordinates. Geometry cases include rectangle
@@ -146,5 +146,28 @@ run `pnpm verify` for matrix integrity, all package typechecks, the consolidated
 browser journeys, and public MCP regressions. Runtime reports are written to
 `.metrics/e2e/report.json`; browser screenshots are under `.metrics/ui-smoke/`.
 Native file-picker fixtures exercise the product readers/writers rather than OS
-dialogs. A dated passing record must be added here before marking either feature
-Done; this acceptance description alone is not a passing result.
+dialogs. The dated result below records the completed acceptance.
+
+## Passing record — 2026-10-12
+
+`pnpm verify` passed on implementation `8e2dc28` with Node 22.23.3, pnpm 10.14.0,
+Bun 1.4.2 and Chromium 154.0.8037.57 on Linux using SwiftShader. All 13 package
+typechecks, three browser journeys and the public MCP mounting-plate journey
+passed. Changed sources also pass ESLint, Prettier and `git diff --check`.
+See the [recorded report](../examples/drawing-precision/verification.json).
+
+The browser checks every snap kind with exact equality between its visible marker,
+geometry preview and committed endpoint. It also cycles to a different target,
+checks screen-pixel tolerance after zoom, rejects impossible tangent targets,
+and acquires a tracking guide. Typed coordinates cover all four Cartesian/polar
+forms, mixed units, fractional precision, and a translated/rotated frame. Invalid
+input preserves entities and redo history. Keyboard entry and unit-bearing
+property edits use actual controls.
+
+A fractional anchor `(-10.125,20.125)` and the derived tangent endpoint
+`(-25.02310410168783,28.67355216836583)` survive native save, page reload, reopen,
+Undo and Redo exactly, including entity IDs and history. Centimeter conversion
+preserves physical size; Undo restores the original numeric coordinates exactly.
+Native comparisons ignore only object field ordering introduced by canonical CBOR;
+all numeric values, entity array ordering and history counts compare strictly.
+The snap-preview and reopened/invalid drawing screenshots were visually inspected.

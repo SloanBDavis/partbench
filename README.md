@@ -16,9 +16,9 @@ Start at [AGENTS.md](./AGENTS.md).
 
 ## Professional CAD feature map
 
-[![CAD feature map: 339 features across 27 areas; 22 Done and 317 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
+[![CAD feature map: 339 features across 27 areas; 24 Done and 315 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
 
-**22 Done · 317 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
+**24 Done · 315 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
 
 [Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)
 
@@ -120,15 +120,15 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 </details>
 
 <details>
-<summary>Workspace, input and selection — 2 Done · 13 Not done</summary>
+<summary>Workspace, input and selection — 4 Done · 11 Not done</summary>
 
 - [x] [UX-001](docs/cad-feature-matrix.md#ux-001) Fit, standard views and orbit
 - [x] [UX-002](docs/cad-feature-matrix.md#ux-002) Occurrence selection
 - [ ] [UX-003](docs/cad-feature-matrix.md#ux-003) Entity and subentity selection
 - [ ] [UX-004](docs/cad-feature-matrix.md#ux-004) Window and crossing selection
 - [ ] [UX-005](docs/cad-feature-matrix.md#ux-005) Command line and aliases
-- [ ] [UX-006](docs/cad-feature-matrix.md#ux-006) Precise coordinate input
-- [ ] [UX-007](docs/cad-feature-matrix.md#ux-007) Object snaps and tracking
+- [x] [UX-006](docs/cad-feature-matrix.md#ux-006) Precise coordinate input
+- [x] [UX-007](docs/cad-feature-matrix.md#ux-007) Object snaps and tracking
 - [ ] [UX-008](docs/cad-feature-matrix.md#ux-008) Grid, ortho and polar modes
 - [ ] [UX-009](docs/cad-feature-matrix.md#ux-009) Named coordinate systems
 - [ ] [UX-010](docs/cad-feature-matrix.md#ux-010) Direct manipulation grips
