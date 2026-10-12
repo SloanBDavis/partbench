@@ -676,6 +676,11 @@ export interface CadOpsAgentProjectFeaturesQueryResponse {
 
 export interface CadOpsAgentProjectStructureQueryResponse {
   readonly drawingEntities?: readonly DrawingEntity[];
+  readonly drawingMeasurements?: readonly {
+    readonly id: string;
+    readonly value: number;
+    readonly units: string;
+  }[];
   readonly ok: true;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
@@ -3739,6 +3744,9 @@ function toAgentQueryResponse(
       features: response.features,
       bodies: response.bodies,
       objectSources: response.objectSources,
+      ...(response.drawingMeasurements
+        ? { drawingMeasurements: response.drawingMeasurements }
+        : {}),
       ...(response.drawingEntities
         ? { drawingEntities: response.drawingEntities }
         : {}),

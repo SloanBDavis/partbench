@@ -1,3 +1,4 @@
+import { resolveDrawingDimension } from "@web-cad/cad-protocol";
 import {
   isDrawingEntity,
   isDrawingOp,
@@ -2746,6 +2747,24 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           objectSources: structure.objectSources,
+          drawingMeasurements: [
+            ...this.#document.drawingEntities.values()
+          ].flatMap((entity) => {
+            if (entity.kind !== "dimension") return [];
+            const measured = resolveDrawingDimension(
+              entity,
+              this.#document.drawingEntities
+            );
+            return measured
+              ? [
+                  {
+                    id: entity.id,
+                    value: measured.value,
+                    units: this.#document.units
+                  }
+                ]
+              : [];
+          }),
           drawingEntities: [...this.#document.drawingEntities.values()].map(
             cloneJsonSource
           ),
@@ -6437,6 +6456,31 @@ function applyOperation(
             "An edit must preserve the drawing entity kind and identity.",
           opIndex
         });
+      if (
+        op.op === "drawing.entity.delete" &&
+        [...state.drawingEntities.values()].some(
+          (entity) =>
+            entity.kind === "dimension" &&
+            (entity.first.entityId === id || entity.second.entityId === id)
+        )
+      )
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "Delete attached dimensions before deleting their source geometry.",
+          opIndex
+        });
+      if (
+        op.op !== "drawing.entity.delete" &&
+        op.entity.kind === "dimension" &&
+        !resolveDrawingDimension(op.entity, state.drawingEntities)
+      )
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "Dimension anchors must reference existing geometry with compatible points and finite measurements.",
+          opIndex
+        });
       const drawing = (diff.drawing ??= {
         created: [],
         modified: [],
@@ -6451,6 +6495,20 @@ function applyOperation(
         drawing[
           op.op === "drawing.entity.create" ? "created" : "modified"
         ].push(entity);
+      }
+      for (const dimension of state.drawingEntities.values()) {
+        if (dimension.kind !== "dimension") continue;
+        if (!resolveDrawingDimension(dimension, state.drawingEntities))
+          throwValidationError({
+            code: "INVALID_OPERATION",
+            message: "Geometry edit would invalidate an attached dimension.",
+            opIndex
+          });
+        if (
+          dimension.id !== id &&
+          (dimension.first.entityId === id || dimension.second.entityId === id)
+        )
+          drawing.modified.push(cloneJsonSource(dimension));
       }
       return;
     }
@@ -26923,13 +26981,15 @@ function scaleDocumentLengthValues(
       p[1] * scaleFactor
     ];
     const scaled: DrawingEntity =
-      entity.kind === "circle"
-        ? {
-            ...entity,
-            center: point(entity.center),
-            radius: entity.radius * scaleFactor
-          }
-        : { ...entity, start: point(entity.start), end: point(entity.end) };
+      entity.kind === "dimension"
+        ? { ...entity, placement: point(entity.placement) }
+        : entity.kind === "circle"
+          ? {
+              ...entity,
+              center: point(entity.center),
+              radius: entity.radius * scaleFactor
+            }
+          : { ...entity, start: point(entity.start), end: point(entity.end) };
     if (!isDrawingEntity(scaled))
       throwValidationError({
         code: "INVALID_OPERATION",
@@ -35679,6 +35739,25 @@ function validateCadDocumentSnapshot(
           );
         else seen.add(entity.id);
       }
+  }
+
+  if (Array.isArray(value.drawingEntities)) {
+    const entities = new Map(
+      value.drawingEntities
+        .filter(isDrawingEntity)
+        .map((entity) => [entity.id, entity])
+    );
+    for (const entity of entities.values())
+      if (
+        entity.kind === "dimension" &&
+        !resolveDrawingDimension(entity, entities)
+      )
+        addProjectIssue(
+          issues,
+          "INVALID_DOCUMENT",
+          `${path}.drawingEntities`,
+          "Dimension has missing or incompatible geometry anchors."
+        );
   }
 
   if (value.datums !== undefined) {

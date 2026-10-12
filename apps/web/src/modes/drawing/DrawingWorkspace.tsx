@@ -6,6 +6,9 @@ import {
   type DrawingEntity,
   type Vec2
 } from "@web-cad/cad-protocol";
+import { DrawingDimensionControls } from "./DrawingDimensionControls";
+import { DrawingDimensionGlyph } from "./DrawingDimensionGlyph";
+import { resolveDrawingDimension } from "@web-cad/cad-protocol";
 import { CoordinateInput } from "./CoordinateInput";
 import { DrawingFrameControls } from "./DrawingFrameControls";
 import {
@@ -21,7 +24,7 @@ import {
 } from "./drawingSnaps";
 import "./drawing.css";
 
-type Tool = "select" | "line" | "rectangle" | "circle" | "pan";
+type Tool = "select" | "line" | "rectangle" | "circle" | "pan" | "dimension";
 type View = { x: number; y: number; width: number; height: number };
 const initialView: View = { x: -100, y: -75, width: 200, height: 150 };
 const titles: Record<Tool, string> = {
@@ -29,6 +32,7 @@ const titles: Record<Tool, string> = {
   line: "Line",
   rectangle: "Rectangle",
   circle: "Circle",
+  dimension: "Dimension",
   pan: "Pan"
 };
 
@@ -36,16 +40,32 @@ function fitDrawing(values: readonly DrawingEntity[]): View {
   if (!values.length) {
     return initialView;
   }
+  const entities = new Map(values.map((entity) => [entity.id, entity]));
   const bounds = values.flatMap((entity) =>
-    entity.kind === "circle"
-      ? [
-          [entity.center[0] - entity.radius, -entity.center[1] - entity.radius],
-          [entity.center[0] + entity.radius, -entity.center[1] + entity.radius]
-        ]
-      : [
-          [entity.start[0], -entity.start[1]],
-          [entity.end[0], -entity.end[1]]
-        ]
+    entity.kind === "dimension"
+      ? (() => {
+          const resolved = resolveDrawingDimension(entity, entities);
+          return resolved
+            ? [resolved.start, resolved.end, resolved.labelPosition].map(
+                (p) => [p[0], -p[1]]
+              )
+            : [];
+        })()
+      : entity.kind === "circle"
+        ? [
+            [
+              entity.center[0] - entity.radius,
+              -entity.center[1] - entity.radius
+            ],
+            [
+              entity.center[0] + entity.radius,
+              -entity.center[1] + entity.radius
+            ]
+          ]
+        : [
+            [entity.start[0], -entity.start[1]],
+            [entity.end[0], -entity.end[1]]
+          ]
   );
   const minX = Math.min(...bounds.map((p) => p[0]!)),
     maxX = Math.max(...bounds.map((p) => p[0]!));
@@ -83,6 +103,8 @@ export function DrawingWorkspace({
   open
 }: Props) {
   const [tool, setTool] = useState<Tool>("select");
+  const [placingDimension, setPlacingDimension] = useState(false);
+  const [dimensionPlacement, setDimensionPlacement] = useState<Vec2>();
   const [selectedId, setSelectedId] = useState<string>();
   const [start, setStart] = useState<Vec2>();
   const [cursor, setCursor] = useState<Vec2>();
@@ -144,6 +166,8 @@ export function DrawingWorkspace({
         ?.focus();
   }, [inputVersion, tool]);
   const choose = (next: Tool) => {
+    setPlacingDimension(false);
+    setDimensionPlacement(undefined);
     coordinateFocus.current =
       next === "line" || next === "circle" || next === "rectangle";
     setTool(next);
@@ -215,6 +239,16 @@ export function DrawingWorkspace({
     try {
       const ok = await commit(ops);
       if (ok) {
+        setPlacingDimension(false);
+        if (
+          ops.some(
+            (op) =>
+              (op.op === "drawing.entity.create" ||
+                op.op === "drawing.entity.update") &&
+              op.entity.kind === "dimension"
+          )
+        )
+          setTool("select");
         setSelectedId(id);
         setStart(undefined);
         clearTarget();
@@ -228,7 +262,11 @@ export function DrawingWorkspace({
   };
   const remove = () =>
     selected && void submit([{ op: "drawing.entity.delete", id: selected.id }]);
-  const make = (a: Vec2, b: Vec2, id: string): DrawingEntity =>
+  const make = (
+    a: Vec2,
+    b: Vec2,
+    id: string
+  ): Exclude<DrawingEntity, { kind: "dimension" }> =>
     tool === "circle"
       ? {
           id,
@@ -263,18 +301,21 @@ export function DrawingWorkspace({
     clearTarget();
   };
 
-  const hint =
-    tool === "select"
-      ? "Click an entity to edit its coordinates. Delete removes the selection."
-      : tool === "pan"
-        ? "Drag to pan. Scroll to zoom."
-        : start
-          ? tool === "circle"
-            ? "Click a point on the circle. Esc cancels."
-            : "Click the second point, or press Enter to type it. Esc cancels."
-          : tool === "circle"
-            ? "Click the center, then a point on the circle, or enter coordinates."
-            : "Click two points, or press Enter to type coordinates.";
+  const hint = placingDimension
+    ? "Click to place the dimension label, then Apply. Esc cancels placement."
+    : tool === "dimension"
+      ? "Choose geometry points and a dimension type in the properties panel."
+      : tool === "select"
+        ? "Click an entity to edit its coordinates. Delete removes the selection."
+        : tool === "pan"
+          ? "Drag to pan. Scroll to zoom."
+          : start
+            ? tool === "circle"
+              ? "Click a point on the circle. Esc cancels."
+              : "Click the second point, or press Enter to type it. Esc cancels."
+            : tool === "circle"
+              ? "Click the center, then a point on the circle, or enter coordinates."
+              : "Click two points, or press Enter to type coordinates.";
 
   return (
     <section
@@ -355,6 +396,7 @@ export function DrawingWorkspace({
               l: "line",
               r: "rectangle",
               c: "circle",
+              d: "dimension",
               p: "pan"
             } as const
           )[event.key.toLowerCase()];
@@ -370,20 +412,20 @@ export function DrawingWorkspace({
         role="toolbar"
         aria-label="Drawing tools"
       >
-        {(["select", "line", "rectangle", "circle", "pan"] as const).map(
-          (t) => (
-            <button
-              key={t}
-              data-drawing-tool={t}
-              aria-pressed={tool === t}
-              disabled={disabled}
-              onClick={() => choose(t)}
-              title={`${titles[t]} (${{ select: "V", line: "L", rectangle: "R", circle: "C", pan: "P" }[t]})`}
-            >
-              {titles[t]}
-            </button>
-          )
-        )}
+        {(
+          ["select", "line", "rectangle", "circle", "dimension", "pan"] as const
+        ).map((t) => (
+          <button
+            key={t}
+            data-drawing-tool={t}
+            aria-pressed={tool === t}
+            disabled={disabled}
+            onClick={() => choose(t)}
+            title={`${titles[t]} (${{ select: "V", line: "L", rectangle: "R", circle: "C", dimension: "D", pan: "P" }[t]})`}
+          >
+            {titles[t]}
+          </button>
+        ))}
         <button onClick={fit} title="Fit drawing (F)">
           Fit
         </button>
@@ -466,6 +508,12 @@ export function DrawingWorkspace({
                 return;
               }
               if (disabled || busy.current) return;
+              if (placingDimension) {
+                setDimensionPlacement(acquire(event));
+                setPlacingDimension(false);
+                return;
+              }
+              if (tool === "dimension") return;
               if (tool === "select") {
                 const id = (event.target as Element)
                   .closest("[data-drawing-entity]")
@@ -544,8 +592,19 @@ export function DrawingWorkspace({
                     : "drawing-entity"
                 }
               >
-                <Shape entity={entity} hit />
-                <Shape entity={entity} />
+                {entity.kind === "dimension" ? (
+                  <DrawingDimensionGlyph
+                    entity={entity}
+                    entities={entities}
+                    units={units}
+                    size={view.width / 65}
+                  />
+                ) : (
+                  <>
+                    <Shape entity={entity} hit />
+                    <Shape entity={entity} />
+                  </>
+                )}
               </g>
             ))}
             {preview && (
@@ -721,6 +780,37 @@ export function DrawingWorkspace({
                 submit([{ op: "drawing.entity.create", entity }], entity.id)
               }
             />
+          ) : tool === "dimension" || selected?.kind === "dimension" ? (
+            <DrawingDimensionControls
+              key={
+                tool === "dimension" ? `new:${units}` : JSON.stringify(selected)
+              }
+              entity={
+                tool === "select" && selected?.kind === "dimension"
+                  ? selected
+                  : undefined
+              }
+              source={selected}
+              entities={entities}
+              units={units}
+              disabled={disabled}
+              placement={dimensionPlacement}
+              onPick={() => setPlacingDimension(true)}
+              onApply={(entity) =>
+                submit(
+                  [
+                    {
+                      op:
+                        tool === "select"
+                          ? "drawing.entity.update"
+                          : "drawing.entity.create",
+                      entity
+                    }
+                  ],
+                  entity.id
+                )
+              }
+            />
           ) : selected ? (
             <EntityForm
               key={JSON.stringify(selected)}
@@ -786,7 +876,7 @@ function Shape({
   entity,
   hit = false
 }: {
-  entity: DrawingEntity;
+  entity: Exclude<DrawingEntity, { kind: "dimension" }>;
   hit?: boolean;
 }) {
   const props = {
@@ -833,8 +923,8 @@ function EntityForm({
   disabled,
   onApply
 }: {
-  kind: DrawingEntity["kind"];
-  entity?: DrawingEntity;
+  kind: Exclude<DrawingEntity, { kind: "dimension" }>["kind"];
+  entity?: Exclude<DrawingEntity, { kind: "dimension" }>;
   units: DocumentUnits;
   disabled: boolean;
   onApply: (entity: DrawingEntity) => Promise<boolean>;

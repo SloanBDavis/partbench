@@ -65,6 +65,7 @@ const midpoint = (a: Vec2, b: Vec2): Vec2 => [
 function boundaries(entities: readonly DrawingEntity[]): Boundary[] {
   const result: Boundary[] = [];
   for (const entity of entities) {
+    if (entity.kind === "dimension") continue;
     if (entity.kind === "circle") {
       result.push({ ...entity, key: JSON.stringify([entity.id, "circle"]) });
       continue;
@@ -313,6 +314,7 @@ export function findDrawingSnaps({
     }
   }
   for (const entity of entities) {
+    if (entity.kind === "dimension") continue;
     if (entity.kind === "rectangle")
       add("center", midpoint(entity.start, entity.end), [entity.id], entity.id);
   }

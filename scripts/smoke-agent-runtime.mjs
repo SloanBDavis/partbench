@@ -1,3 +1,4 @@
+import { exerciseMcpDrawingDimensions } from "./drawing-dimensions-journey.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { register } from "node:module";
@@ -76,6 +77,7 @@ async function journey(fixture) {
   await mkdir(workspace, { recursive: true });
   const client = new HeadlessMcpClient({ executable, workspace });
   let sourceIdentity;
+  let drawingDimensions;
   let volumesBefore;
   let volumesAfter;
   let rejected;
@@ -148,6 +150,7 @@ async function journey(fixture) {
         { op: "drawing.entity.update", entity: { ...drawing, end: [30, 10] } }
       ])
     );
+    drawingDimensions = await exerciseMcpDrawingDimensions(client, batch);
     await client.tool("cad.batch", batch(fixture.create));
     volumesBefore = await inspect(
       client,
@@ -211,12 +214,21 @@ async function journey(fixture) {
     await inspect(reopened, fixture, fixture.expected.volumesAfter);
     assert.deepEqual(
       (await reopened.tool("cad.project_structure")).drawingEntities,
-      [{ id: "drawing_mcp_line", kind: "line", start: [0, 0], end: [30, 10] }],
+      [
+        { id: "drawing_mcp_line", kind: "line", start: [0, 0], end: [30, 10] },
+        ...drawingDimensions
+      ],
       "Drawing identity and edit survive native reopen with a solid model"
     );
     await reopened.tool(
       "cad.batch",
-      batch([{ op: "drawing.entity.delete", id: "drawing_mcp_line" }])
+      batch([
+        ...drawingDimensions.map((entity) => ({
+          op: "drawing.entity.delete",
+          id: entity.id
+        })),
+        { op: "drawing.entity.delete", id: "drawing_mcp_line" }
+      ])
     );
     assert.deepEqual(
       (await reopened.tool("cad.project_structure")).drawingEntities,

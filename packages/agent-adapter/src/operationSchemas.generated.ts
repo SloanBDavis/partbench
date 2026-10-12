@@ -3486,6 +3486,92 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
           {
             type: "object",
             additionalProperties: false,
+            required: [
+              "id",
+              "kind",
+              "dimensionType",
+              "first",
+              "second",
+              "placement"
+            ],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "dimension"
+              },
+              dimensionType: {
+                enum: ["aligned", "horizontal", "vertical"]
+              },
+              first: {
+                type: "object",
+                additionalProperties: false,
+                required: ["entityId", "point"],
+                properties: {
+                  entityId: {
+                    type: "string"
+                  },
+                  point: {
+                    enum: [
+                      "start",
+                      "end",
+                      "midpoint",
+                      "center",
+                      "cornerX",
+                      "cornerY",
+                      "east",
+                      "north",
+                      "west",
+                      "south"
+                    ]
+                  }
+                }
+              },
+              second: {
+                type: "object",
+                additionalProperties: false,
+                required: ["entityId", "point"],
+                properties: {
+                  entityId: {
+                    type: "string"
+                  },
+                  point: {
+                    enum: [
+                      "start",
+                      "end",
+                      "midpoint",
+                      "center",
+                      "cornerX",
+                      "cornerY",
+                      "east",
+                      "north",
+                      "west",
+                      "south"
+                    ]
+                  }
+                }
+              },
+              placement: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2,
+                description:
+                  "Absolute model-space label position; geometry edits never replace it."
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
             required: ["id", "kind", "start", "end"],
             properties: {
               id: {
@@ -3617,6 +3703,92 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
       },
       entity: {
         anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "id",
+              "kind",
+              "dimensionType",
+              "first",
+              "second",
+              "placement"
+            ],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "dimension"
+              },
+              dimensionType: {
+                enum: ["aligned", "horizontal", "vertical"]
+              },
+              first: {
+                type: "object",
+                additionalProperties: false,
+                required: ["entityId", "point"],
+                properties: {
+                  entityId: {
+                    type: "string"
+                  },
+                  point: {
+                    enum: [
+                      "start",
+                      "end",
+                      "midpoint",
+                      "center",
+                      "cornerX",
+                      "cornerY",
+                      "east",
+                      "north",
+                      "west",
+                      "south"
+                    ]
+                  }
+                }
+              },
+              second: {
+                type: "object",
+                additionalProperties: false,
+                required: ["entityId", "point"],
+                properties: {
+                  entityId: {
+                    type: "string"
+                  },
+                  point: {
+                    enum: [
+                      "start",
+                      "end",
+                      "midpoint",
+                      "center",
+                      "cornerX",
+                      "cornerY",
+                      "east",
+                      "north",
+                      "west",
+                      "south"
+                    ]
+                  }
+                }
+              },
+              placement: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2,
+                description:
+                  "Absolute model-space label position; geometry edits never replace it."
+              }
+            }
+          },
           {
             type: "object",
             additionalProperties: false,
@@ -15316,13 +15488,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
           {
             type: "object",
             additionalProperties: false,
-            required: ["id", "kind", "start", "end"],
+            required: ["id", "start", "end", "kind"],
             properties: {
               id: {
                 type: "string"
-              },
-              kind: {
-                const: "line"
               },
               start: {
                 type: "array",
@@ -15350,6 +15519,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 minItems: 2,
                 maxItems: 2
               },
+              kind: {
+                const: "line"
+              },
               construction: {
                 enum: [false, true]
               }
@@ -15358,13 +15530,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
           {
             type: "object",
             additionalProperties: false,
-            required: ["id", "kind", "center", "width", "height"],
+            required: ["id", "center", "kind", "width", "height"],
             properties: {
               id: {
                 type: "string"
-              },
-              kind: {
-                const: "rectangle"
               },
               center: {
                 type: "array",
@@ -15378,6 +15547,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 ],
                 minItems: 2,
                 maxItems: 2
+              },
+              kind: {
+                const: "rectangle"
               },
               width: {
                 type: "number"
@@ -15393,13 +15565,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
           {
             type: "object",
             additionalProperties: false,
-            required: ["id", "kind", "center", "radius"],
+            required: ["id", "center", "kind", "radius"],
             properties: {
               id: {
                 type: "string"
-              },
-              kind: {
-                const: "circle"
               },
               center: {
                 type: "array",
@@ -15413,6 +15582,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 ],
                 minItems: 2,
                 maxItems: 2
+              },
+              kind: {
+                const: "circle"
               },
               radius: {
                 type: "number"
@@ -15604,11 +15776,11 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
           properties: {
             kind: {
               enum: [
+                "midpoint",
                 "axis",
                 "point",
                 "radius",
                 "length",
-                "midpoint",
                 "sourceLineage",
                 "checkpointSourceIdentity",
                 "entityKind",

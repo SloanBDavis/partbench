@@ -423,6 +423,7 @@
     {
       "drawingPrecision": true
     },
+    { "drawingDimensions": true },
     {
       "click": "[data-drawing-tool=\"select\"]"
     },

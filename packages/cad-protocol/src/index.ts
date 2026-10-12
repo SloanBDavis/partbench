@@ -6,6 +6,7 @@ import type {
   DrawingSemanticDiff
 } from "./drawing";
 export * from "./drawing";
+export * from "./drawingDimensions";
 export { isProjectStructureQuery } from "./structureQuery";
 import type {
   FeatureSpurGearOp,
@@ -10043,6 +10044,11 @@ export interface ProjectFeaturesQueryResponse {
 }
 
 export interface ProjectStructureQueryResponse {
+  readonly drawingMeasurements?: readonly {
+    readonly id: string;
+    readonly value: number;
+    readonly units: DocumentUnits;
+  }[];
   readonly drawingEntities?: readonly DrawingEntity[];
   readonly ok: true;
   readonly query: "project.structure";

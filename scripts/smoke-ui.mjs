@@ -1,3 +1,4 @@
+import { exerciseDrawingDimensions } from "./drawing-dimensions-journey.mjs";
 // bun+vite in-process; chrome via Bun.WebView
 import { assertNativeCheckpointParity } from "./native-checkpoint-parity.mjs";
 import {
@@ -2351,6 +2352,22 @@ async function runUseSteps(view, name, steps, label) {
   const clicks = [];
   let rememberedDrawingIds;
   for (const step of steps) {
+    if (step.drawingDimensions) {
+      await exerciseDrawingDimensions(view, {
+        evaluate,
+        getState,
+        delay,
+        clickVisibleControl,
+        typeField,
+        selectCollectorOption,
+        saveProjectFile,
+        openProjectFile,
+        waitForHook,
+        writeUseScreenshot
+      });
+      clicks.push("Associative drawing dimension controls");
+      continue;
+    }
     if (step.drawingPrecision) {
       await exerciseDrawingPrecision(view);
       clicks.push("Drawing precision controls");

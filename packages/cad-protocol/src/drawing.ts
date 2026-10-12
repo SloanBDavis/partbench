@@ -1,7 +1,9 @@
+import { isDrawingDimension, type DrawingDimension } from "./drawingDimensions";
 import type { Vec2 } from "./index";
 
 /** Model-space geometry, independent of part sketches and the sketch solver. */
 export type DrawingEntity =
+  | DrawingDimension
   | {
       readonly id: string;
       readonly kind: "line";
@@ -47,6 +49,7 @@ export function isDrawingEntity(value: unknown): value is DrawingEntity {
     v.length === 2 &&
     v.every((n) => typeof n === "number" && Number.isFinite(n));
   if (typeof entity.id !== "string" || !entity.id.trim()) return false;
+  if (entity.kind === "dimension") return isDrawingDimension(entity);
   if (entity.kind === "circle")
     return (
       point(entity.center) &&
