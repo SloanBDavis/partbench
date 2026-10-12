@@ -6,8 +6,8 @@
   "packageManager": "pnpm@10.14.0",
   "scripts": {
     "dev": "pnpm --filter @web-cad/web dev",
-    "build": "NODE_OPTIONS=--max-old-space-size=1024 MALLOC_ARENA_MAX=2 pnpm -r build",
-    "build:geometry-worker": "NODE_OPTIONS=--max-old-space-size=896 MALLOC_ARENA_MAX=2 pnpm --filter @web-cad/web build:geometry-worker",
+    "build": "MALLOC_ARENA_MAX=2 pnpm -r build",
+    "build:geometry-worker": "MALLOC_ARENA_MAX=2 pnpm --filter @web-cad/web build:geometry-worker",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

@@ -2109,14 +2109,14 @@ export function App() {
   const [solidPreviewResult, setSolidPreviewResult] = useState<
     ExactFeaturePreviewGeometryResult | undefined
   >();
-  const [modelWorkSnapshot, setModelWorkSnapshot] =
-    useState<DerivedGeometryRuntimeWorkSnapshot>({
-      generation: 0,
-      stopped: false,
-      active: false,
-      queuedCount: 0,
-      cancelledUserKinds: []
-    });
+  const [modelWorkSnapshot, setModelWorkSnapshot] = useState<
+    Omit<DerivedGeometryRuntimeWorkSnapshot, "queuedCount">
+  >({
+    generation: 0,
+    stopped: false,
+    active: false,
+    cancelledUserKinds: []
+  });
   const [viewportMeasurementRuntime, setViewportMeasurementRuntime] =
     useState<ViewportMeasurementRuntime>();
   useEffect(() => {
@@ -2658,7 +2658,20 @@ export function App() {
   useEffect(() => {
     if (!derivedGeometryEnabled) return;
     const runtime = getDerivedGeometryRuntime();
-    const update = () => setModelWorkSnapshot(runtime.getModelWorkSnapshot());
+    const update = () => {
+      const next = runtime.getModelWorkSnapshot();
+      // The status control only needs activity/cancellation changes. Queue
+      // counts change for every part and must not redraw the entire workbench.
+      setModelWorkSnapshot((previous) =>
+        previous.generation === next.generation &&
+        previous.stopped === next.stopped &&
+        previous.active === next.active &&
+        previous.cancelledUserKinds.join(",") ===
+          next.cancelledUserKinds.join(",")
+          ? previous
+          : next
+      );
+    };
     update();
     return runtime.subscribeModelWork(update);
   }, [getDerivedGeometryRuntime]);
@@ -2946,6 +2959,17 @@ export function App() {
     workbenchUi.rightDockCollapsed,
     workbenchUi.rightDockWidth
   ]);
+  const displayPublicationRef = useRef<{
+    latest?: DerivedGeometrySnapshot;
+    timer?: ReturnType<typeof setTimeout>;
+  }>({});
+  useEffect(() => {
+    const publication = displayPublicationRef.current;
+    return () => {
+      clearTimeout(publication.timer);
+      publication.timer = undefined;
+    };
+  }, []);
   const getDerivedGeometryService = useCallback((): DerivedGeometryService => {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
@@ -2964,7 +2988,38 @@ export function App() {
               status: entry.status
             }))
           });
-          setDerivedGeometry(snapshot);
+          const publication = displayPublicationRef.current;
+          const previous = publication.latest;
+          publication.latest = snapshot;
+          const sameSources =
+            previous &&
+            previous.entries.length === snapshot.entries.length &&
+            snapshot.entries.every(
+              (entry, index) =>
+                entry.cacheKey === previous.entries[index]?.cacheKey &&
+                (entry.sourceId ?? entry.objectId) ===
+                  (previous.entries[index]?.sourceId ??
+                    previous.entries[index]?.objectId)
+            );
+          // Publish invalidation, failure and completion immediately. While a
+          // large assembly is filling in, coalesce part arrivals so React and
+          // the viewport do not rebuild the whole scene for every single part.
+          if (
+            !sameSources ||
+            snapshot.supportedCount < 8 ||
+            snapshot.readyCount === 0 ||
+            snapshot.pendingCount === 0 ||
+            snapshot.errorCount > 0
+          ) {
+            clearTimeout(publication.timer);
+            publication.timer = undefined;
+            setDerivedGeometry(snapshot);
+          } else if (publication.timer === undefined) {
+            publication.timer = setTimeout(() => {
+              publication.timer = undefined;
+              setDerivedGeometry(publication.latest!);
+            }, 250);
+          }
         },
         meshCache: createLazyDerivedMeshOpfsCache({
           target:

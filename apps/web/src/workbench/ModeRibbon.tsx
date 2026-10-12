@@ -86,8 +86,11 @@ export function ModeRibbon({
       const available =
         availableGroupWidth ??
         Math.max(0, root.getBoundingClientRect().width - reserved);
-      setVisibleGroupIds(
-        chooseVisibleRibbonGroupIds(groups, widths, available)
+      const next = chooseVisibleRibbonGroupIds(groups, widths, available);
+      setVisibleGroupIds((current) =>
+        current.size === next.size && [...next].every((id) => current.has(id))
+          ? current
+          : next
       );
     };
 

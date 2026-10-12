@@ -62,9 +62,7 @@ function encodeValue(value: JsonValue, bytes: CborByteWriter): void {
   }
 
   if (typeof value === "string") {
-    const encoded = textEncoder.encode(value);
-    encodeTypeAndLength(3, encoded.byteLength, bytes);
-    pushBytes(bytes, encoded);
+    bytes.text(value);
     return;
   }
 
@@ -104,9 +102,7 @@ function encodeNumber(value: number, bytes: CborByteWriter): void {
   }
 
   bytes.push(0xfb);
-  const buffer = new ArrayBuffer(8);
-  new DataView(buffer).setFloat64(0, value, false);
-  pushBytes(bytes, new Uint8Array(buffer));
+  bytes.float64(value);
 }
 
 function encodeTypeAndLength(
@@ -143,10 +139,6 @@ function encodeTypeAndLength(
   pushUint64(bytes, length);
 }
 
-function pushBytes(target: CborByteWriter, source: Uint8Array): void {
-  target.append(source);
-}
-
 function pushUint32(bytes: CborByteWriter, value: number): void {
   bytes.push(
     (value >>> 24) & 0xff,
@@ -170,6 +162,39 @@ class CborByteWriter {
   #current = new Uint8Array(4096);
   #used = 0;
   #length = 0;
+  #view = new DataView(this.#current.buffer);
+  readonly #floatBytes = new Uint8Array(8);
+  readonly #floatView = new DataView(this.#floatBytes.buffer);
+
+  float64(value: number): void {
+    if (this.#current.length - this.#used >= 8) {
+      this.#view.setFloat64(this.#used, value, false);
+      this.#used += 8;
+      this.#length += 8;
+    } else {
+      this.#floatView.setFloat64(0, value, false);
+      this.append(this.#floatBytes);
+    }
+  }
+
+  text(value: string): void {
+    // Most CAD keys/IDs are ASCII. Write them into the output buffer without
+    // allocating a UTF-8 array for every key, descriptor and signature field.
+    for (let i = 0; i < value.length; i++) {
+      if (value.charCodeAt(i) > 0x7f) {
+        const encoded = textEncoder.encode(value);
+        encodeTypeAndLength(3, encoded.byteLength, this);
+        this.append(encoded);
+        return;
+      }
+    }
+    encodeTypeAndLength(3, value.length, this);
+    for (let i = 0; i < value.length; i++) {
+      this.#makeSpace();
+      this.#current[this.#used++] = value.charCodeAt(i);
+    }
+    this.#length += value.length;
+  }
 
   push(...values: readonly number[]): void {
     for (const value of values) {
@@ -208,6 +233,7 @@ class CborByteWriter {
     if (this.#used < this.#current.length) return;
     this.#chunks.push(this.#current);
     this.#current = new Uint8Array(64 * 1024);
+    this.#view = new DataView(this.#current.buffer);
     this.#used = 0;
   }
 }

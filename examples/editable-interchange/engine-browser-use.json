@@ -58,6 +58,10 @@
     },
     {
       "screenshot": "engine-interchange-selected"
+    },
+    {
+      "saveWcad": ".metrics/editable-interchange/engine-browser-initial.wcad",
+      "compareNative": ".metrics/editable-interchange/engine-initial.wcad"
     }
   ],
   "useBreak": [
@@ -75,7 +79,7 @@
     },
     {
       "importStep": ".metrics/engine-step-trial/radial-engine.step",
-      "cancelImport": true
+      "cancelImport": "preparing"
     },
     {
       "screenshot": "engine-import-cancelled-existing-part"

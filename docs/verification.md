@@ -58,6 +58,25 @@ needed assertions to the nearest journey as the roadmap reaches those features.
 See [import and editing performance](import-performance.md) for exact baseline
 comparison, full engine E2E results, and measured latency limits.
 
+The October 12 follow-up passes all 20 full-engine headless stages and the
+production browser journey: Import/Fit/orbit/select, native Save As with exact
+payload parity, Box Apply, active checkpoint-worker cancellation and invalid
+STEP rejection. Use the same runner against bundled code after building:
+
+```sh
+pnpm smoke:engine-interchange
+pnpm --filter @web-cad/web build
+PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser
+```
+
+The headless run supplies the native reference used by the browser comparison.
+`--compare-native=<prior.wcad>` may be repeated on the headless runner to compare
+all BRep, raw canonical topology and signature payloads with earlier artifacts.
+The runner waits for the actual viewport before starting controls; active-worker
+cancellation tracks new worker target IDs because Chromium may omit worker URLs.
+See [cold-load evidence](../examples/editable-interchange/cold-load-evidence.json)
+for timing variation and failed experimental runs.
+
 ## Consolidation validation — 2026-10-10
 
 The new `pnpm test` passed on Linux with Node 22, pnpm 10.14.0,

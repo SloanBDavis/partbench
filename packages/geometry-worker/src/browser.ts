@@ -15,6 +15,7 @@ export {
   V21_EXACT_RELEASE_PRIMITIVES,
   type V21ExactReleaseCorpusEntry
 } from "@web-cad/geometry-kernel/browser";
+import { prepareStepCheckpointsInParallel } from "./stepCheckpointPool";
 import {
   createKernelFailureResponse,
   createWorkerErrorDiagnostics,
@@ -132,7 +133,9 @@ export class GeometryKernelBrowserWorker implements GeometryWorker {
     try {
       const workerExecutionStart = performance.now();
       const { response, timings } =
-        await executeTimedBrowserGeometryKernelRequest(request.payload);
+        await executeTimedBrowserGeometryKernelRequest(request.payload, {
+          prepareStepCheckpoints: prepareStepCheckpointsInParallel
+        });
       const workerExecutionMs = performance.now() - workerExecutionStart;
       const diagnostics = response.ok
         ? createWorkerSuccessDiagnostics({

@@ -1,4 +1,5 @@
 // bun+vite in-process; chrome via Bun.WebView
+import { assertNativeCheckpointParity } from "./native-checkpoint-parity.mjs";
 import {
   existsSync,
   globSync,
@@ -179,11 +180,27 @@ function expandFilters(filters) {
   return [...new Set(files)].sort();
 }
 async function startWorkbench(port) {
-  const { createServer } = await import(
+  const { createServer, preview } = await import(
     pathToFileURL(
       resolve(repoRoot, "apps/web/node_modules/vite/dist/node/index.js")
     ).href
   );
+  if (process.env.PARTBENCH_SMOKE_UI_PRODUCTION === "1") {
+    const server = await preview({
+      configFile: resolve(repoRoot, "apps/web/vite.config.ts"),
+      root: resolve(repoRoot, "apps/web"),
+      preview: { host: "127.0.0.1", port, strictPort: true }
+    });
+    return {
+      port,
+      close: () =>
+        new Promise((resolve, reject) =>
+          server.httpServer.close((error) =>
+            error ? reject(error) : resolve()
+          )
+        )
+    };
+  }
   const server = await createServer({
     configFile: resolve(repoRoot, "apps/web/vite.config.ts"),
     root: resolve(repoRoot, "apps/web"),
@@ -223,7 +240,8 @@ async function waitForHook(view) {
   while (performance.now() < deadline) {
     const ready = await evaluate(
       view,
-      "Boolean(window.__PARTBENCH_UI_SMOKE__ && window.__PARTBENCH_UI_SMOKE__.ready)"
+      `Boolean(window.__PARTBENCH_UI_SMOKE__?.ready &&
+        document.querySelector('canvas[aria-label="3D scene viewport"]')?.checkVisibility())`
     );
     if (ready) return;
     const errors = await evaluate(
@@ -1070,7 +1088,41 @@ async function openProjectFile(
       "return true; })()"
   );
   const startedAt = performance.now();
+  let existingWorkerIds = new Set();
   try {
+    if (isStep && process.env.PARTBENCH_SMOKE_PROFILE_IMPORT === "1") {
+      await view.cdp("Profiler.enable");
+      await view.cdp("Profiler.start");
+    }
+    if (isStep && process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1") {
+      await evaluate(
+        view,
+        `(() => {
+        const start = performance.now();
+        window.__pbImportTimings = [];
+        window.__pbImportListener = event => {
+          const d = event.detail;
+          if (window.__pbImportTimings.length >= 512) return;
+          window.__pbImportTimings.push({ms: Math.round(performance.now() - start),
+            phase: d.phase, ...(d.job ? {job: d.job} : {}),
+            ...(d.readyCount !== undefined ? {ready: d.readyCount, pending: d.pendingCount} : {})});
+        };
+        addEventListener('partbench:geometry-diagnostic', window.__pbImportListener);
+      })()`
+      );
+    }
+    if (cancelImport === "preparing") {
+      await view.cdp("Target.setDiscoverTargets", {
+        discover: true,
+        filter: [{}]
+      });
+      const { targetInfos } = await view.cdp("Target.getTargets");
+      existingWorkerIds = new Set(
+        targetInfos
+          .filter((target) => target.type === "worker")
+          .map((target) => target.targetId)
+      );
+    }
     await clickVisibleControl(view, '[data-ribbon-roving-id="mode-project"]');
     await clickVisibleControl(view, '[data-action-id="' + actionId + '"]');
     if (cancelImport) {
@@ -1086,6 +1138,38 @@ async function openProjectFile(
           throw new Error("Import did not expose an active Cancel control");
         await delay(25);
       }
+      let checkpointWorkerIds = [];
+      if (cancelImport === "preparing") {
+        // Exercise cancellation after the large assembly has started its real
+        // child kernels, rather than only cancelling before import enters WASM.
+        const usesPool = await evaluate(
+          view,
+          "navigator.hardwareConcurrency >= 3 && (navigator.deviceMemory === undefined || navigator.deviceMemory >= 4)"
+        );
+        if (usesPool) {
+          const preparationDeadline = performance.now() + readyTimeoutMs;
+          while (checkpointWorkerIds.length < 2) {
+            const { targetInfos } = await view.cdp("Target.getTargets");
+            // Chromium reports blank URLs for these dedicated worker targets.
+            // The existing solid already owns its command/geometry workers;
+            // track the two new preparation workers by ID instead of URL.
+            if (await evaluate(view, "window.__pbStepImportPreview !== null"))
+              throw new Error(
+                "STEP checkpoint worker discovery missed preparation"
+              );
+            checkpointWorkerIds = targetInfos
+              .filter(
+                (target) =>
+                  target.type === "worker" &&
+                  !existingWorkerIds.has(target.targetId)
+              )
+              .map((target) => target.targetId);
+            if (performance.now() > preparationDeadline)
+              throw new Error("STEP import did not start checkpoint workers");
+            if (checkpointWorkerIds.length < 2) await delay(100);
+          }
+        }
+      }
       const cancelledAt = performance.now();
       if (cancelImport === "escape") {
         await withDeadline(view.press("Escape"), 3_000, "cancel STEP import");
@@ -1096,6 +1180,20 @@ async function openProjectFile(
         if (performance.now() - cancelledAt > 3_000)
           throw new Error(
             "Import cancellation did not settle within 3 seconds"
+          );
+        await delay(25);
+      }
+      while (checkpointWorkerIds.length > 0) {
+        const { targetInfos } = await view.cdp("Target.getTargets");
+        if (
+          !targetInfos.some((target) =>
+            checkpointWorkerIds.includes(target.targetId)
+          )
+        )
+          break;
+        if (performance.now() - cancelledAt > 3_000)
+          throw new Error(
+            "Cancelled STEP import left checkpoint workers running"
           );
         await delay(25);
       }
@@ -1112,7 +1210,18 @@ async function openProjectFile(
           JSON.stringify(beforeImport.viewport?.meshIds)
       ) {
         throw new Error(
-          "Cancelled import changed the project or its rendered geometry"
+          "Cancelled import changed the project or its rendered geometry: " +
+            JSON.stringify({
+              before: {
+                structure: beforeImport.structureQuery,
+                viewport: beforeImport.viewport
+              },
+              after: {
+                error: afterImport.commandError,
+                structure: afterImport.structureQuery,
+                viewport: afterImport.viewport
+              }
+            })
         );
       }
       const message = await evaluate(
@@ -1125,6 +1234,7 @@ async function openProjectFile(
         JSON.stringify({
           fileName,
           control: cancelImport === "escape" ? "Escape" : "Cancel import",
+          checkpointWorkersCancelled: checkpointWorkerIds.length,
           settleMs: Math.round(performance.now() - cancelledAt)
         })
       );
@@ -1174,6 +1284,37 @@ async function openProjectFile(
     await assertNoErrorToast(view, "Open " + fileName);
   } finally {
     if (isStep) {
+      if (process.env.PARTBENCH_SMOKE_PROFILE_IMPORT === "1") {
+        const { profile } = await view.cdp("Profiler.stop");
+        writeFileSync(
+          resolve(
+            repoRoot,
+            ".metrics",
+            "ui-smoke",
+            fileName.replace(/[^a-zA-Z0-9.-]/g, "_") +
+              (cancelImport ? "-cancel" : "") +
+              ".cpuprofile"
+          ),
+          JSON.stringify(profile)
+        );
+        await view.cdp("Profiler.disable");
+      }
+      if (process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1") {
+        console.log(
+          "STEP stages",
+          JSON.stringify(
+            await evaluate(
+              view,
+              `(() => {
+          removeEventListener('partbench:geometry-diagnostic', window.__pbImportListener);
+          const timings = window.__pbImportTimings;
+          delete window.__pbImportListener; delete window.__pbImportTimings;
+          return timings;
+        })()`
+            )
+          )
+        );
+      }
       const preview = await evaluate(
         view,
         "(() => { const preview = window.__pbStepImportPreview; window.confirm = window.__pbOriginalConfirm; " +
@@ -1258,6 +1399,13 @@ async function runUseSteps(view, name, steps, label) {
     }
     if (step.saveWcad) {
       await saveProjectFile(view, step.saveWcad);
+      if (step.compareNative) {
+        await assertNativeCheckpointParity(
+          resolve(repoRoot, step.saveWcad),
+          resolve(repoRoot, step.compareNative)
+        );
+        console.log("Native checkpoint parity", step.compareNative);
+      }
       continue;
     }
     if (step.openWcad) {
@@ -1700,6 +1848,7 @@ async function main() {
         60_000,
         "initial workbench navigation"
       );
+      await view.cdp("Page.bringToFront");
       await waitForHook(view);
     } catch (error) {
       try {

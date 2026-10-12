@@ -119,6 +119,29 @@ export interface OcctStepImportResult {
   readonly diagnostics: readonly OcctStepImportDiagnostic[];
 }
 
+export interface OcctStepCheckpoint {
+  readonly brepBytes: Uint8Array;
+  readonly topologySnapshot: OcctExactTopologySnapshot;
+  readonly metadata: OcctExactBodyMetadata;
+  readonly healingApplied: boolean;
+}
+
+export type OcctStepCheckpointProcessor = (
+  parts: readonly Uint8Array[]
+) => Promise<readonly OcctStepCheckpoint[]>;
+
+interface PreparedStepPart {
+  readonly definitionId: string;
+  readonly bodyName?: string;
+  readonly color?: OcctStepColor;
+  readonly brepBytes: Uint8Array;
+}
+interface PreparedStepImport {
+  readonly parts: readonly PreparedStepPart[];
+  readonly diagnostics: readonly OcctStepImportDiagnostic[];
+  readonly assembly: OcctStepAssembly;
+}
+
 const STEP_READER_PACKAGE_VERSION = "2.0.0-beta.b5ff984";
 
 export const OCCT_STEP_READER_REQUIRED_BINDINGS = [
@@ -148,11 +171,24 @@ export const OCCT_STEP_READER_REQUIRED_BINDINGS = [
 
 export async function createOcctStepImportWithLoader(
   loadOcct: OcctLoader,
-  input: OcctStepImportInput
+  input: OcctStepImportInput,
+  processCheckpoints?: OcctStepCheckpointProcessor
 ): Promise<OcctStepImportResult> {
   const oc = await loadOcct();
-
-  const result = createOcctStepImportWithInstance(oc, input);
+  const prepared = readStepPartsWithInstance(oc, input);
+  const checkpoints =
+    processCheckpoints &&
+    prepared.parts.length >= 8 &&
+    prepared.parts.reduce(
+      (size, part) => size + part.brepBytes.byteLength,
+      0
+    ) >=
+      2 * 1024 * 1024
+      ? await processCheckpoints(prepared.parts.map((part) => part.brepBytes))
+      : prepared.parts.map((part) =>
+          prepareOcctStepCheckpointWithInstance(oc, part.brepBytes)
+        );
+  const result = finishStepImport(input, prepared, checkpoints);
   for (const body of result.bodies) {
     if (body.metadata)
       rememberExactCheckpoint(
@@ -169,6 +205,20 @@ export function createOcctStepImportWithInstance(
   oc: OpenCascadeInstance,
   input: OcctStepImportInput
 ): OcctStepImportResult {
+  const prepared = readStepPartsWithInstance(oc, input);
+  return finishStepImport(
+    input,
+    prepared,
+    prepared.parts.map((part) =>
+      prepareOcctStepCheckpointWithInstance(oc, part.brepBytes)
+    )
+  );
+}
+
+function readStepPartsWithInstance(
+  oc: OpenCascadeInstance,
+  input: OcctStepImportInput
+): PreparedStepImport {
   assertStepReaderBindings(oc);
   if (input.bytes.byteLength <= 0)
     throw new Error("STEP import requires non-empty STEP bytes.");
@@ -324,87 +374,20 @@ export function createOcctStepImportWithInstance(
         severity: "warning",
         message: `Imported body and occurrence RGB colors. Per-face/edge colors or transparency on ${partialAppearance.size} named definition(s) are not preserved: ${[...partialAppearance].slice(0, 8).join(", ")}${partialAppearance.size > 8 ? ", …" : ""}.`
       });
-    const bodies: OcctImportedBodyPayload[] = [];
+    const parts: PreparedStepPart[] = [];
     for (const [definitionId, label] of leafLabels) {
       const shape = oc.XCAFDoc_ShapeTool.GetShape_2(label);
       try {
         if (shape.IsNull())
           throw new Error(`STEP part ${definitionId} has no geometry.`);
-        const { brepBytes, topologySnapshot, metadata, healingApplied } =
-          prepareStepCheckpoint(oc, shape, progress);
-        if (topologySnapshot.entityCounts.solidCount <= 0) {
-          throw new Error(
-            `STEP part ${readStepName(oc, label) ?? definitionId} is not a solid. Surface and curve imports are not yet supported.`
-          );
-        }
-        const index = bodies.length + 1;
-        const bodyId = input.bodyId
-          ? index === 1
-            ? input.bodyId
-            : `${input.bodyId}_${index}`
-          : `body_imported_${index}`;
-        const checkpointId = input.checkpointId
-          ? index === 1
-            ? input.checkpointId
-            : `${input.checkpointId}_${index}`
-          : `checkpoint_imported_${index}`;
-        const bodyDiagnostics: OcctStepImportDiagnostic[] = [
-          {
-            code: healingApplied
-              ? "STEP_HEALING_APPLIED"
-              : "STEP_HEALING_NOT_REQUIRED",
-            severity: "info",
-            message: healingApplied
-              ? "Repaired invalid part geometry with ShapeFix_Shape."
-              : "Part geometry passed validation without repair."
-          },
-          {
-            code: "STEP_TOPOLOGY_EXTRACTED",
-            severity: "info",
-            message: "Extracted unique part topology once."
-          },
-          {
-            code: "STEP_CHECKPOINT_PAYLOAD_CREATED",
-            severity: "info",
-            message: "Created native BRep checkpoint for the part definition."
-          }
-        ];
         const color = readStepColor(oc, colorTool, label);
-        bodies.push({
+        parts.push({
           definitionId,
-          metadata,
-          sourceFormat: "step",
-          sourceFileName: input.sourceFileName,
           bodyName:
             readStepName(oc, label) ??
             createBodyDisplayName(input.sourceFileName),
           ...(color ? { color } : {}),
-          shapeType:
-            topologySnapshot.entityCounts.solidCount === 1
-              ? "solid"
-              : "compound",
-          bounds: readBodyBounds(topologySnapshot),
-          solidCount: topologySnapshot.entityCounts.solidCount,
-          faceCount: topologySnapshot.entityCounts.faceCount,
-          edgeCount: topologySnapshot.entityCounts.edgeCount,
-          vertexCount: topologySnapshot.entityCounts.vertexCount,
-          topologySnapshot,
-          checkpointPayload: {
-            checkpointId,
-            bodyId,
-            sourceKind: "importedBody",
-            brepFormat: "occt-brep",
-            brepWriter: "BRepTools.Write_3",
-            brepBytes,
-            brepByteLength: brepBytes.byteLength,
-            topologySnapshot,
-            signaturePayload: createCheckpointSignaturePayload(
-              checkpointId,
-              topologySnapshot
-            )
-          },
-          healingApplied,
-          diagnostics: bodyDiagnostics
+          brepBytes: writeBrepCheckpointBytes(oc, shape)
         });
       } finally {
         shape.delete();
@@ -415,23 +398,8 @@ export function createOcctStepImportWithInstance(
         const definition = definitions.get(occurrence.definitionId);
         return total + (definition ? countLeaves(definition.components) : 1);
       }, 0);
-    diagnostics.push(
-      {
-        code: "STEP_TOPOLOGY_EXTRACTED",
-        severity: "info",
-        message: `Extracted topology for ${bodies.length} unique parts.`
-      },
-      {
-        code: "STEP_CHECKPOINT_PAYLOAD_CREATED",
-        severity: "info",
-        message: `Created ${bodies.length} native part checkpoints.`
-      }
-    );
     return {
-      sourceFormat: "step",
-      sourceFileName: input.sourceFileName,
-      bodyCount: bodies.length,
-      bodies,
+      parts,
       diagnostics,
       assembly: {
         definitions: [...definitions.values()],
@@ -511,6 +479,113 @@ export async function getOcctStepReaderCapabilityWithLoader(
   return getOcctStepReaderCapabilityWithInstance(oc);
 }
 
+function finishStepImport(
+  input: OcctStepImportInput,
+  prepared: PreparedStepImport,
+  checkpoints: readonly OcctStepCheckpoint[]
+): OcctStepImportResult {
+  if (checkpoints.length !== prepared.parts.length)
+    throw new Error(
+      "STEP checkpoint preparation returned an incomplete assembly."
+    );
+  const bodies: OcctImportedBodyPayload[] = [];
+  for (const [partIndex, part] of prepared.parts.entries()) {
+    const definitionId = part.definitionId;
+    const { brepBytes, topologySnapshot, metadata, healingApplied } =
+      checkpoints[partIndex]!;
+    if (topologySnapshot.entityCounts.solidCount <= 0) {
+      throw new Error(
+        `STEP part ${part.bodyName ?? definitionId} is not a solid. Surface and curve imports are not yet supported.`
+      );
+    }
+    const index = bodies.length + 1;
+    const bodyId = input.bodyId
+      ? index === 1
+        ? input.bodyId
+        : `${input.bodyId}_${index}`
+      : `body_imported_${index}`;
+    const checkpointId = input.checkpointId
+      ? index === 1
+        ? input.checkpointId
+        : `${input.checkpointId}_${index}`
+      : `checkpoint_imported_${index}`;
+    const bodyDiagnostics: OcctStepImportDiagnostic[] = [
+      {
+        code: healingApplied
+          ? "STEP_HEALING_APPLIED"
+          : "STEP_HEALING_NOT_REQUIRED",
+        severity: "info",
+        message: healingApplied
+          ? "Repaired invalid part geometry with ShapeFix_Shape."
+          : "Part geometry passed validation without repair."
+      },
+      {
+        code: "STEP_TOPOLOGY_EXTRACTED",
+        severity: "info",
+        message: "Extracted unique part topology once."
+      },
+      {
+        code: "STEP_CHECKPOINT_PAYLOAD_CREATED",
+        severity: "info",
+        message: "Created native BRep checkpoint for the part definition."
+      }
+    ];
+    const color = part.color;
+    bodies.push({
+      definitionId,
+      metadata,
+      sourceFormat: "step",
+      sourceFileName: input.sourceFileName,
+      bodyName: part.bodyName,
+      ...(color ? { color } : {}),
+      shapeType:
+        topologySnapshot.entityCounts.solidCount === 1 ? "solid" : "compound",
+      bounds: readBodyBounds(topologySnapshot),
+      solidCount: topologySnapshot.entityCounts.solidCount,
+      faceCount: topologySnapshot.entityCounts.faceCount,
+      edgeCount: topologySnapshot.entityCounts.edgeCount,
+      vertexCount: topologySnapshot.entityCounts.vertexCount,
+      topologySnapshot,
+      checkpointPayload: {
+        checkpointId,
+        bodyId,
+        sourceKind: "importedBody",
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3",
+        brepBytes,
+        brepByteLength: brepBytes.byteLength,
+        topologySnapshot,
+        signaturePayload: createCheckpointSignaturePayload(
+          checkpointId,
+          topologySnapshot
+        )
+      },
+      healingApplied,
+      diagnostics: bodyDiagnostics
+    });
+  }
+  return {
+    sourceFormat: "step",
+    sourceFileName: input.sourceFileName,
+    bodyCount: bodies.length,
+    bodies,
+    assembly: prepared.assembly,
+    diagnostics: [
+      ...prepared.diagnostics,
+      {
+        code: "STEP_TOPOLOGY_EXTRACTED",
+        severity: "info",
+        message: `Extracted topology for ${bodies.length} unique parts.`
+      },
+      {
+        code: "STEP_CHECKPOINT_PAYLOAD_CREATED",
+        severity: "info",
+        message: `Created ${bodies.length} native part checkpoints.`
+      }
+    ]
+  };
+}
+
 function healStepShape(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
@@ -537,17 +612,12 @@ function healStepShape(
  * exchange shape was also fully checked even though no caller consumed it.
  * Invalid canonical shapes still get repaired, serialized again and validated
  * before any document data is returned. */
-function prepareStepCheckpoint(
+export function prepareOcctStepCheckpointWithInstance(
   oc: OpenCascadeInstance,
-  source: TopoDS_Shape,
-  progress: InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
-): {
-  brepBytes: Uint8Array;
-  topologySnapshot: OcctExactTopologySnapshot;
-  metadata: OcctExactBodyMetadata;
-  healingApplied: boolean;
-} {
-  let brepBytes = writeBrepCheckpointBytes(oc, source);
+  sourceBytes: Uint8Array
+): OcctStepCheckpoint {
+  const progress = new oc.Message_ProgressRange_1();
+  let brepBytes = sourceBytes;
   let healingApplied = false;
   const readCanonical = (
     shape: TopoDS_Shape,
@@ -594,10 +664,14 @@ function prepareStepCheckpoint(
       )
     };
   };
-  const evidence = withImportedBrepShape(oc, brepBytes, (shape) =>
-    readCanonical(shape, true)
-  );
-  return { brepBytes, ...evidence, healingApplied };
+  try {
+    const evidence = withImportedBrepShape(oc, brepBytes, (shape) =>
+      readCanonical(shape, true)
+    );
+    return { brepBytes, ...evidence, healingApplied };
+  } finally {
+    progress.delete();
+  }
 }
 
 function writeBrepCheckpointBytes(

@@ -354,21 +354,20 @@ function SolidDraftEditor({
     return () => previewCallbackRef.current?.(undefined);
   }, []);
 
+  // Grip data depends on whether Apply is available, not the identity of its
+  // handler. App recreates that handler after publishing grips; depending on
+  // it feeds each publication back into another render/publication indefinitely.
+  const hasApply = Boolean(onApply);
   useEffect(() => {
     const callback = gripDraftCallbackRef.current;
     if (!callback) return;
     callback(
-      presentSolidGripDraft(
-        request.kind,
-        draft,
-        blockedReason,
-        Boolean(onApply)
-      )
+      presentSolidGripDraft(request.kind, draft, blockedReason, hasApply)
     );
   }, [
     blockedReason,
     draft,
-    onApply,
+    hasApply,
     onGripDraftChange,
     request.kind,
     request.key

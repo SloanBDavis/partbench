@@ -22,6 +22,8 @@ import {
   createOcctExactTopologySnapshotWithInstance,
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctStepImportWithLoader,
+  prepareOcctStepCheckpointWithInstance,
+  type OcctStepCheckpointProcessor,
   createOcctStepExportWithInstance,
   runOcctNamedStepProbeWithInstance,
   createOcctWireExtrudeMeshWithInstance
@@ -283,7 +285,10 @@ export async function executeGeometryKernelRequest<
 export async function executeTimedBrowserGeometryKernelRequest<
   T extends GeometryKernelRequest
 >(
-  request: T
+  request: T,
+  options: {
+    readonly prepareStepCheckpoints?: OcctStepCheckpointProcessor;
+  } = {}
 ): Promise<{
   readonly response: GeometryKernelResponseForRequest<T>;
   readonly timings: BrowserGeometryKernelTimings;
@@ -911,7 +916,11 @@ export async function executeTimedBrowserGeometryKernelRequest<
     try {
       // Prime the same kernel-owned canonical evidence cache as headless import
       // before the worker transfers the imported BRep payloads to its caller.
-      return await createOcctStepImportWithLoader(async () => oc, input);
+      return await createOcctStepImportWithLoader(
+        async () => oc,
+        input,
+        options.prepareStepCheckpoints
+      );
     } catch (error) {
       failureStage = "tessellation";
       throw error;
@@ -980,3 +989,11 @@ export type {
 } from "./kernel";
 
 export type { GeometryKernelStepAssembly } from "./kernel";
+
+export type {
+  OcctStepCheckpoint,
+  OcctStepCheckpointProcessor
+} from "@web-cad/occt-wasm/browser";
+export async function prepareBrowserStepCheckpoint(bytes: Uint8Array) {
+  return prepareOcctStepCheckpointWithInstance(await loadBrowserOcct(), bytes);
+}

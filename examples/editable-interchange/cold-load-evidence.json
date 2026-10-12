@@ -1,0 +1,638 @@
+{
+  "date": "2026-10-12",
+  "baselineCommit": "d9dffca",
+  "source": {
+    "fileName": "radial-engine.step",
+    "byteLength": 13389913,
+    "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
+  },
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.0.0",
+    "platform": "linux x64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "logicalCpuCount": 5,
+    "containerCpuQuota": 4,
+    "containerMemoryLimitBytes": 17179869184,
+    "rendering": "SwiftShader software WebGL2"
+  },
+  "method": "Fresh Chromium process per run, production Vite preview of separately built baseline/current code, same pinned fixture and runner. No builds, static checks or other geometry runs overlap import timing. Timer spans real Import click through all exact/display results ready. Workflow failures after cold readiness are disclosed.",
+  "comparison": {
+    "before": {
+      "log": ".metrics/cold-load/before/production-browser-repeat.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 59755.2
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 4636.4
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 144
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 735.3
+        }
+      },
+      "importThroughReadyMs": 78966,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "orbit": {
+        "frames": 57,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 733.3000000000029,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "failure": "Timed out during click [data-action-id=\"solid.box\"] after 7000ms"
+    },
+    "after": {
+      "log": ".metrics/cold-load/after/production-browser-acceptance.log",
+      "workflowStatus": "passed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 51778.3
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 5875.8
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 236.1
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 1165.8
+        }
+      },
+      "importThroughReadyMs": 61682,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "orbit": {
+        "frames": 56,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 366.6000000000058,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "nativeParity": "passed",
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 63
+      },
+      "workflowSeconds": 113.3
+    },
+    "observedLatencyReductionPercent": 21.9
+  },
+  "observations": [
+    {
+      "log": ".metrics/cold-load/before/production-browser.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 64735.8
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 4478.9
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 282.1
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 747.4
+        }
+      },
+      "importThroughReadyMs": 83569,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "orbit": {
+        "frames": 56,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 400,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "failure": "Timed out during click [data-ui-smoke=\"apply\"] after 7000ms",
+      "note": "Baseline cold phase passed; later existing solid-editor render loop failed the complete workflow."
+    },
+    {
+      "log": ".metrics/cold-load/after/production-browser.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 39894.5
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 5546.2
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 210
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 980.2
+        }
+      },
+      "importThroughReadyMs": 48510,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.5
+        }
+      },
+      "orbit": {
+        "frames": 56,
+        "medianFrameIntervalMs": 16.700000000004366,
+        "p95FrameIntervalMs": 349.90000000000146,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.5
+        }
+      },
+      "nativeParity": "passed",
+      "failure": "Timed out during click [data-ui-smoke=\"apply\"] after 7000ms",
+      "note": "Earlier optimized build, before solid-editor fix; cold/native parity passed, later editor loop failed."
+    },
+    {
+      "log": ".metrics/cold-load/after/production-browser-final.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 63334.3
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 7158.7
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 329.9
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 1028.4
+        }
+      },
+      "importThroughReadyMs": 77333,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 95.5
+        }
+      },
+      "orbit": {
+        "frames": 61,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 1416.6000000000058,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 95.5
+        }
+      },
+      "nativeParity": "passed",
+      "failure": "Timed out during click [data-ribbon-roving-id=\"mode-solid\"] after 7000ms",
+      "note": "Final product code; cold/native parity passed, subsequent new-page runner readiness race failed."
+    },
+    {
+      "log": ".metrics/cold-load/before/production-browser-repeat.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 59755.2
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 4636.4
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 144
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 735.3
+        }
+      },
+      "importThroughReadyMs": 78966,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "orbit": {
+        "frames": 57,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 733.3000000000029,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "failure": "Timed out during click [data-action-id=\"solid.box\"] after 7000ms",
+      "note": "Baseline with corrected page readiness; cold phase passed, later existing editor loop failed."
+    },
+    {
+      "log": ".metrics/cold-load/after/production-browser-repeat.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 46562.6
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 6479.6
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 213
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 1588.2
+        }
+      },
+      "importThroughReadyMs": 57249,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 1.7000000001862645
+        }
+      },
+      "orbit": {
+        "frames": 58,
+        "medianFrameIntervalMs": 16.70000000001164,
+        "p95FrameIntervalMs": 983.3000000000029,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 1.7000000001862645
+        }
+      },
+      "nativeParity": "passed",
+      "note": "Final product code; cold/native parity/editor passed. Cancellation assertion incorrectly searched blank Chromium worker URLs; fixed to track new target IDs."
+    },
+    {
+      "log": ".metrics/cold-load/after/production-browser-acceptance.log",
+      "workflowStatus": "passed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 51778.3
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 5875.8
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 236.1
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 1165.8
+        }
+      },
+      "importThroughReadyMs": 61682,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "orbit": {
+        "frames": 56,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 366.6000000000058,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000005587935
+        }
+      },
+      "nativeParity": "passed",
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 63
+      },
+      "workflowSeconds": 113.3,
+      "note": "Final complete production acceptance with worker-ID cancellation assertion; passed."
+    },
+    {
+      "log": ".metrics/cold-load/before/browser.log",
+      "workflowStatus": "passed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 73361.6
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 3244.7
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 710.7
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 12.6
+        }
+      },
+      "importThroughReadyMs": 138842,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000000931323
+        }
+      },
+      "orbit": {
+        "frames": 58,
+        "medianFrameIntervalMs": 16.70000000001164,
+        "p95FrameIntervalMs": 649.8999999999942,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.6000000000931323
+        }
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "settleMs": 175
+      },
+      "workflowSeconds": 188.4,
+      "note": "Development build baseline; not directly comparable to production."
+    },
+    {
+      "log": ".metrics/cold-load/after/profile-browser.log",
+      "workflowStatus": "failed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 54516.2
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 3746.9
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 684.1
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 8.1
+        }
+      },
+      "importThroughReadyMs": 135800,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.8000000002793968
+        }
+      },
+      "orbit": {
+        "frames": 57,
+        "medianFrameIntervalMs": 16.70000000001164,
+        "p95FrameIntervalMs": 649.8999999999942,
+        "uploadsBefore": 52,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 52,
+          "submitMs": 0.8000000002793968
+        }
+      },
+      "note": "Experimental three-worker development build with profiler overhead; later cancellation assertion failed."
+    },
+    {
+      "log": ".metrics/cold-load/after/browser-1.log",
+      "workflowStatus": "passed",
+      "workerJobs": {
+        "geometry.importStep": {
+          "count": 1,
+          "milliseconds": 82026.8
+        },
+        "geometry.tessellateExactBody": {
+          "count": 51,
+          "milliseconds": 3834.2
+        },
+        "geometry.exactBodyMetadata": {
+          "count": 51,
+          "milliseconds": 907.5
+        },
+        "geometry.exactBodyArtifact": {
+          "count": 1,
+          "milliseconds": 10
+        }
+      },
+      "importThroughReadyMs": 138640,
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 102,
+          "submitMs": 0.7000000001862645
+        }
+      },
+      "orbit": {
+        "frames": 63,
+        "medianFrameIntervalMs": 16.70000000001164,
+        "p95FrameIntervalMs": 1466.6999999999825,
+        "uploadsBefore": 102,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 102,
+          "submitMs": 0.7000000001862645
+        }
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "settleMs": 66
+      },
+      "workflowSeconds": 287.3,
+      "note": "Experimental three-worker development build before display batching; not final implementation."
+    }
+  ],
+  "exactGeometry": {
+    "status": "passed",
+    "checkpoints": 51,
+    "checks": [
+      "Raw BRep, canonical topology and signature bytes match previous d9dffca native import",
+      "Production browser Save As payloads match headless native import"
+    ],
+    "headlessStagesPassed": 20,
+    "headlessEvidence": "engine-evidence.json"
+  },
+  "verification": {
+    "productionBuild": "passed",
+    "geometryWorkerBuild": "passed",
+    "fullEngineBrowser": "passed",
+    "fullEngineHeadless": "passed",
+    "consolidatedVerify": {
+      "status": "passed",
+      "workspaceTypechecks": 13,
+      "browserJourneys": 3,
+      "publicMcpJourneys": 1,
+      "e2eStages": [
+        {
+          "name": "prepare nested STEP fixture",
+          "milliseconds": 7266.157706,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "browser journeys",
+          "milliseconds": 47738.153274000004,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "build MCP executable",
+          "milliseconds": 15856.93407699999,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "MCP author/revise/save/reopen/STEP journey",
+          "milliseconds": 14139.022958000001,
+          "exitCode": 0,
+          "signal": null
+        }
+      ],
+      "changedSourceEslint": {
+        "errors": 0,
+        "existingWarnings": 13
+      },
+      "formatting": "passed"
+    }
+  },
+  "limitations": [
+    "Single observations with substantial host/browser variation, not statistical performance guarantees. Final-product cold observations range from 57.249 to 77.333 seconds; earlier optimized build reached 48.510 seconds.",
+    "Baseline complete production workflows fail at a pre-existing solid-editor loop after their valid import/Fit/orbit/select measurement; final implementation fixes it.",
+    "10-second cold usable-view and 20-second selection targets remain unmet. Native STEP read/transfer and exact checkpoint preparation still precede the imported scene.",
+    "Software rendering frame spikes remain; no hardware-GPU or peak-memory claim.",
+    "Sequential resource fallback is implemented; constrained-device performance and Firefox/Safari are not established by these Chromium runs."
+  ]
+}

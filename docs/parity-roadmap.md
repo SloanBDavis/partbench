@@ -1,6 +1,6 @@
 # Fastest path to professional CAD parity
 
-2026-10-10. This is the current user goal, replacing version-number gates.
+Updated 2026-10-12. This is the current user goal, replacing version-number gates.
 
 A user can import a customer's drawing or mechanical assembly, make precise
 changes, produce a dimensioned deliverable, and return usable files without
@@ -106,14 +106,22 @@ the initial small suite, not implied by a green run.
 
 ## Current implementation
 
-See [import and editing performance](import-performance.md) for the first measured
-implementation, exact-geometry comparison and remaining latency targets.
+See [import and editing performance](import-performance.md) for measured
+implementation, exact-geometry comparison and remaining latency targets. Bounded
+parallel checkpoint preparation, source-identity reuse, faster CBOR writes and
+batched display updates now complement the earlier bounds/evidence reuse.
+The final production engine run reaches readiness in 61.68 s versus 78.97 s
+on the previous commit; timings vary substantially. The complete production
+journey now also verifies native parity and cancellation of both child workers.
+A solid-editor update loop found in production is fixed.
 
 ## Next implementation slice
 
 Make the existing engine import usable within the performance targets before
 adding another 3D feature. Exact bounds reuse, checkpoint verification reuse and
-import cancellation are implemented in the first performance slice. Next,
+import cancellation, bounded parallel preparation and reduced main-thread
+serialization/render work are implemented. The 10-second usable-view target
+remains unmet. Next,
 shorten native STEP transfer and remaining general-surface bounds work, and
 deliver progressive usable rendering through the browser Import control. Keep
 the existing cancellation, edit, native reopen and exact-geometry assertions;

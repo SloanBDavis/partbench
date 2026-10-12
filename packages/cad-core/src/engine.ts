@@ -2056,6 +2056,7 @@ export class CadEngine {
   #trustedQuerySourceRevision: string | undefined;
   #trustedQuerySolverEvaluationIdentity: string | undefined;
   #sourceAuthorityEpoch = 0;
+  #sourceIdentityCache?: { epoch: number; identity: WcadSourceIdentity };
   #historyBaseline?: CadDocumentSnapshot;
   #historyBaselineRequired = false;
   #nextObjectNumber = 1;
@@ -2262,6 +2263,19 @@ export class CadEngine {
       this.#nextFeatureNumber,
       this.#nextBodyNumber
     );
+  }
+
+  // Display/metadata updates do not change source authority. Hash the native
+  // document and history once per committed revision, including load/Undo/Redo.
+  // Keep this private: callers of the standalone function may supply mutable data.
+  #currentSourceIdentity(): WcadSourceIdentity {
+    if (this.#sourceIdentityCache?.epoch !== this.#sourceAuthorityEpoch) {
+      this.#sourceIdentityCache = {
+        epoch: this.#sourceAuthorityEpoch,
+        identity: createCadProjectSourceIdentity(exportCadProject(this))
+      };
+    }
+    return { ...this.#sourceIdentityCache.identity };
   }
 
   #getDocumentIdCounters(): CadDocumentIdCounters {
@@ -2584,7 +2598,7 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction),
           request.version,
-          createCadProjectSourceIdentity(exportCadProject(this)),
+          this.#currentSourceIdentity(),
           request.query.derivedExactMetadata,
           request.query.currentExactResults
         );
@@ -2738,9 +2752,7 @@ export class CadEngine {
             : createCurrentExactExportProjection({
                 document: this.#document,
                 bodies: structure.bodies,
-                currentSourceIdentity: createCadProjectSourceIdentity(
-                  exportCadProject(this)
-                ),
+                currentSourceIdentity: this.#currentSourceIdentity(),
                 derivedExactMetadata: request.query.derivedExactMetadata,
                 currentExactResults: request.query.currentExactResults
               }).currentExactResults;
@@ -2940,9 +2952,7 @@ export class CadEngine {
           bodies: structure.bodies,
           derivedExactMetadata: request.query.derivedExactMetadata,
           currentExactResults: request.query.currentExactResults,
-          currentSourceIdentity: createCadProjectSourceIdentity(
-            exportCadProject(this)
-          )
+          currentSourceIdentity: this.#currentSourceIdentity()
         });
       }
 
@@ -2963,9 +2973,7 @@ export class CadEngine {
           bodies: structure.bodies,
           query: request.query,
           documentSchemaVersion,
-          currentSourceIdentity: createCadProjectSourceIdentity(
-            exportCadProject(this)
-          )
+          currentSourceIdentity: this.#currentSourceIdentity()
         });
       }
 
@@ -3188,9 +3196,7 @@ export class CadEngine {
       }
 
       case "sketch.curveEditReadiness": {
-        const sourceIdentity = createCadProjectSourceIdentity(
-          exportCadProject(this)
-        );
+        const sourceIdentity = this.#currentSourceIdentity();
         let nextSketchEntityNumber = this.#nextSketchEntityNumber;
         return createSketchCurveEditReadinessResponse({
           document: this.#document,
@@ -4375,7 +4381,7 @@ export class CadEngine {
                       trustedSourceRevision.indexOf(":") + 1
                     )
                   }
-                : createCadProjectSourceIdentity(exportCadProject(this)),
+                : this.#currentSourceIdentity(),
               document: this.#document,
               sketch
             });

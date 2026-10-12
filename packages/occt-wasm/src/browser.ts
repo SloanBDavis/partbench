@@ -118,6 +118,9 @@ import {
 } from "./exactCheckpointPayload";
 import {
   createOcctStepImportWithInstance,
+  prepareOcctStepCheckpointWithInstance,
+  type OcctStepCheckpoint,
+  type OcctStepCheckpointProcessor,
   createOcctStepImportWithLoader,
   getOcctStepReaderCapabilityWithInstance,
   getOcctStepReaderCapabilityWithLoader,
@@ -296,6 +299,9 @@ export {
   getOcctBrepCheckpointWriterCapabilityWithInstance,
   getOcctBrepCheckpointWriterCapabilityWithLoader,
   createOcctStepImportWithInstance,
+  prepareOcctStepCheckpointWithInstance,
+  type OcctStepCheckpoint,
+  type OcctStepCheckpointProcessor,
   createOcctStepImportWithLoader,
   getOcctStepReaderCapabilityWithInstance,
   getOcctStepReaderCapabilityWithLoader,
