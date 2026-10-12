@@ -1,5 +1,6 @@
 import {
   decodeWcadCanonicalCbor,
+  encodeWcadCanonicalCbor,
   resolveMirrorPlaneFrame,
   resolvePatternDirectionFrame,
   resolvePatternRotationAxisFrame,
@@ -2155,42 +2156,103 @@ function readCheckpointTopologyEvidence(
       signature: value.signature,
       brepSha256: sha256Hex(payload.brepBytes)
     };
-    const cost =
-      payload.brepBytes.byteLength +
-      payload.topologyBytes.byteLength +
-      payload.signatureBytes.byteLength;
-    if (
-      evidence.brepSha256 === payload.brepSha256 &&
-      cost <= MAX_VERIFIED_CHECKPOINT_BYTES
-    ) {
-      if (cached) {
-        verifiedCheckpointByteCount -= cached.cost;
-        verifiedCheckpointBytes.delete(key);
-      }
-      while (
-        verifiedCheckpointByteCount + cost > MAX_VERIFIED_CHECKPOINT_BYTES ||
-        verifiedCheckpointBytes.size >= 256
-      ) {
-        const oldestKey = verifiedCheckpointBytes.keys().next().value;
-        if (oldestKey === undefined) break;
-        verifiedCheckpointByteCount -=
-          verifiedCheckpointBytes.get(oldestKey)!.cost;
-        verifiedCheckpointBytes.delete(oldestKey);
-      }
-      verifiedCheckpointBytes.set(key, {
-        checkpointId: payload.checkpointId,
-        brepBytes: payload.brepBytes.slice(),
-        topologyBytes: payload.topologyBytes.slice(),
-        signatureBytes: payload.signatureBytes.slice(),
-        evidence,
-        cost
-      });
-      verifiedCheckpointByteCount += cost;
-    }
+    retainCheckpointEvidence(payload, evidence);
     return { ...evidence };
   } catch {
     return undefined;
   }
+}
+
+/** Encode fresh kernel evidence and retain the matching owned bytes together.
+ * Imported payloads need not immediately decode the topology tree just encoded
+ * here. Reopened/external payloads still use the full reader and byte checks.
+ */
+export async function prepareImportedCheckpointPayload(
+  input: Omit<
+    WcadTopologyCheckpointPayloadInput,
+    "topologyBytes" | "signatureBytes" | "brepSha256"
+  >,
+  snapshot: { readonly sourceKind: string; readonly signature: string },
+  signatures: {
+    readonly checkpointId: string;
+    readonly signatureAlgorithm: string;
+    readonly signature: string;
+  }
+): Promise<WcadTopologyCheckpointPayloadInput> {
+  // Fresh kernel values are encoded synchronously before the first await.
+  // The encoder normalizes JSON itself; cloning the entire topology first
+  // duplicated that work. Capture the immutable identity now, and retain only
+  // owned encoded bytes after asynchronous hashing completes.
+  const sourceKind = snapshot.sourceKind;
+  const topologySignature = snapshot.signature;
+  if (
+    !isCheckpointTopologySourceKind(sourceKind) ||
+    typeof topologySignature !== "string" ||
+    !topologySignature ||
+    topologySignature !== signatures.signature ||
+    signatures.checkpointId !== input.checkpointId ||
+    signatures.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1"
+  )
+    throw new Error("Imported checkpoint topology identity is inconsistent.");
+  const brepBytes = input.brepBytes.slice();
+  const topologyBytes = encodeWcadCanonicalCbor(snapshot);
+  const signatureBytes = encodeWcadCanonicalCbor(signatures);
+  const hash = await globalThis.crypto.subtle.digest("SHA-256", brepBytes);
+  const brepSha256 = Array.from(new Uint8Array(hash), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+  const payload = {
+    ...input,
+    brepBytes,
+    topologyBytes,
+    signatureBytes,
+    brepSha256
+  };
+  retainCheckpointEvidence(payload, {
+    sourceKind,
+    signature: topologySignature,
+    brepSha256
+  });
+  return payload;
+}
+
+function retainCheckpointEvidence(
+  payload: WcadTopologyCheckpointPayloadInput,
+  evidence: CheckpointTopologyEvidence
+): void {
+  const cost =
+    payload.brepBytes.byteLength +
+    payload.topologyBytes.byteLength +
+    payload.signatureBytes.byteLength;
+  if (
+    evidence.brepSha256 !== payload.brepSha256 ||
+    cost > MAX_VERIFIED_CHECKPOINT_BYTES
+  )
+    return;
+  const key = `${payload.checkpointId}:${payload.brepSha256}`;
+  const previous = verifiedCheckpointBytes.get(key);
+  if (previous) {
+    verifiedCheckpointByteCount -= previous.cost;
+    verifiedCheckpointBytes.delete(key);
+  }
+  while (
+    verifiedCheckpointByteCount + cost > MAX_VERIFIED_CHECKPOINT_BYTES ||
+    verifiedCheckpointBytes.size >= 256
+  ) {
+    const oldestKey = verifiedCheckpointBytes.keys().next().value;
+    if (oldestKey === undefined) break;
+    verifiedCheckpointByteCount -= verifiedCheckpointBytes.get(oldestKey)!.cost;
+    verifiedCheckpointBytes.delete(oldestKey);
+  }
+  verifiedCheckpointBytes.set(key, {
+    checkpointId: payload.checkpointId,
+    brepBytes: payload.brepBytes.slice(),
+    topologyBytes: payload.topologyBytes.slice(),
+    signatureBytes: payload.signatureBytes.slice(),
+    evidence: { ...evidence },
+    cost
+  });
+  verifiedCheckpointByteCount += cost;
 }
 
 function isCheckpointTopologySourceKind(

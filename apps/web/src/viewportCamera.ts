@@ -338,9 +338,19 @@ function getPrimitiveBounds(primitive: RenderPrimitive): RenderSceneBounds {
   ]);
 }
 
+// Render meshes are immutable (the GPU buffer cache uses the same contract).
+// Repeatedly fitting a growing assembly only needs bounds for newly arrived
+// meshes. Weak keys release these values when previews or old scenes go away.
+const meshBoundsCache = new WeakMap<
+  RenderTriangleMesh,
+  { bounds: RenderSceneBounds | undefined }
+>();
+
 function getMeshBounds(
   mesh: RenderTriangleMesh
 ): RenderSceneBounds | undefined {
+  const cached = meshBoundsCache.get(mesh);
+  if (cached) return cached.bounds;
   let bounds: MutableBounds | undefined;
 
   for (const vertex of mesh.vertices) {
@@ -355,6 +365,7 @@ function getMeshBounds(
     bounds = includePoint(bounds, transformPoint(segment.end, mesh.transform));
   }
 
+  meshBoundsCache.set(mesh, { bounds });
   return bounds;
 }
 

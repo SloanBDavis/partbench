@@ -8,6 +8,7 @@ export interface StepPreviewMesh {
   readonly positions: Float32Array;
   readonly indices: Uint32Array;
   readonly name: string;
+  readonly transform?: import("./stepAssembly").OcctStepPlacement;
 }
 
 // A preview worker handles several bounded batches, then is terminated. Reuse

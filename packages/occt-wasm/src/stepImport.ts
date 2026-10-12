@@ -1,4 +1,8 @@
 import {
+  createExactShapeDisplay,
+  type OcctExactShapeDisplay
+} from "./exactCheckpointPayload";
+import {
   checkpointSha256,
   rememberExactCheckpoint
 } from "./exactCheckpointCache";
@@ -92,6 +96,8 @@ export interface OcctImportedBodyCheckpointPayload {
 }
 
 export interface OcctImportedBodyPayload {
+  /** Derived display only; never included in checkpoint/native payloads. */
+  readonly displayMesh?: OcctExactShapeDisplay["displayMesh"];
   readonly metadata?: OcctExactBodyMetadata;
   readonly definitionId: string;
   readonly color?: OcctStepColor;
@@ -111,6 +117,8 @@ export interface OcctImportedBodyPayload {
 }
 
 export interface OcctStepImportResult {
+  /** Worker-local derived data, removed before returning the import response. */
+  readonly preparedDisplays?: readonly (OcctExactShapeDisplay | undefined)[];
   readonly assembly?: OcctStepAssembly;
   readonly sourceFormat: "step";
   readonly sourceFileName: string;
@@ -120,6 +128,7 @@ export interface OcctStepImportResult {
 }
 
 export interface OcctStepCheckpoint {
+  readonly display?: OcctExactShapeDisplay;
   readonly brepBytes: Uint8Array;
   readonly topologySnapshot: OcctExactTopologySnapshot;
   readonly metadata: OcctExactBodyMetadata;
@@ -130,13 +139,14 @@ export type OcctStepCheckpointProcessor = (
   parts: readonly Uint8Array[]
 ) => Promise<readonly OcctStepCheckpoint[]>;
 
-interface PreparedStepPart {
+export interface PreparedStepPart {
   readonly definitionId: string;
   readonly bodyName?: string;
   readonly color?: OcctStepColor;
   readonly brepBytes: Uint8Array;
+  readonly placeholder?: boolean;
 }
-interface PreparedStepImport {
+export interface PreparedStepImport {
   readonly parts: readonly PreparedStepPart[];
   readonly diagnostics: readonly OcctStepImportDiagnostic[];
   readonly assembly: OcctStepAssembly;
@@ -189,15 +199,7 @@ export async function createOcctStepImportWithLoader(
           prepareOcctStepCheckpointWithInstance(oc, part.brepBytes)
         );
   const result = finishStepImport(input, prepared, checkpoints);
-  for (const body of result.bodies) {
-    if (body.metadata)
-      rememberExactCheckpoint(
-        oc,
-        await checkpointSha256(body.checkpointPayload.brepBytes),
-        body.checkpointPayload.brepBytes,
-        { topology: body.topologySnapshot, metadata: body.metadata }
-      );
-  }
+  await rememberOcctStepImport(oc, result);
   return result;
 }
 
@@ -215,9 +217,10 @@ export function createOcctStepImportWithInstance(
   );
 }
 
-function readStepPartsWithInstance(
+export function readStepPartsWithInstance(
   oc: OpenCascadeInstance,
-  input: OcctStepImportInput
+  input: OcctStepImportInput,
+  allowPlaceholders = false
 ): PreparedStepImport {
   assertStepReaderBindings(oc);
   if (input.bytes.byteLength <= 0)
@@ -387,7 +390,10 @@ function readStepPartsWithInstance(
             readStepName(oc, label) ??
             createBodyDisplayName(input.sourceFileName),
           ...(color ? { color } : {}),
-          brepBytes: writeBrepCheckpointBytes(oc, shape)
+          brepBytes: writeBrepCheckpointBytes(oc, shape),
+          ...(allowPlaceholders
+            ? { placeholder: isPointPlaceholder(oc, shape) }
+            : {})
         });
       } finally {
         shape.delete();
@@ -479,7 +485,7 @@ export async function getOcctStepReaderCapabilityWithLoader(
   return getOcctStepReaderCapabilityWithInstance(oc);
 }
 
-function finishStepImport(
+export function finishStepImport(
   input: OcctStepImportInput,
   prepared: PreparedStepImport,
   checkpoints: readonly OcctStepCheckpoint[]
@@ -532,6 +538,9 @@ function finishStepImport(
     ];
     const color = part.color;
     bodies.push({
+      ...(checkpoints[partIndex]?.display
+        ? { displayMesh: checkpoints[partIndex]!.display!.displayMesh }
+        : {}),
       definitionId,
       metadata,
       sourceFormat: "step",
@@ -614,7 +623,8 @@ function healStepShape(
  * before any document data is returned. */
 export function prepareOcctStepCheckpointWithInstance(
   oc: OpenCascadeInstance,
-  sourceBytes: Uint8Array
+  sourceBytes: Uint8Array,
+  prepareDisplay = false
 ): OcctStepCheckpoint {
   const progress = new oc.Message_ProgressRange_1();
   let brepBytes = sourceBytes;
@@ -625,6 +635,7 @@ export function prepareOcctStepCheckpointWithInstance(
   ): {
     topologySnapshot: OcctExactTopologySnapshot;
     metadata: OcctExactBodyMetadata;
+    display?: OcctExactShapeDisplay;
   } => {
     const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
     let valid: boolean;
@@ -656,6 +667,17 @@ export function prepareOcctStepCheckpointWithInstance(
     );
     return {
       topologySnapshot,
+      ...(prepareDisplay
+        ? {
+            display: createExactShapeDisplay(
+              oc,
+              shape,
+              "importedBody",
+              topologySnapshot,
+              false
+            )
+          }
+        : {}),
       metadata: readExactBodyMetadata(
         oc,
         shape,
@@ -851,4 +873,141 @@ function getOptionalOcctFs(oc: Partial<OpenCascadeInstance>):
       };
     }
   ).FS;
+}
+
+/** Only vertex-only placeholders are ignored. An unexpected wire, face or empty
+ * shape must pass through canonical validation and reject as in whole import. */
+function isPointPlaceholder(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape
+): boolean {
+  const kind = shape.ShapeType();
+  if (kind === oc.TopAbs_ShapeEnum.TopAbs_VERTEX) return true;
+  if (kind !== oc.TopAbs_ShapeEnum.TopAbs_COMPOUND) return false;
+  const iterator = new oc.TopoDS_Iterator_2(shape, true, true);
+  try {
+    while (iterator.More()) {
+      const child = iterator.Value();
+      try {
+        if (!isPointPlaceholder(oc, child)) return false;
+      } finally {
+        child.delete();
+      }
+      iterator.Next();
+    }
+    return true;
+  } finally {
+    iterator.delete();
+  }
+}
+
+export interface OcctStepPartitionResult {
+  readonly timings?: {
+    readonly loadMs?: number;
+    readonly readMs: number;
+    readonly totalMs: number;
+    readonly parts: readonly { name: string; milliseconds: number }[];
+  };
+  readonly prepared: PreparedStepImport;
+  readonly checkpoints: readonly (OcctStepCheckpoint | null)[];
+}
+export function prepareOcctStepPartitionWithInstance(
+  oc: OpenCascadeInstance,
+  input: OcctStepImportInput,
+  onPart?: (
+    part: PreparedStepPart,
+    checkpoint: OcctStepCheckpoint,
+    assembly: OcctStepAssembly
+  ) => void
+): OcctStepPartitionResult {
+  const started = performance.now();
+  const prepared = readStepPartsWithInstance(oc, input, true);
+  const readMs = performance.now() - started;
+  const parts: { name: string; milliseconds: number }[] = [];
+  const checkpoints = prepared.parts.map((part) => {
+    if (part.placeholder) return null;
+    try {
+      const partStarted = performance.now();
+      const checkpoint = prepareOcctStepCheckpointWithInstance(
+        oc,
+        part.brepBytes,
+        true
+      );
+      parts.push({
+        name: part.bodyName ?? part.definitionId,
+        milliseconds: performance.now() - partStarted
+      });
+      onPart?.(part, checkpoint, prepared.assembly);
+      return checkpoint;
+    } catch (error) {
+      throw new Error(
+        `STEP part ${part.bodyName ?? part.definitionId}: ${String((error as { message?: string }).message ?? error)}`
+      );
+    }
+  });
+  return {
+    prepared,
+    checkpoints,
+    timings: { readMs, totalMs: performance.now() - started, parts }
+  };
+}
+export function mergeOcctStepPartitions(
+  input: OcctStepImportInput,
+  results: readonly OcctStepPartitionResult[],
+  definitionCount: number
+): OcctStepImportResult | undefined {
+  const first = results[0]?.prepared;
+  if (!first || first.parts.length !== definitionCount) return;
+  const identity = (prepared: PreparedStepImport) =>
+    JSON.stringify({
+      assembly: prepared.assembly,
+      parts: prepared.parts.map(({ definitionId, bodyName }) => ({
+        definitionId,
+        bodyName
+      }))
+    });
+  const expected = identity(first);
+  if (results.some((result) => identity(result.prepared) !== expected)) return;
+  const checkpoints: OcctStepCheckpoint[] = [];
+  const parts: PreparedStepPart[] = [];
+  for (let i = 0; i < first.parts.length; i++) {
+    const found = results.flatMap((result) =>
+      result.checkpoints[i] ? [result.checkpoints[i]!] : []
+    );
+    if (found.length !== 1) return;
+    checkpoints.push(found[0]!);
+    parts.push(
+      results.find((result) => result.checkpoints[i])!.prepared.parts[i]!
+    );
+  }
+  const diagnostics = [
+    ...new Map(
+      results
+        .flatMap((result) => result.prepared.diagnostics)
+        .map((diagnostic) => [JSON.stringify(diagnostic), diagnostic])
+    ).values()
+  ];
+  return {
+    ...finishStepImport(input, { ...first, parts, diagnostics }, checkpoints),
+    preparedDisplays: checkpoints.map((checkpoint) => checkpoint.display)
+  };
+}
+
+export async function rememberOcctStepImport(
+  oc: OpenCascadeInstance,
+  result: OcctStepImportResult
+): Promise<void> {
+  for (const [index, body] of result.bodies.entries()) {
+    if (body.metadata)
+      rememberExactCheckpoint(
+        oc,
+        await checkpointSha256(body.checkpointPayload.brepBytes),
+        body.checkpointPayload.brepBytes,
+        {
+          topology: body.topologySnapshot,
+          metadata: body.metadata,
+          display: result.preparedDisplays?.[index]
+        }
+      );
+  }
 }

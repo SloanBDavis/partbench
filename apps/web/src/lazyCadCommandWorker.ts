@@ -20,6 +20,10 @@ export class LazyCadCommandWorker implements CadCommandWorker {
     this.#createWorker = createWorker;
   }
 
+  preload(): void {
+    if (!this.#disposed) this.#worker ??= this.#createWorker();
+  }
+
   execute(request: CadWorkerRequest): Promise<CadWorkerResponse> {
     if (this.#disposed) {
       return Promise.reject(new Error("CAD command worker is disposed."));

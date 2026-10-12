@@ -147,20 +147,21 @@ viewing versus editing readiness, preserves navigation through completion and
 restores the prior model and camera on Cancel. Exact checkpoint bytes match the
 native baselines; the full headless editing/round-trip journey passes.
 
-Bounded native display workers complement the earlier checkpoint parallelism,
-source-identity reuse, faster CBOR writes and batched display updates. A placement
-comparison also fixed an existing display-centering defect for asymmetric parts.
-The document, exact geometry authority and native format remain unchanged.
+The exact-import follow-up uses a shared native pipeline for viewing and editing,
+with balanced worker batches, a smaller browser kernel and verified display/checkpoint
+reuse. The best observed exact-selection run is 22.9 s, down from the earlier
+69.62–89.23 s implementation. The two final integrated runs measured 31.2–31.8 s;
+full timing and validation evidence is in [import performance](import-performance.md). Native checkpoint bytes and document
+semantics are preserved. The user accepted this milestone on 2026-10-12 and asked
+to stop speculative optimization.
 
 ## Next implementation slice
 
-Close `PERF-002` (every occurrence selectable with exact identity within 20 s).
-It remains **Not done**: full exact/display readiness is 69.62–89.23 s, even
-though navigation starts much earlier. Profile the remaining original STEP
-transfer and checkpoint metadata cost; shorten or stage exact preparation while
-retaining source identity, atomic import and native parity. Do not count the
-coarse display preview as exact selection. `PERF-012` still needs the broader
-repeatable benchmark corpus and budgets in its own acceptance contract.
+`PERF-002` remains **Not done**: its contract still requires every occurrence to
+be selectable with exact identity within 20 s in each of five isolated production
+runs. The accepted performance milestone does not change that contract. Resume
+this work when another measured improvement warrants it. `PERF-012` still needs
+the broader repeatable benchmark corpus and budgets in its own acceptance contract.
 
 `DRAW-001` is now Done; its [independent drawing workspace](drawing-workspace.md)
 was integrated alongside this import work. The next deliverable path is
@@ -170,10 +171,8 @@ feasibility alongside this path; it stays Not done until a verified round trip e
 Then prioritize `ASM-011` interference and `ASM-013` BOM over another primitive.
 The matrix frontier encodes this order and exposes unmet prerequisites.
 
-The PERF-001 implementation uses `occt-import-js@0.0.23` as a bounded,
-short-lived OCCT display worker behind `occt-wasm`. Partitioned native transfer
-meets the cold-view budget in the five production runs recorded above. This
-dependency's LGPL-2.1 license and bundled OCCT notices must accompany distribution.
-It is display-only: the existing OCCT reader still
-imports the original bytes and owns all exact geometry, topology and editing.
-No native format, document schema, service or geometry-authority change is made.
+The original PERF-001 `occt-import-js@0.0.23` display worker remains the fallback
+for unsupported native partition layouts. Supported large solid assemblies use
+full-quality meshes from the exact OCCT pipeline. Both native runtimes retain
+their LGPL-2.1 licenses and OCCT notices. No native format, document schema,
+service or geometry-authority change is made.

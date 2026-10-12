@@ -215,8 +215,43 @@ export interface GeometryWorker {
   ): Promise<GeometryWorkerResponse<TPayload>>;
 }
 
+/** Transient native import display; never document or checkpoint authority. */
+export type StepImportProgress =
+  | {
+      readonly phase: "native";
+      readonly meshes: readonly {
+        positions: Float32Array;
+        indices: Uint32Array;
+        name: string;
+        transform?: import("@web-cad/geometry-kernel/browser").OcctStepPlacement;
+      }[];
+      readonly completed: number;
+      readonly total: number;
+      readonly solidCount: number;
+    }
+  | { readonly phase: "fallback" }
+  | {
+      readonly phase: "profile";
+      readonly partitionMs: number;
+      readonly mergeMs: number;
+      readonly elapsedMs: number;
+      readonly workers: readonly {
+        readonly loadMs?: number;
+        readonly readMs: number;
+        readonly totalMs: number;
+        readonly parts: readonly {
+          readonly name: string;
+          readonly milliseconds: number;
+        }[];
+      }[];
+    };
+
 export interface GeometryWorkerOptions {
   readonly delayMs?: number;
+  readonly onStepImportProgress?: (
+    id: string,
+    progress: StepImportProgress
+  ) => void;
 }
 
 export interface GeometryWorkerExactExportCapability {

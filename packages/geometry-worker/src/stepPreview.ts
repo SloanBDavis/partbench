@@ -4,6 +4,7 @@ export interface StepPreviewBatch {
   meshes: StepPreviewMesh[];
   completed: number;
   total: number;
+  solidCount?: number;
 }
 
 /** Cancellation terminates the coordinator and its native child workers. A
@@ -14,10 +15,6 @@ export function startStepPreview(
   units: string,
   onBatch: (batch: StepPreviewBatch) => void
 ) {
-  let settleFirst: () => void = () => {};
-  const first = new Promise<void>((resolve) => {
-    settleFirst = resolve;
-  });
   const worker = new Worker(
     new URL("./stepPreview.worker.ts", import.meta.url),
     { type: "module" }
@@ -30,7 +27,6 @@ export function startStepPreview(
     stopped = true;
     globalThis.clearTimeout(timeout);
     worker.terminate();
-    settleFirst();
   };
   worker.onmessage = (
     event: MessageEvent<StepPreviewBatch & { error?: string }>
@@ -41,7 +37,6 @@ export function startStepPreview(
       return;
     }
     onBatch(event.data);
-    settleFirst();
     if (event.data.completed === event.data.total) cancel();
   };
   worker.onerror = (event) => {
@@ -59,5 +54,5 @@ export function startStepPreview(
   );
   // Keep the original buffer for the authoritative import.
   worker.postMessage({ bytes, units, count });
-  return { first, cancel };
+  return { cancel };
 }

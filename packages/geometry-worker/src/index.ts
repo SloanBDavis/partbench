@@ -1,3 +1,4 @@
+export type { StepImportProgress } from "./protocol";
 import type {
   GeometryKernelErrorResponse,
   GeometryKernelRequest,

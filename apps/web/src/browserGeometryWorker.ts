@@ -5,7 +5,8 @@ import type {
   GeometryWorker,
   GeometryWorkerDiagnostics,
   GeometryWorkerRequest,
-  GeometryWorkerResponse
+  GeometryWorkerResponse,
+  StepImportProgress
 } from "@web-cad/geometry-worker";
 import {
   createWorkerErrorDiagnostics,
@@ -17,7 +18,8 @@ import { runCleanupActions } from "./runCleanupActions";
 export type GeometryWorkerMessage =
   | GeometryWorkerResponse
   | GeometryWorkerErrorResponse
-  | GeometryWorkerStartedMessage;
+  | GeometryWorkerStartedMessage
+  | { readonly id: string; readonly stepImportProgress: StepImportProgress };
 
 export type GeometryWorkerStartedMessage = readonly [id: string];
 
@@ -61,11 +63,13 @@ interface PendingRequest {
   readonly resolve: (response: GeometryWorkerResponse) => void;
   readonly reject: (error: BrowserGeometryWorkerError) => void;
   readonly onStarted?: () => void;
+  readonly onStepImportProgress?: (progress: StepImportProgress) => void;
   started: boolean;
 }
 
 export interface BrowserGeometryWorkerExecutionCallbacks {
   readonly onStarted?: () => void;
+  readonly onStepImportProgress?: (progress: StepImportProgress) => void;
 }
 
 export class BrowserGeometryWorkerError extends Error {
@@ -102,6 +106,10 @@ export class BrowserGeometryWorker implements GeometryWorker {
       return;
     }
 
+    if ("stepImportProgress" in event.data) {
+      pending.onStepImportProgress?.(event.data.stepImportProgress);
+      return;
+    }
     this.#pendingRequests.delete(event.data.id);
 
     if ("error" in event.data) {
@@ -201,7 +209,7 @@ export class BrowserGeometryWorker implements GeometryWorker {
         resolve,
         reject,
         started: false,
-        ...(callbacks.onStarted ? { onStarted: callbacks.onStarted } : {})
+        ...callbacks
       });
 
       try {

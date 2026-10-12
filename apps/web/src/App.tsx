@@ -7,6 +7,7 @@ import {
 } from "./modes/solid/assemblyEditorRequests";
 import { ModelingReferenceQueryCache } from "./modelingReferenceQueries";
 import {
+  assemblyTransformFromMatrix,
   AsyncCadCommandExecutor,
   CadEngine,
   createCadProjectSourceIdentity,
@@ -388,7 +389,8 @@ import { type ViewportContextualCommandAction } from "./viewportContextualComman
 import {
   createAssemblySceneView,
   createAssemblyInstanceRenderId,
-  findAssemblyInstanceDefinitionBodyId
+  findAssemblyInstanceDefinitionBodyId,
+  listAssemblyInstanceExactDisplayRefs
 } from "./assemblyInstanceExactDisplay";
 import {
   createViewportCurrentTopologyPickIntent,
@@ -2097,7 +2099,12 @@ export function App() {
     createProjectStepImportPayloadStore()
   );
   const stepImportRunRef = useRef<
-    | { cancelled: boolean; committing: boolean; cancelPreview?: () => void }
+    | {
+        id: string;
+        cancelled: boolean;
+        committing: boolean;
+        cancelPreview?: () => void;
+      }
     | undefined
   >(undefined);
   const [stepImportStatus, setStepImportStatus] = useState<
@@ -2109,6 +2116,7 @@ export function App() {
     baseMeshes: readonly RenderTriangleMesh[];
     completed: number;
     total: number;
+    solidCount: number;
     committedBodyIds?: readonly string[];
   }>();
   const [importView, setImportView] = useState<{
@@ -2695,7 +2703,18 @@ export function App() {
               await import("./projectStepImportResolver");
             return createProjectStepImportResolver({
               getRuntime: getDerivedGeometryRuntime,
-              payloadStore: stepImportPayloadStoreRef.current
+              payloadStore: stepImportPayloadStoreRef.current,
+              onPrepared: () => {
+                const run = stepImportRunRef.current;
+                if (!run || run.id !== input.op.payloadRef.payloadId) return;
+                if (run.cancelled)
+                  throw new Error("STEP import was cancelled.");
+                run.committing = true;
+                setStepImportStatus({
+                  fileName: input.op.sourceFileName,
+                  committing: true
+                });
+              }
             }).resolveProjectImportStep(input);
           }
         }
@@ -9307,10 +9326,11 @@ export function App() {
 
     const importEpoch = engine.getSourceAuthorityEpoch();
     const run: {
+      id: string;
       cancelled: boolean;
       committing: boolean;
       cancelPreview?: () => void;
-    } = { cancelled: false, committing: false };
+    } = { id: payloadId, cancelled: false, committing: false };
     stepImportRunRef.current = run;
     clearSolidPreview();
     navigateToMode("solid");
@@ -9325,32 +9345,43 @@ export function App() {
 
     let committed = false;
     try {
+      // Load the command worker while native import is preparing its payload.
+      commandWorker.preload();
       setImportView({ id: payloadId, phase: "preview" });
-      const { startStepPreview } =
-        await import("@web-cad/geometry-worker/stepPreview");
-      if (run.cancelled) return;
       let meshSerial = 0;
-      const preview = startStepPreview(bytes, document.units, (batch) => {
+      const onBatch = (
+        batch: import("@web-cad/geometry-worker/stepPreview").StepPreviewBatch
+      ) => {
         if (run.cancelled || stepImportRunRef.current !== run) return;
+        const definitions = new Map<
+          Float32Array,
+          { vertices: RenderTriangleMesh["vertices"]; indices: number[] }
+        >();
         const meshes: RenderTriangleMesh[] = batch.meshes.map((mesh) => {
-          const vertices: (readonly [number, number, number])[] = [];
-          for (let index = 0; index < mesh.positions.length; index += 3)
-            vertices.push([
-              mesh.positions[index]!,
-              mesh.positions[index + 1]!,
-              mesh.positions[index + 2]!
-            ]);
+          let definition = definitions.get(mesh.positions);
+          if (!definition) {
+            const vertices: (readonly [number, number, number])[] = [];
+            for (let index = 0; index < mesh.positions.length; index += 3)
+              vertices.push([
+                mesh.positions[index]!,
+                mesh.positions[index + 1]!,
+                mesh.positions[index + 2]!
+              ]);
+            definition = { vertices, indices: Array.from(mesh.indices) };
+            definitions.set(mesh.positions, definition);
+          }
           return {
             id: `import-preview:${payloadId}:${meshSerial++}`,
             kind: "mesh",
-            vertices,
-            indices: Array.from(mesh.indices),
+            ...definition,
             label: mesh.name,
-            transform: {
-              translation: [0, 0, 0],
-              rotation: [0, 0, 0],
-              scale: [1, 1, 1]
-            }
+            transform: mesh.transform
+              ? assemblyTransformFromMatrix(mesh.transform)
+              : {
+                  translation: [0, 0, 0],
+                  rotation: [0, 0, 0],
+                  scale: [1, 1, 1]
+                }
           };
         });
         setStepImportDisplay((current) => ({
@@ -9358,51 +9389,60 @@ export function App() {
           baseMeshes: current?.baseMeshes ?? renderScene.meshes,
           meshes: [...(current?.meshes ?? []), ...meshes],
           completed: batch.completed,
-          total: batch.total
+          total: batch.total,
+          solidCount:
+            batch.solidCount ?? (current?.meshes.length ?? 0) + meshes.length
         }));
         setProjectMessage(
           batch.completed === batch.total
             ? "Assembly visible. Orbit, pan and zoom while exact editing data prepares."
             : "Assembly appearing. Orbit, pan and zoom while more parts arrive."
         );
-      });
-      run.cancelPreview = preview.cancel;
-      await preview.first;
-      // Let the first display paint before the full kernel starts competing for
-      // CPU. The timer also keeps imports progressing in background tabs.
-      await new Promise<void>((resolve) => {
-        const timer = window.setTimeout(resolve, 100);
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            clearTimeout(timer);
-            resolve();
-          })
+      };
+      let cancelFallback: (() => void) | undefined;
+      let fallbackStarted = false;
+      let previewStopped = false;
+      const startFallback = async () => {
+        if (fallbackStarted || previewStopped || run.cancelled) return;
+        fallbackStarted = true;
+        setStepImportDisplay(undefined);
+        setProjectMessage(`Reading ${fileName}… You can cancel at any time.`);
+        const { startStepPreview } =
+          await import("@web-cad/geometry-worker/stepPreview");
+        if (previewStopped || run.cancelled) return;
+        cancelFallback = startStepPreview(
+          bytes,
+          document.units,
+          onBatch
+        ).cancel;
+      };
+      const unsubscribe =
+        getDerivedGeometryRuntime().subscribeStepImportProgress?.(
+          (progress) => {
+            if (previewStopped || run.cancelled) return;
+            if (progress.phase === "fallback") {
+              void startFallback().catch(() => {
+                /* Exact import remains authoritative. */
+              });
+            } else if (progress.phase === "native" && progress.meshes.length) {
+              onBatch({ ...progress, meshes: [...progress.meshes] });
+            }
+          }
         );
-      });
-      if (run.cancelled) return;
-      const dryRun = await commandExecutor.executeBatch(
-        buildBatch("dryRun", [op], WEB_UI_ACTOR)
-      );
-
-      if (run.cancelled) return;
-      if (engine.getSourceAuthorityEpoch() !== importEpoch)
-        throw new Error(
-          "The project changed during import. Import the file again."
-        );
-
-      if (!dryRun.ok) {
-        setCommandError(dryRun.error.message);
-        setProjectMessage(dryRun.error.message);
-        setProjectMessageTone("error");
-        return;
-      }
-
-      run.committing = true;
-      setStepImportStatus({ fileName, committing: true });
+      run.cancelPreview = () => {
+        previewStopped = true;
+        unsubscribe?.();
+        cancelFallback?.();
+      };
+      if (!unsubscribe) void startFallback().catch(() => {});
+      // The executor validates in its worker before committing atomically.
+      // A separate dry run repeated resolution, payload encoding and validation.
       const response = await commandExecutor.executeBatchAtSourceAuthorityEpoch(
         buildBatch("commit", [op], WEB_UI_ACTOR),
-        importEpoch
+        importEpoch,
+        () => !run.cancelled && stepImportRunRef.current === run
       );
+      if (run.cancelled) return;
       if (!response)
         throw new Error(
           "The project changed during import preview. Import the file again."
@@ -9435,7 +9475,16 @@ export function App() {
       setStepImportDisplay((current) =>
         current ? { ...current, committedBodyIds: createdBodyIds } : current
       );
-      await syncDocument(createdBodyIds[0]);
+      // Open a multi-part import as an assembly, without choosing an arbitrary
+      // definition and starting an unrequested detailed face-editing artifact.
+      // A single imported part remains selected for the usual immediate edit.
+      if (createdBodyIds.length > 1) {
+        setAssemblySceneView("assembly");
+        setSelectedAssemblySelection(undefined);
+      }
+      await syncDocument(
+        createdBodyIds.length === 1 ? createdBodyIds[0] : null
+      );
       setProjectFile((current) => markProjectFileDirty(current));
       setProjectMessage(
         `Imported ${fileName}: ${createdBodyIds.length} bod${
@@ -11700,6 +11749,59 @@ export function App() {
   uiSmokeHostRef.current = {
     executeQuery: (query) =>
       engine.executeQuery({ version: "cadops.v1", query }),
+    getOccurrenceSelectionReadiness: () => {
+      const refs = listAssemblyInstanceExactDisplayRefs({
+        assemblies: projectStructure.assemblies
+      });
+      const meshes = new Set(previewRenderMeshes.map((mesh) => mesh.id));
+      const readyBodies = new Set(
+        currentExactResultProjections
+          .filter(
+            (result) =>
+              result.status === "ready" &&
+              result.sourceIdentitySignature ===
+                bodySourceIdentitySignatures.get(result.bodyId)
+          )
+          .map((result) => result.bodyId)
+      );
+      const unresolved = refs
+        .filter((ref) => {
+          if (
+            !meshes.has(ref.renderTargetId) ||
+            !readyBodies.has(ref.bodyId) ||
+            !bodySourceIdentitySignatures.has(ref.bodyId)
+          )
+            return true;
+          const intent = resolveViewportPickIntent({
+            pickedRenderId: ref.renderTargetId,
+            bodies: projectStructure.bodies,
+            objects: sceneObjects,
+            sketches,
+            assemblies: projectStructure.assemblies
+          });
+          return (
+            intent.kind !== "assemblyInstance" ||
+            intent.bodyId !== ref.bodyId ||
+            intent.instanceId !== ref.instanceId ||
+            JSON.stringify(intent.instancePath) !==
+              JSON.stringify(ref.instancePath) ||
+            (intent.rootAssemblyId ?? intent.assemblyId) !==
+              (ref.rootAssemblyId ?? ref.assemblyId)
+          );
+        })
+        .map((ref) => ref.renderTargetId);
+      return {
+        ready:
+          !commandPending &&
+          !stepImportDisplay &&
+          refs.length > 0 &&
+          unresolved.length === 0,
+        occurrenceCount: refs.length,
+        selectableCount: refs.length - unresolved.length,
+        definitionCount: new Set(refs.map((ref) => ref.bodyId)).size,
+        unresolved
+      };
+    },
     getViewportBounds: () => ({
       bounds: getRenderSceneBounds(renderScene.primitives, previewRenderMeshes),
       meshes: previewRenderMeshes.map((mesh) => ({
@@ -11759,6 +11861,18 @@ export function App() {
           redoCount: engine.getRedoStack().length
         },
         commandPending,
+        selectedOccurrence:
+          viewportPickIntent?.kind === "assemblyInstance"
+            ? {
+                bodyId: viewportPickIntent.bodyId,
+                instanceId: viewportPickIntent.instanceId,
+                exactReady: currentExactResultProjections.some(
+                  (result) =>
+                    result.bodyId === viewportPickIntent.bodyId &&
+                    result.status === "ready"
+                )
+              }
+            : undefined,
         commandError,
         commandNotice,
         rebuildState: modelingResultState,
@@ -11767,6 +11881,7 @@ export function App() {
               meshCount: stepImportDisplay.meshes.length,
               completed: stepImportDisplay.completed,
               total: stepImportDisplay.total,
+              solidCount: stepImportDisplay.solidCount,
               editingPending: !stepImportDisplay.committedBodyIds
             }
           : undefined,
@@ -11862,7 +11977,9 @@ export function App() {
       reset: () => uiSmokeHostRef.current.reset(),
       getState: () => uiSmokeHostRef.current.getState(),
       getDisplayState: () => uiSmokeHostRef.current.getDisplayState!(),
-      getViewportBounds: () => uiSmokeHostRef.current.getViewportBounds!()
+      getViewportBounds: () => uiSmokeHostRef.current.getViewportBounds!(),
+      getOccurrenceSelectionReadiness: () =>
+        uiSmokeHostRef.current.getOccurrenceSelectionReadiness!()
     });
     return () => uninstallUiSmokeHook();
   }, []);

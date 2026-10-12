@@ -1,3 +1,4 @@
+import type { OcctExactShapeDisplay } from "./exactCheckpointPayload";
 import type { OpenCascadeInstance } from "opencascade.js";
 import type {
   OcctExactBodyMetadata,
@@ -10,6 +11,7 @@ const MAX_ENTRIES = 256;
 interface Evidence {
   readonly topology: OcctExactTopologySnapshot;
   readonly metadata: OcctExactBodyMetadata;
+  readonly display?: OcctExactShapeDisplay;
 }
 interface Entry extends Evidence {
   readonly bytes: Uint8Array;
@@ -18,6 +20,10 @@ interface Entry extends Evidence {
 const caches = new WeakMap<
   OpenCascadeInstance,
   { entries: Map<string, Entry>; bytes: number }
+>();
+const displayBySnapshot = new WeakMap<
+  OcctExactTopologySnapshot,
+  OcctExactShapeDisplay
 >();
 const metadataBySnapshot = new WeakMap<
   OcctExactTopologySnapshot,
@@ -36,7 +42,22 @@ export function rememberExactCheckpoint(
 ): void {
   metadataBySnapshot.set(evidence.topology, structuredClone(evidence.metadata));
   const key = `${evidence.topology.sourceKind}:${sha256}`;
-  const cost = bytes.byteLength + JSON.stringify(evidence).length * 2;
+  const { display, ...exact } = evidence;
+  const displayCost = display
+    ? display.displayMesh.positions.byteLength +
+      display.displayMesh.indices.byteLength +
+      (display.viewportPickMap
+        ? JSON.stringify(display.viewportPickMap.faces).length * 2 +
+          JSON.stringify(display.viewportPickMap.edges).length * 2 +
+          JSON.stringify(display.viewportPickMap.vertices).length * 2 +
+          display.viewportPickMap.faceTriangleRanges.byteLength +
+          display.viewportPickMap.edgePointRanges.byteLength +
+          display.viewportPickMap.edgePoints.byteLength +
+          display.viewportPickMap.vertexPoints.byteLength
+        : 0)
+    : 0;
+  const cost =
+    bytes.byteLength + JSON.stringify(exact).length * 2 + displayCost;
   if (cost > MAX_BYTES) return;
   let cache = caches.get(oc);
   if (!cache) {
@@ -88,6 +109,7 @@ export function readExactCheckpoint(
     metadata: entry.metadata
   });
   metadataBySnapshot.set(evidence.topology, evidence.metadata);
+  if (entry.display) displayBySnapshot.set(evidence.topology, entry.display);
   return evidence;
 }
 
@@ -103,4 +125,13 @@ export async function checkpointSha256(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(hash), (byte) =>
     byte.toString(16).padStart(2, "0")
   ).join("");
+}
+
+/** Owned copies are safe to transfer out of the worker. The cache is keyed by
+ * the actual verified BRep bytes, with the same 0.25 / 0.5 display parameters. */
+export function displayForVerifiedCheckpoint(
+  snapshot: OcctExactTopologySnapshot
+): OcctExactShapeDisplay | undefined {
+  const display = displayBySnapshot.get(snapshot);
+  return display ? structuredClone(display) : undefined;
 }

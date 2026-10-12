@@ -37,6 +37,11 @@ export interface UiSmokeState {
   };
   readonly ready: true;
   readonly commandPending: boolean;
+  readonly selectedOccurrence?: {
+    readonly bodyId: string;
+    readonly instanceId: string;
+    readonly exactReady: boolean;
+  };
   readonly commandError?: string;
   readonly commandNotice?: string;
   readonly rebuildState: string;
@@ -51,6 +56,7 @@ export interface UiSmokeState {
     readonly meshCount: number;
     readonly completed: number;
     readonly total: number;
+    readonly solidCount: number;
     readonly editingPending: boolean;
   };
   readonly viewport?: {
@@ -88,6 +94,13 @@ export interface UiSmokeHost {
   executeQuery?(query: CadQuery): CadQueryResponse;
   /** Cheap read-only snapshot for frame-by-frame display continuity checks. */
   getDisplayState?(): UiSmokeDisplayState;
+  getOccurrenceSelectionReadiness?(): {
+    readonly ready: boolean;
+    readonly occurrenceCount: number;
+    readonly selectableCount: number;
+    readonly definitionCount: number;
+    readonly unresolved: readonly string[];
+  };
   getViewportBounds?(): {
     readonly bounds?: RenderSceneBounds;
     readonly meshes: readonly {
@@ -131,6 +144,12 @@ export function installUiSmokeHook(host: UiSmokeHost): PartbenchUiSmokeApi {
       : {}),
     ...(host.getDisplayState
       ? { getDisplayState: () => host.getDisplayState!() }
+      : {}),
+    ...(host.getOccurrenceSelectionReadiness
+      ? {
+          getOccurrenceSelectionReadiness: () =>
+            host.getOccurrenceSelectionReadiness!()
+        }
       : {}),
     ...(host.getViewportBounds
       ? { getViewportBounds: () => host.getViewportBounds!() }

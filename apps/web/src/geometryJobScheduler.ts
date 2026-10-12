@@ -1,7 +1,8 @@
 import type {
   GeometryWorkerDiagnostics,
   GeometryWorkerRequest,
-  GeometryWorkerResponse
+  GeometryWorkerResponse,
+  StepImportProgress
 } from "@web-cad/geometry-worker";
 import type { BrowserGeometryWorkerExecutionCallbacks } from "./browserGeometryWorker";
 
@@ -79,6 +80,7 @@ export interface GeometryJobSchedulerOptions {
   readonly workerEntryTimeoutMs?: number;
   readonly now?: () => number;
   readonly onEvent?: (event: GeometryJobEvent) => void;
+  readonly onStepImportProgress?: (progress: StepImportProgress) => void;
 }
 
 interface PendingGeometryJob {
@@ -129,6 +131,7 @@ export class GeometryJobScheduler {
   readonly #maxConsecutiveDisplayJobs: number;
   readonly #workerEntryTimeoutMs: number | undefined;
   readonly #now: () => number;
+  readonly #onStepImportProgress: GeometryJobSchedulerOptions["onStepImportProgress"];
   readonly #onEvent: ((event: GeometryJobEvent) => void) | undefined;
   readonly #listeners = new Set<() => void>();
   readonly #latestDerived = new Map<string, GeometryDerivedJobDescriptor>();
@@ -164,6 +167,7 @@ export class GeometryJobScheduler {
     this.#workerEntryTimeoutMs = normalizeTimeout(options.workerEntryTimeoutMs);
     this.#now = options.now ?? (() => performance.now());
     this.#onEvent = options.onEvent;
+    this.#onStepImportProgress = options.onStepImportProgress;
   }
 
   execute<TPayload extends GeometryWorkerRequest["payload"]>(
@@ -424,6 +428,9 @@ export class GeometryJobScheduler {
       }
 
       const response = await worker.executeTracked(job.request, {
+        onStepImportProgress: (progress) => {
+          if (this.#canPublish(job)) this.#onStepImportProgress?.(progress);
+        },
         onStarted: () => {
           if (started || !this.#canPublish(job)) {
             return;

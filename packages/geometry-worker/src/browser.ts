@@ -1,3 +1,4 @@
+export type { StepImportProgress } from "./protocol";
 import {
   executeTimedBrowserGeometryKernelRequest,
   getGeometryResponseTransferables,
@@ -15,6 +16,7 @@ export {
   V21_EXACT_RELEASE_PRIMITIVES,
   type V21ExactReleaseCorpusEntry
 } from "@web-cad/geometry-kernel/browser";
+import { importStepInParallel } from "./stepImportPool";
 import { prepareStepCheckpointsInParallel } from "./stepCheckpointPool";
 import {
   createKernelFailureResponse,
@@ -99,9 +101,11 @@ export {
 
 export class GeometryKernelBrowserWorker implements GeometryWorker {
   readonly #delayMs: number;
+  readonly #onStepImportProgress: GeometryWorkerOptions["onStepImportProgress"];
 
   constructor(options: GeometryWorkerOptions = {}) {
     this.#delayMs = options.delayMs ?? 0;
+    this.#onStepImportProgress = options.onStepImportProgress;
   }
 
   async execute<TPayload extends GeometryKernelRequest>(
@@ -134,7 +138,11 @@ export class GeometryKernelBrowserWorker implements GeometryWorker {
       const workerExecutionStart = performance.now();
       const { response, timings } =
         await executeTimedBrowserGeometryKernelRequest(request.payload, {
-          prepareStepCheckpoints: prepareStepCheckpointsInParallel
+          prepareStepCheckpoints: prepareStepCheckpointsInParallel,
+          importStep: (input) =>
+            importStepInParallel(input, (progress) =>
+              this.#onStepImportProgress?.(request.id, progress)
+            )
         });
       const workerExecutionMs = performance.now() - workerExecutionStart;
       const diagnostics = response.ok

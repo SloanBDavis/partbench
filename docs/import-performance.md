@@ -8,6 +8,99 @@ The pinned 13.4 MB engine remains the acceptance fixture: 51 unique parts,
 246 occurrences and 266 solids. No exact geometry is removed or approximated to
 make this workflow faster.
 
+## Exact import preparation — 2026-10-12
+
+Supported large solid STEP assemblies now use one native import pipeline for
+progressive viewing and exact editing. The coordinator partitions representation
+references while preserving the product, placement, unit and presentation graph;
+OCCT resolves those semantics independently in each worker. Merge requires identical
+assembly structure and exactly one validated checkpoint per definition. Unsupported
+layouts and worker failures use the original complete-file reader. No partial
+assembly can be committed.
+
+The browser kernel links only the required SDK bindings and recompiles measured
+native hot paths. It retains the pinned OCCT source algorithms, numeric tolerances,
+exceptions and canonical BRep writer. The source pins, licenses and complete rebuild
+recipe are in [the kernel build directory](../packages/occt-wasm/build/README.md).
+The independent Node SDK remains the native-file comparison authority.
+
+Each definition is validated, measured and meshed once. Its full-quality display
+buffers are shared across placed occurrences; the engine draws 51 definitions as
+246 instances. Verified, bounded caches carry exact metadata and display through
+the document handoff. Identical displaced GPU buffers are reused after exact
+geometry comparisons, avoiding a second upload of all 51 definitions. Reuse checks
+owned BRep bytes and topology identity; reopened or external payloads still pass
+the full reader. Imported canonical CBOR is encoded
+once, with its matching byte evidence retained. The command worker starts during
+import and the existing atomic executor performs the one validated commit.
+
+Orbit preserves orientation while newly arriving parts fit the view. Explicit pan,
+zoom and framing controls lock that framing through completion. Cancel terminates
+the native worker subtree and restores the previous model and camera. The small
+fallback preview remains display-only; neither path treats preview geometry as an
+exact editing checkpoint. Detailed face/edge pick maps are prepared for the selected
+body when needed, rather than eagerly for all imported definitions. A multi-part
+import opens the assembly without selecting an arbitrary part; single-part imports
+remain selected for immediate editing.
+
+The engine browser journey now also checks every occurrence's displayed ID against
+the current exact source identity and the real viewport-selection resolver, plus
+an actual canvas selection. A browser animation-frame observer records the first
+rendered, command-enabled exact scene; the report retains host-observed latency too.
+Import-time PNG capture is opt-in so screenshot encoding does not compete with CAD
+work in the acceptance measurement. Visual inspection uses a separate captured run.
+
+The default engine journey records exact readiness against a 20,000 ms budget
+and always checks all 246 exact occurrence identities. An over-budget result is
+reported as `withinBudget: false`; it does not stop later functional checks.
+Enable the strict matrix acceptance gate explicitly:
+
+```sh
+PARTBENCH_SMOKE_UI_PRODUCTION=1 PARTBENCH_SMOKE_REQUIRE_EXACT_BUDGET=1 \
+  pnpm smoke:engine-interchange:browser
+```
+
+Run five separate invocations without concurrent builds or geometry jobs before
+claiming PERF-002. Import-time screenshots require `PARTBENCH_SMOKE_CAPTURE_IMPORT=1`
+and are separate from timing acceptance. Neither the matrix's 20-second contract
+nor the existing 10-second usable-view assertion has been relaxed.
+
+### Measured result and validation
+
+The earlier implementation needed 69.62–89.23 s for full exact/display readiness.
+The best observed run during this work reached rendered exact selection in
+**22.920 s**. Subsequent nearby configurations measured 24.232 s and 25.959 s;
+22.9 s is not a guaranteed latency. After integration with drawing-coordinate and
+snapping work on `1acb70f`, the two final isolated production journeys measured:
+
+| Run | Visible geometry | Native orbit verified | Every occurrence exact/selectable | Host-observed readiness | Full journey |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 2.880 s | 3.450 s | 31.835 s | 33.008 s | Passed |
+| 2 | 2.190 s | 2.712 s | 31.156 s | 31.803 s | Passed |
+
+Both runs render 51 definitions as 246 instances, preserving all 266 solids and
+461,173 placed triangles. GPU uploads stay at 51 through the preview/commit handoff
+and later orbit. Cancel terminates five workers and restores the previous model
+and camera in 2.054 s / 2.122 s. Software-WebGL frame-time spikes remain; this is
+not evidence for a hardware frame-budget target.
+
+`pnpm verify` passes all package typechecks, the three consolidated browser
+journeys (including the integrated precision drawing controls), and public MCP.
+Production build passes. Changed-source lint has zero errors and seven existing
+warnings. The full 20-stage headless engine journey passes, including exact editing,
+Undo/history, native reopen and STEP round trips. All 51 canonical BRep, topology
+and signature payloads match both earlier native baselines byte for byte; both
+final browser Save As files also match the independent headless import. The
+headless run overlapped native compilation and is functional evidence only.
+
+The [machine-readable record](../examples/editable-interchange/exact-import-evidence.json)
+retains final runs, earlier timings, discarded experiments, checks and production
+asset hashes. The user accepted the 22.9-second best as sufficient for now and
+asked to stop speculative optimization. **PERF-002 stays Not done**: neither final
+run meets its unchanged 20-second budget, and there are no five qualifying runs.
+
+The measurements in the following sections are historical implementations.
+
 ## Progressive cold view — 2026-10-12
 
 Import opens the 3D view immediately. Real OCCT meshes arrive in batches, fit the
@@ -110,8 +203,8 @@ pass. This additional observation is recorded separately from the five-run serie
 
 These measurements establish the pinned-engine contract on the declared runner.
 They do not establish a 10-second budget for every STEP layout or device, hardware
-GPU frame performance, or exact selection within 20 seconds. Full editing data
-still takes 69.62–89.23 s; the UI states this readiness distinction throughout.
+GPU frame performance, or exact selection within 20 seconds. In this earlier implementation, full editing data
+took 69.62–89.23 s; the UI states this readiness distinction throughout.
 The preview adds native work and does not accelerate the canonical reader. These
 runs do not demonstrate faster full editing readiness than the earlier 61.68 s
 observation (which also varied substantially); reducing that cost remains the

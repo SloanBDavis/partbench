@@ -3,6 +3,14 @@ export const PARTBENCH_GEOMETRY_DIAGNOSTIC_EVENT =
 
 export type GeometryDiagnosticEventDetail =
   | {
+      readonly phase: "step-import-profile";
+      readonly timestamp: number;
+      readonly profile: Extract<
+        import("@web-cad/geometry-worker").StepImportProgress,
+        { phase: "profile" }
+      >;
+    }
+  | {
       readonly phase: "command-committed";
       readonly timestamp: number;
     }

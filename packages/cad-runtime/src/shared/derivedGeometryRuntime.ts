@@ -14,6 +14,7 @@ import type {
   GeometryWorkerDiagnostics,
   GeometryWorkerRequest,
   GeometryWorkerResponse,
+  StepImportProgress,
   ResolvedPlanarRegionProfile,
   ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
@@ -596,6 +597,9 @@ export interface DerivedGeometryRuntime {
     input: DerivedExactTopologyCheckpointPayloadInput
   ): Promise<DerivedExactTopologyCheckpointPayloadResult>;
   importStep(input: DerivedStepImportInput): Promise<DerivedStepImportResult>;
+  subscribeStepImportProgress?(
+    listener: (progress: StepImportProgress) => void
+  ): () => void;
   cancelModelWork(message?: string): number;
   resumeModelWork(): number;
   getModelWorkSnapshot(): DerivedGeometryRuntimeWorkSnapshot;

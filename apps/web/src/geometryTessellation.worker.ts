@@ -12,7 +12,23 @@ interface GeometryWorkerGlobalScope {
 }
 
 const workerScope = self as unknown as GeometryWorkerGlobalScope;
-const geometryWorker = new GeometryKernelBrowserWorker();
+const geometryWorker = new GeometryKernelBrowserWorker({
+  onStepImportProgress: (id, stepImportProgress) => {
+    workerScope.postMessage(
+      { id, stepImportProgress },
+      stepImportProgress.phase === "native"
+        ? [
+            ...new Set(
+              stepImportProgress.meshes.flatMap((mesh) => [
+                mesh.positions.buffer as ArrayBuffer,
+                mesh.indices.buffer as ArrayBuffer
+              ])
+            )
+          ]
+        : []
+    );
+  }
+});
 
 workerScope.addEventListener(
   "message",

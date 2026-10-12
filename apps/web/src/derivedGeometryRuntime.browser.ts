@@ -1,4 +1,8 @@
-import type { GeometryWorkerRequest } from "@web-cad/geometry-worker";
+import { createRenderMeshFromSerializableMesh } from "@web-cad/renderer-mesh-bridge";
+import type {
+  GeometryWorkerRequest,
+  StepImportProgress
+} from "@web-cad/geometry-worker";
 import { GeometryJobScheduler } from "./geometryJobScheduler";
 import { emitGeometryDiagnosticEvent } from "./geometryDiagnosticEvents";
 import {
@@ -39,7 +43,35 @@ import {
 
 export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   let nextRequestNumber = 1;
+  // Short-lived handoff from the validated import to its display requests. It
+  // avoids per-definition worker trips and BRep re-decodes for large assemblies.
+  // Compare owned bytes as well as topology identity; IDs/hashes alone never
+  // authorize geometry reuse. This is derived state, never project content.
+  const importedDisplays = new Map<
+    string,
+    {
+      bytes: Uint8Array;
+      sha256: string;
+      mesh: Parameters<typeof createRenderMeshFromSerializableMesh>[0];
+      metadata?: DerivedExactMetadataResult["metadata"];
+      cost: number;
+    }
+  >();
+  let importedDisplayBytes = 0;
+
+  const importListeners = new Set<(progress: StepImportProgress) => void>();
   const scheduler = new GeometryJobScheduler({
+    onStepImportProgress: (progress) => {
+      if (progress.phase === "profile") {
+        emitGeometryDiagnosticEvent({
+          phase: "step-import-profile",
+          timestamp: performance.now(),
+          profile: progress
+        });
+        return;
+      }
+      for (const listener of importListeners) listener(progress);
+    },
     onEvent: (job) =>
       emitGeometryDiagnosticEvent({
         phase: "worker-job",
@@ -47,6 +79,22 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         job
       })
   });
+
+  function findImportedEvidence(source: DerivedExactMetadataInput["source"]) {
+    if (scheduler.getSnapshot().stopped || source.kind !== "checkpointBody")
+      return;
+    const cached = importedDisplays.get(source.topologySignature);
+    if (
+      cached &&
+      cached.sha256 === source.brepSha256 &&
+      cached.bytes.byteLength === source.brepByteLength &&
+      source.topologySourceKind === "importedBody" &&
+      cached.bytes.byteLength === source.brepBytes.byteLength &&
+      cached.bytes.every((value, index) => value === source.brepBytes[index])
+    )
+      return cached;
+    return undefined;
+  }
 
   function createRequestId(inputId: string): string {
     const requestId = `occt_mesh_${inputId}_${nextRequestNumber}`;
@@ -276,11 +324,58 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       throw new Error("Geometry worker response does not contain STEP bodies.");
     }
 
+    importedDisplays.clear();
+    importedDisplayBytes = 0;
+    const bodies = await Promise.all(
+      response.response.bodies.map(async ({ displayMesh, ...body }) => {
+        if (displayMesh) {
+          const cost =
+            body.checkpointPayload.brepBytes.byteLength +
+            displayMesh.positions.byteLength +
+            displayMesh.indices.byteLength +
+            JSON.stringify(body.metadata ?? {}).length * 2;
+          if (cost <= 64 * 1024 * 1024) {
+            const bytes = body.checkpointPayload.brepBytes.slice();
+            const digest = await crypto.subtle.digest(
+              "SHA-256",
+              new Uint8Array(bytes).buffer
+            );
+            const sha256 = Array.from(new Uint8Array(digest), (value) =>
+              value.toString(16).padStart(2, "0")
+            ).join("");
+            const key = body.topologySnapshot.signature;
+            const previous = importedDisplays.get(key);
+            if (previous) {
+              importedDisplayBytes -= previous.cost;
+              importedDisplays.delete(key);
+            }
+            while (
+              importedDisplays.size >= 256 ||
+              importedDisplayBytes + cost > 64 * 1024 * 1024
+            ) {
+              const oldest = importedDisplays.keys().next().value;
+              if (oldest === undefined) break;
+              importedDisplayBytes -= importedDisplays.get(oldest)!.cost;
+              importedDisplays.delete(oldest);
+            }
+            importedDisplays.set(key, {
+              bytes,
+              sha256,
+              mesh: structuredClone(displayMesh),
+              metadata: structuredClone(body.metadata),
+              cost
+            });
+            importedDisplayBytes += cost;
+          }
+        }
+        return body;
+      })
+    );
     return {
       sourceFormat: response.response.sourceFormat,
       sourceFileName: response.response.sourceFileName,
       bodyCount: response.response.bodyCount,
-      bodies: response.response.bodies,
+      bodies,
       ...(response.response.assembly
         ? { assembly: response.response.assembly }
         : {}),
@@ -626,7 +721,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         context
       );
     },
+    subscribeStepImportProgress(listener) {
+      importListeners.add(listener);
+      return () => {
+        importListeners.delete(listener);
+      };
+    },
     async exactBodyMetadata(input: DerivedExactMetadataInput, context) {
+      const started = performance.now();
+      const cached = findImportedEvidence(input.source);
+      if (cached?.metadata)
+        return {
+          metadata: structuredClone(cached.metadata),
+          metrics: {
+            objectId: input.id,
+            roundTripMs: performance.now() - started
+          },
+          message: `Reused validated import metadata for ${input.id}.`
+        };
       const { createExactBodyMetadataWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -642,6 +754,37 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       );
     },
     async tessellateExactBody(input: DerivedExactBodyGeometryInput, context) {
+      const started = performance.now();
+      const source = input.source;
+      if (
+        !scheduler.getSnapshot().stopped &&
+        !(context && "intent" in context) &&
+        (source.kind === "checkpointBody" || source.kind === "bodyArtifact")
+      ) {
+        const cached = findImportedEvidence(source);
+        if (cached) {
+          try {
+            const bridge = createRenderMeshFromSerializableMesh(cached.mesh, {
+              id: input.id,
+              alignment: "source",
+              label: `${input.id} OCCT mesh`
+            });
+            return {
+              mesh: bridge.mesh,
+              metrics: {
+                objectId: input.id,
+                roundTripMs: performance.now() - started,
+                vertexCount: bridge.vertexCount,
+                triangleCount: bridge.triangleCount
+              },
+              message: `Displayed imported exact mesh for ${input.id}.`
+            };
+          } catch {
+            importedDisplays.delete(source.topologySignature);
+            importedDisplayBytes -= cached.cost;
+          }
+        }
+      }
       const { createExactBodyTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -709,6 +852,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       );
     },
     dispose() {
+      importListeners.clear();
+      importedDisplays.clear();
+      importedDisplayBytes = 0;
       scheduler.dispose();
     },
     cancelModelWork(message) {

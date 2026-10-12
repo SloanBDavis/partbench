@@ -92,7 +92,24 @@ Recovery after a crash, broad DXF/SVG fidelity, all feature combinations, and
 hardware GPU performance are not established by this small default suite. Add
 needed assertions to the nearest journey as the roadmap reaches those features.
 
-## Current performance slice — 2026-10-12
+## Exact-import follow-up — 2026-10-12
+
+[The exact-import record](../examples/editable-interchange/exact-import-evidence.json)
+records two complete production engine passes after integration with precision
+drawing on `1acb70f`. Exact selection for all 246 occurrences takes 31.156–31.835 s;
+22.920 s remains an earlier best. Native orbit is verified in 2.712–3.450 s.
+Both runs preserve native checkpoint bytes, all instances/solids, final camera,
+Cancel restoration and invalid-file responsiveness. GPU uploads stay at 51.
+`pnpm verify`, production build, changed-source lint and the 20-stage headless
+engine workflow pass. See [import performance](import-performance.md) for commands,
+method and limitations. PERF-002 remains Not done.
+
+The default engine journey records exact timing and checks every occurrence but
+continues functional coverage when over budget. Set
+`PARTBENCH_SMOKE_REQUIRE_EXACT_BUDGET=1` for the unchanged strict 20-second assertion;
+five isolated passes are required before marking PERF-002 Done.
+
+## Current performance slice — 2026-10-12 (historical)
 
 [Import performance](import-performance.md) and the
 [progressive import record](../examples/editable-interchange/progressive-import-evidence.json)

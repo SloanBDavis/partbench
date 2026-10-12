@@ -291,6 +291,29 @@ export function createGpuMeshRenderer(canvas: HTMLCanvasElement) {
             ...clip.normal,
             -clip.normal.reduce((sum, v, i) => sum + v * clip.origin[i]!, 0)
           );
+        // A native preview and its committed display have distinct JS owners,
+        // but often identical geometry. Reuse displaced buffers only after an
+        // exact content comparison; poses, IDs and styling remain per instance.
+        const displaced = new Map<string, GeometryKey[]>();
+        const sizeKey = (key: GeometryKey) =>
+          `${key.vertices.length}:${key.indices.length}:${key.edges.length}`;
+        for (const key of cache.keys()) {
+          if (groups.has(key)) continue;
+          const size = sizeKey(key);
+          const entries = displaced.get(size) ?? [];
+          entries.push(key);
+          displaced.set(size, entries);
+        }
+        const samePoint = (a: Vec3, b: Vec3) =>
+          a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+        const sameGeometry = (a: GeometryKey, b: GeometryKey) =>
+          a.indices.every((value, i) => value === b.indices[i]) &&
+          a.vertices.every((value, i) => samePoint(value, b.vertices[i]!)) &&
+          a.edges.every(
+            (value, i) =>
+              samePoint(value.start, b.edges[i]!.start) &&
+              samePoint(value.end, b.edges[i]!.end)
+          );
         const active = new Set<GeometryKey>();
         const styles = createRenderVisualStateMap(options);
         let instanceCount = 0,
@@ -303,6 +326,19 @@ export function createGpuMeshRenderer(canvas: HTMLCanvasElement) {
           if (buffers?.key !== mesh.indices) {
             if (buffers) release(buffers);
             buffers = undefined;
+          }
+          if (!buffers) {
+            const candidates = displaced.get(sizeKey(key));
+            const match = candidates?.findIndex((old) =>
+              sameGeometry(old, key)
+            );
+            if (match !== undefined && match >= 0) {
+              const previous = candidates!.splice(match, 1)[0]!;
+              buffers = cache.get(previous)!;
+              cache.delete(previous);
+              buffers.key = mesh.indices;
+              cache.set(key, buffers);
+            }
           }
           if (!buffers) {
             const edgePoints = new Float32Array(

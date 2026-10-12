@@ -12,7 +12,8 @@ export default tseslint.config(
       "**/dist/**",
       "**/dist-geometry-worker-smoke/**",
       "**/node_modules/**",
-      "**/coverage/**"
+      "**/coverage/**",
+      "packages/occt-wasm/vendor/partbench-occt.js"
     ]
   },
   {

@@ -917,9 +917,14 @@ export function readExactBodyMetadata(
 
   try {
     volumeProps = new oc.GProp_GProps_1();
-    surfaceProps = new oc.GProp_GProps_1();
     oc.BRepGProp.VolumeProperties_1(shape, volumeProps, true, false, false);
-    oc.BRepGProp.SurfaceProperties_1(shape, surfaceProps, false, false);
+    let surfaceArea =
+      topologySnapshot && readIndexedSurfaceArea(oc, shape, topologySnapshot);
+    if (surfaceArea === undefined) {
+      surfaceProps = new oc.GProp_GProps_1();
+      oc.BRepGProp.SurfaceProperties_1(shape, surfaceProps, false, false);
+      surfaceArea = Math.abs(surfaceProps.Mass());
+    }
 
     let centroidPoint: ReturnType<typeof volumeProps.CentreOfMass> | undefined;
     let inertia: ReturnType<typeof volumeProps.MatrixOfInertia> | undefined;
@@ -939,7 +944,7 @@ export function readExactBodyMetadata(
         sourceKind,
         bounds,
         volume: Math.abs(volumeProps.Mass()),
-        surfaceArea: Math.abs(surfaceProps.Mass()),
+        surfaceArea,
         centroid: [centroidPoint.X(), centroidPoint.Y(), centroidPoint.Z()],
         momentsOfInertia,
         principalMoments: eigenvaluesOfSymmetricTensor(momentsOfInertia),
@@ -968,6 +973,55 @@ export function readExactBodyMetadata(
   } finally {
     surfaceProps?.delete();
     volumeProps?.delete();
+  }
+}
+
+/** Match SurfaceProperties(..., SkipShared=false): add the exact per-face
+ * integrals in native explorer order, including repeated face occurrences.
+ * Deduplicated topology counts alone are insufficient for this sum. */
+function readIndexedSurfaceArea(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  snapshot: OcctExactTopologySnapshot
+): number | undefined {
+  const areas = new Map(
+    snapshot.entities
+      .filter((entity) => entity.kind === "face")
+      .map((entity) => [entity.localId, entity.area])
+  );
+  const faces = new oc.TopTools_IndexedMapOfShape_1();
+  const faceKind = oc.TopAbs_ShapeEnum
+    .TopAbs_FACE as unknown as ConstructorParameters<
+    typeof oc.TopExp_Explorer_2
+  >[1];
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    faceKind,
+    oc.TopAbs_ShapeEnum.TopAbs_SHAPE as unknown as ConstructorParameters<
+      typeof oc.TopExp_Explorer_2
+    >[2]
+  );
+  try {
+    oc.TopExp.MapShapes_1(shape, faceKind, faces);
+    if (faces.Extent() !== areas.size) return undefined;
+    let area = 0;
+    for (; explorer.More(); explorer.Next()) {
+      const face = explorer.Current();
+      try {
+        const value = areas.get(
+          createTopologyEntityLocalId("face", faces.FindIndex(face))
+        );
+        if (value === undefined || !Number.isFinite(value) || value <= 0)
+          return undefined;
+        area += value;
+      } finally {
+        face.delete();
+      }
+    }
+    return Number.isFinite(area) ? area : undefined;
+  } finally {
+    explorer.delete();
+    faces.delete();
   }
 }
 

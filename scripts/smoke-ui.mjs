@@ -1071,7 +1071,9 @@ async function openProjectFile(
   expectedImportError,
   cancelImport = false,
   maxUsableViewMs,
-  expectedPreviewSolids
+  expectedPreviewSolids,
+  exactSelectionBudgetMs,
+  requireExactSelectionBudget = false
 ) {
   const beforeImport =
     cancelImport || maxUsableViewMs ? await getState(view) : undefined;
@@ -1097,12 +1099,43 @@ async function openProjectFile(
   const startedAt = performance.now();
   let existingWorkerIds = new Set();
   let previewEvidence;
+  let exactSelectionEvidence;
+  let exactObserverOffset = 0;
   let previewBounds;
   const originalCamera = await evaluate(
     view,
     `document.querySelector('canvas[aria-label="3D scene viewport"]')?.dataset.camera`
   );
   try {
+    if (exactSelectionBudgetMs) {
+      await evaluate(
+        view,
+        `(() => {
+        const started = performance.now();
+        let seenPreview = false;
+        const observer = window.__pbExactImportObserver = {};
+        const sample = () => {
+          const canvas = document.querySelector('canvas[aria-label="3D scene viewport"]');
+          const previewCount = Number(canvas?.dataset.previewMeshCount);
+          seenPreview ||= previewCount > 0;
+          if (seenPreview && previewCount === 0) {
+            const readiness = window.__PARTBENCH_UI_SMOKE__.getOccurrenceSelectionReadiness();
+            const gpu = JSON.parse(document.querySelector('canvas[data-gpu-metrics]')?.dataset.gpuMetrics ?? '{}');
+            if (readiness.ready && gpu.instances === readiness.occurrenceCount && Number(canvas.dataset.renderedAt) >= started) {
+              observer.result = {...readiness, elapsedMs: performance.now() - started};
+              return;
+            }
+          }
+          if (performance.now() - started < ${readyTimeoutMs}) observer.frame = requestAnimationFrame(sample);
+        };
+        observer.frame = requestAnimationFrame(sample);
+      })()`
+      );
+      // Add all host setup time through installation. This conservatively
+      // includes the CDP response delay, while avoiding later polling/capture
+      // delay being mistaken for product readiness.
+      exactObserverOffset = performance.now() - startedAt;
+    }
     if (isStep && process.env.PARTBENCH_SMOKE_PROFILE_IMPORT === "1") {
       await view.cdp("Profiler.enable");
       await view.cdp("Profiler.start");
@@ -1117,7 +1150,7 @@ async function openProjectFile(
           const d = event.detail;
           if (window.__pbImportTimings.length >= 512) return;
           window.__pbImportTimings.push({ms: Math.round(performance.now() - start),
-            phase: d.phase, ...(d.job ? {job: d.job} : {}),
+            phase: d.phase, ...(d.job ? {job: d.job} : {}), ...(d.profile ? {profile: d.profile} : {}),
             ...(d.readyCount !== undefined ? {ready: d.readyCount, pending: d.pendingCount} : {})});
         };
         addEventListener('partbench:geometry-diagnostic', window.__pbImportListener);
@@ -1157,7 +1190,7 @@ async function openProjectFile(
         // child kernels, rather than only cancelling before import enters WASM.
         const usesPool = await evaluate(
           view,
-          "navigator.hardwareConcurrency >= 3 && (navigator.deviceMemory === undefined || navigator.deviceMemory >= 4)"
+          "navigator.hardwareConcurrency >= 4 && (navigator.deviceMemory === undefined || navigator.deviceMemory >= 8)"
         );
         if (usesPool) {
           const preparationDeadline = performance.now() + readyTimeoutMs;
@@ -1165,28 +1198,83 @@ async function openProjectFile(
             const state = await getState(view);
             if (
               state.stepImport?.meshCount > 0 &&
-              state.stepImport.completed === state.stepImport.total
+              (await evaluate(
+                view,
+                `Number(document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.previewMeshCount) > 0`
+              ))
             )
               break;
             if (performance.now() > preparationDeadline)
               throw new Error(
-                "STEP display preview did not complete before cancellation"
+                "STEP display preview did not appear before cancellation"
               );
             await delay(50);
           }
-          await writeUseScreenshot(view, "engine-import-before-cancel");
-          // The preview has appeared. Exclude its workers and wait for the
-          // authoritative checkpoint workers before cancelling the whole import.
-          existingWorkerIds = new Set(
-            (await view.cdp("Target.getTargets")).targetInfos
-              .filter((target) => target.type === "worker")
-              .map((target) => target.targetId)
+          const beforeZoom = await getState(view);
+          const frame = await evaluate(
+            view,
+            `(() => {
+            const r = document.querySelector('canvas[aria-label="3D scene viewport"]').getBoundingClientRect();
+            return {x: r.x + r.width / 2, y: r.y + r.height / 2,
+              camera: document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera};
+          })()`
           );
+          await view.cdp("Input.dispatchMouseEvent", {
+            type: "mouseWheel",
+            x: frame.x,
+            y: frame.y,
+            deltaX: 0,
+            deltaY: 120
+          });
+          await evaluate(
+            view,
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+          );
+          const zoomedCamera = await evaluate(
+            view,
+            `document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera`
+          );
+          if (zoomedCamera === frame.camera)
+            throw new Error(
+              "Import preview did not respond to native zoom input"
+            );
+          while (true) {
+            const progress = (await getState(view)).stepImport;
+            if (!progress)
+              throw new Error(
+                "Import completed before active preparation could be cancelled"
+              );
+            if (progress.completed > beforeZoom.stepImport.completed) break;
+            if (performance.now() > preparationDeadline)
+              throw new Error("No new geometry arrived after preview zoom");
+            await delay(50);
+          }
+          await evaluate(
+            view,
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+          );
+          if (
+            zoomedCamera !==
+            (await evaluate(
+              view,
+              `document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera`
+            ))
+          )
+            throw new Error(
+              "New import geometry overrode explicit preview zoom"
+            );
+          console.log(
+            "STEP preview explicit zoom preserved as geometry arrived"
+          );
+          await writeUseScreenshot(view, "engine-import-before-cancel");
+          // Supported large imports display meshes from their exact workers.
+          // Seeing that preview and at least two new native workers proves
+          // cancellation interrupts active native preparation.
           while (checkpointWorkerIds.length < 2) {
             const { targetInfos } = await view.cdp("Target.getTargets");
             // Chromium reports blank URLs for these dedicated worker targets.
             // The existing solid already owns its command/geometry workers;
-            // track the two new preparation workers by ID instead of URL.
+            // track the native preparation workers by ID instead of URL.
             checkpointWorkerIds = targetInfos
               .filter(
                 (target) =>
@@ -1387,7 +1475,8 @@ async function openProjectFile(
               camera: JSON.parse(camera)
             };
             console.log("STEP usable preview", JSON.stringify(previewEvidence));
-            await writeUseScreenshot(view, "engine-first-progressive-view");
+            if (process.env.PARTBENCH_SMOKE_CAPTURE_IMPORT === "1")
+              await writeUseScreenshot(view, "engine-first-progressive-view");
             if (previewEvidence.usableMs > maxUsableViewMs)
               throw new Error(
                 "Cold usable view exceeded " +
@@ -1417,19 +1506,39 @@ async function openProjectFile(
             performance.now() - startedAt
           );
           previewEvidence.completeMeshCount = state.stepImport.meshCount;
+          previewEvidence.completeSolidCount = state.stepImport.solidCount;
           previewBounds = await evaluate(
             view,
             "window.__PARTBENCH_UI_SMOKE__.getViewportBounds()"
           );
           if (
             expectedPreviewSolids !== undefined &&
-            state.stepImport.meshCount !== expectedPreviewSolids
+            state.stepImport.solidCount !== expectedPreviewSolids
           )
             throw new Error(
               "Progressive import omitted or duplicated solids: " +
-                state.stepImport.meshCount
+                state.stepImport.solidCount
             );
-          await writeUseScreenshot(view, "engine-complete-progressive-view");
+          await evaluate(
+            view,
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+          );
+          previewEvidence.completeCamera = JSON.parse(
+            await evaluate(
+              view,
+              `document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera`
+            )
+          );
+          if (
+            previewEvidence.completeCamera.yaw !== previewEvidence.camera.yaw ||
+            previewEvidence.completeCamera.pitch !==
+              previewEvidence.camera.pitch
+          )
+            throw new Error(
+              "Progressive framing reset the user's orbit orientation"
+            );
+          if (process.env.PARTBENCH_SMOKE_CAPTURE_IMPORT === "1")
+            await writeUseScreenshot(view, "engine-complete-progressive-view");
         }
         if (state.commandError && !state.commandPending) {
           if (
@@ -1459,6 +1568,53 @@ async function openProjectFile(
       timeoutMs: readyTimeoutMs,
       allowEmpty: false
     });
+    if (exactSelectionBudgetMs) {
+      const readiness = await evaluate(
+        view,
+        "window.__PARTBENCH_UI_SMOKE__.getOccurrenceSelectionReadiness()"
+      );
+      await evaluate(
+        view,
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+      );
+      const observed = await evaluate(
+        view,
+        "window.__pbExactImportObserver?.result"
+      );
+      if (!observed?.ready)
+        throw new Error(
+          "Exact import never exposed a rendered, selectable frame"
+        );
+      exactSelectionEvidence = {
+        ...readiness,
+        elapsedMs: Math.ceil(observed.elapsedMs + exactObserverOffset),
+        observedHostElapsedMs: Math.round(performance.now() - startedAt),
+        budgetMs: exactSelectionBudgetMs,
+        withinBudget:
+          observed.elapsedMs + exactObserverOffset <= exactSelectionBudgetMs
+      };
+      console.log(
+        "STEP exact selection",
+        JSON.stringify(exactSelectionEvidence)
+      );
+      if (
+        !readiness.ready ||
+        readiness.occurrenceCount !== 246 ||
+        readiness.selectableCount !== 246 ||
+        readiness.definitionCount !== 51
+      )
+        throw new Error(
+          "Engine occurrences lack complete exact selection identity: " +
+            JSON.stringify(readiness)
+        );
+      if (requireExactSelectionBudget && !exactSelectionEvidence.withinBudget)
+        throw new Error(
+          "Exact selection exceeded " +
+            exactSelectionBudgetMs +
+            " ms: " +
+            exactSelectionEvidence.elapsedMs
+        );
+    }
     if (expectedImportError) {
       throw new Error(
         "Import " + fileName + " did not report " + expectedImportError
@@ -1524,13 +1680,24 @@ async function openProjectFile(
           `document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera`
         )
       );
-      if (JSON.stringify(camera) !== JSON.stringify(previewEvidence.camera))
+      if (
+        JSON.stringify(camera) !==
+        JSON.stringify(previewEvidence.completeCamera)
+      )
         throw new Error("Completing import reset the user's camera");
       previewEvidence.placedBoundsMatch = true;
       previewEvidence.cameraPreserved = true;
     }
     await assertNoErrorToast(view, "Open " + fileName);
   } finally {
+    if (exactSelectionBudgetMs)
+      await evaluate(
+        view,
+        `(() => {
+      cancelAnimationFrame(window.__pbExactImportObserver?.frame);
+      delete window.__pbExactImportObserver;
+    })()`
+      );
     if (isStep) {
       if (process.env.PARTBENCH_SMOKE_PROFILE_IMPORT === "1") {
         const { profile } = await view.cdp("Profiler.stop");
@@ -1569,7 +1736,8 @@ async function openProjectFile(
         JSON.stringify({
           fileName,
           elapsedMs: Math.round(performance.now() - startedAt),
-          preview: previewEvidence
+          preview: previewEvidence,
+          exactSelection: exactSelectionEvidence
         })
       );
     }
@@ -2273,6 +2441,18 @@ async function runUseSteps(view, name, steps, label) {
       await openProjectFile(view, step.openWcad);
       continue;
     }
+    if (step.expectOccurrenceSelection) {
+      const state = await getState(view);
+      if (!state.selectedOccurrence?.exactReady)
+        throw new Error(
+          "The canvas did not select an occurrence with ready exact identity"
+        );
+      console.log(
+        "exact occurrence selected",
+        JSON.stringify(state.selectedOccurrence)
+      );
+      continue;
+    }
     if (step.importStep) {
       clicks.push('[data-action-id="project.import-step"]');
       await openProjectFile(
@@ -2282,7 +2462,10 @@ async function runUseSteps(view, name, steps, label) {
         step.expectImportError,
         step.cancelImport,
         step.maxUsableViewMs,
-        step.expectPreviewSolids
+        step.expectPreviewSolids,
+        step.maxExactSelectionMs ?? step.exactSelectionBudgetMs,
+        step.maxExactSelectionMs !== undefined ||
+          process.env.PARTBENCH_SMOKE_REQUIRE_EXACT_BUDGET === "1"
       );
       if (step.expectImportError || step.cancelImport) sawBreak = true;
       continue;

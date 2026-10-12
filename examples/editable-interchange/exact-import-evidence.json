@@ -1,0 +1,472 @@
+{
+  "date": "2026-10-12",
+  "baselineCommit": "404316a3934769bc2e9099c9e5e6bc5877642136",
+  "integratedMain": "1acb70fc48001b95ddb70d6f1fd6b5dfda2f2237",
+  "sourceRevision": "Exact-import implementation in the commit containing this record; production asset hashes below identify the measured build.",
+  "source": {
+    "fileName": "radial-engine.step",
+    "byteLength": 13389913,
+    "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
+  },
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.0.0",
+    "platform": "linux x64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "logicalCpuCount": 5,
+    "containerCpuQuota": 4,
+    "containerMemoryLimitBytes": 17179869184,
+    "rendering": "SwiftShader software WebGL2",
+    "viewportPixels": [1400, 900]
+  },
+  "acceptance": {
+    "PERF-002": "Not done",
+    "budgetMs": 20000,
+    "requiredIsolatedRuns": 5,
+    "qualifiedRuns": 0,
+    "userDecision": "22.9 s best observed was accepted as sufficient for now; stop speculative optimization. Final integrated measurements are retained separately and do not change the matrix contract."
+  },
+  "method": {
+    "commandPerRun": "PARTBENCH_SMOKE_BROWSER=/usr/bin/chromium PARTBENCH_SMOKE_BROWSER_NO_SANDBOX=1 PARTBENCH_SMOKE_UI_PRODUCTION=1 PARTBENCH_SMOKE_UI_DIAGNOSTICS=1 pnpm smoke:engine-interchange:browser",
+    "strictBudgetCommand": "PARTBENCH_SMOKE_UI_PRODUCTION=1 PARTBENCH_SMOKE_REQUIRE_EXACT_BUDGET=1 pnpm smoke:engine-interchange:browser",
+    "isolation": "Two consecutive final invocations, each fresh Chromium/profile and local production origin. No concurrent builds, static checks, profiling, import-time PNG encoding or geometry jobs. Both full journeys passed; no retries.",
+    "clock": "Starts before actual Import control after file-picker fixture setup. Exact timer uses the first rendered command-enabled frame with all 246 occurrences resolving to current exact identities, plus conservative host observer setup time. Host polling latency is also recorded. Actual canvas selection follows.",
+    "coldMeaning": "Fresh browser/application import. Local asset delivery; operating-system file/page caches are not flushed. Not computer startup or a WAN download benchmark.",
+    "quality": "Full native exact validation and 0.25 mm / 0.5 rad display tessellation; 51 definitions, 246 placed instances, 266 solids, 461173 placed triangles. No precomputed meshes. Native BRep, canonical topology and signatures agree byte for byte with independent SDK output.",
+    "functionalVsPerformance": "Default journey records withinBudget=false and continues functional coverage; strict budget mode throws above 20000 ms. Five strict passes are still required for PERF-002."
+  },
+  "finalProductionRuns": [
+    {
+      "fileName": "radial-engine.step",
+      "elapsedMs": 33182,
+      "preview": {
+        "visibleMs": 2880,
+        "usableMs": 3450,
+        "orbitMs": 465,
+        "firstMeshCount": 1,
+        "camera": {
+          "target": [
+            -50.61000829911296, -21.532000835122606, -1.4210854715202004e-14
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 162.31469837656962
+        },
+        "completeViewMs": 26120,
+        "completeMeshCount": 246,
+        "completeSolidCount": 266,
+        "completeCamera": {
+          "target": [
+            4.632738637155853e-12, -31.448028080413025, 51.00000000000145
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2241.720916190389
+        },
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 31835,
+        "observedHostElapsedMs": 33008,
+        "budgetMs": 20000,
+        "withinBudget": false
+      },
+      "run": 1,
+      "status": "passed",
+      "nativeCheckpointParity": true,
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 5,
+        "settleMs": 2054
+      },
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 51,
+          "submitMs": 1.199999999254942
+        }
+      },
+      "orbit": {
+        "frames": 64,
+        "medianFrameIntervalMs": 16.700000000004366,
+        "p95FrameIntervalMs": 683.4000000000015,
+        "uploadsBefore": 51,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 51,
+          "submitMs": 26.699999999254942
+        }
+      }
+    },
+    {
+      "fileName": "radial-engine.step",
+      "elapsedMs": 32600,
+      "preview": {
+        "visibleMs": 2190,
+        "usableMs": 2712,
+        "orbitMs": 514,
+        "firstMeshCount": 1,
+        "camera": {
+          "target": [
+            -50.61000829911296, -21.532000835122606, -1.4210854715202004e-14
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 162.31469837656962
+        },
+        "completeViewMs": 27431,
+        "completeMeshCount": 246,
+        "completeSolidCount": 266,
+        "completeCamera": {
+          "target": [
+            4.632738637155853e-12, -31.448028080413025, 51.00000000000145
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2241.720916190389
+        },
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 31156,
+        "observedHostElapsedMs": 31803,
+        "budgetMs": 20000,
+        "withinBudget": false
+      },
+      "run": 2,
+      "status": "passed",
+      "nativeCheckpointParity": true,
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 5,
+        "settleMs": 2122
+      },
+      "gpu": {
+        "backend": "webgl2",
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 51,
+          "submitMs": 1.300000000745058
+        }
+      },
+      "orbit": {
+        "frames": 60,
+        "medianFrameIntervalMs": 16.69999999999709,
+        "p95FrameIntervalMs": 683.4000000000015,
+        "uploadsBefore": 51,
+        "metrics": {
+          "definitions": 51,
+          "instances": 246,
+          "triangles": 461173,
+          "uploads": 51,
+          "submitMs": 1
+        }
+      }
+    }
+  ],
+  "earlierMeasurements": [
+    {
+      "log": ".metrics/perf-002/browser-hybrid.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 22920,
+        "observedHostElapsedMs": 23561
+      },
+      "note": "Best observed 22.920 s; hybrid kernel before final handoff/encoding refinements. Strict 20 s gate failed before later functional steps."
+    },
+    {
+      "log": ".metrics/perf-002/browser-reuse.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 25959,
+        "observedHostElapsedMs": 26600
+      },
+      "note": "GPU handoff reuse; strict 20 s gate failed."
+    },
+    {
+      "log": ".metrics/perf-002/browser-cadence.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 24232,
+        "observedHostElapsedMs": 24995
+      },
+      "note": "500 ms progress coalescing; strict 20 s gate failed."
+    },
+    {
+      "log": ".metrics/perf-002/browser-preload.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 45862,
+        "observedHostElapsedMs": 47489
+      },
+      "note": "45.862 s with paused compiler memory retained; not an isolated acceptance run."
+    },
+    {
+      "log": ".metrics/perf-002/browser-preload-clean.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 47985,
+        "observedHostElapsedMs": 49408
+      },
+      "note": "47.985 s after temporary-profile cleanup, paused compiler memory retained; variability not attributed solely to memory."
+    },
+    {
+      "log": ".metrics/perf-002/browser-bulk.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 33962,
+        "observedHostElapsedMs": 35263
+      },
+      "note": "16 jobs across five workers: 33.962 s; discarded batch count."
+    },
+    {
+      "log": ".metrics/perf-002/browser-batches.log",
+      "exactSelection": {
+        "ready": true,
+        "occurrenceCount": 246,
+        "selectableCount": 246,
+        "definitionCount": 51,
+        "unresolved": [],
+        "elapsedMs": 35594,
+        "observedHostElapsedMs": 36407
+      },
+      "note": "Six jobs across five workers: 35.594 s; discarded batch count."
+    }
+  ],
+  "discardedExperiments": [
+    "Broad native -O3 rebuild regressed cold execution; only measured hot-path packages retained, with BRepGProp at original -Os.",
+    "Transfer-only kernel regressed exact readiness to 33.902 s.",
+    "Analytic torus-bound substitution changed canonical bytes and was discarded.",
+    "Additional reader recompilation and curved-first lead were not validated and were removed before the final build."
+  ],
+  "verification": {
+    "verify": {
+      "status": "passed",
+      "journeys": ["assembly", "interchange", "agent"],
+      "stages": [
+        {
+          "name": "prepare nested STEP fixture",
+          "milliseconds": 11552.780987,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "browser journeys",
+          "milliseconds": 72479.767486,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "build MCP executable",
+          "milliseconds": 27903.563693000004,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "MCP author/revise/save/reopen/STEP journey",
+          "milliseconds": 20557.850038999997,
+          "exitCode": 0,
+          "signal": null
+        }
+      ]
+    },
+    "typecheck": "All 13 package typechecks passed on integrated source.",
+    "build": "Full web TypeScript/Vite build passed before drawing integration; integrated Vite build and full pnpm verify typechecks passed afterward.",
+    "changedSourceLint": {
+      "errors": 0,
+      "existingWarnings": 7,
+      "integratedRunnerErrors": 0
+    },
+    "headless": {
+      "status": "passed",
+      "stages": 20,
+      "report": "engine-evidence.json",
+      "canonicalComparisons": [
+        ".metrics/cold-load/before/engine-initial.wcad",
+        ".metrics/perf-001/baseline-engine-initial.wcad"
+      ],
+      "timingLimitation": "Functional run overlapped native compiler; headless SDK unchanged and its timings are not browser performance evidence."
+    },
+    "checks": [
+      "All 246 current exact occurrence identities plus actual canvas selection",
+      "Orbit while assembly grows; wheel zoom stays fixed across arriving geometry",
+      "Atomic import and source identity; matching preview/final bounds and camera",
+      "Native Save As checkpoint parity against independent headless import",
+      "Box Apply; Cancel terminates five native workers and restores prior model/camera",
+      "Invalid STEP rejection leaves the workbench responsive",
+      "Small interchange exact face edit, independent occurrence, undo/redo and native reopen",
+      "Integrated drawing precision and both assembly regressions",
+      "Public MCP authoring, exact inspection, atomic rejection, revision, native reopen and STEP readback"
+    ],
+    "visualInspection": "Captured engine workflow inspected separately; final integrated isometric screenshot inspected. Whole assembly framed, no arbitrary part selection, ready controls and notices visible.",
+    "limits": [
+      "22.920 s is an earlier best, not a guaranteed final-build time. Final two exact-selection runs were 31.156\u201331.835 s.",
+      "Software WebGL frame-time spikes remain; no hardware frame-budget claim.",
+      "No five-run under-20-second acceptance. Unsupported STEP partitions retain original whole-file fallback."
+    ]
+  },
+  "kernel": {
+    "wasmBytes": 19817681,
+    "wasmSha256": "17fae02409f84814993e6c80186c9e8bdf01a7071b0249f23c3930d67f460a7f",
+    "buildRecipe": "../../packages/occt-wasm/build/README.md"
+  },
+  "productionAssets": [
+    {
+      "file": "assets/cadCommand.worker-B0MadZE3.js",
+      "bytes": 1371406,
+      "sha256": "868a979b860d62be73ee88ab5c9be0b3ff47ee28c48a7f091e68c6e981dda89c"
+    },
+    {
+      "file": "assets/commandSearchDialog-DASzlFbI.css",
+      "bytes": 5603,
+      "sha256": "2bba4a30fdbade29f3f15970b2efc1861d8ca1f6bc415d39ec58951872444e6c"
+    },
+    {
+      "file": "assets/contextualActionStrip-DytMiSJq.css",
+      "bytes": 1321,
+      "sha256": "c5d7e383e7070cba5d6d8feed717c6c0cad0c468e13a28b2b236f65bc7109542"
+    },
+    {
+      "file": "assets/deferred-ui-BIyokmkO.js",
+      "bytes": 822577,
+      "sha256": "ca150c92e7d1920e82f60dad4a6ba775c4c3c14d493b3222823988adea243824"
+    },
+    {
+      "file": "assets/geometryTessellation.worker-BTbiXcoN.js",
+      "bytes": 393766,
+      "sha256": "298ef4d7bbd8ea0d36ff9cbcb36c598cf7b70db76a917296fc69ee31b46da885"
+    },
+    {
+      "file": "assets/gpuMeshRenderer-C8cXXNym.js",
+      "bytes": 7234,
+      "sha256": "5922f198bc30f9294cdbb6929fc7c39d08e060bf5e095cdfc6e39d748747a240"
+    },
+    {
+      "file": "assets/index-BEM0P_gU.css",
+      "bytes": 37538,
+      "sha256": "e7411e509bf2920e90eabff6fd1678126acd6b7ea3f41c21e343c9ef6aec6cdf"
+    },
+    {
+      "file": "assets/index-DAbExFyO.js",
+      "bytes": 2014961,
+      "sha256": "851d3e9113867f477db5210146e4f7dd410b8c3942366402d08fddafd34e73c4"
+    },
+    {
+      "file": "assets/index-DbETwoLX.js",
+      "bytes": 67814,
+      "sha256": "8db85a54c61be9c2704b8a0214a14ebb7acfce4b98e303ec76ecaa34349ca430"
+    },
+    {
+      "file": "assets/inspectPanel-D7xgQJ96.css",
+      "bytes": 5487,
+      "sha256": "8b9465d465cd17f642f0ae09f8a4d50982c9b572a4aa134bf878a0f8392ffb33"
+    },
+    {
+      "file": "assets/occt-import-js-BhHfLpto.wasm",
+      "bytes": 7604031,
+      "sha256": "33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952"
+    },
+    {
+      "file": "assets/partbench-occt-s5o6QQUJ.wasm",
+      "bytes": 19817681,
+      "sha256": "17fae02409f84814993e6c80186c9e8bdf01a7071b0249f23c3930d67f460a7f"
+    },
+    {
+      "file": "assets/projectRecovery-GODnxtFm.css",
+      "bytes": 1055,
+      "sha256": "4fae2b785a39b905ae0cec9d4672a38ca6c949e53e62fcbb7321b6de43ef1a62"
+    },
+    {
+      "file": "assets/projectWorkspace-DJbd1lNx.css",
+      "bytes": 17869,
+      "sha256": "8666666ed8ef5cffba5f219aed950e747865391bbaab12731d404df48c233ffa"
+    },
+    {
+      "file": "assets/sketchMode-DFhpfCpd.css",
+      "bytes": 13612,
+      "sha256": "4430baa77f5154a29e67734ec54fee3f79f5e3f5350555bf9aaa74ee1f938792"
+    },
+    {
+      "file": "assets/stepCheckpoint.worker-Bu5hICEF.js",
+      "bytes": 195042,
+      "sha256": "355af91ec9087035ca3a8424cac777138ce4bd1e398d6794e963d21ddc8b3ff0"
+    },
+    {
+      "file": "assets/stepImportPart.worker-tTPMV-Zc.js",
+      "bytes": 205359,
+      "sha256": "7f0424a077b82768811d48c34508e49265f811ee2dd01dbf2e0cc7d2952567c6"
+    },
+    {
+      "file": "assets/stepPreview.worker-BcxZTMY7.js",
+      "bytes": 62324,
+      "sha256": "553dfea450b9ada33e6b6ed6cb2610565403dead71fc8197491e6518fd695db9"
+    },
+    {
+      "file": "assets/stepPreviewPart.worker-BNjW3gNK.js",
+      "bytes": 59919,
+      "sha256": "312b6a812b3cc5000ef0865576c9aa24e5c9e7fbf224f00659115684010ed097"
+    },
+    {
+      "file": "assets/tree-Bu3lUCJB.css",
+      "bytes": 4351,
+      "sha256": "3eb5f4d86f0015fa8111f92598bf356e0e752bd188af5458a9fde943092fed55"
+    },
+    {
+      "file": "assets/viewportFeatureGrips-D-sxVkEg.css",
+      "bytes": 2298,
+      "sha256": "cede186add2653a87fb690a51a3ebd9b3184e3b6887849eb106c023fc949cb9b"
+    },
+    {
+      "file": "assets/wcadHistoryBaselineCheckpoints-DD_u4x1M.js",
+      "bytes": 8850,
+      "sha256": "c249daa31e46cf4a960ee74474559ba497c66d9da595edd14a41327e7ac967c8"
+    }
+  ]
+}

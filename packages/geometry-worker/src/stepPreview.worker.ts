@@ -33,7 +33,7 @@ self.onmessage = async (event: MessageEvent<Input>) => {
     let next = 0;
     await Promise.all(
       Array.from(
-        { length: Math.min(3, count, partitions.length) },
+        { length: 1 },
         () =>
           new Promise<void>((resolve, reject) => {
             const worker = new Worker(

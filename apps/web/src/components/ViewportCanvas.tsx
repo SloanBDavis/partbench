@@ -144,8 +144,9 @@ export function ViewportCanvas({
   const [size, setSize] = useState({ width: 900, height: 600 });
   const [hoveredId, setHoveredId] = useState<string | undefined>();
   const cameraRef = useRef(camera);
+  const importFitPendingRef = useRef(false);
   const importCameraRef = useRef<
-    { id: string; previous: RenderCamera; navigated: boolean } | undefined
+    { id: string; previous: RenderCamera; framingLocked: boolean } | undefined
   >(undefined);
   useEffect(() => {
     if (!importView) return;
@@ -156,33 +157,42 @@ export function ViewportCanvas({
       importCameraRef.current = {
         id: importView.id,
         previous: cameraRef.current,
-        navigated: false
+        framingLocked: false
       };
     const session = importCameraRef.current;
     if (!session || session.id !== importView.id) return;
-    let next: RenderCamera | undefined;
-    if (importView.phase === "restore") next = session.previous;
-    else if (
-      importView.phase === "preview" &&
-      !session.navigated &&
-      meshes?.some((mesh) => mesh.id.startsWith("import-preview:"))
-    )
-      next = applyViewportCameraAction(
-        cameraRef.current,
-        { type: "fitAll" },
-        { primitives, meshes }
-      ).camera;
-    if (importView.phase === "keep") importCameraRef.current = undefined;
-    if (!next) return;
+    const restore = importView.phase === "restore";
+    const fit =
+      importView.phase !== "restore" &&
+      !session.framingLocked &&
+      meshes?.some((mesh) => mesh.id.startsWith("import-preview:"));
+    if (!restore && !fit) {
+      if (importView.phase === "keep") importCameraRef.current = undefined;
+      return;
+    }
+    importFitPendingRef.current = true;
     const frame = requestAnimationFrame(() => {
-      if (importView.phase === "preview" && session.navigated) return;
+      importFitPendingRef.current = false;
+      if (fit && session.framingLocked) return;
+      // Read the current orientation inside the frame; a queued fit must not
+      // overwrite an orbit event delivered after this effect was scheduled.
+      const next = restore
+        ? session.previous
+        : applyViewportCameraAction(
+            cameraRef.current,
+            { type: "fitAll" },
+            { primitives, meshes }
+          ).camera;
       cameraRef.current = next;
       setCamera(next);
       // Retain the saved camera until this frame actually runs: cancellation
       // and promise cleanup may both request restoration in adjacent renders.
-      if (importView.phase === "restore") importCameraRef.current = undefined;
+      if (importView.phase !== "preview") importCameraRef.current = undefined;
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      importFitPendingRef.current = false;
+      cancelAnimationFrame(frame);
+    };
   }, [importView, meshes, primitives]);
   const sizeRef = useRef(size);
   const hoveredIdRef = useRef<string | undefined>(undefined);
@@ -352,10 +362,12 @@ export function ViewportCanvas({
       cancelFrame,
       onFrame: ({ delta, mode }) => {
         queuedNavigationRef.current = undefined;
-        updateCamera((current) =>
-          mode === "pan"
-            ? panCamera(current, delta, sizeRef.current)
-            : orbitCamera(current, delta)
+        updateCamera(
+          (current) =>
+            mode === "pan"
+              ? panCamera(current, delta, sizeRef.current)
+              : orbitCamera(current, delta),
+          mode === "orbit"
         );
       },
       requestFrame
@@ -383,6 +395,10 @@ export function ViewportCanvas({
   }, [publishViewportHover]);
 
   useEffect(() => {
+    // A growing assembly is framed on the next animation frame. Avoid drawing
+    // the same geometry once at the old scale and again at its fitted scale.
+    if (importFitPendingRef.current && !importCameraRef.current?.framingLocked)
+      return;
     const canvas = canvasRef.current;
 
     if (!canvas) {
@@ -587,9 +603,13 @@ export function ViewportCanvas({
   }
 
   function updateCamera(
-    updater: (current: RenderCamera) => RenderCamera
+    updater: (current: RenderCamera) => RenderCamera,
+    keepImportFraming = false
   ): void {
-    if (importCameraRef.current) importCameraRef.current.navigated = true;
+    // Keep the growing assembly in view after orbiting. Explicit pan, zoom or
+    // framing controls take ownership of the target and distance instead.
+    if (importCameraRef.current && !keepImportFraming)
+      importCameraRef.current.framingLocked = true;
     const nextCamera = updater(cameraRef.current);
     cameraRef.current = nextCamera;
     setCamera(nextCamera);

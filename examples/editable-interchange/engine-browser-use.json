@@ -5,7 +5,8 @@
     {
       "importStep": ".metrics/engine-step-trial/radial-engine.step",
       "maxUsableViewMs": 10000,
-      "expectPreviewSolids": 266
+      "expectPreviewSolids": 266,
+      "exactSelectionBudgetMs": 20000
     },
     {
       "click": "[data-ribbon-roving-id=\"mode-solid\"]"
@@ -51,6 +52,9 @@
         "x": 0.5,
         "y": 0.5
       }
+    },
+    {
+      "expectOccurrenceSelection": true
     },
     {
       "expectText": {

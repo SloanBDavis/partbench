@@ -1335,6 +1335,8 @@ export interface GeometryKernelImportedBodyCheckpointPayload {
 }
 
 export interface GeometryKernelImportedBodyPayload {
+  /** Private derived display, stripped by the host before CAD import planning. */
+  readonly displayMesh?: SerializableMeshData;
   readonly metadata?: GeometryKernelExactBodyMetadata;
   readonly definitionId?: string;
   readonly color?: readonly [number, number, number];
@@ -2348,9 +2350,15 @@ export function getGeometryResponseTransferables(
   }
 
   if ("bodies" in response) {
-    return response.bodies.map(
-      (body) => body.checkpointPayload.brepBytes.buffer as ArrayBuffer
-    );
+    return response.bodies.flatMap((body) => [
+      body.checkpointPayload.brepBytes.buffer as ArrayBuffer,
+      ...(body.displayMesh
+        ? [
+            body.displayMesh.positions.buffer as ArrayBuffer,
+            body.displayMesh.indices.buffer as ArrayBuffer
+          ]
+        : [])
+    ]);
   }
 
   if ("checkpointPayload" in response) {

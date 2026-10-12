@@ -1,6 +1,7 @@
 import {
   readExactCheckpoint,
   rememberExactCheckpoint,
+  displayForVerifiedCheckpoint,
   metadataForVerifiedCheckpoint
 } from "./exactCheckpointCache";
 import { withOcctFaceOffsetResultShape } from "./faceOffset";
@@ -402,7 +403,15 @@ export function createOcctExactBodyMeshWithInstance(
   return withOcctExactBodyArtifactShape(
     oc,
     input.source,
-    (shape, sourceKind) => {
+    (shape, sourceKind, _references, verifiedTopology) => {
+      if (
+        verifiedTopology &&
+        (input.linearDeflection ?? 0.25) === 0.25 &&
+        (input.angularDeflection ?? 0.5) === 0.5
+      ) {
+        const cached = displayForVerifiedCheckpoint(verifiedTopology);
+        if (cached) return cached.displayMesh;
+      }
       const mesh = new oc.BRepMesh_IncrementalMesh_2(
         shape,
         input.linearDeflection ?? 0.25,
@@ -950,6 +959,25 @@ function createExactBodyArtifact(
     retainedBrepBytes,
     verifiedTopology
   );
+  const cachedDisplay =
+    verifiedTopology && displayForVerifiedCheckpoint(verifiedTopology);
+  const display = cachedDisplay?.viewportPickMap
+    ? cachedDisplay
+    : createExactShapeDisplay(oc, shape, sourceKind, artifact.topologySnapshot);
+  return { ...artifact, ...display };
+}
+
+export type OcctExactShapeDisplay = Pick<
+  OcctExactBodyArtifact,
+  "displayMesh" | "viewportPickMap"
+>;
+export function createExactShapeDisplay(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  sourceKind: OcctExactTopologySourceKind,
+  topologySnapshot: OcctExactTopologySnapshot,
+  includePickMap = true
+): OcctExactShapeDisplay {
   const mesher = new oc.BRepMesh_IncrementalMesh_2(
     shape,
     0.25,
@@ -965,6 +993,16 @@ function createExactBodyArtifact(
         `Open CASCADE exact artifact display meshing failed with status ${mesher.GetStatusFlags()}.`
       );
     }
+    // Initial occurrence selection only needs the validated body's mesh and
+    // identity. Prepare detailed face/edge pick data when that body is selected.
+    if (!includePickMap)
+      return {
+        displayMesh: readTriangulatedShape(
+          oc,
+          shape,
+          toMeshPrimitive(sourceKind)
+        )
+      };
     let faceTriangleRanges:
       | ReturnType<
           typeof readTriangulatedShapeWithFaceRanges
@@ -990,7 +1028,7 @@ function createExactBodyArtifact(
         viewportPickMap = createExactViewportPickMap(
           oc,
           shape,
-          artifact.topologySnapshot,
+          topologySnapshot,
           faceTriangleRanges,
           displayMesh
         );
@@ -1003,7 +1041,6 @@ function createExactBodyArtifact(
   }
 
   return {
-    ...artifact,
     displayMesh,
     ...(viewportPickMap ? { viewportPickMap } : {})
   };

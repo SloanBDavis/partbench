@@ -23,6 +23,8 @@ import {
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctStepImportWithLoader,
   prepareOcctStepCheckpointWithInstance,
+  prepareOcctStepPartitionWithInstance,
+  rememberOcctStepImport,
   type OcctStepCheckpointProcessor,
   createOcctStepExportWithInstance,
   runOcctNamedStepProbeWithInstance,
@@ -288,6 +290,11 @@ export async function executeTimedBrowserGeometryKernelRequest<
   request: T,
   options: {
     readonly prepareStepCheckpoints?: OcctStepCheckpointProcessor;
+    readonly importStep?: (
+      input: Omit<StepImportRequest, "id" | "version" | "op">
+    ) => Promise<
+      import("@web-cad/occt-wasm/browser").OcctStepImportResult | undefined
+    >;
   } = {}
 ): Promise<{
   readonly response: GeometryKernelResponseForRequest<T>;
@@ -898,6 +905,9 @@ export async function executeTimedBrowserGeometryKernelRequest<
   async function createStepImportWithBrowserOcct(
     input: Omit<StepImportRequest, "id" | "version" | "op">
   ) {
+    const parallel = options.importStep?.(input);
+    // Observe a worker failure even if main-kernel initialization also fails.
+    parallel?.catch(() => {});
     const occtLoadStart = performance.now();
     let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
 
@@ -914,6 +924,11 @@ export async function executeTimedBrowserGeometryKernelRequest<
     const tessellationStart = performance.now();
 
     try {
+      const imported = await parallel;
+      if (imported) {
+        await rememberOcctStepImport(oc, imported);
+        return { ...imported, preparedDisplays: undefined };
+      }
       // Prime the same kernel-owned canonical evidence cache as headless import
       // before the worker transfers the imported BRep payloads to its caller.
       return await createOcctStepImportWithLoader(
@@ -997,3 +1012,28 @@ export type {
 export async function prepareBrowserStepCheckpoint(bytes: Uint8Array) {
   return prepareOcctStepCheckpointWithInstance(await loadBrowserOcct(), bytes);
 }
+
+export {
+  loadBrowserOcctModule,
+  partitionStepImport,
+  mergeOcctStepPartitions,
+  type OcctStepPartitionResult,
+  type OcctStepImportInput,
+  type OcctStepImportResult
+} from "@web-cad/occt-wasm/browser";
+export async function prepareBrowserStepPartition(
+  input: import("@web-cad/occt-wasm/browser").OcctStepImportInput,
+  onPart?: Parameters<typeof prepareOcctStepPartitionWithInstance>[2],
+  compiledModule?: WebAssembly.Module
+): Promise<import("@web-cad/occt-wasm/browser").OcctStepPartitionResult> {
+  const started = performance.now();
+  const oc = await loadBrowserOcct(compiledModule);
+  const loadMs = performance.now() - started;
+  const result = prepareOcctStepPartitionWithInstance(oc, input, onPart);
+  return {
+    ...result,
+    timings: result.timings && { ...result.timings, loadMs }
+  };
+}
+
+export type { OcctStepPlacement } from "@web-cad/occt-wasm/browser";

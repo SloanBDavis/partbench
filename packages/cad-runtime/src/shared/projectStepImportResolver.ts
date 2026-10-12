@@ -1,5 +1,5 @@
+import { prepareImportedCheckpointPayload } from "./currentExactBodyResolver";
 import {
-  encodeWcadCanonicalCbor,
   assemblyTransformFromMatrix,
   type WcadTopologyCheckpointPayloadInput,
   type CadProjectImportStepPreviewBody,
@@ -97,19 +97,13 @@ async function resolveProjectImportStep({
       });
       if (!result.bodyCount || result.bodyCount !== result.bodies.length)
         throw new Error("STEP import returned inconsistent body definitions.");
-      const encoded = await Promise.all(
-        result.bodies.map(async (body) => ({
-          topologyBytes: encodeWcadCanonicalCbor(body.topologySnapshot),
-          brepSha256: await sha256Hex(body.checkpointPayload.brepBytes)
-        }))
-      );
-      return { result, encoded };
+      return { result };
     }
   );
-  const { result, encoded } = prepared;
+  const { result } = prepared;
   const resolvedBodies: ProjectImportStepResolvedBody[] = [];
   const previewBodies: CadProjectImportStepPreviewBody[] = [];
-  const checkpointPayloads: WcadTopologyCheckpointPayloadInput[] = [];
+  const checkpointPayloads: Promise<WcadTopologyCheckpointPayloadInput>[] = [];
   const bodyIds = new Map<string, string>();
   const checkpointIds = new Set(
     (input.document.topologyIdentity?.checkpoints ?? []).map(
@@ -156,25 +150,28 @@ async function resolveProjectImportStep({
       bounds: createStepImportPreviewBounds(body.bounds),
       ...(bodyDiagnostics.length ? { diagnostics: bodyDiagnostics } : {})
     });
-    checkpointPayloads.push({
-      checkpointId,
-      bodyId,
-      sourceFeatureId: featureId,
-      units: input.document.units,
-      kernel: {
-        boundary: "geometry-kernel",
-        snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
-      },
-      tolerance: { linearTolerance: 0.001, angularToleranceDegrees: 0.01 },
-      brepByteLength: body.checkpointPayload.brepByteLength,
-      brepBytes: body.checkpointPayload.brepBytes,
-      brepSha256: encoded[index]!.brepSha256,
-      topologyBytes: encoded[index]!.topologyBytes,
-      signatureBytes: encodeWcadCanonicalCbor({
-        ...body.checkpointPayload.signaturePayload,
-        checkpointId
-      })
-    });
+    checkpointPayloads.push(
+      prepareImportedCheckpointPayload(
+        {
+          checkpointId,
+          bodyId,
+          sourceFeatureId: featureId,
+          units: input.document.units,
+          kernel: {
+            boundary: "geometry-kernel",
+            snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+          },
+          tolerance: { linearTolerance: 0.001, angularToleranceDegrees: 0.01 },
+          brepByteLength: body.checkpointPayload.brepByteLength,
+          brepBytes: body.checkpointPayload.brepBytes
+        },
+        body.topologySnapshot,
+        {
+          ...body.checkpointPayload.signaturePayload,
+          checkpointId
+        }
+      )
+    );
   }
   const assemblyOps: Extract<
     CadOp,
@@ -262,7 +259,7 @@ async function resolveProjectImportStep({
   return {
     resolvedBodies,
     previewBodies,
-    checkpointPayloads,
+    checkpointPayloads: await Promise.all(checkpointPayloads),
     diagnostics,
     ...(assemblyOps.length ? { assemblyOps } : {})
   };

@@ -6,3 +6,4 @@ coverage
 pnpm-lock.yaml
 AGENTS.md
 docs
+packages/occt-wasm/vendor/partbench-occt.js

@@ -1,7 +1,7 @@
 /// <reference path="./vite-assets.d.ts" />
 
-import ocFullJS from "opencascade.js/dist/opencascade.full.js";
-import ocFullWasmUrl from "opencascade.js/dist/opencascade.full.wasm?url";
+import ocFullJS from "../vendor/partbench-occt.js";
+import ocFullWasmUrl from "../vendor/partbench-occt.wasm?url";
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
   createOcctBoxMeshWithInstance,
@@ -119,6 +119,10 @@ import {
 import {
   createOcctStepImportWithInstance,
   prepareOcctStepCheckpointWithInstance,
+  prepareOcctStepPartitionWithInstance,
+  mergeOcctStepPartitions,
+  rememberOcctStepImport,
+  type OcctStepPartitionResult,
   type OcctStepCheckpoint,
   type OcctStepCheckpointProcessor,
   createOcctStepImportWithLoader,
@@ -300,6 +304,10 @@ export {
   getOcctBrepCheckpointWriterCapabilityWithLoader,
   createOcctStepImportWithInstance,
   prepareOcctStepCheckpointWithInstance,
+  prepareOcctStepPartitionWithInstance,
+  mergeOcctStepPartitions,
+  rememberOcctStepImport,
+  type OcctStepPartitionResult,
   type OcctStepCheckpoint,
   type OcctStepCheckpointProcessor,
   createOcctStepImportWithLoader,
@@ -345,9 +353,68 @@ interface OpenCascadeModuleConstructor {
 }
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
+let compiledModulePromise: Promise<WebAssembly.Module> | undefined;
 
-export async function loadBrowserOcct(): Promise<OpenCascadeInstance> {
-  occtPromise ??= initBrowserOpenCascade();
+/** Compile once, then share native code between isolated worker instances.
+ * Each instance still owns its own heap and native objects. */
+export function loadBrowserOcctModule(): Promise<WebAssembly.Module> {
+  compiledModulePromise ??= (async () => {
+    const response = await fetch(ocFullWasmUrl);
+    if (!response.ok)
+      throw new Error(
+        `Could not load the geometry kernel (${response.status}).`
+      );
+    if (
+      typeof WebAssembly.compileStreaming === "function" &&
+      response.headers
+        .get("Content-Type")
+        ?.split(";")[0]
+        ?.trim()
+        .toLowerCase() === "application/wasm"
+    )
+      return WebAssembly.compileStreaming(response);
+    // Also support static hosts that serve WASM as application/octet-stream.
+    return WebAssembly.compile(await response.arrayBuffer());
+  })().catch((error) => {
+    compiledModulePromise = undefined;
+    throw error;
+  });
+  return compiledModulePromise;
+}
+
+export async function loadBrowserOcct(
+  compiledModule?: WebAssembly.Module
+): Promise<OpenCascadeInstance> {
+  occtPromise ??= (async () => {
+    const module = compiledModule ?? (await loadBrowserOcctModule());
+    return new Promise<OpenCascadeInstance>((resolve, reject) => {
+      void initBrowserOpenCascade({
+        module: {
+          instantiateWasm(
+            imports: WebAssembly.Imports,
+            receive: (
+              instance: WebAssembly.Instance,
+              module: WebAssembly.Module
+            ) => void
+          ) {
+            try {
+              const instance = new WebAssembly.Instance(module, imports);
+              receive(instance, module);
+              return instance.exports;
+            } catch (error) {
+              // Emscripten otherwise swallows a custom-instantiator exception
+              // and leaves its initialization promise pending indefinitely.
+              reject(error);
+              return {};
+            }
+          }
+        }
+      }).then(resolve, reject);
+    });
+  })().catch((error) => {
+    occtPromise = undefined;
+    throw error;
+  });
   return occtPromise;
 }
 
@@ -513,3 +580,5 @@ export type {
   OcctFaceOffsetArtifactSource,
   OcctArtifactBooleanSource
 } from "./exactCheckpointPayload";
+
+export { partitionStepImport } from "./stepImportPartitions";

@@ -178,6 +178,14 @@ class CborByteWriter {
   }
 
   text(value: string): void {
+    // Long signatures are serialized JSON strings. Native UTF-8 bulk encoding
+    // is substantially cheaper than inspecting/writing every character in JS.
+    if (value.length > 64) {
+      const encoded = textEncoder.encode(value);
+      encodeTypeAndLength(3, encoded.byteLength, this);
+      this.append(encoded);
+      return;
+    }
     // Most CAD keys/IDs are ASCII. Write them into the output buffer without
     // allocating a UTF-8 array for every key, descriptor and signature field.
     for (let i = 0; i < value.length; i++) {
@@ -364,6 +372,21 @@ class CborReader {
   #readText(length: number): string {
     try {
       this.#assertAvailable(length);
+      // Topology payloads contain many short ASCII keys and IDs. Decode these
+      // directly, avoiding a native decoder call and temporary view per field.
+      // Unicode and longer strings retain the strict UTF-8 decoder below.
+      if (length <= 32) {
+        let ascii = "";
+        for (let index = 0; index < length; index++) {
+          const byte = this.bytes[this.#offset + index]!;
+          if (byte > 0x7f) break;
+          ascii += String.fromCharCode(byte);
+        }
+        if (ascii.length === length) {
+          this.#offset += length;
+          return ascii;
+        }
+      }
       // TextDecoder consumes the view synchronously. Unlike returned byte
       // strings, text does not need an owned copy of the input buffer.
       const text = textDecoder.decode(
