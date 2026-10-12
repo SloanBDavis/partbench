@@ -196,6 +196,21 @@
         "examples/drawing-precision/verification.json"
       ],
       "scope": "Real drawing controls: absolute/relative/polar/unit-bearing coordinates, explicit World/custom frame, unit-bearing edits; all eight snap kinds with exact visible preview/commit parity, three intersection pair types, tracking, cycling, zoom-scaled tolerance, snaps off and invalid input preserving history; fractional/irrational native save/reload/open, stable IDs, Undo/Redo and unit conversion. Full consolidated browser/public MCP suite passes."
+    },
+    "drawingDimensions": {
+      "date": "2026-10-12",
+      "sourceCommit": "e95fb06",
+      "command": "pnpm verify",
+      "journeys": [
+        "scenarios/editable-interchange.json",
+        "scripts/smoke-agent-runtime.mjs",
+        "scripts/drawing-dimensions-journey.mjs"
+      ],
+      "records": [
+        "docs/drawing-dimensions.md",
+        "examples/drawing-dimensions/verification.json"
+      ],
+      "scope": "Aligned/horizontal/vertical dimensions tied to geometry points; real create/select/edit/delete and canvas placement controls; derived measurements after geometry edits with fixed placement; rejection/history/units/native reopen; public MCP schema/dry run/atomic reference rejection/edit/query/native persistence."
     }
   },
   "categories": [
@@ -1241,12 +1256,14 @@
       "id": "ANN-002",
       "category": "annotation",
       "feature": "Associative linear dimensions",
-      "done": false,
+      "done": true,
       "acceptance": "Create aligned, horizontal and vertical dimensions tied to geometry; edits update measured values without losing placement.",
       "dependsOn": [
         "DRAW-001"
       ],
-      "evidence": []
+      "evidence": [
+        "drawingDimensions"
+      ]
     },
     {
       "id": "ANN-003",

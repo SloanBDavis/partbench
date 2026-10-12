@@ -297,3 +297,15 @@ reuse without repeated topology/property extraction, rejecting forged evidence.
 The final small UI journey passed in 9.8 s. Live reload and source watching are
 disabled in the smoke server, preventing concurrent file edits from resetting
 a running journey. No scenario retries are used.
+
+## Associative drawing dimensions — 2026-10-12
+
+`pnpm verify` passes on `e95fb06` for ANN-002: all 13 package typechecks, the
+three consolidated browser journeys and public MCP mounting-plate journey.
+The existing drawing/interchange journey now checks aligned, horizontal and
+vertical dimension authoring, canvas placement and selection, type edits,
+geometry-driven values with fixed placement, invalid input, Undo/Redo, units,
+native reopen and deletion. Public MCP checks the same source model, derived
+measurements, dry run and atomic reference rejection. See the
+[guide](drawing-dimensions.md) and
+[dated report](../examples/drawing-dimensions/verification.json).

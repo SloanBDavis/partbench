@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 24 Done · 315 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 25 Done · 314 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -43,7 +43,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [DRAW-001](#draw-001) | Done | Independent drafting document | None declared |
 | [IO-005](#io-005) | Not done | DWG drawings | DRAW-001 |
 | [ORG-001](#org-001) | Not done | Layer properties | DRAW-001 |
-| [ANN-002](#ann-002) | Not done | Associative linear dimensions | DRAW-001 |
+| [ANN-002](#ann-002) | Done | Associative linear dimensions | DRAW-001 |
 | [SHEET-001](#sheet-001) | Not done | Paper space and sheet layouts | DRAW-001 |
 | [SHEET-004](#sheet-004) | Not done | Associative orthographic views | SHEET-001 |
 | [SHEET-010](#sheet-010) | Not done | Scale-correct PDF and printing | SHEET-002 |
@@ -59,7 +59,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [Workspace, input and selection](#area-interaction) | 1 | 4 | 11 |
 | [2D drawing geometry and editing](#area-drafting) | 1 | 1 | 17 |
 | [Layers, styles, blocks and references](#area-organization) | 1 | 0 | 12 |
-| [Annotation, dimensions and tolerancing](#area-annotation) | 1 | 0 | 14 |
+| [Annotation, dimensions and tolerancing](#area-annotation) | 1 | 1 | 13 |
 | [Sheets, drawings and deliverables](#area-sheets) | 1 | 0 | 12 |
 | [Parametric sketches and constraints](#area-sketch) | 2 | 0 | 14 |
 | [Solid modeling and feature history](#area-solid) | 2 | 1 | 23 |
@@ -219,7 +219,7 @@ Existing foundation to inspect: [apps/web/src/modes/sketch/SketchIntentEditor.ts
 | ID | Feature | Status | Done only when | Prerequisites | Passing evidence |
 | --- | --- | --- | --- | --- | --- |
 | <a id="ann-001"></a>ANN-001 | Single-line and rich text | **Not done** | Place, edit, align and style Unicode text with font substitution diagnostics and faithful native persistence. | [DRAW-001](#draw-001) | — |
-| <a id="ann-002"></a>ANN-002 | Associative linear dimensions | **Not done** | Create aligned, horizontal and vertical dimensions tied to geometry; edits update measured values without losing placement. | [DRAW-001](#draw-001) | — |
+| <a id="ann-002"></a>ANN-002 | Associative linear dimensions | **Done** | Create aligned, horizontal and vertical dimensions tied to geometry; edits update measured values without losing placement. | [DRAW-001](#draw-001) | [drawingDimensions](#evidence-drawingDimensions) |
 | <a id="ann-003"></a>ANN-003 | Angular, radius and diameter dimensions | **Not done** | Dimension angles, arcs, circles and holes with correct symbols, placement and updates after geometry edits. | [DRAW-001](#draw-001) | — |
 | <a id="ann-004"></a>ANN-004 | Ordinate, baseline and chain dimensions | **Not done** | Create coordinated dimension sets with a persistent origin and predictable update/spacing behavior. | [ANN-002](#ann-002) | — |
 | <a id="ann-005"></a>ANN-005 | Dimension styles and annotation scale | **Not done** | Manage precision, units, arrows, text and scaling centrally; model and sheet viewports render at the intended plotted size. | [ANN-002](#ann-002) | — |
@@ -829,6 +829,18 @@ Command: `pnpm verify`.
 Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-ui.mjs](../scripts/smoke-ui.mjs).
 
 Recorded results: [docs/drawing-precision.md](../docs/drawing-precision.md), [examples/drawing-precision/verification.json](../examples/drawing-precision/verification.json).
+
+<a id="evidence-drawingDimensions"></a>
+
+### drawingDimensions
+
+2026-10-12; source: e95fb06. Aligned/horizontal/vertical dimensions tied to geometry points; real create/select/edit/delete and canvas placement controls; derived measurements after geometry edits with fixed placement; rejection/history/units/native reopen; public MCP schema/dry run/atomic reference rejection/edit/query/native persistence.
+
+Command: `pnpm verify`.
+
+Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs), [scripts/drawing-dimensions-journey.mjs](../scripts/drawing-dimensions-journey.mjs).
+
+Recorded results: [docs/drawing-dimensions.md](../docs/drawing-dimensions.md), [examples/drawing-dimensions/verification.json](../examples/drawing-dimensions/verification.json).
 
 ## Professional catalog sources
 

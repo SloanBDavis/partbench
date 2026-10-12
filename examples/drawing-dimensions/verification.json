@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-12",
+  "sourceCommit": "e95fb06",
+  "command": "PARTBENCH_SMOKE_BROWSER_NO_SANDBOX=1 pnpm verify",
+  "contracts": ["ANN-002"],
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.8037.57",
+    "platform": "Linux, SwiftShader"
+  },
+  "checks": [
+    "Real controls create aligned, horizontal and vertical dimensions tied to stable geometry point references",
+    "Native canvas label placement, rendered label selection and dimension type editing",
+    "Geometry edits update visible measurements and preserve annotation identity, references and placement",
+    "Undo/Redo, invalid placement input blocked without source/history changes, physical-size-preserving units conversion",
+    "Native save/reload/open preserves exact dimension references, placement and history; deletion and Undo restore annotations",
+    "Public MCP schema, dry run, atomic dangling-reference/source-delete rejection, geometry edit measurements, annotation edit, native reopen with solids and deletion",
+    "All existing precision snaps/coordinates, drawing/interchange and distance/concentric assembly regressions"
+  ],
+  "report": {
+    "status": "passed",
+    "journeys": ["assembly", "interchange", "agent"],
+    "stages": [
+      {
+        "name": "prepare nested STEP fixture",
+        "milliseconds": 8882.744091,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "browser journeys",
+        "milliseconds": 68190.33932900001,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "build MCP executable",
+        "milliseconds": 23696.189649000007,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "MCP author/revise/save/reopen/STEP journey",
+        "milliseconds": 20927.489419999998,
+        "exitCode": 0,
+        "signal": null
+      }
+    ]
+  },
+  "screenshots": [
+    ".metrics/ui-smoke/drawing-dimensions-invalid.png",
+    ".metrics/ui-smoke/drawing-dimensions-reopened.png"
+  ],
+  "notes": [
+    "Screenshots visually inspected. Native picker fixtures exercise real readers/writers, not OS dialogs.",
+    "An initial sandboxed browser launch could not bind localhost; the allowed escalated run and full verification passed."
+  ]
+}

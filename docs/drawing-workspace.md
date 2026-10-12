@@ -31,7 +31,8 @@ what needs correcting. Opening another project retains the existing unsaved
 project guard.
 
 For unit-bearing point entry, working frames, object snaps, and tracking, see
-[Precision drawing](drawing-precision.md).
+[Precision drawing](drawing-precision.md). Add geometry-linked measurements with
+[Associative linear dimensions](drawing-dimensions.md).
 
 ## Source and command contract
 
@@ -60,7 +61,7 @@ snapshots retain drawing geometry. The native versions remain
 `web-cad.project.v22` and `partbench.wcad.v2`; no dependency or package is added.
 
 This is the independent drafting foundation. Rays, arcs, polylines, layers,
-annotation, drawing DXF/DWG exchange, and paper-space layouts remain separate
+other annotations, drawing DXF/DWG exchange, and paper-space layouts remain separate
 feature-matrix contracts. Drawing entities are not exported by the existing
 sketch-only DXF/SVG export or solid STEP export.
 

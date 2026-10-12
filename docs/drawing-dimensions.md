@@ -71,3 +71,23 @@ edits, derived query measurements, native reopen with solids, and deletion.
 
 Run `pnpm test:e2e -- interchange agent` for focused coverage and `pnpm verify`
 before landing. Dated results are recorded after validation succeeds.
+
+### Passing record — 2026-10-12
+
+`pnpm verify` passed on implementation `e95fb06`: matrix integrity, all 13
+package typechecks, the three consolidated browser journeys and public MCP
+mounting-plate journey. The preceding focused interchange/public MCP run also
+passed. Environment: Linux, Node 22.23.3, pnpm 10.14.0, Bun 1.4.2 and Chromium
+154.0.8037.57 with SwiftShader. See the
+[recorded report](../examples/drawing-dimensions/verification.json).
+
+The browser confirms aligned/horizontal/vertical visible dimensions, canvas
+label placement and selection, type edits, changed geometry measurements with
+unchanged annotation placement, Undo/Redo, blocked empty coordinates, unit
+conversion, native reopen and deletion. Public MCP confirms schema discovery,
+derived values after source edits, source-delete rejection, atomic missing
+reference rejection, dry run, annotation editing and native persistence alongside
+solids. Reopened and invalid-input screenshots were visually inspected.
+
+Changed-source ESLint, formatting and `git diff --check` pass. ANN-002 is Done;
+other annotation families and drawing interchange remain separate contracts.
