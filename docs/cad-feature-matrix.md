@@ -810,7 +810,7 @@ Recorded results: [docs/drawing-workspace.md](../docs/drawing-workspace.md).
 
 ### progressiveImport
 
-2026-10-12; source: ffb2ebc plus the PERF-001 implementation in the commit containing this record. Five consecutive fresh-browser production runs: visible native orbit by 4.11–8.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62–89.23 s; no PERF-002 or hardware frame-budget claim.
+2026-10-12; source: 2dddce8 (integrated check); five-run implementation base ffb2ebc. Five consecutive fresh-browser production runs: visible native orbit by 4.11–8.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62–89.23 s; no PERF-002 or hardware frame-budget claim. After DRAW-001 integration, the expanded full suite, 20-stage headless workflow and another production browser journey pass; orbit is verified at 6.31 s.
 
 Command: `pnpm smoke:engine-interchange; pnpm --filter @web-cad/web build; five isolated invocations of PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser`.
 

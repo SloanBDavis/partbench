@@ -126,6 +126,12 @@ retained in the evidence record. The earlier
 [cold-load record](../examples/editable-interchange/cold-load-evidence.json) is
 historical and predates progressive rendering.
 
+The final integration with DRAW-001 (`fd98132`, tested source `2dddce8`) also
+passes the expanded full suite, all 20 engine headless stages and an additional
+complete production browser journey. Orbit is verified at 6.31 s and Cancel
+settles in 163 ms. The original five-run record remains separate from this
+integration check; see its `postIntegration` evidence.
+
 ## Consolidation validation — 2026-10-10
 
 The new `pnpm test` passed on Linux with Node 22, pnpm 10.14.0,

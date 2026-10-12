@@ -17,222 +17,222 @@
   "stages": [
     {
       "name": "cold STEP import through CadSession",
-      "milliseconds": 72107.5,
+      "milliseconds": 71070.5,
       "memoryBytes": {
-        "rss": 1013837824,
-        "heapTotal": 440381440,
-        "heapUsed": 398739176,
-        "external": 279516749,
-        "arrayBuffers": 126446839
+        "rss": 1032462336,
+        "heapTotal": 439844864,
+        "heapUsed": 398642496,
+        "external": 279512633,
+        "arrayBuffers": 126442723
       }
     },
     {
       "name": "ready exact engine",
-      "milliseconds": 205.3,
+      "milliseconds": 281.1,
       "memoryBytes": {
-        "rss": 1014530048,
-        "heapTotal": 441176064,
-        "heapUsed": 396139720,
-        "external": 280554500,
-        "arrayBuffers": 127484550
+        "rss": 1033113600,
+        "heapTotal": 440639488,
+        "heapUsed": 395624032,
+        "external": 280532728,
+        "arrayBuffers": 127462778
       }
     },
     {
       "name": "save imported native source",
-      "milliseconds": 1767.2,
+      "milliseconds": 2191.1,
       "memoryBytes": {
-        "rss": 1162358784,
-        "heapTotal": 531091456,
-        "heapUsed": 482652688,
-        "external": 316736079,
-        "arrayBuffers": 163666129
+        "rss": 1178669056,
+        "heapTotal": 530554880,
+        "heapUsed": 482462128,
+        "external": 316731963,
+        "arrayBuffers": 163662013
       }
     },
     {
       "name": "compare exact topology with native import .metrics/perf-001/baseline-engine-initial.wcad",
-      "milliseconds": 3434.8,
+      "milliseconds": 2959.2,
       "memoryBytes": {
-        "rss": 1247768576,
-        "heapTotal": 531288064,
-        "heapUsed": 492193392,
+        "rss": 1264705536,
+        "heapTotal": 530661376,
+        "heapUsed": 492307040,
         "external": 427061856,
         "arrayBuffers": 273381910
       }
     },
     {
       "name": "compare exact topology with native import .metrics/cold-load/before/engine-initial.wcad",
-      "milliseconds": 2704.3,
+      "milliseconds": 3117.4,
       "memoryBytes": {
-        "rss": 1253695488,
-        "heapTotal": 531288064,
-        "heapUsed": 490883728,
+        "rss": 1268682752,
+        "heapTotal": 530923520,
+        "heapUsed": 490632024,
         "external": 427061856,
         "arrayBuffers": 273381910
       }
     },
     {
       "name": "make one nested engine occurrence independent",
-      "milliseconds": 265.1,
+      "milliseconds": 309.9,
       "memoryBytes": {
-        "rss": 1252704256,
-        "heapTotal": 532500480,
-        "heapUsed": 496671520,
+        "rss": 1267593216,
+        "heapTotal": 531611648,
+        "heapUsed": 496629616,
         "external": 433582244,
         "arrayBuffers": 280483105
       }
     },
     {
       "name": "resize only the independent bore",
-      "milliseconds": 504.8,
+      "milliseconds": 434.2,
       "memoryBytes": {
-        "rss": 1258872832,
-        "heapTotal": 536170496,
-        "heapUsed": 489085008,
+        "rss": 1275371520,
+        "heapTotal": 535019520,
+        "heapUsed": 489036240,
         "external": 426674088,
         "arrayBuffers": 273575045
       }
     },
     {
       "name": "sketch and cut the imported end face",
-      "milliseconds": 360.4,
+      "milliseconds": 257.8,
       "memoryBytes": {
-        "rss": 1262018560,
-        "heapTotal": 538529792,
-        "heapUsed": 502525024,
+        "rss": 1278590976,
+        "heapTotal": 537903104,
+        "heapUsed": 502458840,
         "external": 433600567,
         "arrayBuffers": 280501428
       }
     },
     {
       "name": "move the independent component",
-      "milliseconds": 383.2,
+      "milliseconds": 337.3,
       "memoryBytes": {
-        "rss": 1263951872,
-        "heapTotal": 540626944,
-        "heapUsed": 493232816,
+        "rss": 1280466944,
+        "heapTotal": 539738112,
+        "heapUsed": 493284984,
         "external": 437702340,
         "arrayBuffers": 273641484
       }
     },
     {
       "name": "save edited native",
-      "milliseconds": 1480.6,
+      "milliseconds": 1444,
       "memoryBytes": {
-        "rss": 1415589888,
-        "heapTotal": 631066624,
-        "heapUsed": 581737008,
+        "rss": 1432170496,
+        "heapTotal": 630702080,
+        "heapUsed": 581714424,
         "external": 472006295,
         "arrayBuffers": 318907284
       }
     },
     {
       "name": "open edited native in fresh session",
-      "milliseconds": 1872.5,
+      "milliseconds": 1359.8,
       "memoryBytes": {
-        "rss": 1340084224,
-        "heapTotal": 538791936,
-        "heapUsed": 492745432,
-        "external": 351448827,
-        "arrayBuffers": 198349816
+        "rss": 1356615680,
+        "heapTotal": 538165248,
+        "heapUsed": 492823488,
+        "external": 351170940,
+        "arrayBuffers": 198071929
       }
     },
     {
       "name": "evaluate reopened native",
-      "milliseconds": 2829.4,
+      "milliseconds": 2078.3,
       "memoryBytes": {
-        "rss": 1352323072,
-        "heapTotal": 605855744,
-        "heapUsed": 565242872,
-        "external": 362035283,
-        "arrayBuffers": 208936048
+        "rss": 1369108480,
+        "heapTotal": 605229056,
+        "heapUsed": 565092056,
+        "external": 361757396,
+        "arrayBuffers": 208658161
       }
     },
     {
       "name": "update existing native oil-port depth",
-      "milliseconds": 231.3,
+      "milliseconds": 234.6,
       "memoryBytes": {
-        "rss": 1352605696,
-        "heapTotal": 612409344,
-        "heapUsed": 571535672,
-        "external": 368645951,
-        "arrayBuffers": 215546844
+        "rss": 1369387008,
+        "heapTotal": 611520512,
+        "heapUsed": 571573504,
+        "external": 368368064,
+        "arrayBuffers": 215268957
       }
     },
     {
       "name": "undo native depth update",
-      "milliseconds": 193.7,
+      "milliseconds": 183.2,
       "memoryBytes": {
-        "rss": 1352749056,
-        "heapTotal": 612933632,
-        "heapUsed": 571398432,
-        "external": 371213415,
-        "arrayBuffers": 218114372
+        "rss": 1369526272,
+        "heapTotal": 612044800,
+        "heapUsed": 571369888,
+        "external": 370935528,
+        "arrayBuffers": 217836485
       }
     },
     {
       "name": "redo native depth update",
-      "milliseconds": 200.1,
+      "milliseconds": 241.4,
       "memoryBytes": {
-        "rss": 1352773632,
-        "heapTotal": 613195776,
-        "heapUsed": 571750000,
-        "external": 371213419,
-        "arrayBuffers": 218114376
+        "rss": 1369563136,
+        "heapTotal": 612306944,
+        "heapUsed": 571754016,
+        "external": 370935532,
+        "arrayBuffers": 217836489
       }
     },
     {
       "name": "export edited engine STEP",
-      "milliseconds": 21226.5,
+      "milliseconds": 21905.4,
       "memoryBytes": {
-        "rss": 1539514368,
-        "heapTotal": 520441856,
-        "heapUsed": 481444896,
-        "external": 596063120,
-        "arrayBuffers": 280762477
+        "rss": 1544335360,
+        "heapTotal": 519290880,
+        "heapUsed": 481492992,
+        "external": 573641307,
+        "arrayBuffers": 258340664
       }
     },
     {
       "name": "reimport edited STEP in fresh session",
-      "milliseconds": 74723.6,
+      "milliseconds": 70819.4,
       "memoryBytes": {
-        "rss": 1721851904,
-        "heapTotal": 694226944,
-        "heapUsed": 630413600,
-        "external": 724892355,
-        "arrayBuffers": 346939232
+        "rss": 1710862336,
+        "heapTotal": 684163072,
+        "heapUsed": 635022888,
+        "external": 722006466,
+        "arrayBuffers": 344053407
       }
     },
     {
       "name": "evaluate reimported STEP",
-      "milliseconds": 244.3,
+      "milliseconds": 239.3,
       "memoryBytes": {
-        "rss": 1721851904,
-        "heapTotal": 693981184,
-        "heapUsed": 624821232,
-        "external": 725825928,
-        "arrayBuffers": 347872805
+        "rss": 1710993408,
+        "heapTotal": 683917312,
+        "heapUsed": 632814392,
+        "external": 726596921,
+        "arrayBuffers": 348643862
       }
     },
     {
       "name": "edit reimported engine bore again",
-      "milliseconds": 280.5,
+      "milliseconds": 289.7,
       "memoryBytes": {
-        "rss": 1722339328,
-        "heapTotal": 693981184,
-        "heapUsed": 632904056,
-        "external": 723810586,
-        "arrayBuffers": 345857399
+        "rss": 1711759360,
+        "heapTotal": 683917312,
+        "heapUsed": 624469920,
+        "external": 727423341,
+        "arrayBuffers": 342972542
       }
     },
     {
       "name": "sketch and cut the reimported engine again",
-      "milliseconds": 265,
+      "milliseconds": 236.3,
       "memoryBytes": {
-        "rss": 1722707968,
-        "heapTotal": 694243328,
-        "heapUsed": 627367408,
-        "external": 728603722,
-        "arrayBuffers": 345935402
+        "rss": 1712050176,
+        "heapTotal": 683917312,
+        "heapUsed": 630995192,
+        "external": 721006175,
+        "arrayBuffers": 343053052
       }
     }
   ],
@@ -364,11 +364,11 @@
     }
   ],
   "memoryBytesAtCompletion": {
-    "rss": 1722732544,
-    "heapTotal": 694243328,
-    "heapUsed": 634422296,
-    "external": 723938407,
-    "arrayBuffers": 345985156
+    "rss": 1712177152,
+    "heapTotal": 683917312,
+    "heapUsed": 636053352,
+    "external": 723781665,
+    "arrayBuffers": 345828478
   },
   "canonicalEvidenceCacheBudget": {
     "maximumEstimatedBytes": 134217728,
@@ -403,7 +403,7 @@
     },
     "geometry": {
       "artifactBuilds": 61,
-      "milliseconds": 3774.0712470000435
+      "milliseconds": 3595.5216269999655
     }
   }
 }

@@ -101,6 +101,13 @@ cancellation; all five final runs start after its fix. An earlier offset-input
 timeout was not reproduced under profiling or in the final unprofiled full suite.
 Screenshots of the first/complete preview and final scene were visually inspected.
 
+The five-run series precedes the independently landed DRAW-001 workspace.
+After integrating it at `fd98132`, source `2dddce8` passed the expanded full suite,
+all 20 headless engine stages and another complete production browser journey:
+orbit by 6.31 s, all preview solids by 13.41 s, exact/display readiness at 79.50 s,
+and cancellation in 163 ms. Native parity and camera/model restoration still
+pass. This additional observation is recorded separately from the five-run series.
+
 These measurements establish the pinned-engine contract on the declared runner.
 They do not establish a 10-second budget for every STEP layout or device, hardware
 GPU frame performance, or exact selection within 20 seconds. Full editing data

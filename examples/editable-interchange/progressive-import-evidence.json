@@ -1,7 +1,7 @@
 {
   "date": "2026-10-12",
   "baselineCommit": "ffb2ebc",
-  "sourceRevision": "ffb2ebc plus the PERF-001 implementation in the commit containing this record",
+  "sourceRevision": "Five-run series: PERF-001 implementation on ffb2ebc, before DRAW-001 integration. Final integrated source 2dddce8 is verified separately below.",
   "source": {
     "fileName": "radial-engine.step",
     "byteLength": 13389913,
@@ -18,10 +18,7 @@
     "containerCpuQuota": 4,
     "containerMemoryLimitBytes": 17179869184,
     "rendering": "SwiftShader software WebGL2",
-    "viewportPixels": [
-      1400,
-      900
-    ]
+    "viewportPixels": [1400, 900]
   },
   "method": {
     "build": "pnpm --filter @web-cad/web build",
@@ -76,11 +73,7 @@
         "orbitMs": 1539,
         "firstMeshCount": 28,
         "camera": {
-          "target": [
-            3.0517578125e-05,
-            -38.240325927734375,
-            49.5
-          ],
+          "target": [3.0517578125e-5, -38.240325927734375, 49.5],
           "yaw": 0.3353981633974482,
           "pitch": -0.7735987755982988,
           "distance": 2060.331184696663
@@ -114,11 +107,7 @@
         "orbitMs": 4004,
         "firstMeshCount": 28,
         "camera": {
-          "target": [
-            -0.88812255859375,
-            -31.502120971679688,
-            7
-          ],
+          "target": [-0.88812255859375, -31.502120971679688, 7],
           "yaw": 0.3353981633974482,
           "pitch": -0.7735987755982988,
           "distance": 2148.003597552715
@@ -152,11 +141,7 @@
         "orbitMs": 1402,
         "firstMeshCount": 28,
         "camera": {
-          "target": [
-            -0.88812255859375,
-            -31.502120971679688,
-            7
-          ],
+          "target": [-0.88812255859375, -31.502120971679688, 7],
           "yaw": 0.3353981633974482,
           "pitch": -0.7735987755982988,
           "distance": 2148.003597552715
@@ -190,11 +175,7 @@
         "orbitMs": 925,
         "firstMeshCount": 28,
         "camera": {
-          "target": [
-            3.0517578125e-05,
-            -38.240325927734375,
-            49.5
-          ],
+          "target": [3.0517578125e-5, -38.240325927734375, 49.5],
           "yaw": 0.3353981633974482,
           "pitch": -0.7735987755982988,
           "distance": 2060.331184696663
@@ -228,11 +209,7 @@
         "orbitMs": 2335,
         "firstMeshCount": 28,
         "camera": {
-          "target": [
-            -1.0435333251953125,
-            -34.20457458496094,
-            -4.5
-          ],
+          "target": [-1.0435333251953125, -34.20457458496094, -4.5],
           "yaw": 0.3353981633974482,
           "pitch": -0.7735987755982988,
           "distance": 2112.1365615816285
@@ -266,11 +243,7 @@
     "changedSourceLint": "Passed: zero errors, seven existing warnings",
     "fullVerify": {
       "status": "passed",
-      "journeys": [
-        "assembly",
-        "interchange",
-        "agent"
-      ],
+      "journeys": ["assembly", "interchange", "agent"],
       "stages": [
         {
           "name": "prepare nested STEP fixture",
@@ -303,10 +276,7 @@
       "stages": 20,
       "record": "examples/editable-interchange/engine-evidence.json",
       "command": "node scripts/smoke-editable-interchange.mjs --compare-native=.metrics/perf-001/baseline-engine-initial.wcad --compare-native=.metrics/cold-load/before/engine-initial.wcad",
-      "nativeComparisonCommits": [
-        "ffb2ebc",
-        "d9dffca"
-      ],
+      "nativeComparisonCommits": ["ffb2ebc", "d9dffca"],
       "baselineFiles": [
         ".metrics/perf-001/baseline-engine-initial.wcad",
         ".metrics/cold-load/before/engine-initial.wcad"
@@ -330,5 +300,113 @@
     "Display is coarse and neutral-colored while importing; exact editing and picking wait for authoritative geometry. Existing detailed appearance import limitations remain.",
     "Software WebGL does not establish the hardware frame budget. PERF-002 and other performance rows remain open.",
     "The preview adds native work and does not accelerate the canonical reader. Full readiness is 69.62\u201389.23 s in these runs, versus an earlier 61.68 s observation with substantial variation; no full-readiness speedup is claimed."
-  ]
+  ],
+  "postIntegration": {
+    "date": "2026-10-12",
+    "sourceCommit": "2dddce8",
+    "upstreamCommit": "fd98132",
+    "reason": "Preserve the independently landed DRAW-001 workspace and verify the combined application. The original five-run observations and asset hashes above are retained unchanged.",
+    "fullVerify": {
+      "status": "passed",
+      "journeys": ["assembly", "interchange", "agent"],
+      "stages": [
+        {
+          "name": "prepare nested STEP fixture",
+          "milliseconds": 10280.175167,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "browser journeys",
+          "milliseconds": 76387.168991,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "build MCP executable",
+          "milliseconds": 20803.756244000004,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "MCP author/revise/save/reopen/STEP journey",
+          "milliseconds": 23501.613387000005,
+          "exitCode": 0,
+          "signal": null
+        }
+      ]
+    },
+    "headless": {
+      "status": "passed",
+      "stages": 20,
+      "log": ".metrics/perf-001/headless-integrated.log",
+      "record": "examples/editable-interchange/engine-evidence.json",
+      "nativeComparisonCommits": ["ffb2ebc", "d9dffca"]
+    },
+    "browser": {
+      "status": "passed",
+      "log": ".metrics/perf-001/browser-integrated.log",
+      "import": {
+        "fileName": "radial-engine.step",
+        "elapsedMs": 79497,
+        "preview": {
+          "visibleMs": 4518,
+          "usableMs": 6312,
+          "orbitMs": 1781,
+          "firstMeshCount": 28,
+          "camera": {
+            "target": [3.0517578125e-5, -38.240325927734375, 49.5],
+            "yaw": 0.3353981633974482,
+            "pitch": -0.7735987755982988,
+            "distance": 2060.331184696663
+          },
+          "completeViewMs": 13409,
+          "completeMeshCount": 266,
+          "placedBoundsMatch": true,
+          "cameraPreserved": true
+        }
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 163
+      },
+      "nativeCheckpointParity": true,
+      "invalidStepRejected": true,
+      "priorDocumentAndCameraRestoredOnCancel": true
+    },
+    "productionAssets": [
+      {
+        "file": "assets/index-B1Tw4d7g.css",
+        "bytes": 36182,
+        "sha256": "ae06efb0bc76b09ac9d2512180a88cad0f37ab48695fd27f9631b6674902d85b"
+      },
+      {
+        "file": "assets/index-DPmTzUoo.js",
+        "bytes": 1992421,
+        "sha256": "3dab690e667d65c70b06fe7fee4bab0eb608ebd896f523b9b5ac53ad5cb0674c"
+      },
+      {
+        "file": "assets/index-Dhx3ImI1.js",
+        "bytes": 67814,
+        "sha256": "342c75a3de94453b9eba3e813f42d915bf6d24a5f1a384aa48ff7cde7ce4e170"
+      },
+      {
+        "file": "assets/occt-import-js-BhHfLpto.wasm",
+        "bytes": 7604031,
+        "sha256": "33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952"
+      },
+      {
+        "file": "assets/stepPreview.worker-cSkD3Dcv.js",
+        "bytes": 62345,
+        "sha256": "8081269b81eecbd88614904fe89190d28e5083f412da714d4faed85abfc36247"
+      },
+      {
+        "file": "assets/stepPreviewPart.worker-BNjW3gNK.js",
+        "bytes": 59919,
+        "sha256": "312b6a812b3cc5000ef0865576c9aa24e5c9e7fbf224f00659115684010ed097"
+      }
+    ]
+  }
 }

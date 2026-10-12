@@ -162,10 +162,11 @@ retaining source identity, atomic import and native parity. Do not count the
 coarse display preview as exact selection. `PERF-012` still needs the broader
 repeatable benchmark corpus and budgets in its own acceptance contract.
 
-The next deliverable path is `DRAW-001` drawing semantics → `ORG-001` layers and
-`ANN-002` dimensions → `SHEET-001` layouts → `SHEET-004` associative views and
-`SHEET-010` scale-correct PDF. Resolve `IO-005` DWG SDK feasibility alongside
-`DRAW-001`; the row stays Not done until a verified round trip exists.
+`DRAW-001` is now Done; its [independent drawing workspace](drawing-workspace.md)
+was integrated alongside this import work. The next deliverable path is
+`ORG-001` layers and `ANN-002` dimensions → `SHEET-001` layouts → `SHEET-004`
+associative views and `SHEET-010` scale-correct PDF. Resolve `IO-005` DWG SDK
+feasibility alongside this path; it stays Not done until a verified round trip exists.
 Then prioritize `ASM-011` interference and `ASM-013` BOM over another primitive.
 The matrix frontier encodes this order and exposes unmet prerequisites.
 
