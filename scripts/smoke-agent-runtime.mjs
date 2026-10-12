@@ -82,6 +82,7 @@ async function journey(fixture) {
   let volumesBefore;
   let volumesAfter;
   let rejected;
+  let savedSheet;
   try {
     await client.initialize();
     const listed = await client.request("tools/list");
@@ -153,6 +154,7 @@ async function journey(fixture) {
       ])
     );
     drawingDimensions = await exerciseMcpDrawingDimensions(client, batch);
+    savedSheet = await exerciseDrawingSheetsMcp(client);
     await client.tool("cad.batch", batch(fixture.create));
     volumesBefore = await inspect(
       client,
@@ -214,6 +216,19 @@ async function journey(fixture) {
       sourceIdentity
     );
     await inspect(reopened, fixture, fixture.expected.volumesAfter);
+    assert.deepEqual(
+      (await reopened.tool("cad.project_structure")).drawingSheets,
+      [savedSheet],
+      "Sheet/model windows survive native reopen"
+    );
+    await reopened.tool(
+      "cad.batch",
+      batch([{ op: "drawing.sheet.delete", id: savedSheet.id }])
+    );
+    assert.deepEqual(
+      (await reopened.tool("cad.project_structure")).drawingSheets,
+      []
+    );
     assert.deepEqual(
       (await reopened.tool("cad.project_structure")).drawingEntities,
       [
@@ -313,4 +328,81 @@ async function journey(fixture) {
     nativePath: `${fixture.id}/${fixture.id}.wcad`,
     stepPath: `${fixture.id}/${fixture.id}.step`
   };
+}
+
+async function exerciseDrawingSheetsMcp(client) {
+  const sheet = {
+    id: "sheet_mcp",
+    name: "Fabrication",
+    paper: { width: 210, height: 297 },
+    orientation: "landscape",
+    margins: { top: 10, right: 10, bottom: 10, left: 10 },
+    viewports: [
+      {
+        id: "view_mcp",
+        name: "Plan",
+        paper: { x: 10, y: 10, width: 120, height: 100 },
+        model: { center: [10, 5], width: 80, height: 60 }
+      }
+    ]
+  };
+  const create = { op: "drawing.sheet.create", sheet };
+  for (const operation of [
+    "drawing.sheet.create",
+    "drawing.sheet.update",
+    "drawing.sheet.delete"
+  ])
+    await client.tool("cad.operation_schema", { operation });
+  const before = (await client.tool("cad.session_info")).result.sourceIdentity;
+  const dry = await client.tool("cad.batch", batch([create], "dryRun"));
+  assert.deepEqual(dry.semanticDiff.drawingSheets.created, [sheet]);
+  assert.deepEqual(
+    (await client.tool("cad.session_info")).result.sourceIdentity,
+    before
+  );
+  await client.tool("cad.batch", batch([create]));
+  const committed = (await client.tool("cad.session_info")).result
+    .sourceIdentity;
+  await client.tool(
+    "cad.batch",
+    batch([
+      {
+        op: "drawing.sheet.update",
+        sheet: { ...sheet, name: "Proposed change" }
+      },
+      create
+    ]),
+    { expectError: true }
+  );
+  assert.deepEqual(
+    (await client.tool("cad.session_info")).result.sourceIdentity,
+    committed,
+    "Rejected duplicate sheet batch must be atomic"
+  );
+  await client.tool(
+    "cad.batch",
+    batch([
+      {
+        op: "drawing.sheet.update",
+        sheet: { ...sheet, margins: { ...sheet.margins, left: 300 } }
+      }
+    ]),
+    { expectError: true }
+  );
+  assert.deepEqual((await client.tool("cad.project_structure")).drawingSheets, [
+    sheet
+  ]);
+  const edited = {
+    ...sheet,
+    name: "Assembly drawing",
+    viewports: sheet.viewports.map((v) => ({
+      ...v,
+      model: { ...v.model, center: [12.5, -3.25] }
+    }))
+  };
+  await client.tool(
+    "cad.batch",
+    batch([{ op: "drawing.sheet.update", sheet: edited }])
+  );
+  return edited;
 }

@@ -424,6 +424,7 @@
       "drawingPrecision": true
     },
     { "drawingDimensions": true },
+    { "drawingSheets": true },
     {
       "drawingLayers": true
     },

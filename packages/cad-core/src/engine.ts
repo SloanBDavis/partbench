@@ -5,6 +5,11 @@ import {
   isDrawingLayerOp,
   getDrawingLayer,
   type DrawingLayer,
+  isDrawingSheet,
+  isDrawingSheetOp,
+  type DrawingSheet
+} from "@web-cad/cad-protocol";
+import {
   isDrawingEntity,
   isDrawingOp,
   type DrawingEntity
@@ -1201,6 +1206,7 @@ export type SweepFeature = SweepFeatureV21;
 export type LoftFeature = LoftFeatureV21;
 
 export interface CadDocument {
+  readonly drawingSheets: ReadonlyMap<string, DrawingSheet>;
   readonly drawingEntities: ReadonlyMap<string, DrawingEntity>;
   readonly drawingLayers: ReadonlyMap<string, DrawingLayer>;
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
@@ -1251,6 +1257,7 @@ export interface CadExecutionOptions {
 }
 
 export interface CadDocumentSnapshot {
+  readonly drawingSheets?: readonly DrawingSheet[];
   readonly drawingEntities?: readonly DrawingEntity[];
   readonly drawingLayers?: readonly DrawingLayer[];
   readonly units: DocumentUnits;
@@ -2039,11 +2046,15 @@ export function createCadDocument(
   drawingEntities: Iterable<readonly [string, DrawingEntity]> = [],
   drawingLayers: Iterable<readonly [string, DrawingLayer]> = [
     ["0", DEFAULT_DRAWING_LAYER]
-  ]
+  ],
+  drawingSheets: Iterable<readonly [string, DrawingSheet]> = []
 ): CadDocument {
   return {
     drawingLayers: new Map(
       [...drawingLayers].map(([id, layer]) => [id, cloneJsonSource(layer)])
+    ),
+    drawingSheets: new Map(
+      [...drawingSheets].map(([id, sheet]) => [id, cloneJsonSource(sheet)])
     ),
     drawingEntities: new Map(
       [...drawingEntities].map(([id, entity]) => [id, cloneJsonSource(entity)])
@@ -2779,6 +2790,9 @@ export class CadEngine {
               : [];
           }),
           drawingLayers: [...this.#document.drawingLayers.values()].map(
+            cloneJsonSource
+          ),
+          drawingSheets: [...this.#document.drawingSheets.values()].map(
             cloneJsonSource
           ),
           drawingEntities: [...this.#document.drawingEntities.values()].map(
@@ -6308,6 +6322,11 @@ type MutableSemanticDiff = {
     modified: DrawingLayer[];
     deleted: DrawingLayer[];
   };
+  drawingSheets?: {
+    created: DrawingSheet[];
+    modified: DrawingSheet[];
+    deleted: DrawingSheet[];
+  };
   drawing?: {
     created: DrawingEntity[];
     modified: DrawingEntity[];
@@ -6414,6 +6433,7 @@ type SketchEntityImportRef = {
 };
 
 interface MutableDocumentState {
+  drawingSheets: Map<string, DrawingSheet>;
   drawingEntities: Map<string, DrawingEntity>;
   drawingLayers: Map<string, DrawingLayer>;
   objects: Map<ObjectId, SceneObject>;
@@ -6497,6 +6517,57 @@ function applyOperation(
         state.drawingLayers.set(id, layer);
         layers[op.op === "drawing.layer.create" ? "created" : "modified"].push(
           layer
+        );
+      }
+      return;
+    }
+    case "drawing.sheet.create":
+    case "drawing.sheet.update":
+    case "drawing.sheet.delete": {
+      if (!isDrawingSheetOp(op))
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "Sheets require a name, finite positive paper/model sizes, and viewports inside valid margins.",
+          opIndex
+        });
+      const id = op.op === "drawing.sheet.delete" ? op.id : op.sheet.id;
+      const existing = state.drawingSheets.get(id);
+      if (op.op === "drawing.sheet.create" ? Boolean(existing) : !existing)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: existing
+            ? `Sheet already exists: ${id}.`
+            : `Sheet does not exist: ${id}.`,
+          opIndex
+        });
+      if (
+        op.op !== "drawing.sheet.delete" &&
+        [...state.drawingSheets.values()].some(
+          (sheet) =>
+            sheet.id !== id &&
+            sheet.name.trim().toLowerCase() ===
+              op.sheet.name.trim().toLowerCase()
+        )
+      )
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: "Sheet names must be unique.",
+          opIndex
+        });
+      const changes = (diff.drawingSheets ??= {
+        created: [],
+        modified: [],
+        deleted: []
+      });
+      if (op.op === "drawing.sheet.delete") {
+        state.drawingSheets.delete(id);
+        changes.deleted.push(cloneJsonSource(existing!));
+      } else {
+        const sheet = cloneJsonSource(op.sheet);
+        state.drawingSheets.set(id, sheet);
+        changes[op.op === "drawing.sheet.create" ? "created" : "modified"].push(
+          sheet
         );
       }
       return;
@@ -8987,6 +9058,9 @@ function isCadOperationKind(value: string): boolean {
     case "drawing.layer.create":
     case "drawing.layer.update":
     case "drawing.layer.delete":
+    case "drawing.sheet.create":
+    case "drawing.sheet.update":
+    case "drawing.sheet.delete":
     case "drawing.entity.create":
     case "drawing.entity.update":
     case "drawing.entity.delete":
@@ -27070,6 +27144,34 @@ function scaleDocumentLengthValues(
   diff: MutableSemanticDiff,
   opIndex: number
 ): void {
+  for (const sheet of state.drawingSheets.values()) {
+    const scaled: DrawingSheet = {
+      ...sheet,
+      viewports: sheet.viewports.map((viewport) => ({
+        ...viewport,
+        model: {
+          center: [
+            viewport.model.center[0] * scaleFactor,
+            viewport.model.center[1] * scaleFactor
+          ],
+          width: viewport.model.width * scaleFactor,
+          height: viewport.model.height * scaleFactor
+        }
+      }))
+    };
+    if (!isDrawingSheet(scaled))
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: "Unit conversion exceeds the supported sheet viewport range.",
+        opIndex
+      });
+    state.drawingSheets.set(sheet.id, scaled);
+    (diff.drawingSheets ??= {
+      created: [],
+      modified: [],
+      deleted: []
+    }).modified.push(scaled);
+  }
   for (const entity of state.drawingEntities.values()) {
     const point = (p: readonly [number, number]): readonly [number, number] => [
       p[0] * scaleFactor,
@@ -27608,6 +27710,13 @@ export function createCadDocumentSnapshot(
           )
         }
       : {}),
+    ...(document.drawingSheets.size
+      ? {
+          drawingSheets: [...document.drawingSheets.values()].map(
+            cloneJsonSource
+          )
+        }
+      : {}),
     ...(document.drawingEntities.size
       ? {
           drawingEntities: [...document.drawingEntities.values()].map(
@@ -27702,6 +27811,9 @@ export function createCadDocumentFromSnapshot(
     ),
     (snapshot.drawingLayers ?? [DEFAULT_DRAWING_LAYER]).map(
       (layer) => [layer.id, cloneJsonSource(layer)] as const
+    ),
+    (snapshot.drawingSheets ?? []).map(
+      (sheet) => [sheet.id, cloneJsonSource(sheet)] as const
     )
   );
 }
@@ -31979,6 +32091,7 @@ function runOperations(
   assertSketchCurveEditBatchShape(ops);
 
   const state: MutableDocumentState = {
+    drawingSheets: new Map(document.drawingSheets),
     drawingEntities: new Map(document.drawingEntities),
     drawingLayers: new Map(document.drawingLayers),
     objects: new Map(document.objects),
@@ -32313,7 +32426,8 @@ function runOperations(
     state.datums,
     state.assemblies,
     state.drawingEntities,
-    state.drawingLayers
+    state.drawingLayers,
+    state.drawingSheets
   );
 
   return {
@@ -33724,6 +33838,7 @@ function cadDocumentsEqual(
       [...left.drawingEntities].sort(([a], [b]) => a.localeCompare(b)),
       [...right.drawingEntities].sort(([a], [b]) => a.localeCompare(b))
     ) ||
+    !stableJsonEqual([...left.drawingSheets], [...right.drawingSheets]) ||
     left.objects.size !== right.objects.size ||
     left.sketches.size !== right.sketches.size ||
     left.parameters.size !== right.parameters.size ||
@@ -35871,6 +35986,35 @@ function validateCadDocumentSnapshot(
         `${path}.drawingLayers`,
         "The default layer 0 is required."
       );
+  }
+  if (value.drawingSheets !== undefined) {
+    const ids = new Set<string>(),
+      names = new Set<string>();
+    if (!Array.isArray(value.drawingSheets))
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.drawingSheets`,
+        "Sheets must be an array."
+      );
+    else
+      for (const [index, sheet] of value.drawingSheets.entries()) {
+        if (
+          !isDrawingSheet(sheet) ||
+          ids.has(sheet.id) ||
+          names.has(sheet.name.trim().toLowerCase())
+        )
+          addProjectIssue(
+            issues,
+            "INVALID_DOCUMENT",
+            `${path}.drawingSheets[${index}]`,
+            "Sheets require unique identities/names and valid paper, margins and viewports."
+          );
+        else {
+          ids.add(sheet.id);
+          names.add(sheet.name.trim().toLowerCase());
+        }
+      }
   }
   if (value.drawingEntities !== undefined) {
     const seen = new Set<string>();
@@ -44535,6 +44679,7 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (isDrawingLayerOp(value)) return true;
+  if (isDrawingSheetOp(value)) return true;
   if (isDrawingOp(value)) return true;
   if (isSpurGearOp(value)) return true;
 

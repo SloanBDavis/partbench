@@ -268,6 +268,14 @@ function createOperationSummaries(
         };
       case "drawing.layer.delete":
         return { op: op.op, label: `Delete layer ${op.id}` };
+      case "drawing.sheet.create":
+      case "drawing.sheet.update":
+        return {
+          op: op.op,
+          label: `${op.op.endsWith("create") ? "Create" : "Edit"} sheet ${op.sheet.name}`
+        };
+      case "drawing.sheet.delete":
+        return { op: op.op, label: `Delete sheet ${op.id}` };
       case "drawing.entity.create":
       case "drawing.entity.update":
         return {

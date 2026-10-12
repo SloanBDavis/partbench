@@ -1,4 +1,4 @@
-import { DrawingWorkspace } from "./modes/drawing/DrawingWorkspace";
+import { DrawingLayoutWorkspace } from "./modes/drawing/DrawingLayoutWorkspace";
 import { getRenderSceneBounds } from "./viewportCamera";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
@@ -9607,7 +9607,8 @@ export function App() {
     setProjectMessageTone("info");
     await syncDocument(undefined);
     if (
-      result.project.document.drawingEntities?.length &&
+      (result.project.document.drawingEntities?.length ||
+        result.project.document.drawingSheets?.length) &&
       result.project.document.objects.length === 0 &&
       result.project.document.features.length === 0 &&
       result.project.document.sketches.length === 0
@@ -11856,6 +11857,7 @@ export function App() {
           units: document.units,
           entities: [...document.drawingEntities.values()],
           layers: [...document.drawingLayers.values()],
+          sheets: [...document.drawingSheets.values()],
           sketchCount: document.sketches.size,
           constraintCount: document.sketchConstraints.size,
           historyCount: engine.getTransactions().length,
@@ -12225,7 +12227,8 @@ export function App() {
           }
           viewport={
             workbenchUi.mode === "drawing" ? (
-              <DrawingWorkspace
+              <DrawingLayoutWorkspace
+                sheets={document.drawingSheets}
                 entities={document.drawingEntities}
                 layers={document.drawingLayers}
                 units={document.units}
@@ -13046,8 +13049,8 @@ export function App() {
           statusBar={
             workbenchUi.mode === "drawing" ? (
               <div className="drawing-instruction">
-                Model space · {document.drawingEntities.size} entities ·{" "}
-                {document.units} · Unconstrained geometry
+                Drawing · {document.drawingEntities.size} entities ·{" "}
+                {document.drawingSheets.size} sheets · {document.units}
               </div>
             ) : workbenchUi.mode === "project" ? (
               <StatusBar

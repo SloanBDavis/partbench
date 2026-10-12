@@ -1,4 +1,5 @@
 import { exerciseDrawingDimensions } from "./drawing-dimensions-journey.mjs";
+import { exerciseDrawingSheets } from "./drawing-sheets-journey.mjs";
 // bun+vite in-process; chrome via Bun.WebView
 import { assertNativeCheckpointParity } from "./native-checkpoint-parity.mjs";
 import {
@@ -2608,6 +2609,23 @@ async function runUseSteps(view, name, steps, label) {
     if (step.drawingLayers) {
       await exerciseDrawingLayers(view);
       clicks.push("Drawing layer controls");
+      continue;
+    }
+    if (step.drawingSheets) {
+      await exerciseDrawingSheets(view, {
+        getState,
+        evaluate,
+        delay,
+        typeField,
+        selectCollectorOption,
+        clickVisibleControl,
+        writeUseScreenshot,
+        saveProjectFile,
+        withDeadline,
+        waitForHook,
+        openProjectFile
+      });
+      clicks.push("Sheet layout controls");
       continue;
     }
     if (step.drawingPrecision) {

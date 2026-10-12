@@ -1,0 +1,136 @@
+.drawing-layout-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.drawing-layout-workspace > .drawing-workspace {
+  flex: 1;
+  min-height: 0;
+}
+.sheet-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  flex-wrap: wrap;
+  background: var(--surface-2, #202630);
+  border-bottom: 1px solid #465264;
+}
+.sheet-tabs button[aria-pressed="true"] {
+  background: #375783;
+  color: #fff;
+}
+.sheet-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  flex: 1;
+  min-height: 0;
+}
+.sheet-canvas-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #68717e;
+  padding: 12px;
+}
+.sheet-status {
+  color: #fff;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.sheet-canvas {
+  --drawing-label-background: white;
+  color: #25344a;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.sheet-paper {
+  fill: white;
+  stroke: #222;
+  stroke-width: 0.3;
+}
+.sheet-margins {
+  fill: none;
+  stroke: #9da7b4;
+  stroke-width: 0.25;
+  stroke-dasharray: 2 2;
+}
+.sheet-viewport-frame {
+  fill: none;
+  stroke: #4475ad;
+  stroke-width: 0.25;
+  stroke-dasharray: 1 1;
+  pointer-events: none;
+}
+.sheet-properties {
+  overflow: auto;
+  padding: 12px;
+  background: var(--surface-1, #161c25);
+}
+.sheet-properties h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.sheet-properties h3,
+.sheet-properties h4 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+.sheet-properties p {
+  font-size: 12px;
+}
+.sheet-properties fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sheet-properties label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+.sheet-properties input,
+.sheet-properties select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.sheet-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sheet-tabs button,
+.sheet-properties button {
+  border: 1px solid #47596c;
+  border-radius: 5px;
+  padding: 7px 10px;
+  background: #253448;
+  color: #edf5ff;
+  cursor: pointer;
+}
+.sheet-tabs button:disabled,
+.sheet-properties button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sheet-properties {
+  color: #dde7f2;
+}
+.sheet-properties input,
+.sheet-properties select {
+  background: #101923;
+  color: #edf5ff;
+  border: 1px solid #47596c;
+  border-radius: 4px;
+  padding: 6px;
+}
+.sheet-properties [role="alert"] {
+  color: #ffb3a7;
+}

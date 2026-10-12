@@ -4045,6 +4045,279 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
       }
     }
   },
+  "drawing.sheet.create": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "sheet"],
+    properties: {
+      op: {
+        const: "drawing.sheet.create"
+      },
+      sheet: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "name",
+          "paper",
+          "orientation",
+          "margins",
+          "viewports"
+        ],
+        properties: {
+          id: {
+            type: "string"
+          },
+          name: {
+            type: "string"
+          },
+          paper: {
+            type: "object",
+            additionalProperties: false,
+            required: ["width", "height"],
+            properties: {
+              width: {
+                type: "number"
+              },
+              height: {
+                type: "number"
+              }
+            }
+          },
+          orientation: {
+            enum: ["portrait", "landscape"]
+          },
+          margins: {
+            type: "object",
+            additionalProperties: false,
+            required: ["top", "right", "bottom", "left"],
+            properties: {
+              top: {
+                type: "number"
+              },
+              right: {
+                type: "number"
+              },
+              bottom: {
+                type: "number"
+              },
+              left: {
+                type: "number"
+              }
+            }
+          },
+          viewports: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["id", "name", "paper", "model"],
+              properties: {
+                id: {
+                  type: "string"
+                },
+                name: {
+                  type: "string"
+                },
+                paper: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["x", "y", "width", "height"],
+                  properties: {
+                    x: {
+                      type: "number"
+                    },
+                    y: {
+                      type: "number"
+                    },
+                    width: {
+                      type: "number"
+                    },
+                    height: {
+                      type: "number"
+                    }
+                  },
+                  description:
+                    "Rectangle from the top-left of the physical sheet, in millimeters."
+                },
+                model: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["center", "width", "height"],
+                  properties: {
+                    center: {
+                      type: "array",
+                      items: [
+                        {
+                          type: "number"
+                        },
+                        {
+                          type: "number"
+                        }
+                      ],
+                      minItems: 2,
+                      maxItems: 2
+                    },
+                    width: {
+                      type: "number"
+                    },
+                    height: {
+                      type: "number"
+                    }
+                  },
+                  description:
+                    "Persistent model-space window, in document units, with Y upwards."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "drawing.sheet.delete": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "id"],
+    properties: {
+      op: {
+        const: "drawing.sheet.delete"
+      },
+      id: {
+        type: "string"
+      }
+    }
+  },
+  "drawing.sheet.update": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "sheet"],
+    properties: {
+      op: {
+        const: "drawing.sheet.update"
+      },
+      sheet: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "name",
+          "paper",
+          "orientation",
+          "margins",
+          "viewports"
+        ],
+        properties: {
+          id: {
+            type: "string"
+          },
+          name: {
+            type: "string"
+          },
+          paper: {
+            type: "object",
+            additionalProperties: false,
+            required: ["width", "height"],
+            properties: {
+              width: {
+                type: "number"
+              },
+              height: {
+                type: "number"
+              }
+            }
+          },
+          orientation: {
+            enum: ["portrait", "landscape"]
+          },
+          margins: {
+            type: "object",
+            additionalProperties: false,
+            required: ["top", "right", "bottom", "left"],
+            properties: {
+              top: {
+                type: "number"
+              },
+              right: {
+                type: "number"
+              },
+              bottom: {
+                type: "number"
+              },
+              left: {
+                type: "number"
+              }
+            }
+          },
+          viewports: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["id", "name", "paper", "model"],
+              properties: {
+                id: {
+                  type: "string"
+                },
+                name: {
+                  type: "string"
+                },
+                paper: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["x", "y", "width", "height"],
+                  properties: {
+                    x: {
+                      type: "number"
+                    },
+                    y: {
+                      type: "number"
+                    },
+                    width: {
+                      type: "number"
+                    },
+                    height: {
+                      type: "number"
+                    }
+                  },
+                  description:
+                    "Rectangle from the top-left of the physical sheet, in millimeters."
+                },
+                model: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["center", "width", "height"],
+                  properties: {
+                    center: {
+                      type: "array",
+                      items: [
+                        {
+                          type: "number"
+                        },
+                        {
+                          type: "number"
+                        }
+                      ],
+                      minItems: 2,
+                      maxItems: 2
+                    },
+                    width: {
+                      type: "number"
+                    },
+                    height: {
+                      type: "number"
+                    }
+                  },
+                  description:
+                    "Persistent model-space window, in document units, with Y upwards."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "feature.align": {
     type: "object",
     additionalProperties: false,

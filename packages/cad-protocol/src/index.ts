@@ -1,4 +1,10 @@
 import type {
+  DrawingSheet,
+  DrawingSheetOp,
+  DrawingSheetSemanticDiff
+} from "./drawingSheets";
+export * from "./drawingSheets";
+import type {
   DrawingEntity,
   DrawingEntityCreateOp,
   DrawingEntityUpdateOp,
@@ -566,6 +572,7 @@ export interface SketchDimensionParameterValueSource {
 
 export type CadOp =
   | DrawingLayerOp
+  | DrawingSheetOp
   | DrawingEntityCreateOp
   | DrawingEntityUpdateOp
   | DrawingEntityDeleteOp
@@ -3191,6 +3198,7 @@ export interface SketchConstraintSemanticDiff {
 }
 
 export interface SemanticDiff {
+  readonly drawingSheets?: DrawingSheetSemanticDiff;
   readonly drawing?: DrawingSemanticDiff;
   readonly drawingLayers?: DrawingLayerSemanticDiff;
   readonly created: readonly CadObjectRef[];
@@ -8184,6 +8192,7 @@ export interface CadOperationSummary {
 }
 
 export interface CadSemanticDiffSummary {
+  readonly drawingSheets?: DrawingSheetSemanticDiff;
   readonly drawing?: DrawingSemanticDiff;
   readonly drawingLayers?: DrawingLayerSemanticDiff;
   readonly created: readonly CadObjectRef[];
@@ -10058,6 +10067,7 @@ export interface ProjectStructureQueryResponse {
     readonly value: number;
     readonly units: DocumentUnits;
   }[];
+  readonly drawingSheets?: readonly DrawingSheet[];
   readonly drawingEntities?: readonly DrawingEntity[];
   readonly drawingLayers?: readonly DrawingLayer[];
   readonly ok: true;
