@@ -189,3 +189,96 @@
 .drawing-instruction {
   color: #dde7f2;
 }
+
+.drawing-properties {
+  width: 290px;
+}
+.drawing-point-input {
+  border-block: 1px solid #344154;
+  padding: 14px 0;
+  margin: 12px 0;
+}
+.drawing-point-input > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.drawing-point-entry {
+  display: flex;
+  gap: 6px;
+}
+.drawing-point-entry input {
+  flex: 1;
+  width: 0;
+  min-width: 80px;
+}
+.drawing-point-entry button {
+  white-space: nowrap;
+}
+.drawing-point-input p,
+.drawing-frame-controls p,
+.drawing-snap-settings p {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+.drawing-point-input [role="alert"] {
+  color: #ffcb97;
+}
+.drawing-point-result {
+  display: block;
+  color: #91e3c2;
+  overflow-wrap: anywhere;
+}
+.drawing-snap-settings {
+  margin: 14px 0;
+}
+.drawing-snap-settings summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.drawing-snap-settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 50%;
+  margin: 4px 0;
+  text-transform: capitalize;
+}
+.drawing-snap-settings input {
+  width: auto;
+}
+.drawing-snap rect {
+  fill: #102a22;
+  stroke: #78f2bb;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.drawing-snap text {
+  fill: #9fffd1;
+  stroke: #101923;
+  stroke-width: 3;
+  paint-order: stroke;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.drawing-snap-guide,
+.drawing-tracking-point {
+  stroke: #78f2bb;
+  stroke-width: 1;
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+.drawing-snap-guide {
+  stroke-dasharray: 5 4;
+}
+@media (max-width: 760px) {
+  .drawing-properties {
+    width: 230px;
+  }
+}
+.drawing-frame-settings > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: #b4dcff;
+}

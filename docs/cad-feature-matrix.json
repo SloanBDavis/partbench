@@ -182,6 +182,20 @@
         "examples/editable-interchange/engine-evidence.json"
       ],
       "scope": "Five consecutive fresh-browser production runs: visible native orbit by 4.11\u20138.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62\u201389.23 s; no PERF-002 or hardware frame-budget claim. After DRAW-001 integration, the expanded full suite, 20-stage headless workflow and another production browser journey pass; orbit is verified at 6.31 s."
+    },
+    "drawingPrecision": {
+      "date": "2026-10-12",
+      "sourceCommit": "8e2dc28",
+      "command": "pnpm verify",
+      "journeys": [
+        "scenarios/editable-interchange.json",
+        "scripts/smoke-ui.mjs"
+      ],
+      "records": [
+        "docs/drawing-precision.md",
+        "examples/drawing-precision/verification.json"
+      ],
+      "scope": "Real drawing controls: absolute/relative/polar/unit-bearing coordinates, explicit World/custom frame, unit-bearing edits; all eight snap kinds with exact visible preview/commit parity, three intersection pair types, tracking, cycling, zoom-scaled tolerance, snaps off and invalid input preserving history; fractional/irrational native save/reload/open, stable IDs, Undo/Redo and unit conversion. Full consolidated browser/public MCP suite passes."
     }
   },
   "categories": [
@@ -792,19 +806,23 @@
       "id": "UX-006",
       "category": "interaction",
       "feature": "Precise coordinate input",
-      "done": false,
+      "done": true,
       "acceptance": "Enter absolute, relative, polar and unit-bearing coordinates with an explicit working frame and reproducible geometry.",
       "dependsOn": [],
-      "evidence": []
+      "evidence": [
+        "drawingPrecision"
+      ]
     },
     {
       "id": "UX-007",
       "category": "interaction",
       "feature": "Object snaps and tracking",
-      "done": false,
+      "done": true,
       "acceptance": "Endpoint, midpoint, center, quadrant, intersection, tangent, perpendicular and extension snaps preview and commit the same exact target.",
       "dependsOn": [],
-      "evidence": []
+      "evidence": [
+        "drawingPrecision"
+      ]
     },
     {
       "id": "UX-008",

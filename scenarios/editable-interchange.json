@@ -421,6 +421,9 @@
       }
     },
     {
+      "drawingPrecision": true
+    },
+    {
       "click": "[data-drawing-tool=\"select\"]"
     },
     {

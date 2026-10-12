@@ -47,6 +47,17 @@ checks schema discovery, dry run, atomic rejection, edit, native reopen and
 delete. All package typechecks and the distance/concentric regressions pass.
 See the [workspace guide and dated record](drawing-workspace.md).
 
+## Precision drawing — 2026-10-12
+
+`pnpm verify` passes for UX-006 and UX-007 on `8e2dc28`: all 13 package
+typechecks, the three consolidated browser journeys and public MCP regression.
+The existing interchange journey now checks absolute/relative/polar/unit-bearing
+input, an explicit working frame, all eight exact snap preview/commit targets,
+tracking, target cycling, pixel tolerance across zoom, invalid-input history
+preservation and a fractional/irrational-coordinate native round trip.
+See the [guide and passing record](drawing-precision.md) and
+[machine-readable report](../examples/drawing-precision/verification.json).
+
 ## Binary feature acceptance
 
 [The CAD matrix](cad-feature-matrix.md) is the feature backlog. Each row has only

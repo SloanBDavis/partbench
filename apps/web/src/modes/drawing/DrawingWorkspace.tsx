@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   isDrawingEntity,
   type CadOp,
@@ -6,6 +6,19 @@ import {
   type DrawingEntity,
   type Vec2
 } from "@web-cad/cad-protocol";
+import { CoordinateInput } from "./CoordinateInput";
+import { DrawingFrameControls } from "./DrawingFrameControls";
+import {
+  parseDrawingLength,
+  WORLD_DRAWING_FRAME,
+  type DrawingFrame
+} from "./drawingCoordinates";
+import {
+  drawingSnapKinds,
+  findDrawingSnaps,
+  type DrawingSnapCandidate,
+  type DrawingSnapKind
+} from "./drawingSnaps";
 import "./drawing.css";
 
 type Tool = "select" | "line" | "rectangle" | "circle" | "pan";
@@ -74,8 +87,27 @@ export function DrawingWorkspace({
   const [start, setStart] = useState<Vec2>();
   const [cursor, setCursor] = useState<Vec2>();
   const [snap, setSnap] = useState(false);
+  const [objectSnaps, setObjectSnaps] = useState(true);
+  const [tracking, setTracking] = useState(true);
+  const [enabledKinds, setEnabledKinds] =
+    useState<readonly DrawingSnapKind[]>(drawingSnapKinds);
+  const [candidates, setCandidates] = useState<readonly DrawingSnapCandidate[]>(
+    []
+  );
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [trackingPoints, setTrackingPoints] = useState<readonly Vec2[]>([]);
+  const [typedCursor, setTypedCursor] = useState<Vec2>();
+  const [frame, setFrame] = useState<DrawingFrame>(WORLD_DRAWING_FRAME);
+  const [inputVersion, setInputVersion] = useState(0);
+  const pointerLocation = useRef<{ x: number; y: number } | undefined>(
+    undefined
+  );
+  const [screenScale, setScreenScale] = useState(1);
+  const [source, setSource] = useState({ entities, units });
   const [view, setView] = useState(() => fitDrawing([...entities.values()]));
   const svg = useRef<SVGSVGElement>(null);
+  const workspace = useRef<HTMLElement>(null);
+  const coordinateFocus = useRef(false);
   const busy = useRef(false);
   const pan = useRef<{ x: number; y: number; view: View } | undefined>(
     undefined
@@ -83,13 +115,49 @@ export function DrawingWorkspace({
   const [notice, setNotice] = useState("");
   const selected = selectedId ? entities.get(selectedId) : undefined;
   const values = [...entities.values()];
+  const creating = tool === "line" || tool === "circle" || tool === "rectangle";
+  const activeSnap =
+    creating && objectSnaps ? candidates[candidateIndex] : undefined;
+  const clearTarget = () => {
+    setCursor(undefined);
+    setTypedCursor(undefined);
+    setCandidates([]);
+    setCandidateIndex(0);
+    pointerLocation.current = undefined;
+  };
+  // Reset transient input when source/history or units change, before rendering
+  // new geometry. No draft point survives in an obsolete coordinate system.
+  if (source.entities !== entities || source.units !== units) {
+    setSource({ entities, units });
+    setStart(undefined);
+    setCursor(undefined);
+    setTypedCursor(undefined);
+    setCandidates([]);
+    setTrackingPoints([]);
+    setInputVersion(inputVersion + 1);
+    if (source.units !== units) setFrame(WORLD_DRAWING_FRAME);
+  }
+  useEffect(() => {
+    if (coordinateFocus.current)
+      workspace.current
+        ?.querySelector<HTMLInputElement>("[data-drawing-coordinate]")
+        ?.focus();
+  }, [inputVersion, tool]);
   const choose = (next: Tool) => {
+    coordinateFocus.current =
+      next === "line" || next === "circle" || next === "rectangle";
     setTool(next);
+    clearTarget();
+    setInputVersion((v) => v + 1);
     setStart(undefined);
     setNotice("");
   };
-  const fit = () => setView(fitDrawing(values));
-  const zoom = (factor: number) =>
+  const fit = () => {
+    clearTarget();
+    setView(fitDrawing(values));
+  };
+  const zoom = (factor: number) => {
+    clearTarget();
     setView((v) => {
       const w = Math.min(1e9, Math.max(0.01, v.width * factor)),
         h = (w * v.height) / v.width;
@@ -100,14 +168,46 @@ export function DrawingWorkspace({
         height: h
       };
     });
-  const point = (event: PointerEvent<SVGSVGElement>): Vec2 => {
-    const matrix = svg.current?.getScreenCTM()?.inverse();
+  };
+  const acquire = (event: PointerEvent<SVGSVGElement>): Vec2 => {
+    // Keep the exact preview target when clicking or cycling at the same pixel.
+    if (
+      pointerLocation.current?.x === event.clientX &&
+      pointerLocation.current?.y === event.clientY &&
+      cursor
+    ) {
+      return activeSnap?.point ?? cursor;
+    }
+    const matrix = svg.current?.getScreenCTM();
     const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(
-      matrix
+      matrix?.inverse()
     );
-    return snap
-      ? [Math.round(p.x), Math.round(-p.y)]
-      : [Number(p.x.toFixed(4)), Number((-p.y).toFixed(4))];
+    const raw: Vec2 = [p.x, -p.y];
+    if (matrix) setScreenScale(Math.hypot(matrix.a, matrix.b));
+    const next =
+      creating && objectSnaps && matrix
+        ? findDrawingSnaps({
+            entities: values,
+            point: raw,
+            tolerance: 10 / Math.hypot(matrix.a, matrix.b),
+            base: start,
+            enabled: enabledKinds.filter(
+              (kind) => tracking || kind !== "tracking"
+            ),
+            trackingPoints: tracking ? trackingPoints : []
+          })
+        : [];
+    const target: Vec2 =
+      next[0]?.point ??
+      (snap
+        ? [Math.round(raw[0]), Math.round(raw[1])]
+        : [Number(raw[0].toFixed(4)), Number(raw[1].toFixed(4))]);
+    setCandidates(next);
+    setCandidateIndex(0);
+    setCursor(target);
+    setTypedCursor(undefined);
+    pointerLocation.current = { x: event.clientX, y: event.clientY };
+    return target;
   };
   const submit = async (ops: readonly CadOp[], id?: string) => {
     if (disabled || busy.current) return false;
@@ -117,6 +217,8 @@ export function DrawingWorkspace({
       if (ok) {
         setSelectedId(id);
         setStart(undefined);
+        clearTarget();
+        setInputVersion((v) => v + 1);
         setNotice("");
       }
       return ok;
@@ -140,7 +242,27 @@ export function DrawingWorkspace({
           start: a,
           end: b
         };
-  const preview = start && cursor ? make(start, cursor, "preview") : undefined;
+  const setPoint = async (p: Vec2) => {
+    if (disabled || busy.current || !creating) return false;
+    if (!start) {
+      setStart(p);
+      clearTarget();
+      return true;
+    }
+    const entity = make(start, p, `drawing_${crypto.randomUUID()}`);
+    if (!isDrawingEntity(entity)) {
+      setNotice("Choose a different point; geometry must have nonzero size.");
+      return false;
+    }
+    return submit([{ op: "drawing.entity.create", entity }], entity.id);
+  };
+  const target = typedCursor ?? activeSnap?.point ?? cursor;
+  const preview = start && target ? make(start, target, "preview") : undefined;
+  const markerSize = 7 / screenScale;
+  const invalidateSnaps = () => {
+    clearTarget();
+  };
+
   const hint =
     tool === "select"
       ? "Click an entity to edit its coordinates. Delete removes the selection."
@@ -149,24 +271,75 @@ export function DrawingWorkspace({
         : start
           ? tool === "circle"
             ? "Click a point on the circle. Esc cancels."
-            : "Click the second point. Esc cancels."
+            : "Click the second point, or press Enter to type it. Esc cancels."
           : tool === "circle"
             ? "Click the center, then a point on the circle, or enter coordinates."
-            : "Click two points, or enter coordinates.";
+            : "Click two points, or press Enter to type coordinates.";
 
   return (
     <section
+      ref={workspace}
+      onFocus={(event) => {
+        if ((event.target as HTMLElement).matches("[data-drawing-coordinate]"))
+          coordinateFocus.current = true;
+      }}
       className="drawing-workspace"
       aria-label="Drawing workspace"
       onKeyDown={(event) => {
+        const fromEmptyCoordinate =
+          (event.target as HTMLInputElement).matches(
+            "[data-drawing-coordinate]"
+          ) && (event.target as HTMLInputElement).value === "";
+        const snapShortcut =
+          fromEmptyCoordinate &&
+          activeSnap &&
+          ((event.key === "Tab" && candidates.length > 1) ||
+            (event.key === " " && tracking));
+        const canvasKey = event.target === svg.current || snapShortcut;
+        if (snapShortcut) {
+          coordinateFocus.current = false;
+          svg.current?.focus();
+        }
         if (
-          (event.target as HTMLElement).closest("input,select,textarea") ||
+          ((event.target as HTMLElement).closest("input,select,textarea") &&
+            !snapShortcut) ||
           event.ctrlKey ||
           event.metaKey ||
           event.altKey
         )
           return;
-        if (event.key === "Escape") {
+        if (event.key === "Tab" && canvasKey && candidates.length > 1) {
+          const next =
+            (candidateIndex + (event.shiftKey ? candidates.length - 1 : 1)) %
+            candidates.length;
+          setCandidateIndex(next);
+          setCursor(candidates[next]!.point);
+          event.preventDefault();
+        } else if (event.key === " " && canvasKey && activeSnap && tracking) {
+          setTrackingPoints((points) =>
+            [
+              ...points.filter(
+                (p) =>
+                  p[0] !== activeSnap.point[0] || p[1] !== activeSnap.point[1]
+              ),
+              activeSnap.point
+            ].slice(-2)
+          );
+          setNotice(
+            "Tracking point acquired. Move along its horizontal or vertical guide."
+          );
+          event.preventDefault();
+        } else if (
+          event.key === "Enter" &&
+          creating &&
+          event.target === svg.current
+        ) {
+          coordinateFocus.current = true;
+          workspace.current
+            ?.querySelector<HTMLInputElement>("[data-drawing-coordinate]")
+            ?.focus();
+          event.preventDefault();
+        } else if (event.key === "Escape") {
           choose("select");
           event.preventDefault();
         } else if (event.key === "Delete" || event.key === "Backspace") {
@@ -224,9 +397,38 @@ export function DrawingWorkspace({
           <input
             type="checkbox"
             checked={snap}
-            onChange={(e) => setSnap(e.target.checked)}
+            aria-label="Grid snap"
+            onChange={(e) => {
+              setSnap(e.target.checked);
+              invalidateSnaps();
+            }}
           />{" "}
-          Snap 1 {units}
+          Grid 1 {units}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            aria-label="Object snaps"
+            checked={objectSnaps}
+            onChange={(e) => {
+              setObjectSnaps(e.target.checked);
+              invalidateSnaps();
+            }}
+          />
+          Object snaps
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            aria-label="Object tracking"
+            checked={tracking}
+            onChange={(e) => {
+              setTracking(e.target.checked);
+              setTrackingPoints([]);
+              invalidateSnaps();
+            }}
+          />
+          Tracking
         </label>
         <span className="drawing-toolbar-spacer" />
         <button disabled={disabled} onClick={open}>
@@ -255,8 +457,10 @@ export function DrawingWorkspace({
             onPointerDown={(event) => {
               if (event.button !== 0 && event.button !== 1) return;
               event.preventDefault();
+              coordinateFocus.current = false;
               event.currentTarget.focus();
               if (event.button === 1 || tool === "pan") {
+                clearTarget();
                 pan.current = { x: event.clientX, y: event.clientY, view };
                 event.currentTarget.setPointerCapture(event.pointerId);
                 return;
@@ -270,20 +474,9 @@ export function DrawingWorkspace({
                 setNotice("");
                 return;
               }
-              const p = point(event);
-              setCursor(p);
-              if (!start) {
-                setStart(p);
-                return;
-              }
-              const entity = make(start, p, `drawing_${crypto.randomUUID()}`);
-              if (!isDrawingEntity(entity)) {
-                setNotice(
-                  "Choose a different point; geometry must have nonzero size."
-                );
-                return;
-              }
-              void submit([{ op: "drawing.entity.create", entity }], entity.id);
+              const p = acquire(event);
+              setInputVersion((v) => v + 1);
+              void setPoint(p);
             }}
             onPointerMove={(event) => {
               if (pan.current) {
@@ -298,7 +491,10 @@ export function DrawingWorkspace({
                       pan.current.view.y -
                       (event.clientY - pan.current.y) / matrix.d
                   });
-              } else setCursor(point(event));
+              } else acquire(event);
+            }}
+            onPointerLeave={() => {
+              if (!pan.current) clearTarget();
             }}
             onPointerUp={() => {
               pan.current = undefined;
@@ -353,8 +549,60 @@ export function DrawingWorkspace({
               </g>
             ))}
             {preview && (
-              <g className="drawing-preview" pointerEvents="none">
+              <g
+                className="drawing-preview"
+                data-drawing-preview
+                data-start-x={start?.[0]}
+                data-start-y={start?.[1]}
+                data-end-x={target?.[0]}
+                data-end-y={target?.[1]}
+                pointerEvents="none"
+              >
                 <Shape entity={preview} />
+              </g>
+            )}
+            {trackingPoints.map((p, i) => (
+              <path
+                key={i}
+                className="drawing-tracking-point"
+                pointerEvents="none"
+                d={`M ${p[0] - markerSize} ${-p[1]} h ${markerSize * 2} M ${p[0]} ${-p[1] - markerSize} v ${markerSize * 2}`}
+              />
+            ))}
+            {activeSnap && !typedCursor && (
+              <g
+                data-drawing-snap={activeSnap.kind}
+                data-snap-x={activeSnap.point[0]}
+                data-snap-y={activeSnap.point[1]}
+                className="drawing-snap"
+                pointerEvents="none"
+              >
+                {activeSnap.guides.map((guide, i) => (
+                  <line
+                    key={i}
+                    className="drawing-snap-guide"
+                    x1={guide.start[0]}
+                    y1={-guide.start[1]}
+                    x2={guide.end[0]}
+                    y2={-guide.end[1]}
+                  />
+                ))}
+                <rect
+                  x={activeSnap.point[0] - markerSize}
+                  y={-activeSnap.point[1] - markerSize}
+                  width={markerSize * 2}
+                  height={markerSize * 2}
+                />
+                <text
+                  x={activeSnap.point[0] + markerSize * 2}
+                  y={-activeSnap.point[1] - markerSize * 2}
+                  fontSize={markerSize * 1.8}
+                >
+                  {activeSnap.description}
+                  {candidates.length > 1
+                    ? ` (${candidateIndex + 1}/${candidates.length} · Tab)`
+                    : ""}
+                </text>
               </g>
             )}
           </svg>
@@ -369,7 +617,8 @@ export function DrawingWorkspace({
             </div>
           )}
           <div className="drawing-coordinate">
-            X {cursor?.[0] ?? 0} · Y {cursor?.[1] ?? 0} {units}
+            X {Number((target?.[0] ?? 0).toPrecision(10))} · Y{" "}
+            {Number((target?.[1] ?? 0).toPrecision(10))} {units}
           </div>
         </div>
         <aside className="drawing-properties" aria-label="Drawing properties">
@@ -393,6 +642,75 @@ export function DrawingWorkspace({
           <p className="drawing-muted">
             Changing units preserves physical size.
           </p>
+          <DrawingFrameControls
+            key={units}
+            units={units}
+            frame={frame}
+            disabled={disabled}
+            onChange={(next) => {
+              setFrame(next);
+              setStart(undefined);
+              clearTarget();
+              setInputVersion((v) => v + 1);
+            }}
+          />
+          {creating && (
+            <CoordinateInput
+              key={`${tool}:${units}:${inputVersion}`}
+              units={units}
+              base={start}
+              frame={frame}
+              disabled={disabled}
+              label={
+                start
+                  ? tool === "circle"
+                    ? "Point on circle"
+                    : "Second point"
+                  : tool === "circle"
+                    ? "Center point"
+                    : "First point"
+              }
+              onSubmit={setPoint}
+              onPreview={setTypedCursor}
+              onCancel={() => choose("select")}
+            />
+          )}
+          <details className="drawing-snap-settings">
+            <summary>Snap settings</summary>
+            {drawingSnapKinds
+              .filter((kind) => kind !== "tracking")
+              .map((kind) => (
+                <label key={kind}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Snap ${kind}`}
+                    checked={enabledKinds.includes(kind)}
+                    onChange={(e) => {
+                      setEnabledKinds((previous) =>
+                        e.target.checked
+                          ? [...previous, kind]
+                          : previous.filter((k) => k !== kind)
+                      );
+                      invalidateSnaps();
+                    }}
+                  />
+                  {kind}
+                </label>
+              ))}
+            <p className="drawing-muted">
+              Within 10 pixels. Tab cycles nearby targets. Hover a snap and
+              press Space to acquire up to two tracking points.
+            </p>
+            <button
+              disabled={!trackingPoints.length}
+              onClick={() => {
+                setTrackingPoints([]);
+                invalidateSnaps();
+              }}
+            >
+              Clear tracking points
+            </button>
+          </details>
           {tool === "line" || tool === "circle" || tool === "rectangle" ? (
             <EntityForm
               key={`${tool}:${units}`}
@@ -447,14 +765,18 @@ export function DrawingWorkspace({
             L Line · R Rectangle · C Circle
             <br />V Select · P Pan · F Fit
             <br />
-            Esc Cancel · Delete Remove
+            Enter Coordinates · Esc Cancel · Delete Remove
             <br />
             Ctrl/Cmd+Z Undo
           </p>
         </aside>
       </div>
       <div className="drawing-instruction" role="status">
-        {error || notice || hint}
+        {error ||
+          notice ||
+          (activeSnap
+            ? `${activeSnap.description} · Tab cycles nearby targets · Space acquires tracking point`
+            : hint)}
       </div>
     </section>
   );
@@ -530,19 +852,23 @@ function EntityForm({
     endY: String(b[1]),
     radius: String(entity?.kind === "circle" ? entity.radius : 10)
   });
+  const length = (text: string) => {
+    const result = parseDrawingLength(text, units);
+    return result.ok ? result.value : NaN;
+  };
   const candidate: DrawingEntity =
     kind === "circle"
       ? {
           id: entity?.id ?? "new",
           kind,
-          center: [Number(fields.x), Number(fields.y)],
-          radius: Number(fields.radius)
+          center: [length(fields.x), length(fields.y)],
+          radius: length(fields.radius)
         }
       : {
           id: entity?.id ?? "new",
           kind,
-          start: [Number(fields.x), Number(fields.y)],
-          end: [Number(fields.endX), Number(fields.endY)]
+          start: [length(fields.x), length(fields.y)],
+          end: [length(fields.endX), length(fields.endY)]
         };
   const fieldNames =
     kind === "circle"
@@ -573,14 +899,16 @@ function EntityForm({
       <h3>
         {entity ? `Edit ${kind}` : `Create ${kind}`} <small>({units})</small>
       </h3>
+      <p className="drawing-muted">
+        Model XY coordinates. Unit suffixes accepted.
+      </p>
       {fieldNames.map((key) => (
         <label key={key}>
           {labels[key]}
           <input
             aria-label={labels[key]}
             data-drawing-field={key}
-            type="number"
-            step="any"
+            type="text"
             value={fields[key]}
             disabled={disabled}
             onChange={(e) => setFields({ ...fields, [key]: e.target.value })}

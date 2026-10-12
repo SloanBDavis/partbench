@@ -10,6 +10,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { clearTimeout } from "node:timers";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   findBrowserExecutable,
@@ -1624,12 +1625,569 @@ async function saveProjectFile(view, filePath) {
   }
 }
 
+// Precision drafting stays in the existing drawing/interchange browser journey.
+// Inputs and mouse events exercise controls; document/DOM reads only assert results.
+async function exerciseDrawingPrecision(view) {
+  const coordinate = "input[data-drawing-coordinate]";
+  const kinds = [
+    "endpoint",
+    "midpoint",
+    "center",
+    "quadrant",
+    "intersection",
+    "tangent",
+    "perpendicular",
+    "extension"
+  ];
+  const initial = (await getState(view)).drawing;
+  const expect = (condition, message) => {
+    if (!condition) throw new Error("Drawing precision: " + message);
+  };
+  const equalPoint = (actual, expected, tolerance = 1e-10) =>
+    actual?.length === 2 &&
+    actual.every((n, i) => Math.abs(n - expected[i]) < tolerance);
+  const settle = async (count, ready = () => true) => {
+    const deadline = performance.now() + 10_000;
+    let state;
+    do {
+      state = await getState(view);
+      if (state.commandError) throw new Error(state.commandError);
+      if (
+        !state.commandPending &&
+        state.drawing.entities.length === count &&
+        ready(state.drawing)
+      )
+        return state.drawing;
+      await delay(30);
+    } while (performance.now() < deadline);
+    throw new Error(
+      "Drawing precision count did not settle: " + JSON.stringify(state.drawing)
+    );
+  };
+  const choose = (tool = "line") =>
+    clickVisibleControl(view, `[data-drawing-tool="${tool}"]`);
+  const enter = async (text) => {
+    await typeField(view, coordinate, text);
+    await view.press("Enter");
+  };
+  const undo = async (count, ready) => {
+    await clickVisibleControl(view, 'button[aria-label="Undo"]');
+    return settle(count, ready);
+  };
+  const create = async (a, b, tool = "line") => {
+    const count = (await getState(view)).drawing.entities.length;
+    await choose(tool);
+    await enter(a);
+    await enter(b);
+    return (await settle(count + 1)).entities.at(-1);
+  };
+  const settings = 'details:has(input[aria-label="Snap endpoint"])';
+  const checkbox = async (label, checked) => {
+    const selector = `input[aria-label="${label}"]`;
+    if (
+      (await evaluate(
+        view,
+        `document.querySelector(${JSON.stringify(selector)})?.checked`
+      )) !== checked
+    )
+      await clickVisibleControl(view, selector);
+  };
+  const onlySnap = async (kind) => {
+    if (
+      !(await evaluate(
+        view,
+        `document.querySelector(${JSON.stringify(settings)})?.open`
+      ))
+    )
+      await clickVisibleControl(view, settings + " > summary");
+    await checkbox("Object snaps", true);
+    await checkbox("Object tracking", false);
+    for (const value of kinds) await checkbox("Snap " + value, value === kind);
+    await clickVisibleControl(view, settings + " > summary");
+  };
+  const hover = async (point, pixelOffset = [3, 0]) => {
+    const position = await evaluate(
+      view,
+      `(() => {
+      const svg = document.querySelector('svg[aria-label="2D drawing canvas"]');
+      const p = new DOMPoint(${point[0]}, ${-point[1]}).matrixTransform(svg.getScreenCTM());
+      return {x:p.x + ${pixelOffset[0]}, y:p.y + ${pixelOffset[1]}};
+    })()`
+    );
+    await view.cdp("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      ...position
+    });
+    // Flush the React render before inspecting the visible preview.
+    await evaluate(
+      view,
+      "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    );
+    return position;
+  };
+  const readSnap = () =>
+    evaluate(
+      view,
+      `(() => {
+    const target = document.querySelector('[data-drawing-snap]');
+    return target && { kind:target.dataset.drawingSnap, point:[Number(target.dataset.snapX), Number(target.dataset.snapY)], text:target.textContent };
+  })()`
+    );
+  const snapProbe = async (
+    kind,
+    target,
+    base = [-60, -30],
+    pixelOffset = [3, 0]
+  ) => {
+    await onlySnap(kind);
+    await choose();
+    await enter(base.join(","));
+    const position = await hover(target, pixelOffset);
+    const preview = await readSnap();
+    expect(
+      preview?.kind === kind &&
+        equalPoint(preview.point, target, kind === "extension" ? 1e-4 : 1e-10),
+      `${kind} target ${JSON.stringify(target)}: ${JSON.stringify(preview)}`
+    );
+    expect(Boolean(preview.text?.trim()), kind + " needs a visible label");
+    const displayedEnd = await evaluate(
+      view,
+      `(() => {
+      const shape = document.querySelector('[data-drawing-preview]');
+      return shape && [Number(shape.dataset.endX), Number(shape.dataset.endY)];
+    })()`
+    );
+    expect(
+      JSON.stringify(displayedEnd) === JSON.stringify(preview.point),
+      kind + " geometry preview differs from snap marker"
+    );
+    const count = (await getState(view)).drawing.entities.length;
+    await view.click(position.x, position.y);
+    const entity = (await settle(count + 1)).entities.at(-1);
+    expect(
+      JSON.stringify(entity.end) === JSON.stringify(preview.point),
+      kind + " preview and commit differ"
+    );
+    expect(equalPoint(entity.start, base), kind + " changed the typed anchor");
+    await undo(count);
+  };
+
+  expect(
+    (
+      await evaluate(
+        view,
+        'document.querySelector(".drawing-workspace").textContent'
+      )
+    ).includes("World XY"),
+    "working frame is not visible"
+  );
+  // Canvas Enter focuses coordinates; Enter on the Set point button still submits.
+  await choose();
+  const keyboardAnchor = await hover([-60, -30], [0, 0]);
+  await view.click(keyboardAnchor.x, keyboardAnchor.y);
+  await view.press("Enter");
+  expect(
+    await evaluate(
+      view,
+      'document.activeElement?.matches("[data-drawing-coordinate]")'
+    ),
+    "canvas Enter did not focus coordinate input"
+  );
+  await typeField(view, coordinate, "@5,5");
+  await view.press("Tab");
+  expect(
+    await evaluate(
+      view,
+      'document.activeElement?.matches(".drawing-point-entry button")'
+    ),
+    "Tab did not reach Set point"
+  );
+  await view.press("Enter");
+  const keyboardLine = (await settle(initial.entities.length + 1)).entities.at(
+    -1
+  );
+  expect(
+    equalPoint(keyboardLine.end, [-55, -25]),
+    "keyboard Set point did not submit"
+  );
+  await undo(initial.entities.length);
+
+  // Typed values override active object snaps, preserve fractions and convert units.
+  for (const [a, b, start, end] of [
+    [
+      "0.123456789,0.987654321",
+      "@2.5,-0.5",
+      [0.123456789, 0.987654321],
+      [2.623456789, 0.487654321]
+    ],
+    ["1in,2cm", "@5mm<90", [25.4, 20], [25.4, 25]],
+    ["10<180", "@2.5cm<0", [-10, 0], [15, 0]],
+    ["1e1mm,-2e1mm", "40.01,30.01", [10, -20], [40.01, 30.01]]
+  ]) {
+    const line = await create(a, b);
+    expect(
+      equalPoint(line.start, start) && equalPoint(line.end, end),
+      "typed coordinate mismatch: " + JSON.stringify(line)
+    );
+    await undo(initial.entities.length);
+  }
+
+  // Rejected input must preserve a real redo stack as well as source/history.
+  await choose();
+  const beforeInvalid = (await getState(view)).drawing;
+  for (const text of ["@5,2", "12", "1ft,2", "1e999,2", "2,", "-10<30"]) {
+    await enter(text);
+    expect(
+      await evaluate(
+        view,
+        `document.querySelector(${JSON.stringify(coordinate)})?.getAttribute('aria-invalid') === 'true'`
+      ),
+      "missing input error for " + text
+    );
+    expect(
+      JSON.stringify((await getState(view)).drawing) ===
+        JSON.stringify(beforeInvalid),
+      "invalid coordinate altered source or history: " + text
+    );
+  }
+  await view.press("Escape");
+  expect(
+    !(await evaluate(
+      view,
+      'Boolean(document.querySelector("[data-drawing-preview]"))'
+    )),
+    "Escape retained a preview"
+  );
+
+  await snapProbe("endpoint", [40, 30]);
+  await snapProbe("endpoint", [10, -40]);
+  await snapProbe("midpoint", [20, 15]);
+  await snapProbe("midpoint", [25, -20]);
+  await snapProbe("center", [-30, 20]);
+  await snapProbe("quadrant", [-20, 20]);
+  await snapProbe("perpendicular", [12.8, 9.6], [20, 0]);
+  await snapProbe("tangent", [-25, 20 + Math.sqrt(75)], [-10, 20]);
+  await snapProbe("extension", [48, 36], [-60, -30], [3, 4]);
+
+  await create("-10,15", "30,15");
+  await snapProbe("intersection", [20, 15]);
+  await undo(initial.entities.length);
+  await create("-45,20", "-15,20");
+  await snapProbe("intersection", [-40, 20]);
+  await undo(initial.entities.length);
+  await create("-20,20", "-10,20", "circle");
+  await snapProbe("intersection", [-25, 20 + Math.sqrt(75)]);
+  await undo(initial.entities.length);
+
+  // Acquisition is measured in CSS pixels, even with viewBox letterboxing/zoom.
+  await onlySnap("endpoint");
+  for (const zoom of ["Zoom in drawing", "Zoom out drawing"]) {
+    await clickVisibleControl(view, `button[aria-label="${zoom}"]`);
+    await choose();
+    await enter("-60,-30");
+    await hover([40, 30], [4, 0]);
+    expect(
+      (await readSnap())?.kind === "endpoint",
+      "endpoint not acquired within pixel tolerance after " + zoom
+    );
+    await hover([40, 30], [24, 0]);
+    expect(
+      !(await readSnap()),
+      "endpoint acquired outside pixel tolerance after " + zoom
+    );
+  }
+  await onlySnap("tangent");
+  await choose();
+  await enter("-30,20");
+  await hover([-20, 20]);
+  expect(!(await readSnap()), "tangent acquired from inside its circle");
+  await choose();
+  await hover([-25, 20 + Math.sqrt(75)]);
+  expect(!(await readSnap()), "tangent acquired without a base point");
+
+  // Hover + Space acquires a tracking origin through the focused canvas.
+  await onlySnap("endpoint");
+  await checkbox("Object tracking", true);
+  await choose();
+  const anchorPosition = await hover([-60, -30], [0, 0]);
+  await view.click(anchorPosition.x, anchorPosition.y);
+  await hover([40, 30]);
+  await view.press("Space");
+  const trackedPosition = await hover([60, 30], [0, 3]);
+  const trackedPreview = await readSnap();
+  expect(
+    trackedPreview?.kind === "tracking" &&
+      equalPoint(trackedPreview.point, [60, 30], 1e-4),
+    "acquired point did not produce tracking guide"
+  );
+  await view.click(trackedPosition.x, trackedPosition.y);
+  const trackedLine = (await settle(initial.entities.length + 1)).entities.at(
+    -1
+  );
+  expect(
+    JSON.stringify(trackedLine.end) === JSON.stringify(trackedPreview.point),
+    "tracking preview/commit differ"
+  );
+  await undo(initial.entities.length);
+
+  // Tab chooses the alternate target without moving the pointer or changing it on click.
+  await onlySnap("endpoint");
+  await clickVisibleControl(view, settings + " > summary");
+  await checkbox("Snap extension", true);
+  await clickVisibleControl(view, settings + " > summary");
+  await choose();
+  const cycleAnchor = await hover([-60, -30], [0, 0]);
+  await view.click(cycleAnchor.x, cycleAnchor.y);
+  const cyclePosition = await hover([40, 30], [3, -2]);
+  const beforeCycle = await readSnap();
+  expect(
+    ["endpoint", "extension"].includes(beforeCycle?.kind),
+    "ambiguous target did not expose endpoint or extension"
+  );
+  await view.press("Tab");
+  const afterCycle = await readSnap();
+  expect(
+    ["endpoint", "extension"].includes(afterCycle?.kind) &&
+      afterCycle.kind !== beforeCycle.kind &&
+      JSON.stringify(afterCycle.point) !== JSON.stringify(beforeCycle.point),
+    "Tab did not select the other distinct target"
+  );
+  const cycleEnd = await evaluate(
+    view,
+    `(() => {
+    const shape = document.querySelector('[data-drawing-preview]');
+    return shape && [Number(shape.dataset.endX), Number(shape.dataset.endY)];
+  })()`
+  );
+  expect(
+    JSON.stringify(cycleEnd) === JSON.stringify(afterCycle.point),
+    "cycled target and geometry preview differ"
+  );
+  await view.click(cyclePosition.x, cyclePosition.y);
+  const cycledLine = (await settle(initial.entities.length + 1)).entities.at(
+    -1
+  );
+  expect(
+    JSON.stringify(cycledLine.end) === JSON.stringify(afterCycle.point),
+    "click did not commit the cycled target"
+  );
+  await undo(initial.entities.length);
+
+  await checkbox("Object snaps", false);
+  await choose();
+  await hover([40, 30], [2, 0]);
+  expect(!(await readSnap()), "object snaps off still displays a target");
+  const unsnappedTyped = await create("40.000123,30.000456", "@0.125,0.25");
+  expect(
+    equalPoint(unsnappedTyped.start, [40.000123, 30.000456]) &&
+      equalPoint(unsnappedTyped.end, [40.125123, 30.250456]),
+    "snaps-off typed coordinates lost precision"
+  );
+  await undo(initial.entities.length);
+  await checkbox("Object snaps", true);
+
+  // A rotated/translated working frame affects both absolute and relative input.
+  await clickVisibleControl(view, ".drawing-frame-settings > summary");
+  await selectCollectorOption(view, {
+    selector: 'select[aria-label="Drawing frame"]',
+    option: "custom"
+  });
+  await typeField(view, 'input[aria-label="Frame origin X"]', "10");
+  await typeField(view, 'input[aria-label="Frame origin Y"]', "20");
+  await typeField(view, 'input[aria-label="Frame angle"]', "90");
+  await clickVisibleControl(
+    view,
+    ".drawing-workspace button[data-drawing-frame-apply]"
+  );
+  const framed = await create("2,3", "@4,0");
+  expect(
+    equalPoint(framed.start, [7, 22]) && equalPoint(framed.end, [7, 26]),
+    "custom frame coordinates mismatch"
+  );
+  await undo(initial.entities.length);
+  await selectCollectorOption(view, {
+    selector: 'select[aria-label="Drawing frame"]',
+    option: "world"
+  });
+  await clickVisibleControl(view, "[data-drawing-frame-apply]");
+  await clickVisibleControl(view, ".drawing-frame-settings > summary");
+
+  // Unit-bearing scalar editing uses the same visible property fields.
+  await choose("select");
+  const originalCircle = initial.entities.find(
+    (entity) => entity.kind === "circle"
+  );
+  await clickVisibleControl(
+    view,
+    `[data-drawing-select="${originalCircle.id}"]`
+  );
+  await typeField(view, '[data-drawing-field="radius"]', "1in");
+  await clickVisibleControl(view, "[data-drawing-apply]");
+  const editedCircle = (
+    await settle(
+      initial.entities.length,
+      (drawing) =>
+        drawing.entities.find((entity) => entity.id === originalCircle.id)
+          ?.radius === 25.4
+    )
+  ).entities.find((entity) => entity.id === originalCircle.id);
+  expect(
+    editedCircle.radius === 25.4,
+    "unit-bearing radius edit did not convert inches to millimeters"
+  );
+  expect(
+    JSON.stringify(
+      (
+        await undo(
+          initial.entities.length,
+          (drawing) =>
+            JSON.stringify(drawing.entities) ===
+            JSON.stringify(initial.entities)
+        )
+      ).entities
+    ) === JSON.stringify(initial.entities),
+    "radius edit Undo did not restore original fixture"
+  );
+
+  // Keep an irrational tangent target and fractional anchor through real native I/O.
+  await onlySnap("tangent");
+  await choose();
+  const preciseAnchor = [-10.125, 20.125];
+  await enter(preciseAnchor.join(","));
+  const dx = preciseAnchor[0] + 30,
+    dy = preciseAnchor[1] - 20;
+  const distance = Math.hypot(dx, dy),
+    ratio = 10 / distance;
+  const tangentHeight = 10 * Math.sqrt((1 - ratio) * (1 + ratio));
+  const tangentTarget = [
+    -30 + (dx / distance) * 10 * ratio - (dy / distance) * tangentHeight,
+    20 + (dy / distance) * 10 * ratio + (dx / distance) * tangentHeight
+  ];
+  const precisePosition = await hover(tangentTarget);
+  const precisePreview = await readSnap();
+  expect(
+    precisePreview?.kind === "tangent" &&
+      equalPoint(precisePreview.point, tangentTarget),
+    "fractional-anchor tangent preview mismatch"
+  );
+  await writeUseScreenshot(view, "drawing-precision-tangent-preview");
+  await view.click(precisePosition.x, precisePosition.y);
+  const preciseDrawing = await settle(initial.entities.length + 1);
+  const preciseLine = preciseDrawing.entities.at(-1);
+  expect(
+    JSON.stringify(preciseLine.start) === JSON.stringify(preciseAnchor) &&
+      JSON.stringify(preciseLine.end) === JSON.stringify(precisePreview.point),
+    "precise line changed on commit"
+  );
+  const precisionFile = ".metrics/editable-interchange/precision.wcad";
+  await saveProjectFile(view, precisionFile);
+  await withDeadline(
+    view.navigate(await evaluate(view, "location.href")),
+    60_000,
+    "reload precision drawing"
+  );
+  await waitForHook(view);
+  await openProjectFile(view, precisionFile);
+  await clickVisibleControl(view, '[data-ribbon-roving-id="mode-drawing"]');
+  const reopenedPrecision = await settle(preciseDrawing.entities.length);
+  expect(
+    isDeepStrictEqual(reopenedPrecision, preciseDrawing),
+    "native reopen changed precise coordinates, identity, or history: " +
+      JSON.stringify({ before: preciseDrawing, after: reopenedPrecision })
+  );
+  const undonePrecision = await undo(initial.entities.length);
+  expect(
+    isDeepStrictEqual(undonePrecision.entities, initial.entities),
+    "native Undo changed original geometry"
+  );
+  await clickVisibleControl(view, 'button[aria-label="Redo"]');
+  expect(
+    isDeepStrictEqual(
+      await settle(preciseDrawing.entities.length),
+      preciseDrawing
+    ),
+    "native Redo did not restore exact precise drawing"
+  );
+
+  const waitUnits = async (units) => {
+    const deadline = performance.now() + 10_000;
+    let drawing;
+    do {
+      drawing = await settle(preciseDrawing.entities.length);
+      if (drawing.units === units) return drawing;
+      await delay(30);
+    } while (performance.now() < deadline);
+    throw new Error("Drawing precision units did not settle to " + units);
+  };
+  await selectCollectorOption(view, {
+    selector: 'select[aria-label="Drawing units"]',
+    option: "cm"
+  });
+  const centimeters = await waitUnits("cm");
+  for (const [index, entity] of centimeters.entities.entries()) {
+    const original = preciseDrawing.entities[index];
+    expect(entity.id === original.id, "unit conversion changed identity");
+    if (entity.kind === "circle")
+      expect(
+        equalPoint(
+          entity.center,
+          original.center.map((n) => n / 10)
+        ) && Math.abs(entity.radius - original.radius / 10) < 1e-10,
+        "circle physical size changed"
+      );
+    else
+      expect(
+        equalPoint(
+          entity.start,
+          original.start.map((n) => n / 10)
+        ) &&
+          equalPoint(
+            entity.end,
+            original.end.map((n) => n / 10)
+          ),
+        "line/rectangle physical size changed"
+      );
+  }
+  // Undo restores stored coordinates bit for bit, including the tangent ordinate.
+  await clickVisibleControl(view, 'button[aria-label="Undo"]');
+  expect(
+    isDeepStrictEqual(
+      (await waitUnits("mm")).entities,
+      preciseDrawing.entities
+    ),
+    "unit Undo changed precise coordinates"
+  );
+  await undo(initial.entities.length);
+
+  // Restore defaults and fixture source before the remainder of interchange.
+  await choose("select");
+  await clickVisibleControl(view, settings + " > summary");
+  for (const kind of kinds) await checkbox("Snap " + kind, true);
+  await checkbox("Object tracking", true);
+  await clickVisibleControl(view, settings + " > summary");
+  expect(
+    isDeepStrictEqual(
+      (await getState(view)).drawing.entities,
+      initial.entities
+    ),
+    "precision probes changed original drawing fixture"
+  );
+  console.log(
+    "Drawing precision: typed coordinates, frame, eight exact snaps, tracking, cycling, pixel tolerance, rejection/history, precise native round trip passed"
+  );
+}
+
 async function runUseSteps(view, name, steps, label) {
   let sawScreenshot = false;
   let sawBreak = false;
   const clicks = [];
   let rememberedDrawingIds;
   for (const step of steps) {
+    if (step.drawingPrecision) {
+      await exerciseDrawingPrecision(view);
+      clicks.push("Drawing precision controls");
+      continue;
+    }
     if (step.press) {
       await withDeadline(
         view.press(step.press),
