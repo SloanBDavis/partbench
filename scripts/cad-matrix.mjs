@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const input = resolve(root, "docs/cad-feature-matrix.json");
 const output = resolve(root, "docs/cad-feature-matrix.md");
+const readmePath = resolve(root, "README.md");
+const graphicPath = resolve(root, "docs/assets/cad-feature-matrix.svg");
 const matrix = JSON.parse(readFileSync(input, "utf8"));
 const args = process.argv.slice(2).filter((arg) => arg !== "--");
 if (
@@ -266,6 +268,127 @@ lines.push(
   ""
 );
 const generated = lines.join("\n");
+const notDoneCount = matrix.features.length - doneCount;
+const overview = [
+  "## Professional CAD feature map",
+  "",
+  `[![CAD feature map: ${matrix.features.length} features across ${matrix.categories.length} areas; ${doneCount} Done and ${notDoneCount} Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)`,
+  "",
+  `**${doneCount} Done · ${notDoneCount} Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.`,
+  "",
+  "[Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)"
+].join("\n");
+const checklist = [
+  "## Feature checklist",
+  "",
+  `All ${matrix.features.length} features are listed below, grouped into ${matrix.categories.length} areas. **Checked = Done; unchecked = Not done.** Follow a feature ID for its full completion criteria and evidence.`,
+  "",
+  "Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:matrix`. Use `pnpm cad:matrix --next` to choose the next contract."
+];
+for (const category of matrix.categories) {
+  const rows = matrix.features.filter((f) => f.category === category.id);
+  const done = rows.filter((f) => f.done).length;
+  checklist.push(
+    "",
+    "<details>",
+    `<summary>${category.title} — ${done} Done · ${rows.length - done} Not done</summary>`,
+    "",
+    ...rows.map(
+      (f) =>
+        `- [${f.done ? "x" : " "}] [${f.id}](docs/cad-feature-matrix.md#${f.id.toLowerCase()}) ${f.feature}`
+    ),
+    "",
+    "</details>"
+  );
+}
+let readme = readFileSync(readmePath, "utf8");
+for (const [name, content] of [
+  ["OVERVIEW", overview],
+  ["FEATURES", checklist.join("\n")]
+]) {
+  const start = `<!-- CAD_MATRIX_${name}:START -->`;
+  const end = `<!-- CAD_MATRIX_${name}:END -->`;
+  requireValue(
+    readme.split(start).length === 2 &&
+      readme.split(end).length === 2 &&
+      readme.indexOf(start) < readme.indexOf(end),
+    `README requires exactly one ordered ${name} marker pair`
+  );
+  readme =
+    readme.slice(0, readme.indexOf(start) + start.length) +
+    `\n\n${content}\n\n` +
+    readme.slice(readme.indexOf(end));
+}
+
+// A discrete map, not a progress bar: one square per binary feature contract.
+// Pure SVG keeps the README portable, accessible and independent of chart services.
+const xml = (value) =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+const rowHeight = 34;
+const gridY = 220;
+const maxColumns = Math.max(
+  ...matrix.categories.map(
+    (category) =>
+      matrix.features.filter((f) => f.category === category.id).length
+  )
+);
+const doneX = Math.max(1005, 438 + maxColumns * 21 + 63);
+const notDoneX = doneX + 103;
+const graphicWidth = notDoneX + 32;
+const graphicHeight = gridY + matrix.categories.length * rowHeight + 74;
+const graphic = [
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${graphicWidth}" height="${graphicHeight}" viewBox="0 0 ${graphicWidth} ${graphicHeight}" role="img" aria-labelledby="title description">`,
+  `  <title id="title">Partbench professional CAD feature map</title>`,
+  `  <desc id="description">${matrix.features.length} features across ${matrix.categories.length} areas: ${doneCount} Done and ${notDoneCount} Not done. One square per feature. Filled green squares with a check mean Done; outlined squares mean Not done. The README checklist provides every feature as text.</desc>`,
+  `  <rect width="${graphicWidth}" height="${graphicHeight}" rx="16" fill="#0c1423"/>`,
+  `  <g font-family="DejaVu Sans, Arial, sans-serif">`,
+  `    <text x="32" y="43" fill="#6ee7b7" font-size="13" letter-spacing="3">PARTBENCH / CAPABILITY MAP</text>`,
+  `    <text x="32" y="89" fill="#f1f5f9" font-size="32" font-weight="700">Professional CAD, one feature at a time.</text>`,
+  `    <text x="32" y="123" fill="#a6b5cc" font-size="16">${matrix.features.length} feature contracts · ${matrix.categories.length} areas · Updated ${xml(matrix.updated)}</text>`,
+  `    <rect x="32" y="148" width="16" height="16" rx="3" fill="#6ee7b7"/>`,
+  `    <path d="M35 156 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/>`,
+  `    <text x="60" y="162" fill="#f1f5f9" font-size="15">${doneCount} Done</text>`,
+  `    <rect x="192" y="148" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/>`,
+  `    <text x="220" y="162" fill="#f1f5f9" font-size="15">${notDoneCount} Not done</text>`,
+  `    <text x="32" y="203" fill="#a6b5cc" font-size="12" letter-spacing="1">FEATURE AREA</text>`,
+  `    <text x="438" y="203" fill="#a6b5cc" font-size="12" letter-spacing="1">ONE SQUARE = ONE FEATURE</text>`,
+  `    <text x="${doneX}" y="203" fill="#6ee7b7" font-size="12" text-anchor="end">DONE</text>`,
+  `    <text x="${notDoneX}" y="203" fill="#a6b5cc" font-size="12" text-anchor="end">NOT DONE</text>`
+];
+matrix.categories.forEach((category, index) => {
+  const y = gridY + index * rowHeight;
+  const rows = matrix.features.filter((f) => f.category === category.id);
+  const done = rows.filter((f) => f.done).length;
+  graphic.push(
+    `    <rect x="20" y="${y - 3}" width="${graphicWidth - 40}" height="${rowHeight}" rx="4" fill="${index % 2 === 0 ? "#111e30" : "#0c1423"}"/>`,
+    `    <text x="32" y="${y + 18}" fill="#e2e8f0" font-size="14">${xml(category.title)}</text>`
+  );
+  rows.forEach((f, featureIndex) => {
+    const x = 438 + featureIndex * 21;
+    graphic.push(
+      `    <g><title>${xml(`${f.id}: ${f.feature} — ${status(f)}`)}</title><rect x="${x}" y="${y + 4}" width="16" height="16" rx="3" fill="${f.done ? "#6ee7b7" : "#172438"}" stroke="${f.done ? "#6ee7b7" : "#73849d"}"/>${f.done ? `<path d="M${x + 3} ${y + 12} l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/>` : ""}</g>`
+    );
+  });
+  graphic.push(
+    `    <text x="${doneX}" y="${y + 18}" fill="#6ee7b7" font-size="14" text-anchor="end">${done}</text>`,
+    `    <text x="${notDoneX}" y="${y + 18}" fill="#cbd5e1" font-size="14" text-anchor="end">${rows.length - done}</text>`
+  );
+});
+graphic.push(
+  `    <text x="32" y="${graphicHeight - 35}" fill="#a6b5cc" font-size="14">Done requires the complete workflow and passing E2E evidence. No partial credit.</text>`,
+  "  </g>",
+  "</svg>",
+  ""
+);
+const artifacts = new Map([
+  [output, generated],
+  [readmePath, readme],
+  [graphicPath, graphic.join("\n")]
+]);
 if (args.includes("--next")) {
   const queued = new Set();
   const order = [];
@@ -291,16 +414,17 @@ if (args.includes("--next")) {
     );
   }
 } else if (args.includes("--check")) {
-  requireValue(
-    existsSync(output) && readFileSync(output, "utf8") === generated,
-    "Generated matrix is stale. Run pnpm cad:matrix."
-  );
+  for (const [path, content] of artifacts)
+    requireValue(
+      existsSync(path) && readFileSync(path, "utf8") === content,
+      `Generated ${relative(root, path)} is stale. Run pnpm cad:matrix.`
+    );
   console.log(
     `CAD matrix valid: ${matrix.features.length} contracts; ${doneCount} Done; ${matrix.features.length - doneCount} Not done.`
   );
 } else {
-  writeFileSync(output, generated);
+  for (const [path, content] of artifacts) writeFileSync(path, content);
   console.log(
-    `Wrote docs/cad-feature-matrix.md: ${matrix.features.length} contracts; ${doneCount} Done; ${matrix.features.length - doneCount} Not done.`
+    `Wrote matrix, README checklist and graphic: ${matrix.features.length} contracts; ${doneCount} Done; ${matrix.features.length - doneCount} Not done.`
   );
 }

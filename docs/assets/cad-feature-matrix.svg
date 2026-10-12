@@ -1,0 +1,467 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="1212" viewBox="0 0 1140 1212" role="img" aria-labelledby="title description">
+  <title id="title">Partbench professional CAD feature map</title>
+  <desc id="description">339 features across 27 areas: 19 Done and 320 Not done. One square per feature. Filled green squares with a check mean Done; outlined squares mean Not done. The README checklist provides every feature as text.</desc>
+  <rect width="1140" height="1212" rx="16" fill="#0c1423"/>
+  <g font-family="DejaVu Sans, Arial, sans-serif">
+    <text x="32" y="43" fill="#6ee7b7" font-size="13" letter-spacing="3">PARTBENCH / CAPABILITY MAP</text>
+    <text x="32" y="89" fill="#f1f5f9" font-size="32" font-weight="700">Professional CAD, one feature at a time.</text>
+    <text x="32" y="123" fill="#a6b5cc" font-size="16">339 feature contracts · 27 areas · Updated 2026-10-12</text>
+    <rect x="32" y="148" width="16" height="16" rx="3" fill="#6ee7b7"/>
+    <path d="M35 156 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/>
+    <text x="60" y="162" fill="#f1f5f9" font-size="15">19 Done</text>
+    <rect x="192" y="148" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/>
+    <text x="220" y="162" fill="#f1f5f9" font-size="15">320 Not done</text>
+    <text x="32" y="203" fill="#a6b5cc" font-size="12" letter-spacing="1">FEATURE AREA</text>
+    <text x="438" y="203" fill="#a6b5cc" font-size="12" letter-spacing="1">ONE SQUARE = ONE FEATURE</text>
+    <text x="1005" y="203" fill="#6ee7b7" font-size="12" text-anchor="end">DONE</text>
+    <text x="1108" y="203" fill="#a6b5cc" font-size="12" text-anchor="end">NOT DONE</text>
+    <rect x="20" y="217" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="238" fill="#e2e8f0" font-size="14">Performance and large documents</text>
+    <g><title>PERF-001: Cold usable assembly view — Not done</title><rect x="438" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-002: Cold exact selection readiness — Not done</title><rect x="459" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-003: Progressive assembly import — Not done</title><rect x="480" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-004: Cached native reopen latency — Not done</title><rect x="501" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-005: Interactive edit latency — Not done</title><rect x="522" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-006: Hardware viewport frame budget — Not done</title><rect x="543" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-007: Large drawing interaction — Not done</title><rect x="564" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-008: Memory-bounded long sessions — Not done</title><rect x="585" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-009: Interruptible STEP preparation — Done</title><rect x="606" y="224" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M609 232 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>PERF-010: Incremental geometry rebuild — Not done</title><rect x="627" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-011: Out-of-core assemblies — Not done</title><rect x="648" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PERF-012: Repeatable performance corpus — Not done</title><rect x="669" y="224" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="238" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="238" fill="#cbd5e1" font-size="14" text-anchor="end">11</text>
+    <rect x="20" y="251" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="272" fill="#e2e8f0" font-size="14">Document integrity and persistence</text>
+    <g><title>DOC-001: Native editable save and reopen — Done</title><rect x="438" y="258" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 266 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>DOC-002: Transaction Undo and Redo — Done</title><rect x="459" y="258" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M462 266 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>DOC-003: Atomic rejected commands — Done</title><rect x="480" y="258" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M483 266 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>DOC-004: Project units and precision — Not done</title><rect x="501" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-005: Project templates — Not done</title><rect x="522" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-006: Crash recovery — Not done</title><rect x="543" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-007: Autosave and restore points — Not done</title><rect x="564" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-008: Corrupt and unsupported file handling — Not done</title><rect x="585" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-009: Native schema migration — Not done</title><rect x="606" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-010: Multiple open documents — Not done</title><rect x="627" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-011: Document audit and repair — Not done</title><rect x="648" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-012: Project properties and metadata — Not done</title><rect x="669" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-013: Pack and transfer project dependencies — Not done</title><rect x="690" y="258" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DOC-014: Deterministic geometry persistence — Done</title><rect x="711" y="258" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M714 266 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <text x="1005" y="272" fill="#6ee7b7" font-size="14" text-anchor="end">4</text>
+    <text x="1108" y="272" fill="#cbd5e1" font-size="14" text-anchor="end">10</text>
+    <rect x="20" y="285" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="306" fill="#e2e8f0" font-size="14">Workspace, input and selection</text>
+    <g><title>UX-001: Fit, standard views and orbit — Done</title><rect x="438" y="292" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 300 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>UX-002: Occurrence selection — Done</title><rect x="459" y="292" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M462 300 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>UX-003: Entity and subentity selection — Not done</title><rect x="480" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-004: Window and crossing selection — Not done</title><rect x="501" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-005: Command line and aliases — Not done</title><rect x="522" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-006: Precise coordinate input — Not done</title><rect x="543" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-007: Object snaps and tracking — Not done</title><rect x="564" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-008: Grid, ortho and polar modes — Not done</title><rect x="585" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-009: Named coordinate systems — Not done</title><rect x="606" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-010: Direct manipulation grips — Not done</title><rect x="627" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-011: Search and keyboard customization — Not done</title><rect x="648" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-012: Keyboard and assistive access — Not done</title><rect x="669" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-013: Touch, pen and 3D mouse input — Not done</title><rect x="690" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-014: Multi-viewport workspaces — Not done</title><rect x="711" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>UX-015: Model browser organization — Not done</title><rect x="732" y="292" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="306" fill="#6ee7b7" font-size="14" text-anchor="end">2</text>
+    <text x="1108" y="306" fill="#cbd5e1" font-size="14" text-anchor="end">13</text>
+    <rect x="20" y="319" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="340" fill="#e2e8f0" font-size="14">2D drawing geometry and editing</text>
+    <g><title>DRAW-001: Independent drafting document — Not done</title><rect x="438" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-002: Lines, rays and construction lines — Not done</title><rect x="459" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-003: Polylines and joined paths — Not done</title><rect x="480" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-004: Circles and arcs — Not done</title><rect x="501" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-005: Ellipses and elliptical arcs — Not done</title><rect x="522" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-006: Splines and fit curves — Not done</title><rect x="543" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-007: Rectangles and regular polygons — Not done</title><rect x="564" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-008: Move, copy, rotate and scale — Not done</title><rect x="585" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-009: Mirror and align — Not done</title><rect x="606" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-010: Trim and extend — Not done</title><rect x="627" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-011: Offset curves — Not done</title><rect x="648" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-012: Fillet and chamfer curves — Not done</title><rect x="669" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-013: Break, split, stretch and lengthen — Not done</title><rect x="690" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-014: Rectangular, polar and path arrays — Not done</title><rect x="711" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-015: Regions and 2D booleans — Not done</title><rect x="732" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-016: Boundary extraction and cleanup — Not done</title><rect x="753" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-017: Divide and measure along paths — Not done</title><rect x="774" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-018: Image and PDF tracing — Not done</title><rect x="795" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="340" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="340" fill="#cbd5e1" font-size="14" text-anchor="end">18</text>
+    <rect x="20" y="353" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="374" fill="#e2e8f0" font-size="14">Layers, styles, blocks and references</text>
+    <g><title>ORG-001: Layer properties — Not done</title><rect x="438" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-002: Layer filters and states — Not done</title><rect x="459" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-003: Linetype and lineweight display — Not done</title><rect x="480" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-004: Reusable blocks — Not done</title><rect x="501" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-005: Block attributes and fields — Not done</title><rect x="522" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-006: Dynamic blocks — Not done</title><rect x="543" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-007: External drawing references — Not done</title><rect x="564" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-008: Reference clipping and binding — Not done</title><rect x="585" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-009: Raster, PDF and DGN underlays — Not done</title><rect x="606" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-010: Groups and selection sets — Not done</title><rect x="627" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-011: Drawing standards validation — Not done</title><rect x="648" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ORG-012: Property matching and purge — Not done</title><rect x="669" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="374" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="374" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="387" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="408" fill="#e2e8f0" font-size="14">Annotation, dimensions and tolerancing</text>
+    <g><title>ANN-001: Single-line and rich text — Not done</title><rect x="438" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-002: Associative linear dimensions — Not done</title><rect x="459" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-003: Angular, radius and diameter dimensions — Not done</title><rect x="480" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-004: Ordinate, baseline and chain dimensions — Not done</title><rect x="501" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-005: Dimension styles and annotation scale — Not done</title><rect x="522" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-006: Tolerances, limits and fits — Not done</title><rect x="543" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-007: GD&amp;T feature control frames — Not done</title><rect x="564" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-008: Leaders and multileaders — Not done</title><rect x="585" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-009: Hatches, fills and gradients — Not done</title><rect x="606" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-010: Tables and linked data — Not done</title><rect x="627" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-011: Center marks and centerlines — Not done</title><rect x="648" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-012: Surface finish and weld symbols — Not done</title><rect x="669" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-013: Revision clouds and revision tables — Not done</title><rect x="690" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ANN-014: Fields and automatic labels — Not done</title><rect x="711" y="394" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="408" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="408" fill="#cbd5e1" font-size="14" text-anchor="end">14</text>
+    <rect x="20" y="421" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="442" fill="#e2e8f0" font-size="14">Sheets, drawings and deliverables</text>
+    <g><title>SHEET-001: Paper space and sheet layouts — Not done</title><rect x="438" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-002: Scaled and clipped viewports — Not done</title><rect x="459" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-003: Title blocks and sheet sets — Not done</title><rect x="480" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-004: Associative orthographic views — Not done</title><rect x="501" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-005: Section and broken-out views — Not done</title><rect x="522" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-006: Detail, auxiliary and broken views — Not done</title><rect x="543" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-007: Model-linked drawing dimensions — Not done</title><rect x="564" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-008: Hole tables and callouts — Not done</title><rect x="585" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-009: Assembly balloons and drawing BOM — Not done</title><rect x="606" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-010: Scale-correct PDF and printing — Not done</title><rect x="627" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-011: Batch publishing and plot presets — Not done</title><rect x="648" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SHEET-012: Drawing revision comparison — Not done</title><rect x="669" y="428" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="442" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="442" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="455" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="476" fill="#e2e8f0" font-size="14">Parametric sketches and constraints</text>
+    <g><title>SK-001: Plane and face-attached sketches — Not done</title><rect x="438" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-002: Basic sketch primitives — Not done</title><rect x="459" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-003: Advanced sketch curves — Not done</title><rect x="480" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-004: Geometric constraints — Not done</title><rect x="501" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-005: Driving and reference dimensions — Not done</title><rect x="522" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-006: Degrees of freedom and diagnostics — Not done</title><rect x="543" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-007: Construction geometry — Not done</title><rect x="564" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-008: Projected and intersection geometry — Not done</title><rect x="585" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-009: Sketch trim, extend and offset — Not done</title><rect x="606" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-010: Sketch patterns and mirror — Not done</title><rect x="627" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-011: Nested regions and multiple profiles — Not done</title><rect x="648" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-012: 3D sketches — Not done</title><rect x="669" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-013: Sketch blocks and reusable profiles — Not done</title><rect x="690" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SK-014: Formula-driven sketches — Not done</title><rect x="711" y="462" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="476" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="476" fill="#cbd5e1" font-size="14" text-anchor="end">14</text>
+    <rect x="20" y="489" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="510" fill="#e2e8f0" font-size="14">Solid modeling and feature history</text>
+    <g><title>SOL-001: Primitive solid authoring — Not done</title><rect x="438" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-002: Extrude, add and cut — Not done</title><rect x="459" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-003: Revolve and revolved cuts — Not done</title><rect x="480" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-004: Sweeps — Not done</title><rect x="501" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-005: Lofts — Not done</title><rect x="522" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-006: Boolean union, cut and intersect — Not done</title><rect x="543" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-007: Standard holes — Not done</title><rect x="564" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-008: Fillets — Not done</title><rect x="585" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-009: Chamfers — Not done</title><rect x="606" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-010: Shell and thicken — Not done</title><rect x="627" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-011: Draft — Not done</title><rect x="648" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-012: Ribs, webs and thin features — Not done</title><rect x="669" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-013: Linear, circular and path feature patterns — Not done</title><rect x="690" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-014: Feature and body mirror — Not done</title><rect x="711" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-015: Split, trim and combine bodies — Not done</title><rect x="732" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-016: Datum planes, axes and points — Not done</title><rect x="753" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-017: Helices, threads and coils — Not done</title><rect x="774" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-018: Emboss, wrap and engraving — Not done</title><rect x="795" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-019: Feature history editing — Not done</title><rect x="816" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-020: Parametric spur gears — Done</title><rect x="837" y="496" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M840 504 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>SOL-021: Configurations and design tables — Not done</title><rect x="858" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-022: Equation and parameter management — Not done</title><rect x="879" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-023: Imported feature recognition — Not done</title><rect x="900" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SOL-024: Topology reference repair — Not done</title><rect x="921" y="496" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="510" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="510" fill="#cbd5e1" font-size="14" text-anchor="end">23</text>
+    <rect x="20" y="523" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="544" fill="#e2e8f0" font-size="14">Direct editing and geometry repair</text>
+    <g><title>DIR-001: Independent occurrence editing — Done</title><rect x="438" y="530" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 538 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>DIR-002: Supported imported face offsets — Not done</title><rect x="459" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-003: General move and rotate face — Not done</title><rect x="480" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-004: Delete and heal faces — Not done</title><rect x="501" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-005: Replace and match faces — Not done</title><rect x="522" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-006: Sew, stitch and solidify — Not done</title><rect x="543" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-007: Geometry diagnostics and healing — Not done</title><rect x="564" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-008: Defeaturing and simplification — Not done</title><rect x="585" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-009: Associative foreign-model update — Not done</title><rect x="606" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DIR-010: Body transforms and scaling — Not done</title><rect x="627" y="530" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="544" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="544" fill="#cbd5e1" font-size="14" text-anchor="end">9</text>
+    <rect x="20" y="557" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="578" fill="#e2e8f0" font-size="14">Surface and freeform modeling</text>
+    <g><title>SURF-001: Surface primitives and construction — Not done</title><rect x="438" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-002: NURBS control editing — Not done</title><rect x="459" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-003: Boundary and network surfaces — Not done</title><rect x="480" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-004: Surface trim, untrim and extend — Not done</title><rect x="501" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-005: Surface blends and matching — Not done</title><rect x="522" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-006: Surface offset and thickening — Not done</title><rect x="543" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-007: Patch and fill holes — Not done</title><rect x="564" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-008: Curvature and zebra analysis — Not done</title><rect x="585" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-009: Subdivision sculpting — Not done</title><rect x="606" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-010: Developable surfaces and flattening — Not done</title><rect x="627" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-011: Class-A surface workflow — Not done</title><rect x="648" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SURF-012: Lattices and implicit geometry — Not done</title><rect x="669" y="564" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="578" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="578" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="591" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="612" fill="#e2e8f0" font-size="14">Meshes, scans and reverse engineering</text>
+    <g><title>MESH-001: Mesh import and export — Not done</title><rect x="438" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-002: Mesh repair — Not done</title><rect x="459" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-003: Mesh booleans and editing — Not done</title><rect x="480" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-004: Remeshing and decimation — Not done</title><rect x="501" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-005: Point-cloud workflows — Not done</title><rect x="522" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-006: Scan-to-CAD reconstruction — Not done</title><rect x="543" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-007: Mesh-to-BRep and hybrid models — Not done</title><rect x="564" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>MESH-008: Deviation inspection — Not done</title><rect x="585" y="598" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="612" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="612" fill="#cbd5e1" font-size="14" text-anchor="end">8</text>
+    <rect x="20" y="625" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="646" fill="#e2e8f0" font-size="14">Assembly modeling and mechanisms</text>
+    <g><title>ASM-001: Nested instances and shared definitions — Done</title><rect x="438" y="632" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 640 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>ASM-003: Distance mates — Done</title><rect x="459" y="632" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M462 640 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>ASM-004: Concentric mates — Done</title><rect x="480" y="632" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M483 640 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>ASM-005: Fixed and coincident constraints — Not done</title><rect x="501" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-006: Revolute joints and connected motion — Done</title><rect x="522" y="632" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M525 640 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>ASM-007: Slider, cylindrical and planar joints — Not done</title><rect x="543" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-008: Ball, pin-slot and universal joints — Not done</title><rect x="564" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-009: Gear, belt, rack and screw relations — Not done</title><rect x="585" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-010: Joint limits and contact — Not done</title><rect x="606" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-011: Assembly interference and clearance — Not done</title><rect x="627" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-012: Exploded views and assembly instructions — Not done</title><rect x="648" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-013: Bill of materials — Not done</title><rect x="669" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-014: In-context and top-down design — Not done</title><rect x="690" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-015: Component patterns and mirrors — Not done</title><rect x="711" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-016: Flexible subassemblies and arrangements — Not done</title><rect x="732" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-017: Standard hardware library — Not done</title><rect x="753" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-018: Assembly simplification and lightweight modes — Not done</title><rect x="774" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-019: Assembly constraint diagnostics — Not done</title><rect x="795" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ASM-020: Mechanical motion analysis — Not done</title><rect x="816" y="632" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="646" fill="#6ee7b7" font-size="14" text-anchor="end">4</text>
+    <text x="1108" y="646" fill="#cbd5e1" font-size="14" text-anchor="end">15</text>
+    <rect x="20" y="659" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="680" fill="#e2e8f0" font-size="14">Sheet metal</text>
+    <g><title>SM-001: Sheet-metal rules and base features — Not done</title><rect x="438" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-002: Flanges, bends and jogs — Not done</title><rect x="459" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-003: Hems, seams and corner relief — Not done</title><rect x="480" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-004: Unfold, refold and flat patterns — Not done</title><rect x="501" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-005: Lofted sheet transitions — Not done</title><rect x="522" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-006: Forming tools and punches — Not done</title><rect x="543" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-007: Sheet conversion — Not done</title><rect x="564" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>SM-008: Flat-pattern deliverables — Not done</title><rect x="585" y="666" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="680" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="680" fill="#cbd5e1" font-size="14" text-anchor="end">8</text>
+    <rect x="20" y="693" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="714" fill="#e2e8f0" font-size="14">Frames, weldments, plastics and tooling</text>
+    <g><title>FAB-001: Structural frames and weldments — Not done</title><rect x="438" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-002: Cut lists and stock lengths — Not done</title><rect x="459" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-003: Weld features and preparation — Not done</title><rect x="480" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-004: Plastic design features — Not done</title><rect x="501" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-005: Mold parting and tooling splits — Not done</title><rect x="522" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-006: Mold bases and tooling components — Not done</title><rect x="543" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-007: Shrinkage and manufacturing compensation — Not done</title><rect x="564" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-008: Electrode and tooling design — Not done</title><rect x="585" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-009: Composite layups — Not done</title><rect x="606" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>FAB-010: Fabrication costing — Not done</title><rect x="627" y="700" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="714" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="714" fill="#cbd5e1" font-size="14" text-anchor="end">10</text>
+    <rect x="20" y="727" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="748" fill="#e2e8f0" font-size="14">Routing, plant and electrical design</text>
+    <g><title>ROUTE-001: Pipe and tube routing — Not done</title><rect x="438" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-002: Cable and harness routing — Not done</title><rect x="459" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-003: Harness flattening — Not done</title><rect x="480" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-004: P&amp;ID authoring — Not done</title><rect x="501" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-005: Plant equipment and isometrics — Not done</title><rect x="522" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-006: Electrical schematics — Not done</title><rect x="543" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-007: Control panels and cable schedules — Not done</title><rect x="564" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-008: ECAD-MCAD exchange — Not done</title><rect x="585" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-009: PCB layout and manufacturing output — Not done</title><rect x="606" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>ROUTE-010: PCB schematic and circuit simulation — Not done</title><rect x="627" y="734" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="748" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="748" fill="#cbd5e1" font-size="14" text-anchor="end">10</text>
+    <rect x="20" y="761" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="782" fill="#e2e8f0" font-size="14">Measurement, validation and MBD</text>
+    <g><title>INS-001: Exact volume inspection through MCP — Done</title><rect x="438" y="768" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 776 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>INS-002: Interactive exact measurement — Not done</title><rect x="459" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-003: Center of mass and inertia — Not done</title><rect x="480" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-004: Section planes and clipping — Not done</title><rect x="501" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-005: Thickness and draft analysis — Not done</title><rect x="522" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-006: Geometry validity and topology checks — Not done</title><rect x="543" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-007: 3D PMI and model-based definition — Not done</title><rect x="564" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-008: Tolerance stack analysis — Not done</title><rect x="585" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-009: Design-rule checks — Not done</title><rect x="606" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>INS-010: Model revision comparison — Not done</title><rect x="627" y="768" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="782" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="782" fill="#cbd5e1" font-size="14" text-anchor="end">9</text>
+    <rect x="20" y="795" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="816" fill="#e2e8f0" font-size="14">File exchange and interoperability</text>
+    <g><title>IO-001: Editable solid STEP assemblies — Not done</title><rect x="438" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-002: STEP names, colors and units — Not done</title><rect x="459" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-003: STEP surfaces, curves and PMI — Not done</title><rect x="480" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-004: Full 2D DXF drawings — Not done</title><rect x="501" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-005: DWG drawings — Not done</title><rect x="522" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-006: Analytic DXF sketch exchange — Not done</title><rect x="543" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-007: SVG sketch exchange — Not done</title><rect x="564" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-008: IGES surfaces and curves — Not done</title><rect x="585" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-009: Parasolid exchange — Not done</title><rect x="606" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-010: ACIS/SAT exchange — Not done</title><rect x="627" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-011: Foreign native mechanical files — Not done</title><rect x="648" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-012: DGN and legacy drawing exchange — Not done</title><rect x="669" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-013: IFC and BIM exchange — Not done</title><rect x="690" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-014: PDF vector import — Not done</title><rect x="711" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-015: Visualization and web formats — Not done</title><rect x="732" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-016: Batch conversion and loss reports — Not done</title><rect x="753" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-017: External-reference update fidelity — Not done</title><rect x="774" y="802" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>IO-018: Invalid STEP rejection — Done</title><rect x="795" y="802" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M798 810 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <text x="1005" y="816" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="816" fill="#cbd5e1" font-size="14" text-anchor="end">17</text>
+    <rect x="20" y="829" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="850" fill="#e2e8f0" font-size="14">Visualization and presentation</text>
+    <g><title>VIS-001: Shared definition rendering — Done</title><rect x="438" y="836" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 844 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>VIS-002: Display styles — Not done</title><rect x="459" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-003: Materials and textures — Not done</title><rect x="480" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-004: Lighting and environments — Not done</title><rect x="501" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-005: Photorealistic rendering — Not done</title><rect x="522" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-006: Camera and animation paths — Not done</title><rect x="543" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-007: Presentation and exploded animations — Not done</title><rect x="564" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-008: AR and VR review — Not done</title><rect x="585" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>VIS-009: Accessible and large-model display — Not done</title><rect x="606" y="836" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="850" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="850" fill="#cbd5e1" font-size="14" text-anchor="end">8</text>
+    <rect x="20" y="863" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="884" fill="#e2e8f0" font-size="14">Automation, APIs and AI assistance</text>
+    <g><title>AUTO-001: Public MCP author/revise workflow — Done</title><rect x="438" y="870" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 878 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>AUTO-002: Public dry run and atomic commit — Done</title><rect x="459" y="870" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M462 878 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>AUTO-003: Operation schema discovery — Done</title><rect x="480" y="870" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M483 878 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
+    <g><title>AUTO-004: Agent geometry targeting — Not done</title><rect x="501" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-005: Application scripting API — Not done</title><rect x="522" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-006: Macros and command recording — Not done</title><rect x="543" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-007: Custom feature extensions — Not done</title><rect x="564" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-008: Visual programming — Not done</title><rect x="585" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-009: AI task execution and review — Not done</title><rect x="606" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-010: AI drawing cleanup and standards checking — Not done</title><rect x="627" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-011: Batch and headless processing — Not done</title><rect x="648" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-012: Plugin SDK and compatibility — Not done</title><rect x="669" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-013: Legacy automation compatibility — Not done</title><rect x="690" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AUTO-014: Agent audit and approval enforcement — Not done</title><rect x="711" y="870" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="884" fill="#6ee7b7" font-size="14" text-anchor="end">3</text>
+    <text x="1108" y="884" fill="#cbd5e1" font-size="14" text-anchor="end">11</text>
+    <rect x="20" y="897" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="918" fill="#e2e8f0" font-size="14">Collaboration, PDM and release management</text>
+    <g><title>COL-001: Shared projects and permissions — Not done</title><rect x="438" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-002: Version history and comparison — Not done</title><rect x="459" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-003: Branch and merge design changes — Not done</title><rect x="480" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-004: Concurrent editing — Not done</title><rect x="501" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-005: Comments, markup and review — Not done</title><rect x="522" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-006: External review links — Not done</title><rect x="543" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-007: Checkout and reservations — Not done</title><rect x="564" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-008: Release and approval workflows — Not done</title><rect x="585" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-009: Part numbering and lifecycle — Not done</title><rect x="606" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-010: BOM, ERP and PLM integration — Not done</title><rect x="627" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-011: Search and reuse across projects — Not done</title><rect x="648" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>COL-012: Enterprise identity and audit — Not done</title><rect x="669" y="904" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="918" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="918" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="931" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="952" fill="#e2e8f0" font-size="14">CAM and subtractive manufacturing</text>
+    <g><title>CAM-001: Manufacturing setups — Not done</title><rect x="438" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-002: 2D and 2.5D toolpaths — Not done</title><rect x="459" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-003: 3-axis roughing and finishing — Not done</title><rect x="480" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-004: Indexed multi-axis machining — Not done</title><rect x="501" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-005: Simultaneous multi-axis machining — Not done</title><rect x="522" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-006: Turning and mill-turn — Not done</title><rect x="543" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-007: Tool libraries and cutting data — Not done</title><rect x="564" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-008: Stock and machine simulation — Not done</title><rect x="585" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-009: Postprocessors and NC output — Not done</title><rect x="606" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-010: Nesting and sheet cutting — Not done</title><rect x="627" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-011: Probing and inspection programs — Not done</title><rect x="648" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAM-012: Associative CAM updates — Not done</title><rect x="669" y="938" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="952" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="952" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="965" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="986" fill="#e2e8f0" font-size="14">Additive manufacturing</text>
+    <g><title>AM-001: Print preparation — Not done</title><rect x="438" y="972" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AM-002: Supports and slicing — Not done</title><rect x="459" y="972" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AM-003: Material and machine profiles — Not done</title><rect x="480" y="972" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AM-004: Metal additive preparation — Not done</title><rect x="501" y="972" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AM-005: Lattice and lightweight design — Not done</title><rect x="522" y="972" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>AM-006: Additive process compensation — Not done</title><rect x="543" y="972" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="986" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="986" fill="#cbd5e1" font-size="14" text-anchor="end">6</text>
+    <rect x="20" y="999" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="1020" fill="#e2e8f0" font-size="14">Simulation, optimization and engineering analysis</text>
+    <g><title>CAE-001: Materials and simulation meshing — Not done</title><rect x="438" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-002: Linear static stress — Not done</title><rect x="459" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-003: Modal and buckling analysis — Not done</title><rect x="480" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-004: Thermal analysis — Not done</title><rect x="501" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-005: Nonlinear and contact analysis — Not done</title><rect x="522" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-006: Dynamics and fatigue — Not done</title><rect x="543" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-007: Fluid and electronics cooling — Not done</title><rect x="564" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-008: Rigid-body dynamics — Not done</title><rect x="585" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-009: Topology optimization — Not done</title><rect x="606" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-010: Generative design studies — Not done</title><rect x="627" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-011: Design-of-experiments studies — Not done</title><rect x="648" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CAE-012: Analysis reports and revision validity — Not done</title><rect x="669" y="1006" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="1020" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="1020" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="1033" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="1054" fill="#e2e8f0" font-size="14">Architecture, BIM and building systems</text>
+    <g><title>BIM-001: Levels, grids and building coordinates — Not done</title><rect x="438" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-002: Architectural building elements — Not done</title><rect x="459" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-003: Parametric building families — Not done</title><rect x="480" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-004: Rooms, areas and spaces — Not done</title><rect x="501" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-005: Stairs, railings and circulation — Not done</title><rect x="522" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-006: Building documentation and schedules — Not done</title><rect x="543" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-007: Structural building systems — Not done</title><rect x="564" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-008: MEP systems — Not done</title><rect x="585" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-009: Design options and phases — Not done</title><rect x="606" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-010: BIM coordination and clashes — Not done</title><rect x="627" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-011: Energy, daylight and carbon studies — Not done</title><rect x="648" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>BIM-012: Open BIM deliverables — Not done</title><rect x="669" y="1040" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="1054" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="1054" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <rect x="20" y="1067" width="1100" height="34" rx="4" fill="#0c1423"/>
+    <text x="32" y="1088" fill="#e2e8f0" font-size="14">Civil, survey and geospatial CAD</text>
+    <g><title>CIV-001: Survey points and coordinate systems — Not done</title><rect x="438" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-002: Terrain surfaces and contours — Not done</title><rect x="459" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-003: Alignments and profiles — Not done</title><rect x="480" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-004: Corridors and road sections — Not done</title><rect x="501" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-005: Grading and earthworks — Not done</title><rect x="522" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-006: Parcels and legal descriptions — Not done</title><rect x="543" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-007: Pipe and drainage networks — Not done</title><rect x="564" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-008: Maps and GIS exchange — Not done</title><rect x="585" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-009: Civil plan production — Not done</title><rect x="606" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>CIV-010: Reality capture and site coordination — Not done</title><rect x="627" y="1074" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="1088" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="1088" fill="#cbd5e1" font-size="14" text-anchor="end">10</text>
+    <rect x="20" y="1101" width="1100" height="34" rx="4" fill="#111e30"/>
+    <text x="32" y="1122" fill="#e2e8f0" font-size="14">Platform, reliability and administration</text>
+    <g><title>PLAT-001: Browser support matrix — Not done</title><rect x="438" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-002: Offline operation — Not done</title><rect x="459" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-003: Install and update lifecycle — Not done</title><rect x="480" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-004: Localization and Unicode — Not done</title><rect x="501" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-005: Security boundaries and hostile files — Not done</title><rect x="522" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-006: Large-file resource controls — Not done</title><rect x="543" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-007: Backup and disaster recovery — Not done</title><rect x="564" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-008: Diagnostics and support bundles — Not done</title><rect x="585" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-009: Preferences and user profiles — Not done</title><rect x="606" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-010: Documentation and onboarding — Not done</title><rect x="627" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-011: Deployment and enterprise policy — Not done</title><rect x="648" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>PLAT-012: Data ownership and deletion — Not done</title><rect x="669" y="1108" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <text x="1005" y="1122" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
+    <text x="1108" y="1122" fill="#cbd5e1" font-size="14" text-anchor="end">12</text>
+    <text x="32" y="1177" fill="#a6b5cc" font-size="14">Done requires the complete workflow and passing E2E evidence. No partial credit.</text>
+  </g>
+</svg>

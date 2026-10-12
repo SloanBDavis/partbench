@@ -46,9 +46,10 @@ must cite an executable browser/public MCP journey and a dated passing result;
 retained historical results are explicitly labeled. Known regressions revert to
 Not done. Do not automatically mark rows Done because the default suite passes.
 
-`pnpm cad:matrix` generates the table from its JSON source.
+`pnpm cad:matrix` generates the table, README checklist and SVG feature map
+from its JSON source.
 `pnpm cad:matrix --check` verifies schema, binary states, local evidence paths,
-prerequisites/cycles and generated output; this is a documentation integrity
+prerequisites/cycles and all three generated outputs; this is a documentation integrity
 check, not a unit test and not evidence that any CAD workflow works.
 `pnpm cad:matrix --next` lists the ordered frontier with unmet prerequisites.
 Extend the nearest E2E journey for a feature, sharing setup and assertions; do not
