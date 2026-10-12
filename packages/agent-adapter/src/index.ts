@@ -2,7 +2,10 @@ import {
   isDrawingLayerOp,
   type DrawingLayer,
   isDrawingOp,
-  type DrawingEntity
+  type DrawingEntity,
+  isBomItemUpdateOp,
+  type AssemblyBom,
+  type BomCatalog
 } from "@web-cad/cad-protocol";
 import { isDrawingSheetOp, type DrawingSheet } from "@web-cad/cad-protocol";
 export {
@@ -472,6 +475,7 @@ export interface CadOpsAgentWorkflowReview {
 
 export interface CadOpsAgentEntityChangeSummary {
   readonly drawingSheets?: CadOpsAgentEntityChangeCount;
+  readonly bomItems?: CadOpsAgentEntityChangeCount;
   readonly drawingEntities?: CadOpsAgentEntityChangeCount;
   readonly drawingLayers?: CadOpsAgentEntityChangeCount;
   readonly objects: CadOpsAgentEntityChangeCount;
@@ -684,6 +688,8 @@ export interface CadOpsAgentProjectFeaturesQueryResponse {
 
 export interface CadOpsAgentProjectStructureQueryResponse {
   readonly drawingSheets?: readonly DrawingSheet[];
+  readonly billOfMaterials?: AssemblyBom;
+  readonly bomCatalog?: BomCatalog;
   readonly drawingEntities?: readonly DrawingEntity[];
   readonly drawingMeasurements?: readonly {
     readonly id: string;
@@ -705,7 +711,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly objectSources: readonly CadObjectModelSource[];
   readonly datums?: readonly DatumSnapshot[];
   readonly assemblies?: readonly AssemblySnapshot[];
-  readonly projection?: "poses" | "occurrences";
+  readonly projection?: "poses" | "occurrences" | "bom";
   readonly instancePoses?: readonly (AssemblyInstanceSnapshot & {
     readonly assemblyId: string;
   })[];
@@ -2102,6 +2108,15 @@ function createEntityChangeSummary(
       : emptyChangeCount();
 
   return {
+    ...(response?.ok && response.semanticDiff.bom
+      ? {
+          bomItems: {
+            created: 0,
+            modified: response.semanticDiff.bom.modified.length,
+            deleted: 0
+          }
+        }
+      : {}),
     ...(response?.ok && response.semanticDiff.drawingLayers
       ? {
           drawingLayers: {
@@ -2367,6 +2382,13 @@ function createOperationReview(
       );
     case "drawing.sheet.delete":
       return operationReviewBase(index, op, "delete", `Delete sheet ${op.id}`);
+    case "assembly.bom.updateItem":
+      return operationReviewBase(
+        index,
+        op,
+        "modify",
+        "Edit assembly BOM part metadata"
+      );
     case "drawing.entity.create":
     case "drawing.entity.update":
       return operationReviewBase(
@@ -3801,6 +3823,10 @@ function toAgentQueryResponse(
       ...(response.drawingSheets
         ? { drawingSheets: response.drawingSheets }
         : {}),
+      ...(response.billOfMaterials
+        ? { billOfMaterials: response.billOfMaterials }
+        : {}),
+      ...(response.bomCatalog ? { bomCatalog: response.bomCatalog } : {}),
       ...(response.drawingEntities
         ? { drawingEntities: response.drawingEntities }
         : {}),
@@ -6193,6 +6219,7 @@ function isAssemblyRelationalMateShape(
 function isCadOp(value: unknown): value is CadOp {
   if (isDrawingLayerOp(value)) return true;
   if (isDrawingSheetOp(value)) return true;
+  if (isBomItemUpdateOp(value)) return true;
   if (isDrawingOp(value)) return true;
   if (!isRecord(value)) {
     return false;

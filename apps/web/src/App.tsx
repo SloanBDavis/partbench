@@ -1,4 +1,5 @@
 import { DrawingLayoutWorkspace } from "./modes/drawing/DrawingLayoutWorkspace";
+import { BillOfMaterialsDialog } from "./modes/assembly/BillOfMaterialsDialog";
 import { getRenderSceneBounds } from "./viewportCamera";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
@@ -2123,6 +2124,7 @@ export function App() {
     id: string;
     phase: "preview" | "keep" | "restore";
   }>();
+  const [bomOpen, setBomOpen] = useState(false);
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -12259,10 +12261,16 @@ export function App() {
                 <ViewportCanvas
                   importView={importView}
                   viewControls={
-                    projectStructure.assemblies.some(
-                      (assembly) => assembly.instances.length > 0
-                    ) ? (
+                    projectStructure.assemblies.length > 0 ? (
                       <div className="viewport-action-group">
+                        <button
+                          type="button"
+                          data-action-id="assembly.bom"
+                          disabled={commandPending}
+                          onClick={() => setBomOpen(true)}
+                        >
+                          Bill of materials
+                        </button>
                         <label htmlFor="assembly-model-view">View</label>
                         <select
                           id="assembly-model-view"
@@ -13139,6 +13147,18 @@ export function App() {
             )
           }
         />
+        {bomOpen && (
+          <BillOfMaterialsDialog
+            assemblies={projectStructure.assemblies}
+            bodies={projectStructure.bodies}
+            catalog={document.bomCatalog}
+            pending={commandPending}
+            onClose={() => setBomOpen(false)}
+            onCommit={async (op) =>
+              Boolean((await commitOps([op], () => undefined))?.ok)
+            }
+          />
+        )}
         {workbenchUi.commandSearchOpen ? (
           <Suspense
             fallback={

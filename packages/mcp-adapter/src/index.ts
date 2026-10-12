@@ -817,7 +817,7 @@ export class CadMcpServer {
     ) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_structure expects {} or { projection: 'poses' | 'occurrences', assemblyIds?: string[], instanceIds?: string[], offset?: nonnegative integer, limit?: integer (1–1000) }."
+        "cad.project_structure expects {} or { projection: 'poses' | 'occurrences' | 'bom', bomMode?: 'hierarchical' | 'flattened', assemblyIds?: string[], instanceIds?: string[], offset?: nonnegative integer, limit?: integer (1–1000) }."
       );
     }
     const response = this.#adapter.query(
@@ -3129,12 +3129,13 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_structure",
     description:
-      "Inspect part definitions, features/bodies, source mappings, and assemblies with resolved transforms and mates. For placed nested parts use projection:'occurrences': each row includes rootAssemblyId and instancePath for cad.assembly_make_independent, the owner assemblyId/local instance ID and composed world transform. For local motion inspection use projection:'poses' with optional assemblyIds/instanceIds filters: returns instancePoses only, totalInstanceCount and nextOffset, without building definition/sketch/feature data. Page defaults to 100 instances, maximum 1000; offset indexes the stable matching instance order. Full projection remains the backward-compatible default. Definition arrays are empty in pose projections; counts describe the whole document.",
+      "Inspect part definitions, features/bodies, source mappings, and assemblies with resolved transforms and mates. For a bill of materials use projection:bom with exactly one assemblyIds entry and bomMode:hierarchical or flattened; returns stable item numbers, metadata, quantities and parent rows. For placed nested parts use projection:'occurrences': each row includes rootAssemblyId and instancePath for cad.assembly_make_independent, the owner assemblyId/local instance ID and composed world transform. For local motion inspection use projection:'poses' with optional assemblyIds/instanceIds filters: returns instancePoses only, totalInstanceCount and nextOffset, without building definition/sketch/feature data. Page defaults to 100 instances, maximum 1000; offset indexes the stable matching instance order. Full projection remains the backward-compatible default. Definition arrays are empty in pose projections; counts describe the whole document.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
-        projection: { enum: ["full", "poses", "occurrences"] },
+        projection: { enum: ["full", "poses", "occurrences", "bom"] },
+        bomMode: { enum: ["hierarchical", "flattened"] },
         assemblyIds: {
           type: "array",
           maxItems: 1000,
@@ -3157,8 +3158,32 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       },
       then: {
         required: ["projection"],
-        properties: { projection: { enum: ["poses", "occurrences"] } }
-      }
+        properties: { projection: { enum: ["poses", "occurrences", "bom"] } }
+      },
+      allOf: [
+        {
+          if: { required: ["bomMode"] },
+          then: {
+            required: ["projection"],
+            properties: { projection: { const: "bom" } }
+          }
+        },
+        {
+          if: {
+            required: ["projection"],
+            properties: { projection: { const: "bom" } }
+          },
+          then: {
+            required: ["assemblyIds"],
+            properties: { assemblyIds: { minItems: 1, maxItems: 1 } },
+            not: {
+              anyOf: ["instanceIds", "offset", "limit"].map((key) => ({
+                required: [key]
+              }))
+            }
+          }
+        }
+      ]
     }
   },
   {

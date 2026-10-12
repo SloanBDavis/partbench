@@ -276,6 +276,8 @@ function createOperationSummaries(
         };
       case "drawing.sheet.delete":
         return { op: op.op, label: `Delete sheet ${op.id}` };
+      case "assembly.bom.updateItem":
+        return { op: op.op, label: "Edit bill of materials part details" };
       case "drawing.entity.create":
       case "drawing.entity.update":
         return {
@@ -1729,6 +1731,7 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
     ...(diff.drawingLayers
       ? { drawingLayers: structuredClone(diff.drawingLayers) }
       : {}),
+    ...(diff.bom ? { bom: structuredClone(diff.bom) } : {}),
     ...(diff.drawing ? { drawing: structuredClone(diff.drawing) } : {}),
     created: [...diff.created],
     modified: [...diff.modified],

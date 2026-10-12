@@ -6,3 +6,5 @@ export * from "./releaseSamples";
 export { sha256Hex } from "./sha256";
 
 export { createProjectHistoricalTopologySources } from "./wcadHistoryBaselineCheckpoints";
+
+export * from "./assemblyBom";

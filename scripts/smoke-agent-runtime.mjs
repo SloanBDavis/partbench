@@ -1,5 +1,9 @@
 import { exerciseMcpDrawingDimensions } from "./drawing-dimensions-journey.mjs";
 import { exerciseMcpDrawingLayers } from "./e2e-drawing-layers.mjs";
+import {
+  exerciseAssemblyBomMcp,
+  assertAssemblyBomReopened
+} from "./assembly-bom-journey.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { register } from "node:module";
@@ -83,6 +87,7 @@ async function journey(fixture) {
   let volumesAfter;
   let rejected;
   let savedSheet;
+  let bomEvidence;
   try {
     await client.initialize();
     const listed = await client.request("tools/list");
@@ -189,6 +194,7 @@ async function journey(fixture) {
       fixture,
       fixture.expected.volumesAfter
     );
+    bomEvidence = await exerciseAssemblyBomMcp(client, fixture, batch);
     const final = (await client.tool("cad.session_info")).result;
     sourceIdentity = final.sourceIdentity;
     assert.notDeepEqual(sourceIdentity, before, "Revision changes source");
@@ -216,6 +222,7 @@ async function journey(fixture) {
       sourceIdentity
     );
     await inspect(reopened, fixture, fixture.expected.volumesAfter);
+    await assertAssemblyBomReopened(reopened, bomEvidence);
     assert.deepEqual(
       (await reopened.tool("cad.project_structure")).drawingSheets,
       [savedSheet],

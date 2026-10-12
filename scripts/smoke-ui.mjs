@@ -1,5 +1,6 @@
 import { exerciseDrawingDimensions } from "./drawing-dimensions-journey.mjs";
 import { exerciseDrawingSheets } from "./drawing-sheets-journey.mjs";
+import { exerciseAssemblyBomBrowser } from "./assembly-bom-journey.mjs";
 // bun+vite in-process; chrome via Bun.WebView
 import { assertNativeCheckpointParity } from "./native-checkpoint-parity.mjs";
 import {
@@ -796,15 +797,24 @@ async function runPromotionScenario(view, name, scenario) {
 async function typeField(view, selector, text) {
   const value = String(text ?? "");
   await clickVisibleControl(view, selector);
-  await withDeadline(
-    view.click(selector, { clickCount: 3, timeout: 5_000 }),
-    7_000,
-    "select field text " + selector
-  );
-  const focused = await evaluate(
-    view,
-    `document.activeElement?.matches(${JSON.stringify(selector)})`
-  );
+  // Model updates can reflow the scrolling inspector after its first click.
+  // Keep the field clear of sticky footers and wait for real pointer focus.
+  const focusDeadline = performance.now() + 5_000;
+  let focused = false;
+  do {
+    await view.scrollTo(selector, { block: "center", timeout: 5_000 });
+    await withDeadline(
+      view.click(selector, { clickCount: 3, timeout: 5_000 }),
+      7_000,
+      "select field text " + selector
+    );
+    focused = await evaluate(
+      view,
+      `document.activeElement?.matches(${JSON.stringify(selector)})`
+    );
+    if (focused) break;
+    await delay(50);
+  } while (performance.now() < focusDeadline);
   if (!focused)
     throw new Error("Field did not receive keyboard focus: " + selector);
   await withDeadline(view.press("Backspace"), 7_000, "clear field " + selector);
@@ -2633,6 +2643,19 @@ async function runUseSteps(view, name, steps, label) {
         openProjectFile
       });
       clicks.push("Sheet layout controls");
+      continue;
+    }
+    if (step.assemblyBom) {
+      await exerciseAssemblyBomBrowser(view, step.assemblyBom, {
+        evaluate,
+        clickVisibleControl,
+        typeField,
+        selectOption: (view, selector, option) =>
+          selectCollectorOption(view, { selector, option }),
+        getState,
+        waitForReady,
+        writeUseScreenshot
+      });
       continue;
     }
     if (step.drawingPrecision) {

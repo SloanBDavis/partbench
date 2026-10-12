@@ -1,0 +1,118 @@
+.pb-bom {
+  width: min(1050px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  border: 1px solid #c6cdd8;
+  border-radius: 10px;
+  padding: 24px;
+  color: #252a32;
+  background: #fff;
+  box-shadow: 0 20px 80px #18223040;
+}
+.pb-bom::backdrop {
+  background: #17233566;
+}
+.pb-bom header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.pb-bom h2 {
+  margin: 0 0 8px;
+  font-size: 21px;
+}
+.pb-bom p {
+  color: #596574;
+  font-size: 13px;
+}
+.pb-bom button,
+.pb-bom input,
+.pb-bom select {
+  font: inherit;
+  border: 1px solid #b8c1ce;
+  border-radius: 5px;
+  padding: 7px 10px;
+  background: white;
+  color: inherit;
+}
+.pb-bom button:not(:disabled) {
+  cursor: pointer;
+}
+.pb-bom button:disabled {
+  opacity: 0.5;
+}
+.pb-bom :focus-visible {
+  outline: 2px solid #246bd6;
+  outline-offset: 2px;
+}
+.pb-bom__toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.pb-bom label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.pb-bom__table {
+  overflow: auto;
+  max-height: 42vh;
+  border: 1px solid #dce1e9;
+  border-radius: 6px;
+}
+.pb-bom table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pb-bom th {
+  position: sticky;
+  top: 0;
+  background: #eef2f7;
+  text-align: left;
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+.pb-bom td {
+  padding: 8px 12px;
+  border-top: 1px solid #e6eaf0;
+  overflow-wrap: anywhere;
+}
+.pb-bom td button {
+  text-align: left;
+  border: none;
+  padding: 4px 0;
+  background: transparent;
+  white-space: nowrap;
+}
+.pb-bom tr[aria-selected="true"] {
+  background: #e9f2ff;
+}
+.pb-bom__editor {
+  margin-top: 18px;
+  border-top: 1px solid #dce1e9;
+  padding-top: 14px;
+}
+.pb-bom__editor h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.pb-bom__editor > div {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.pb-bom__editor label {
+  flex: 1;
+  min-width: 180px;
+}
+.pb-bom__editor button[type="submit"] {
+  background: #246bd6;
+  color: white;
+  border-color: #246bd6;
+}

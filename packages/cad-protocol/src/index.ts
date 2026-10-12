@@ -5,6 +5,14 @@ import type {
 } from "./drawingSheets";
 export * from "./drawingSheets";
 import type {
+  BomItemUpdateOp,
+  BomCatalog,
+  BomCatalogEntry,
+  AssemblyBom,
+  BomMode
+} from "./bom";
+export * from "./bom";
+import type {
   DrawingEntity,
   DrawingEntityCreateOp,
   DrawingEntityUpdateOp,
@@ -573,6 +581,7 @@ export interface SketchDimensionParameterValueSource {
 export type CadOp =
   | DrawingLayerOp
   | DrawingSheetOp
+  | BomItemUpdateOp
   | DrawingEntityCreateOp
   | DrawingEntityUpdateOp
   | DrawingEntityDeleteOp
@@ -3199,6 +3208,7 @@ export interface SketchConstraintSemanticDiff {
 
 export interface SemanticDiff {
   readonly drawingSheets?: DrawingSheetSemanticDiff;
+  readonly bom?: { readonly modified: readonly BomCatalogEntry[] };
   readonly drawing?: DrawingSemanticDiff;
   readonly drawingLayers?: DrawingLayerSemanticDiff;
   readonly created: readonly CadObjectRef[];
@@ -3678,8 +3688,9 @@ export interface ProjectFeaturesQuery {
 }
 
 export interface ProjectStructureQuery {
+  readonly bomMode?: BomMode;
   readonly query: "project.structure";
-  readonly projection?: "full" | "poses" | "occurrences";
+  readonly projection?: "full" | "poses" | "occurrences" | "bom";
   readonly assemblyIds?: readonly AssemblyId[];
   readonly instanceIds?: readonly InstanceId[];
   readonly offset?: number;
@@ -8193,6 +8204,7 @@ export interface CadOperationSummary {
 
 export interface CadSemanticDiffSummary {
   readonly drawingSheets?: DrawingSheetSemanticDiff;
+  readonly bom?: { readonly modified: readonly BomCatalogEntry[] };
   readonly drawing?: DrawingSemanticDiff;
   readonly drawingLayers?: DrawingLayerSemanticDiff;
   readonly created: readonly CadObjectRef[];
@@ -10068,6 +10080,8 @@ export interface ProjectStructureQueryResponse {
     readonly units: DocumentUnits;
   }[];
   readonly drawingSheets?: readonly DrawingSheet[];
+  readonly billOfMaterials?: AssemblyBom;
+  readonly bomCatalog?: BomCatalog;
   readonly drawingEntities?: readonly DrawingEntity[];
   readonly drawingLayers?: readonly DrawingLayer[];
   readonly ok: true;
@@ -10083,7 +10097,7 @@ export interface ProjectStructureQueryResponse {
   readonly datums?: readonly DatumSnapshot[];
   readonly assemblies?: readonly AssemblySnapshot[];
   /** Pose projection keeps definition arrays empty and returns only this bounded page. */
-  readonly projection?: "poses" | "occurrences";
+  readonly projection?: "poses" | "occurrences" | "bom";
   readonly instancePoses?: readonly (AssemblyInstanceSnapshot & {
     readonly assemblyId: AssemblyId;
     readonly rootAssemblyId?: AssemblyId;

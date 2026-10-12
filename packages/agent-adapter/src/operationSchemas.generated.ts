@@ -3,6 +3,62 @@
 import type { CadOp } from "@web-cad/cad-protocol";
 import type { OperationSchema } from "./operationSchemas";
 export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
+  "assembly.bom.updateItem": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "definition", "metadata"],
+    properties: {
+      op: {
+        const: "assembly.bom.updateItem"
+      },
+      definition: {
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "bodyId"],
+            properties: {
+              kind: {
+                const: "body"
+              },
+              bodyId: {
+                type: "string"
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "assemblyId"],
+            properties: {
+              kind: {
+                const: "assembly"
+              },
+              assemblyId: {
+                type: "string"
+              }
+            }
+          }
+        ]
+      },
+      metadata: {
+        type: "object",
+        additionalProperties: false,
+        required: ["partNumber", "description", "material"],
+        properties: {
+          partNumber: {
+            type: "string"
+          },
+          description: {
+            type: "string"
+          },
+          material: {
+            type: "string"
+          }
+        }
+      }
+    }
+  },
   "assembly.create": {
     type: "object",
     additionalProperties: false,

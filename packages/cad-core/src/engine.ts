@@ -10,6 +10,14 @@ import {
   type DrawingSheet
 } from "@web-cad/cad-protocol";
 import {
+  isBomItemUpdateOp,
+  isBomCatalog,
+  bomDefinitionKey,
+  type BomCatalog,
+  type BomCatalogEntry
+} from "@web-cad/cad-protocol";
+import { synchronizeBomCatalog, createAssemblyBom } from "./assemblyBom";
+import {
   isDrawingEntity,
   isDrawingOp,
   type DrawingEntity
@@ -1207,6 +1215,7 @@ export type LoftFeature = LoftFeatureV21;
 
 export interface CadDocument {
   readonly drawingSheets: ReadonlyMap<string, DrawingSheet>;
+  readonly bomCatalog?: BomCatalog;
   readonly drawingEntities: ReadonlyMap<string, DrawingEntity>;
   readonly drawingLayers: ReadonlyMap<string, DrawingLayer>;
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
@@ -1258,6 +1267,7 @@ export interface CadExecutionOptions {
 
 export interface CadDocumentSnapshot {
   readonly drawingSheets?: readonly DrawingSheet[];
+  readonly bomCatalog?: BomCatalog;
   readonly drawingEntities?: readonly DrawingEntity[];
   readonly drawingLayers?: readonly DrawingLayer[];
   readonly units: DocumentUnits;
@@ -2047,8 +2057,11 @@ export function createCadDocument(
   drawingLayers: Iterable<readonly [string, DrawingLayer]> = [
     ["0", DEFAULT_DRAWING_LAYER]
   ],
-  drawingSheets: Iterable<readonly [string, DrawingSheet]> = []
+  drawingSheets: Iterable<readonly [string, DrawingSheet]> = [],
+  bomCatalog?: BomCatalog
 ): CadDocument {
+  const assemblyList = [...assemblies];
+  const catalog = bomCatalog;
   return {
     drawingLayers: new Map(
       [...drawingLayers].map(([id, layer]) => [id, cloneJsonSource(layer)])
@@ -2056,6 +2069,7 @@ export function createCadDocument(
     drawingSheets: new Map(
       [...drawingSheets].map(([id, sheet]) => [id, cloneJsonSource(sheet)])
     ),
+    ...(catalog ? { bomCatalog: cloneJsonSource(catalog) } : {}),
     drawingEntities: new Map(
       [...drawingEntities].map(([id, entity]) => [id, cloneJsonSource(entity)])
     ),
@@ -2063,7 +2077,7 @@ export function createCadDocument(
     sketches: new Map(sketches),
     datums: new Map(datums),
     assemblies: new Map(
-      [...assemblies].map(([id, assembly]) => [id, cloneAssembly(assembly)])
+      assemblyList.map(([id, assembly]) => [id, cloneAssembly(assembly)])
     ),
     parameters: new Map(parameters),
     sketchDimensions: new Map(
@@ -2656,6 +2670,43 @@ export class CadEngine {
       }
 
       case "project.structure": {
+        if (request.query.projection === "bom") {
+          const structure = createProjectStructure(this.#document, []);
+          try {
+            const billOfMaterials = createAssemblyBom({
+              assemblyId: request.query.assemblyIds![0]!,
+              mode: request.query.bomMode ?? "hierarchical",
+              assemblies: structure.assemblies ?? [],
+              bodies: structure.bodies,
+              catalog: this.#document.bomCatalog
+            });
+            return {
+              ok: true,
+              query: "project.structure",
+              cadOpsVersion: request.version,
+              projection: "bom",
+              partCount: structure.parts.length,
+              featureCount: structure.features.length,
+              bodyCount: structure.bodies.length,
+              parts: [],
+              features: [],
+              bodies: [],
+              objectSources: [],
+              billOfMaterials
+            };
+          } catch (error) {
+            return {
+              ok: false,
+              query: "project.structure",
+              cadOpsVersion: request.version,
+              error: {
+                code: "INVALID_QUERY",
+                message:
+                  error instanceof Error ? error.message : "BOM is unavailable."
+              }
+            };
+          }
+        }
         if (request.query.projection === "occurrences") {
           const query = request.query;
           const occurrences = flattenAssemblyOccurrences([
@@ -2795,6 +2846,9 @@ export class CadEngine {
           drawingSheets: [...this.#document.drawingSheets.values()].map(
             cloneJsonSource
           ),
+          ...(this.#document.bomCatalog
+            ? { bomCatalog: cloneJsonSource(this.#document.bomCatalog) }
+            : {}),
           drawingEntities: [...this.#document.drawingEntities.values()].map(
             cloneJsonSource
           ),
@@ -6327,6 +6381,7 @@ type MutableSemanticDiff = {
     modified: DrawingSheet[];
     deleted: DrawingSheet[];
   };
+  bom?: { modified: BomCatalogEntry[] };
   drawing?: {
     created: DrawingEntity[];
     modified: DrawingEntity[];
@@ -6434,6 +6489,7 @@ type SketchEntityImportRef = {
 
 interface MutableDocumentState {
   drawingSheets: Map<string, DrawingSheet>;
+  bomCatalog?: BomCatalog;
   drawingEntities: Map<string, DrawingEntity>;
   drawingLayers: Map<string, DrawingLayer>;
   objects: Map<ObjectId, SceneObject>;
@@ -6570,6 +6626,53 @@ function applyOperation(
           sheet
         );
       }
+      return;
+    }
+    case "assembly.bom.updateItem": {
+      if (!isBomItemUpdateOp(op))
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "BOM metadata must contain valid text fields of at most 500 characters.",
+          opIndex
+        });
+      const structure = createProjectStructure(state, []);
+      const exists =
+        op.definition.kind === "assembly"
+          ? state.assemblies.has(op.definition.assemblyId)
+          : structure.bodies.some(
+              (body) =>
+                body.id === (op.definition as { bodyId: string }).bodyId &&
+                !body.consumedByFeatureId
+            );
+      if (!exists)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: "BOM definition no longer exists or is consumed.",
+          opIndex
+        });
+      const catalog = synchronizeBomCatalog(state.bomCatalog, [
+        ...state.assemblies.values()
+      ]);
+      const key = bomDefinitionKey(op.definition);
+      const previous = catalog?.entries.find(
+        (entry) => bomDefinitionKey(entry.definition) === key
+      );
+      if (!previous || !catalog)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "Add the part to an assembly before editing its BOM metadata.",
+          opIndex
+        });
+      const entry = { ...previous, ...op.metadata };
+      state.bomCatalog = {
+        ...catalog,
+        entries: catalog.entries.map((item) =>
+          bomDefinitionKey(item.definition) === key ? entry : item
+        )
+      };
+      (diff.bom ??= { modified: [] }).modified.push(cloneJsonSource(entry));
       return;
     }
     case "drawing.entity.create":
@@ -9061,6 +9164,7 @@ function isCadOperationKind(value: string): boolean {
     case "drawing.sheet.create":
     case "drawing.sheet.update":
     case "drawing.sheet.delete":
+    case "assembly.bom.updateItem":
     case "drawing.entity.create":
     case "drawing.entity.update":
     case "drawing.entity.delete":
@@ -16083,6 +16187,33 @@ function followAssemblyBodyResult(
   resultBodyId: BodyId,
   diff: MutableSemanticDiff
 ): void {
+  const previousKey = bomDefinitionKey({
+    kind: "body",
+    bodyId: previousBodyId
+  });
+  const resultKey = bomDefinitionKey({ kind: "body", bodyId: resultBodyId });
+  const previous = state.bomCatalog?.entries.find(
+    (entry) => bomDefinitionKey(entry.definition) === previousKey
+  );
+  if (previous && state.bomCatalog && previousBodyId !== resultBodyId) {
+    const entry = {
+      ...previous,
+      definition: { kind: "body" as const, bodyId: resultBodyId }
+    };
+    state.bomCatalog = {
+      ...state.bomCatalog,
+      entries: [
+        ...state.bomCatalog.entries.filter(
+          (item) =>
+            ![previousKey, resultKey].includes(
+              bomDefinitionKey(item.definition)
+            )
+        ),
+        entry
+      ]
+    };
+    (diff.bom ??= { modified: [] }).modified.push(cloneJsonSource(entry));
+  }
   for (const assembly of state.assemblies.values()) {
     let changed = false;
     const instances = assembly.instances.map((instance) => {
@@ -27701,6 +27832,9 @@ export function createCadDocumentSnapshot(
   nextBodyNumber = inferNextBodyNumber(document)
 ): CadDocumentSnapshot {
   return {
+    ...(document.bomCatalog
+      ? { bomCatalog: cloneJsonSource(document.bomCatalog) }
+      : {}),
     units: document.units,
     ...(document.drawingLayers.size !== 1 ||
     !stableJsonEqual(document.drawingLayers.get("0"), DEFAULT_DRAWING_LAYER)
@@ -27814,7 +27948,8 @@ export function createCadDocumentFromSnapshot(
     ),
     (snapshot.drawingSheets ?? []).map(
       (sheet) => [sheet.id, cloneJsonSource(sheet)] as const
-    )
+    ),
+    snapshot.bomCatalog
   );
 }
 
@@ -32076,7 +32211,8 @@ function runOperations(
   initialFeatureNumber: number,
   initialBodyNumber: number,
   requireMaterializedCurveEditHistory = false,
-  useTrustedSourceGeometryForCurveEdit = false
+  useTrustedSourceGeometryForCurveEdit = false,
+  legacyBomReplay = false
 ): OperationRunResult {
   if (ops.length === 0) {
     throwValidationError({
@@ -32092,6 +32228,11 @@ function runOperations(
 
   const state: MutableDocumentState = {
     drawingSheets: new Map(document.drawingSheets),
+    bomCatalog: legacyBomReplay
+      ? document.bomCatalog
+      : synchronizeBomCatalog(document.bomCatalog, [
+          ...document.assemblies.values()
+        ]),
     drawingEntities: new Map(document.drawingEntities),
     drawingLayers: new Map(document.drawingLayers),
     objects: new Map(document.objects),
@@ -32413,6 +32554,30 @@ function runOperations(
     }
     throw error;
   }
+  // Pre-BOM saved transactions never authored a catalog. Preserve that boundary
+  // during replay; current transactions record every assigned/changed item.
+  const finalBomCatalog = legacyBomReplay
+    ? state.bomCatalog
+    : synchronizeBomCatalog(state.bomCatalog, [...state.assemblies.values()]);
+  const previousBomEntries = new Map(
+    document.bomCatalog?.entries.map((entry) => [
+      bomDefinitionKey(entry.definition),
+      entry
+    ])
+  );
+  const bomChanges = new Map(
+    diff.bom?.modified.map((entry) => [
+      bomDefinitionKey(entry.definition),
+      entry
+    ])
+  );
+  for (const entry of finalBomCatalog?.entries ?? []) {
+    const key = bomDefinitionKey(entry.definition);
+    if (!stableJsonEqual(entry, previousBomEntries.get(key)))
+      bomChanges.set(key, entry);
+  }
+  if (bomChanges.size)
+    diff.bom = { modified: [...bomChanges.values()].map(cloneJsonSource) };
   const resultDocument = createCadDocument(
     state.objects,
     state.units,
@@ -32427,7 +32592,8 @@ function runOperations(
     state.assemblies,
     state.drawingEntities,
     state.drawingLayers,
-    state.drawingSheets
+    state.drawingSheets,
+    finalBomCatalog
   );
 
   return {
@@ -33724,7 +33890,9 @@ function createTransactionEntries(
       nextSketchConstraintNumber,
       nextFeatureNumber,
       nextBodyNumber,
-      true
+      true,
+      false,
+      transaction.diff.bom === undefined
     );
     document = run.document;
     nextObjectNumber = run.nextObjectNumber;
@@ -33829,6 +33997,7 @@ function cadDocumentsEqual(
   assemblyPoseSources: AssemblyReplayPoseSources
 ): boolean {
   if (
+    !stableJsonEqual(left.bomCatalog ?? null, right.bomCatalog ?? null) ||
     left.units !== right.units ||
     !stableJsonEqual(
       [...left.drawingLayers].sort(([a], [b]) => a.localeCompare(b)),
@@ -36016,6 +36185,14 @@ function validateCadDocumentSnapshot(
         }
       }
   }
+  if (value.bomCatalog !== undefined && !isBomCatalog(value.bomCatalog))
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.bomCatalog`,
+      "BOM catalog must have unique definitions and positive stable item numbers, valid metadata and a monotonic counter."
+    );
+
   if (value.drawingEntities !== undefined) {
     const seen = new Set<string>();
     if (!Array.isArray(value.drawingEntities))
@@ -44680,6 +44857,7 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (isDrawingLayerOp(value)) return true;
   if (isDrawingSheetOp(value)) return true;
+  if (isBomItemUpdateOp(value)) return true;
   if (isDrawingOp(value)) return true;
   if (isSpurGearOp(value)) return true;
 
@@ -45763,6 +45941,15 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     value.modified.every(isCadObjectRef) &&
     Array.isArray(value.deleted) &&
     value.deleted.every(isCadObjectRef) &&
+    (value.bom === undefined ||
+      (isRecord(value.bom) &&
+        Array.isArray(value.bom.modified) &&
+        value.bom.modified.every((entry) =>
+          isBomCatalog({
+            nextItemNumber: Number.MAX_SAFE_INTEGER,
+            entries: [entry]
+          })
+        ))) &&
     (value.document === undefined || isDocumentSemanticDiff(value.document)) &&
     (value.sketches === undefined || isSketchSemanticDiff(value.sketches)) &&
     (value.features === undefined || isFeatureSemanticDiff(value.features)) &&

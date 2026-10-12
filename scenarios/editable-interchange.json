@@ -899,6 +899,7 @@
     {
       "importStep": ".metrics/editable-interchange/authored-nested.step"
     },
+    { "assemblyBom": "initial" },
     {
       "click": "[data-ribbon-roving-id=\"mode-solid\"]"
     },
@@ -1022,6 +1023,7 @@
     {
       "openWcad": ".metrics/editable-interchange/browser-edited.wcad"
     },
+    { "assemblyBom": "updated" },
     {
       "click": "[data-ribbon-roving-id=\"mode-solid\"]"
     },

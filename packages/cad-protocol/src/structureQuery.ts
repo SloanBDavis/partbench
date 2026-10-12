@@ -1,7 +1,8 @@
 /** Pose pages are bounded independently of the number of edges in part definitions. */
 export function isProjectStructureQuery(value: unknown): value is {
   readonly query: "project.structure";
-  readonly projection?: "full" | "poses" | "occurrences";
+  readonly projection?: "full" | "poses" | "occurrences" | "bom";
+  readonly bomMode?: "hierarchical" | "flattened";
   readonly assemblyIds?: readonly string[];
   readonly instanceIds?: readonly string[];
   readonly offset?: number;
@@ -20,6 +21,7 @@ export function isProjectStructureQuery(value: unknown): value is {
     Object.keys(query).every((key) =>
       [
         "query",
+        "bomMode",
         "projection",
         "assemblyIds",
         "instanceIds",
@@ -30,7 +32,17 @@ export function isProjectStructureQuery(value: unknown): value is {
     (query.projection === undefined ||
       query.projection === "full" ||
       query.projection === "poses" ||
-      query.projection === "occurrences") &&
+      query.projection === "occurrences" ||
+      query.projection === "bom") &&
+    (query.bomMode === undefined ||
+      (query.projection === "bom" &&
+        ["hierarchical", "flattened"].includes(query.bomMode as string))) &&
+    (query.projection !== "bom" ||
+      (Array.isArray(query.assemblyIds) &&
+        query.assemblyIds.length === 1 &&
+        query.instanceIds === undefined &&
+        query.offset === undefined &&
+        query.limit === undefined)) &&
     ids(query.assemblyIds) &&
     ids(query.instanceIds) &&
     (query.offset === undefined ||
@@ -39,7 +51,8 @@ export function isProjectStructureQuery(value: unknown): value is {
       (Number.isSafeInteger(query.limit) &&
         (query.limit as number) >= 1 &&
         (query.limit as number) <= 1000)) &&
-    (query.projection === "poses" ||
+    (query.projection === "bom" ||
+      query.projection === "poses" ||
       query.projection === "occurrences" ||
       ["assemblyIds", "instanceIds", "offset", "limit"].every(
         (key) => query[key] === undefined
