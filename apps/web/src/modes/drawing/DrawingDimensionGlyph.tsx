@@ -1,5 +1,7 @@
 import {
   resolveDrawingDimension,
+  drawingLayerAppearance,
+  type DrawingLayer,
   type DrawingDimension,
   type DrawingEntity,
   type DocumentUnits
@@ -10,20 +12,27 @@ export function DrawingDimensionGlyph({
   entity,
   entities,
   units,
-  size = 3.5
+  size = 3.5,
+  layer
 }: {
   entity: DrawingDimension;
   entities: ReadonlyMap<string, DrawingEntity>;
   units: DocumentUnits;
   size?: number;
+  layer?: DrawingLayer;
 }) {
+  const appearance = layer ? drawingLayerAppearance(layer) : undefined;
   const geometry = resolveDrawingDimension(entity, entities);
   if (!geometry) return null;
   const { first, second, start, end, value, labelPosition } = geometry;
   const path = `M ${first[0]} ${-first[1]} L ${start[0]} ${-start[1]} L ${end[0]} ${-end[1]} L ${second[0]} ${-second[1]}`;
   const tick = size * 0.3;
   return (
-    <g data-drawing-dimension={entity.id} data-dimension-value={value}>
+    <g
+      data-drawing-dimension={entity.id}
+      data-dimension-value={value}
+      style={layer ? { color: layer.color } : undefined}
+    >
       <path
         d={path}
         stroke="transparent"
@@ -36,7 +45,8 @@ export function DrawingDimensionGlyph({
         d={path}
         stroke="currentColor"
         fill="none"
-        strokeWidth={1}
+        strokeWidth={appearance?.strokeWidth ?? 1}
+        strokeDasharray={appearance?.strokeDasharray}
         vectorEffect="non-scaling-stroke"
         pointerEvents="none"
       />
@@ -45,7 +55,7 @@ export function DrawingDimensionGlyph({
           key={i}
           d={`M ${p[0] - tick} ${-p[1] + tick} l ${tick * 2} ${-tick * 2}`}
           stroke="currentColor"
-          strokeWidth={1.5}
+          strokeWidth={appearance?.strokeWidth ?? 1.5}
           vectorEffect="non-scaling-stroke"
         />
       ))}

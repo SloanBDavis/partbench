@@ -2346,6 +2346,243 @@ async function exerciseDrawingPrecision(view) {
   );
 }
 
+async function exerciseDrawingLayers(view) {
+  const initial = (await getState(view)).drawing;
+  const expect = (condition, message) => {
+    if (!condition) throw new Error("Drawing layers: " + message);
+  };
+  const settle = async (predicate) => {
+    const deadline = performance.now() + 10_000;
+    do {
+      const state = await getState(view);
+      if (state.commandError) throw new Error(state.commandError);
+      if (!state.commandPending && predicate(state.drawing))
+        return state.drawing;
+      await delay(30);
+    } while (performance.now() < deadline);
+    throw new Error("Drawing layer change did not settle");
+  };
+  const select = (label, option) =>
+    selectCollectorOption(view, {
+      selector: `select[aria-label="${label}"]`,
+      option
+    });
+  const check = async (label, value) => {
+    const selector = `input[aria-label="Layer ${label}"]`;
+    if (
+      (await evaluate(
+        view,
+        `document.querySelector(${JSON.stringify(selector)}).checked`
+      )) !== value
+    )
+      await clickVisibleControl(view, selector);
+  };
+  await typeField(view, 'input[aria-label="New layer name"]', "Manufacturing");
+  await clickVisibleControl(view, "[data-layer-create]");
+  const created = await settle(
+    (drawing) => drawing.layers.length === initial.layers.length + 1
+  );
+  const layerId = created.layers.find(
+    (layer) => layer.name === "Manufacturing"
+  ).id;
+  await typeField(view, 'input[aria-label="New layer name"]', "Manufacturing");
+  expect(
+    await evaluate(
+      view,
+      'document.querySelector("[data-layer-create]").disabled'
+    ),
+    "duplicate name must be blocked"
+  );
+  await typeField(view, 'input[aria-label="New layer name"]', "");
+  await typeField(view, 'input[aria-label="Layer color"]', "#ff8844");
+  await typeField(view, 'input[aria-label="Layer lineweight"]', "0.7");
+  await typeField(view, 'input[aria-label="Layer transparency"]', "25");
+  await select("Layer linetype", "dashed");
+  await check("print", false);
+  await clickVisibleControl(view, "[data-layer-apply]");
+  await settle(
+    (drawing) =>
+      drawing.layers.find((layer) => layer.id === layerId)?.color === "#ff8844"
+  );
+  await clickVisibleControl(view, '[data-drawing-tool="select"]');
+  const entity = initial.entities[0];
+  await clickVisibleControl(view, `[data-drawing-select="${entity.id}"]`);
+  await select("Selected entity layer", layerId);
+  await settle(
+    (drawing) =>
+      drawing.entities.find((item) => item.id === entity.id).layerId === layerId
+  );
+  const rendered = await evaluate(
+    view,
+    `(() => {const g=document.querySelector('[data-drawing-entity="${entity.id}"]');const shape=g.lastElementChild;return {color:shape.getAttribute('stroke'),weight:Number(shape.getAttribute('stroke-width')),dash:shape.getAttribute('stroke-dasharray'),opacity:Number(g.getAttribute('opacity')),print:g.getAttribute('data-layer-printable')};})()`
+  );
+  expect(
+    rendered.color === "#ff8844" &&
+      Math.abs(rendered.weight - (0.7 * 96) / 25.4) < 1e-8 &&
+      rendered.dash === "10 5" &&
+      rendered.opacity === 0.75 &&
+      rendered.print === "false",
+    "layer style must reach the visible entity: " + JSON.stringify(rendered)
+  );
+  expect(
+    await evaluate(
+      view,
+      'document.querySelector("[data-layer-delete]").disabled'
+    ),
+    "assigned layer deletion must be blocked"
+  );
+  await view.cdp("Emulation.setEmulatedMedia", { media: "print" });
+  expect(
+    await evaluate(
+      view,
+      `getComputedStyle(document.querySelector('[data-drawing-entity="${entity.id}"]')).display === 'none'`
+    ),
+    "nonprinting layer must be excluded from print output"
+  );
+  await view.cdp("Emulation.setEmulatedMedia", { media: "screen" });
+  await clickVisibleControl(view, '[data-drawing-tool="line"]');
+  await typeField(view, '[data-drawing-field="x"]', "150");
+  await typeField(view, '[data-drawing-field="endX"]', "170");
+  await clickVisibleControl(view, "[data-drawing-apply]");
+  const drawn = await settle(
+    (drawing) => drawing.entities.length === initial.entities.length + 1
+  );
+  expect(
+    drawn.entities.at(-1).layerId === layerId,
+    "new geometry must use current layer"
+  );
+  await clickVisibleControl(view, '[data-drawing-tool="dimension"]');
+  await clickVisibleControl(view, "[data-dimension-apply]");
+  const dimensionDrawing = await settle(
+    (drawing) => drawing.entities.length === initial.entities.length + 2
+  );
+  const dimension = dimensionDrawing.entities.at(-1);
+  expect(
+    dimension.kind === "dimension" && dimension.layerId === layerId,
+    "new dimension must use current layer"
+  );
+  expect(
+    await evaluate(
+      view,
+      `getComputedStyle(document.querySelector('[data-drawing-dimension="${dimension.id}"] text')).fill === 'rgb(255, 136, 68)'`
+    ),
+    "dimension must inherit layer color"
+  );
+  await clickVisibleControl(view, '[data-drawing-tool="select"]');
+  await clickVisibleControl(view, `[data-drawing-select="${entity.id}"]`);
+  await check("locked", true);
+  await clickVisibleControl(view, "[data-layer-apply]");
+  await settle(
+    (drawing) => drawing.layers.find((layer) => layer.id === layerId).locked
+  );
+  expect(
+    await evaluate(
+      view,
+      'document.querySelector("[data-drawing-delete]").disabled && document.querySelector("[data-drawing-apply]").disabled'
+    ),
+    "locked entity edit/delete must be blocked"
+  );
+  await clickVisibleControl(view, '[data-drawing-tool="line"]');
+  expect(
+    await evaluate(
+      view,
+      'document.querySelector("[data-drawing-apply]").disabled'
+    ),
+    "locked current layer creation must be blocked"
+  );
+  await clickVisibleControl(view, '[data-drawing-tool="select"]');
+  await clickVisibleControl(view, `[data-drawing-select="${dimension.id}"]`);
+  expect(
+    await evaluate(
+      view,
+      'document.querySelector("[data-dimension-apply]").disabled && document.querySelector("[data-drawing-delete]").disabled'
+    ),
+    "locked dimension edit/delete must be blocked"
+  );
+  await check("visible", false);
+  await clickVisibleControl(view, "[data-layer-apply]");
+  await settle(
+    (drawing) => !drawing.layers.find((layer) => layer.id === layerId).visible
+  );
+  expect(
+    !(await evaluate(
+      view,
+      `Boolean(document.querySelector('[data-drawing-entity="${entity.id}"]'))`
+    )),
+    "hidden layer geometry must disappear"
+  );
+  await clickVisibleControl(view, 'button[aria-label="Undo"]');
+  await settle(
+    (drawing) => drawing.layers.find((layer) => layer.id === layerId).visible
+  );
+  expect(
+    await evaluate(
+      view,
+      `Boolean(document.querySelector('[data-drawing-entity="${entity.id}"]'))`
+    ),
+    "Undo must restore visibility"
+  );
+  await clickVisibleControl(view, 'button[aria-label="Redo"]');
+  const saved = await settle(
+    (drawing) => !drawing.layers.find((layer) => layer.id === layerId).visible
+  );
+  const path = ".metrics/editable-interchange/layers.wcad";
+  await saveProjectFile(view, path);
+  await withDeadline(
+    view.navigate(await evaluate(view, "location.href")),
+    60_000,
+    "reload layer drawing"
+  );
+  await waitForHook(view);
+  await openProjectFile(view, path);
+  await clickVisibleControl(view, '[data-ribbon-roving-id="mode-drawing"]');
+  const reopened = await settle((drawing) =>
+    drawing.layers.some((layer) => layer.id === layerId)
+  );
+  expect(
+    isDeepStrictEqual(reopened, saved),
+    "native reopen must preserve all properties, assignment and history"
+  );
+  await select("Layer properties", layerId);
+  await typeField(view, 'input[aria-label="Layer transparency"]', "91");
+  expect(
+    await evaluate(
+      view,
+      'document.querySelector("[data-layer-apply]").disabled'
+    ),
+    "invalid transparency must be blocked"
+  );
+  expect(
+    isDeepStrictEqual((await getState(view)).drawing, reopened),
+    "invalid layer draft must preserve history"
+  );
+  await writeUseScreenshot(view, "drawing-layers-invalid");
+  await typeField(view, 'input[aria-label="Layer transparency"]', "25");
+  await check("visible", true);
+  await check("locked", false);
+  await clickVisibleControl(view, "[data-layer-apply]");
+  await settle(
+    (drawing) => !drawing.layers.find((layer) => layer.id === layerId).locked
+  );
+  await clickVisibleControl(view, `[data-drawing-select="${entity.id}"]`);
+  await writeUseScreenshot(view, "drawing-layers-properties");
+  // Undo from the reopened native history back to the shared fixture.
+  while ((await getState(view)).drawing.historyCount > initial.historyCount) {
+    const previous = (await getState(view)).drawing.historyCount;
+    await clickVisibleControl(view, 'button[aria-label="Undo"]');
+    await settle((drawing) => drawing.historyCount < previous);
+  }
+  const restored = (await getState(view)).drawing;
+  expect(
+    isDeepStrictEqual(restored.entities, initial.entities) &&
+      isDeepStrictEqual(restored.layers, initial.layers),
+    "Undo must restore original layers and assignments"
+  );
+  console.log(
+    "Drawing layers UI: create, assignment, appearance, lock, visibility, print, invalid properties, Undo/Redo and native history passed"
+  );
+}
+
 async function runUseSteps(view, name, steps, label) {
   let sawScreenshot = false;
   let sawBreak = false;
@@ -2366,6 +2603,11 @@ async function runUseSteps(view, name, steps, label) {
         writeUseScreenshot
       });
       clicks.push("Associative drawing dimension controls");
+      continue;
+    }
+    if (step.drawingLayers) {
+      await exerciseDrawingLayers(view);
+      clicks.push("Drawing layer controls");
       continue;
     }
     if (step.drawingPrecision) {

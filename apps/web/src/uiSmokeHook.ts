@@ -30,6 +30,7 @@ export interface UiSmokeState {
   readonly drawing?: {
     readonly units: string;
     readonly entities: readonly unknown[];
+    readonly layers: readonly unknown[];
     readonly sketchCount: number;
     readonly constraintCount: number;
     readonly historyCount: number;

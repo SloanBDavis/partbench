@@ -11855,6 +11855,7 @@ export function App() {
         drawing: {
           units: document.units,
           entities: [...document.drawingEntities.values()],
+          layers: [...document.drawingLayers.values()],
           sketchCount: document.sketches.size,
           constraintCount: document.sketchConstraints.size,
           historyCount: engine.getTransactions().length,
@@ -12226,6 +12227,7 @@ export function App() {
             workbenchUi.mode === "drawing" ? (
               <DrawingWorkspace
                 entities={document.drawingEntities}
+                layers={document.drawingLayers}
                 units={document.units}
                 disabled={commandPending}
                 error={commandError}

@@ -1,5 +1,10 @@
 import { resolveDrawingDimension } from "@web-cad/cad-protocol";
 import {
+  DEFAULT_DRAWING_LAYER,
+  isDrawingLayer,
+  isDrawingLayerOp,
+  getDrawingLayer,
+  type DrawingLayer,
   isDrawingEntity,
   isDrawingOp,
   type DrawingEntity
@@ -1197,6 +1202,7 @@ export type LoftFeature = LoftFeatureV21;
 
 export interface CadDocument {
   readonly drawingEntities: ReadonlyMap<string, DrawingEntity>;
+  readonly drawingLayers: ReadonlyMap<string, DrawingLayer>;
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
   readonly datums: ReadonlyMap<DatumId, Datum>;
@@ -1246,6 +1252,7 @@ export interface CadExecutionOptions {
 
 export interface CadDocumentSnapshot {
   readonly drawingEntities?: readonly DrawingEntity[];
+  readonly drawingLayers?: readonly DrawingLayer[];
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
@@ -2029,9 +2036,15 @@ export function createCadDocument(
   topologyIdentity?: CadTopologyIdentitySourceSnapshot,
   datums: Iterable<readonly [DatumId, Datum]> = [],
   assemblies: Iterable<readonly [AssemblyId, AssemblySnapshot]> = [],
-  drawingEntities: Iterable<readonly [string, DrawingEntity]> = []
+  drawingEntities: Iterable<readonly [string, DrawingEntity]> = [],
+  drawingLayers: Iterable<readonly [string, DrawingLayer]> = [
+    ["0", DEFAULT_DRAWING_LAYER]
+  ]
 ): CadDocument {
   return {
+    drawingLayers: new Map(
+      [...drawingLayers].map(([id, layer]) => [id, cloneJsonSource(layer)])
+    ),
     drawingEntities: new Map(
       [...drawingEntities].map(([id, entity]) => [id, cloneJsonSource(entity)])
     ),
@@ -2765,6 +2778,9 @@ export class CadEngine {
                 ]
               : [];
           }),
+          drawingLayers: [...this.#document.drawingLayers.values()].map(
+            cloneJsonSource
+          ),
           drawingEntities: [...this.#document.drawingEntities.values()].map(
             cloneJsonSource
           ),
@@ -6287,6 +6303,11 @@ export function formatCadProjectImportError(error: unknown): string {
 }
 
 type MutableSemanticDiff = {
+  drawingLayers?: {
+    created: DrawingLayer[];
+    modified: DrawingLayer[];
+    deleted: DrawingLayer[];
+  };
   drawing?: {
     created: DrawingEntity[];
     modified: DrawingEntity[];
@@ -6394,6 +6415,7 @@ type SketchEntityImportRef = {
 
 interface MutableDocumentState {
   drawingEntities: Map<string, DrawingEntity>;
+  drawingLayers: Map<string, DrawingLayer>;
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
   datums: Map<DatumId, Datum>;
@@ -6426,6 +6448,59 @@ function applyOperation(
   opIndex: number
 ): void {
   switch (op.op) {
+    case "drawing.layer.create":
+    case "drawing.layer.update":
+    case "drawing.layer.delete": {
+      const fail = (message: string): never =>
+        throwValidationError({ code: "INVALID_OPERATION", message, opIndex });
+      if (!isDrawingLayerOp(op))
+        fail(
+          "Invalid layer properties: use a name, hex color, supported line type, weight 0–2.11 mm and transparency 0–90%."
+        );
+      const id = op.op === "drawing.layer.delete" ? op.id : op.layer.id;
+      const existing = state.drawingLayers.get(id);
+      if (op.op === "drawing.layer.create" ? Boolean(existing) : !existing)
+        fail(
+          existing
+            ? `Layer already exists: ${id}.`
+            : `Layer does not exist: ${id}.`
+        );
+      const layers = (diff.drawingLayers ??= {
+        created: [],
+        modified: [],
+        deleted: []
+      });
+      if (op.op === "drawing.layer.delete") {
+        if (id === "0") fail("The default layer cannot be deleted.");
+        if (
+          [...state.drawingEntities.values()].some(
+            (entity) => (entity.layerId ?? "0") === id
+          )
+        )
+          fail("Reassign all entities before deleting this layer.");
+        state.drawingLayers.delete(id);
+        layers.deleted.push(cloneJsonSource(existing!));
+      } else {
+        if (
+          [...state.drawingLayers.values()].some(
+            (layer) =>
+              layer.id !== id &&
+              layer.name.trim().toLowerCase() ===
+                op.layer.name.trim().toLowerCase()
+          )
+        )
+          fail("Layer names must be unique.");
+        const layer = cloneJsonSource({
+          ...op.layer,
+          name: op.layer.name.trim()
+        });
+        state.drawingLayers.set(id, layer);
+        layers[op.op === "drawing.layer.create" ? "created" : "modified"].push(
+          layer
+        );
+      }
+      return;
+    }
     case "drawing.entity.create":
     case "drawing.entity.update":
     case "drawing.entity.delete": {
@@ -6481,6 +6556,23 @@ function applyOperation(
             "Dimension anchors must reference existing geometry with compatible points and finite measurements.",
           opIndex
         });
+      if (existing && getDrawingLayer(state.drawingLayers, existing).locked)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: "Unlock the entity’s layer before editing or deleting it.",
+          opIndex
+        });
+      if (op.op !== "drawing.entity.delete") {
+        const layer = state.drawingLayers.get(op.entity.layerId ?? "0");
+        if (!layer || layer.locked)
+          throwValidationError({
+            code: "INVALID_OPERATION",
+            message: layer
+              ? "Unlock the destination layer before creating or assigning geometry."
+              : "The assigned layer does not exist.",
+            opIndex
+          });
+      }
       const drawing = (diff.drawing ??= {
         created: [],
         modified: [],
@@ -8892,6 +8984,9 @@ function getBatchResponseMode(batch: CadBatch): CadBatch["mode"] {
 
 function isCadOperationKind(value: string): boolean {
   switch (value) {
+    case "drawing.layer.create":
+    case "drawing.layer.update":
+    case "drawing.layer.delete":
     case "drawing.entity.create":
     case "drawing.entity.update":
     case "drawing.entity.delete":
@@ -27505,6 +27600,7 @@ export function createCadDocumentSnapshot(
 ): CadDocumentSnapshot {
   return {
     units: document.units,
+    drawingLayers: [...document.drawingLayers.values()].map(cloneJsonSource),
     ...(document.drawingEntities.size
       ? {
           drawingEntities: [...document.drawingEntities.values()].map(
@@ -27596,6 +27692,9 @@ export function createCadDocumentFromSnapshot(
     ),
     (snapshot.drawingEntities ?? []).map(
       (entity) => [entity.id, cloneJsonSource(entity)] as const
+    ),
+    (snapshot.drawingLayers ?? [DEFAULT_DRAWING_LAYER]).map(
+      (layer) => [layer.id, cloneJsonSource(layer)] as const
     )
   );
 }
@@ -31874,6 +31973,7 @@ function runOperations(
 
   const state: MutableDocumentState = {
     drawingEntities: new Map(document.drawingEntities),
+    drawingLayers: new Map(document.drawingLayers),
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
     datums: new Map(document.datums ?? []),
@@ -32205,7 +32305,8 @@ function runOperations(
     state.topologyIdentity,
     state.datums,
     state.assemblies,
-    state.drawingEntities
+    state.drawingEntities,
+    state.drawingLayers
   );
 
   return {
@@ -35719,6 +35820,43 @@ function validateCadDocumentSnapshot(
     );
   }
 
+  const drawingLayerIds = new Set<string>(["0"]);
+  if (value.drawingLayers !== undefined) {
+    const names = new Set<string>();
+    drawingLayerIds.clear();
+    if (!Array.isArray(value.drawingLayers))
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.drawingLayers`,
+        "Drawing layers must be an array."
+      );
+    else
+      for (const layer of value.drawingLayers) {
+        if (
+          !isDrawingLayer(layer) ||
+          drawingLayerIds.has(layer.id) ||
+          names.has(layer.name.trim().toLowerCase())
+        )
+          addProjectIssue(
+            issues,
+            "INVALID_DOCUMENT",
+            `${path}.drawingLayers`,
+            "Layers require unique IDs/names and valid properties."
+          );
+        else {
+          drawingLayerIds.add(layer.id);
+          names.add(layer.name.trim().toLowerCase());
+        }
+      }
+    if (!drawingLayerIds.has("0"))
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.drawingLayers`,
+        "The default layer 0 is required."
+      );
+  }
   if (value.drawingEntities !== undefined) {
     const seen = new Set<string>();
     if (!Array.isArray(value.drawingEntities))
@@ -35730,7 +35868,11 @@ function validateCadDocumentSnapshot(
       );
     else
       for (const [index, entity] of value.drawingEntities.entries()) {
-        if (!isDrawingEntity(entity) || seen.has(entity.id))
+        if (
+          !isDrawingEntity(entity) ||
+          seen.has(entity.id) ||
+          !drawingLayerIds.has(entity.layerId ?? "0")
+        )
           addProjectIssue(
             issues,
             "INVALID_DOCUMENT",

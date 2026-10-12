@@ -260,6 +260,14 @@ function createOperationSummaries(
         : undefined;
 
     switch (op.op) {
+      case "drawing.layer.create":
+      case "drawing.layer.update":
+        return {
+          op: op.op,
+          label: `${op.op.endsWith("create") ? "Create" : "Edit"} layer ${op.layer.name}`
+        };
+      case "drawing.layer.delete":
+        return { op: op.op, label: `Delete layer ${op.id}` };
       case "drawing.entity.create":
       case "drawing.entity.update":
         return {
@@ -1710,6 +1718,9 @@ function getSketchEntityKindFromAddOp(
 
 function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
   return {
+    ...(diff.drawingLayers
+      ? { drawingLayers: structuredClone(diff.drawingLayers) }
+      : {}),
     ...(diff.drawing ? { drawing: structuredClone(diff.drawing) } : {}),
     created: [...diff.created],
     modified: [...diff.modified],

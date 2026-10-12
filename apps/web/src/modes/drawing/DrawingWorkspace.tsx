@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
+  getDrawingLayer,
+  drawingLayerAppearance,
+  type DrawingLayer,
   isDrawingEntity,
   type CadOp,
   type DocumentUnits,
@@ -9,6 +12,7 @@ import {
 import { DrawingDimensionControls } from "./DrawingDimensionControls";
 import { DrawingDimensionGlyph } from "./DrawingDimensionGlyph";
 import { resolveDrawingDimension } from "@web-cad/cad-protocol";
+import { DrawingLayerControls } from "./DrawingLayerControls";
 import { CoordinateInput } from "./CoordinateInput";
 import { DrawingFrameControls } from "./DrawingFrameControls";
 import {
@@ -83,6 +87,7 @@ function fitDrawing(values: readonly DrawingEntity[]): View {
 
 interface Props {
   entities: ReadonlyMap<string, DrawingEntity>;
+  layers: ReadonlyMap<string, DrawingLayer>;
   units: DocumentUnits;
   disabled: boolean;
   error?: string;
@@ -94,6 +99,7 @@ interface Props {
 
 export function DrawingWorkspace({
   entities,
+  layers,
   units,
   disabled,
   error,
@@ -102,6 +108,8 @@ export function DrawingWorkspace({
   save,
   open
 }: Props) {
+  const [currentLayerId, setCurrentLayerId] = useState("0");
+  const activeLayer = layers.get(currentLayerId) ?? layers.get("0")!;
   const [tool, setTool] = useState<Tool>("select");
   const [placingDimension, setPlacingDimension] = useState(false);
   const [dimensionPlacement, setDimensionPlacement] = useState<Vec2>();
@@ -125,8 +133,14 @@ export function DrawingWorkspace({
     undefined
   );
   const [screenScale, setScreenScale] = useState(1);
-  const [source, setSource] = useState({ entities, units });
-  const [view, setView] = useState(() => fitDrawing([...entities.values()]));
+  const [source, setSource] = useState({ entities, layers, units });
+  const [view, setView] = useState(() =>
+    fitDrawing(
+      [...entities.values()].filter(
+        (entity) => getDrawingLayer(layers, entity).visible
+      )
+    )
+  );
   const svg = useRef<SVGSVGElement>(null);
   const workspace = useRef<HTMLElement>(null);
   const coordinateFocus = useRef(false);
@@ -137,6 +151,12 @@ export function DrawingWorkspace({
   const [notice, setNotice] = useState("");
   const selected = selectedId ? entities.get(selectedId) : undefined;
   const values = [...entities.values()];
+  const visibleValues = values.filter(
+    (entity) => getDrawingLayer(layers, entity).visible
+  );
+  const selectionLocked = Boolean(
+    selected && getDrawingLayer(layers, selected).locked
+  );
   const creating = tool === "line" || tool === "circle" || tool === "rectangle";
   const activeSnap =
     creating && objectSnaps ? candidates[candidateIndex] : undefined;
@@ -149,8 +169,12 @@ export function DrawingWorkspace({
   };
   // Reset transient input when source/history or units change, before rendering
   // new geometry. No draft point survives in an obsolete coordinate system.
-  if (source.entities !== entities || source.units !== units) {
-    setSource({ entities, units });
+  if (
+    source.entities !== entities ||
+    source.layers !== layers ||
+    source.units !== units
+  ) {
+    setSource({ entities, layers, units });
     setStart(undefined);
     setCursor(undefined);
     setTypedCursor(undefined);
@@ -178,7 +202,7 @@ export function DrawingWorkspace({
   };
   const fit = () => {
     clearTarget();
-    setView(fitDrawing(values));
+    setView(fitDrawing(visibleValues));
   };
   const zoom = (factor: number) => {
     clearTarget();
@@ -211,7 +235,7 @@ export function DrawingWorkspace({
     const next =
       creating && objectSnaps && matrix
         ? findDrawingSnaps({
-            entities: values,
+            entities: visibleValues,
             point: raw,
             tolerance: 10 / Math.hypot(matrix.a, matrix.b),
             base: start,
@@ -261,7 +285,9 @@ export function DrawingWorkspace({
     }
   };
   const remove = () =>
-    selected && void submit([{ op: "drawing.entity.delete", id: selected.id }]);
+    selected &&
+    !selectionLocked &&
+    void submit([{ op: "drawing.entity.delete", id: selected.id }]);
   const make = (
     a: Vec2,
     b: Vec2,
@@ -270,18 +296,21 @@ export function DrawingWorkspace({
     tool === "circle"
       ? {
           id,
+          layerId: activeLayer.id,
           kind: "circle",
           center: a,
           radius: Math.hypot(b[0] - a[0], b[1] - a[1])
         }
       : {
           id,
+          layerId: activeLayer.id,
           kind: tool === "rectangle" ? "rectangle" : "line",
           start: a,
           end: b
         };
   const setPoint = async (p: Vec2) => {
-    if (disabled || busy.current || !creating) return false;
+    if (disabled || activeLayer.locked || busy.current || !creating)
+      return false;
     if (!start) {
       setStart(p);
       clearTarget();
@@ -581,10 +610,15 @@ export function DrawingWorkspace({
               vectorEffect="non-scaling-stroke"
               pointerEvents="none"
             />
-            {values.map((entity, index) => (
+            {visibleValues.map((entity, index) => (
               <g
                 key={entity.id}
                 data-drawing-entity={entity.id}
+                data-layer-printable={getDrawingLayer(layers, entity).printable}
+                opacity={
+                  drawingLayerAppearance(getDrawingLayer(layers, entity))
+                    .opacity
+                }
                 aria-label={`${titles[entity.kind]} ${index + 1}`}
                 className={
                   selected?.id === entity.id
@@ -598,11 +632,15 @@ export function DrawingWorkspace({
                     entities={entities}
                     units={units}
                     size={view.width / 65}
+                    layer={getDrawingLayer(layers, entity)}
                   />
                 ) : (
                   <>
                     <Shape entity={entity} hit />
-                    <Shape entity={entity} />
+                    <Shape
+                      entity={entity}
+                      layer={getDrawingLayer(layers, entity)}
+                    />
                   </>
                 )}
               </g>
@@ -701,6 +739,19 @@ export function DrawingWorkspace({
           <p className="drawing-muted">
             Changing units preserves physical size.
           </p>
+          <DrawingLayerControls
+            layers={layers}
+            entities={entities}
+            activeId={activeLayer.id}
+            setActiveId={(id) => {
+              setCurrentLayerId(id);
+              setStart(undefined);
+              clearTarget();
+            }}
+            selected={selected}
+            disabled={disabled}
+            commit={(ops) => submit(ops, selectedId)}
+          />
           <DrawingFrameControls
             key={units}
             units={units}
@@ -775,9 +826,17 @@ export function DrawingWorkspace({
               key={`${tool}:${units}`}
               kind={tool}
               units={units}
-              disabled={disabled}
+              disabled={disabled || activeLayer.locked}
               onApply={(entity) =>
-                submit([{ op: "drawing.entity.create", entity }], entity.id)
+                submit(
+                  [
+                    {
+                      op: "drawing.entity.create",
+                      entity: { ...entity, layerId: activeLayer.id }
+                    }
+                  ],
+                  entity.id
+                )
               }
             />
           ) : tool === "dimension" || selected?.kind === "dimension" ? (
@@ -793,7 +852,10 @@ export function DrawingWorkspace({
               source={selected}
               entities={entities}
               units={units}
-              disabled={disabled}
+              disabled={
+                disabled ||
+                (tool === "select" ? selectionLocked : activeLayer.locked)
+              }
               placement={dimensionPlacement}
               onPick={() => setPlacingDimension(true)}
               onApply={(entity) =>
@@ -804,7 +866,14 @@ export function DrawingWorkspace({
                         tool === "select"
                           ? "drawing.entity.update"
                           : "drawing.entity.create",
-                      entity
+                      entity: {
+                        ...entity,
+                        ...(tool === "select"
+                          ? selected?.layerId
+                            ? { layerId: selected.layerId }
+                            : {}
+                          : { layerId: activeLayer.id })
+                      }
                     }
                   ],
                   entity.id
@@ -817,9 +886,22 @@ export function DrawingWorkspace({
               kind={selected.kind}
               entity={selected}
               units={units}
-              disabled={disabled}
+              disabled={disabled || selectionLocked}
               onApply={(entity) =>
-                submit([{ op: "drawing.entity.update", entity }], entity.id)
+                submit(
+                  [
+                    {
+                      op: "drawing.entity.update",
+                      entity: {
+                        ...entity,
+                        ...(selected.layerId
+                          ? { layerId: selected.layerId }
+                          : {})
+                      }
+                    }
+                  ],
+                  entity.id
+                )
               }
             />
           ) : (
@@ -827,7 +909,7 @@ export function DrawingWorkspace({
           )}
           <button
             data-drawing-delete
-            disabled={!selected || disabled}
+            disabled={!selected || disabled || selectionLocked}
             onClick={remove}
           >
             Delete selected
@@ -874,15 +956,23 @@ export function DrawingWorkspace({
 
 function Shape({
   entity,
-  hit = false
+  hit = false,
+  layer
 }: {
   entity: Exclude<DrawingEntity, { kind: "dimension" }>;
   hit?: boolean;
+  layer?: DrawingLayer;
 }) {
   const props = {
     fill: "none",
-    stroke: hit ? "transparent" : "currentColor",
-    strokeWidth: hit ? 14 : 1.8,
+    stroke: hit ? "transparent" : (layer?.color ?? "currentColor"),
+    strokeWidth: hit
+      ? 14
+      : layer
+        ? drawingLayerAppearance(layer).strokeWidth
+        : 1.8,
+    strokeDasharray:
+      !hit && layer ? drawingLayerAppearance(layer).strokeDasharray : undefined,
     vectorEffect: "non-scaling-stroke" as const,
     pointerEvents: hit ? ("stroke" as const) : ("none" as const)
   };

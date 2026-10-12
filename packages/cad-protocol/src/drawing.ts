@@ -2,7 +2,7 @@ import { isDrawingDimension, type DrawingDimension } from "./drawingDimensions";
 import type { Vec2 } from "./index";
 
 /** Model-space geometry, independent of part sketches and the sketch solver. */
-export type DrawingEntity =
+export type DrawingEntity = (
   | DrawingDimension
   | {
       readonly id: string;
@@ -21,7 +21,8 @@ export type DrawingEntity =
       readonly kind: "rectangle";
       readonly start: Vec2;
       readonly end: Vec2;
-    };
+    }
+) & { readonly layerId?: string };
 
 export type DrawingEntityCreateOp = {
   readonly op: "drawing.entity.create";
@@ -44,6 +45,11 @@ export interface DrawingSemanticDiff {
 export function isDrawingEntity(value: unknown): value is DrawingEntity {
   if (!value || typeof value !== "object") return false;
   const entity = value as Record<string, unknown>;
+  if (
+    entity.layerId !== undefined &&
+    (typeof entity.layerId !== "string" || !entity.layerId.trim())
+  )
+    return false;
   const point = (v: unknown): v is Vec2 =>
     Array.isArray(v) &&
     v.length === 2 &&

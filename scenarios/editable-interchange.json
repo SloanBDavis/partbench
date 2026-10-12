@@ -425,6 +425,9 @@
     },
     { "drawingDimensions": true },
     {
+      "drawingLayers": true
+    },
+    {
       "click": "[data-drawing-tool=\"select\"]"
     },
     {

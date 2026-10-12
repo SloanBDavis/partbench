@@ -3514,10 +3514,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                   },
                   point: {
                     enum: [
+                      "center",
                       "start",
                       "end",
                       "midpoint",
-                      "center",
                       "cornerX",
                       "cornerY",
                       "east",
@@ -3538,10 +3538,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                   },
                   point: {
                     enum: [
+                      "center",
                       "start",
                       "end",
                       "midpoint",
-                      "center",
                       "cornerX",
                       "cornerY",
                       "east",
@@ -3566,6 +3566,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 maxItems: 2,
                 description:
                   "Absolute model-space label position; geometry edits never replace it."
+              },
+              layerId: {
+                type: "string"
               }
             }
           },
@@ -3605,6 +3608,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 ],
                 minItems: 2,
                 maxItems: 2
+              },
+              layerId: {
+                type: "string"
               }
             }
           },
@@ -3634,6 +3640,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
               },
               radius: {
                 type: "number"
+              },
+              layerId: {
+                type: "string"
               }
             }
           },
@@ -3673,6 +3682,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 ],
                 minItems: 2,
                 maxItems: 2
+              },
+              layerId: {
+                type: "string"
               }
             }
           }
@@ -3734,10 +3746,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                   },
                   point: {
                     enum: [
+                      "center",
                       "start",
                       "end",
                       "midpoint",
-                      "center",
                       "cornerX",
                       "cornerY",
                       "east",
@@ -3758,10 +3770,10 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                   },
                   point: {
                     enum: [
+                      "center",
                       "start",
                       "end",
                       "midpoint",
-                      "center",
                       "cornerX",
                       "cornerY",
                       "east",
@@ -3786,6 +3798,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 maxItems: 2,
                 description:
                   "Absolute model-space label position; geometry edits never replace it."
+              },
+              layerId: {
+                type: "string"
               }
             }
           },
@@ -3825,6 +3840,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 ],
                 minItems: 2,
                 maxItems: 2
+              },
+              layerId: {
+                type: "string"
               }
             }
           },
@@ -3854,6 +3872,9 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
               },
               radius: {
                 type: "number"
+              },
+              layerId: {
+                type: "string"
               }
             }
           },
@@ -3893,10 +3914,134 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                 ],
                 minItems: 2,
                 maxItems: 2
+              },
+              layerId: {
+                type: "string"
               }
             }
           }
         ]
+      }
+    }
+  },
+  "drawing.layer.create": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "layer"],
+    properties: {
+      op: {
+        const: "drawing.layer.create"
+      },
+      layer: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "name",
+          "color",
+          "lineType",
+          "lineWeight",
+          "transparency",
+          "locked",
+          "visible",
+          "printable"
+        ],
+        properties: {
+          id: {
+            type: "string"
+          },
+          name: {
+            type: "string"
+          },
+          color: {
+            type: "string"
+          },
+          lineType: {
+            enum: ["continuous", "dashed", "dotted", "center"]
+          },
+          lineWeight: {
+            type: "number"
+          },
+          transparency: {
+            type: "number"
+          },
+          locked: {
+            type: "boolean"
+          },
+          visible: {
+            type: "boolean"
+          },
+          printable: {
+            type: "boolean"
+          }
+        }
+      }
+    }
+  },
+  "drawing.layer.delete": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "id"],
+    properties: {
+      op: {
+        const: "drawing.layer.delete"
+      },
+      id: {
+        type: "string"
+      }
+    }
+  },
+  "drawing.layer.update": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "layer"],
+    properties: {
+      op: {
+        const: "drawing.layer.update"
+      },
+      layer: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "name",
+          "color",
+          "lineType",
+          "lineWeight",
+          "transparency",
+          "locked",
+          "visible",
+          "printable"
+        ],
+        properties: {
+          id: {
+            type: "string"
+          },
+          name: {
+            type: "string"
+          },
+          color: {
+            type: "string"
+          },
+          lineType: {
+            enum: ["continuous", "dashed", "dotted", "center"]
+          },
+          lineWeight: {
+            type: "number"
+          },
+          transparency: {
+            type: "number"
+          },
+          locked: {
+            type: "boolean"
+          },
+          visible: {
+            type: "boolean"
+          },
+          printable: {
+            type: "boolean"
+          }
+        }
       }
     }
   },
@@ -11746,7 +11891,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               },
@@ -11759,7 +11904,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   role: {
-                    enum: ["start", "end", "center", "position"]
+                    enum: ["center", "start", "end", "position"]
                   },
                   entityKind: false
                 }
@@ -11776,7 +11921,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               }
@@ -11886,7 +12031,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               },
@@ -11899,7 +12044,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   role: {
-                    enum: ["start", "end", "center", "position"]
+                    enum: ["center", "start", "end", "position"]
                   },
                   entityKind: false
                 }
@@ -11916,7 +12061,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               }
@@ -11984,7 +12129,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               },
@@ -11997,7 +12142,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   role: {
-                    enum: ["start", "end", "center", "position"]
+                    enum: ["center", "start", "end", "position"]
                   },
                   entityKind: false
                 }
@@ -12014,7 +12159,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               }
@@ -12088,7 +12233,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   role: {
-                    enum: ["start", "end", "center", "position"]
+                    enum: ["center", "start", "end", "position"]
                   },
                   entityKind: false
                 }
@@ -12697,7 +12842,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               },
@@ -12710,7 +12855,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   role: {
-                    enum: ["start", "end", "center", "position"]
+                    enum: ["center", "start", "end", "position"]
                   },
                   entityKind: false
                 }
@@ -12727,7 +12872,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               }
@@ -12795,7 +12940,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               },
@@ -12808,7 +12953,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   role: {
-                    enum: ["start", "end", "center", "position"]
+                    enum: ["center", "start", "end", "position"]
                   },
                   entityKind: false
                 }
@@ -12825,7 +12970,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     const: "arc"
                   },
                   role: {
-                    enum: ["start", "end", "center"]
+                    enum: ["center", "start", "end"]
                   }
                 }
               }
@@ -12975,7 +13120,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         const: "arc"
                       },
                       role: {
-                        enum: ["start", "end", "center"]
+                        enum: ["center", "start", "end"]
                       }
                     }
                   }
@@ -13066,7 +13211,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         const: "arc"
                       },
                       role: {
-                        enum: ["start", "end", "center"]
+                        enum: ["center", "start", "end"]
                       }
                     }
                   }
@@ -13134,7 +13279,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         const: "arc"
                       },
                       role: {
-                        enum: ["start", "end", "center"]
+                        enum: ["center", "start", "end"]
                       }
                     }
                   }
@@ -13490,7 +13635,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         const: "arc"
                       },
                       role: {
-                        enum: ["start", "end", "center"]
+                        enum: ["center", "start", "end"]
                       }
                     }
                   }
@@ -13558,7 +13703,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         const: "arc"
                       },
                       role: {
-                        enum: ["start", "end", "center"]
+                        enum: ["center", "start", "end"]
                       }
                     }
                   }
@@ -14115,7 +14260,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14183,7 +14328,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14270,7 +14415,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14338,7 +14483,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14424,7 +14569,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14684,7 +14829,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14752,7 +14897,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14839,7 +14984,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14907,7 +15052,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }
@@ -14993,7 +15138,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             const: "arc"
                           },
                           role: {
-                            enum: ["start", "end", "center"]
+                            enum: ["center", "start", "end"]
                           }
                         }
                       }

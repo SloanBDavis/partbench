@@ -1,4 +1,5 @@
 import { exerciseMcpDrawingDimensions } from "./drawing-dimensions-journey.mjs";
+import { exerciseMcpDrawingLayers } from "./e2e-drawing-layers.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { register } from "node:module";
@@ -104,6 +105,7 @@ async function journey(fixture) {
       0,
       "Discovery must not build geometry"
     );
+    await exerciseMcpDrawingLayers(client);
     // Exercise independent drafting through the same public command adapter.
     const drawing = {
       id: "drawing_mcp_line",
