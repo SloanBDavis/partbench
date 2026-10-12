@@ -2,6 +2,10 @@ import { DrawingDimensionGlyph } from "./DrawingDimensionGlyph";
 import { useState } from "react";
 import {
   drawingSheetSize,
+  drawingLayerAppearance,
+  getDrawingLayer,
+  DEFAULT_DRAWING_LAYER,
+  type DrawingLayer,
   resolveDrawingDimension,
   isDrawingSheet,
   type CadOp,
@@ -21,6 +25,7 @@ interface Props {
   sheet: DrawingSheet;
   sheets: ReadonlyMap<string, DrawingSheet>;
   entities: ReadonlyMap<string, DrawingEntity>;
+  layers: ReadonlyMap<string, DrawingLayer>;
   units: DocumentUnits;
   disabled: boolean;
   error?: string;
@@ -62,9 +67,13 @@ function Numeric({
     </label>
   );
 }
-function fittedModel(entities: ReadonlyMap<string, DrawingEntity>) {
-  const points = [...entities.values()].flatMap<readonly [number, number]>(
-    (e) =>
+function fittedModel(
+  entities: ReadonlyMap<string, DrawingEntity>,
+  layers: ReadonlyMap<string, DrawingLayer>
+) {
+  const points = [...entities.values()]
+    .filter((entity) => getDrawingLayer(layers, entity).visible)
+    .flatMap<readonly [number, number]>((e) =>
       e.kind === "dimension"
         ? (() => {
             const geometry = resolveDrawingDimension(e, entities);
@@ -84,7 +93,7 @@ function fittedModel(entities: ReadonlyMap<string, DrawingEntity>) {
               [e.center[0] + e.radius, e.center[1] + e.radius]
             ]
           : [e.start, e.end]
-  );
+    );
   const xs = points.map((p) => p[0]!),
     ys = points.map((p) => p[1]!);
   const minX = points.length ? Math.min(...xs) : -50,
@@ -101,6 +110,7 @@ export function SheetWorkspace({
   sheet,
   sheets,
   entities,
+  layers,
   units,
   disabled,
   error,
@@ -136,7 +146,7 @@ export function SheetWorkspace({
         width: dimensions.width - margins.left - margins.right,
         height: dimensions.height - margins.top - margins.bottom
       },
-      model: fittedModel(entities)
+      model: fittedModel(entities, layers)
     };
     setDraft({ ...draft, viewports: [...draft.viewports, viewport] });
     setViewportId(viewport.id);
@@ -179,46 +189,59 @@ export function SheetWorkspace({
                 viewBox={`${v.model.center[0] - v.model.width / 2} ${-v.model.center[1] - v.model.height / 2} ${v.model.width} ${v.model.height}`}
                 preserveAspectRatio="xMidYMid meet"
               >
-                {[...entities.values()].map((entity) => (
-                  <g
-                    key={entity.id}
-                    data-sheet-entity={entity.id}
-                    fill="none"
-                    stroke="#25344a"
-                    strokeWidth="0.8"
-                  >
-                    {entity.kind === "dimension" ? (
-                      <DrawingDimensionGlyph
-                        entity={entity}
-                        entities={entities}
-                        units={units}
-                      />
-                    ) : entity.kind === "circle" ? (
-                      <circle
-                        cx={entity.center[0]}
-                        cy={-entity.center[1]}
-                        r={entity.radius}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    ) : entity.kind === "line" ? (
-                      <line
-                        x1={entity.start[0]}
-                        y1={-entity.start[1]}
-                        x2={entity.end[0]}
-                        y2={-entity.end[1]}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    ) : (
-                      <rect
-                        x={Math.min(entity.start[0], entity.end[0])}
-                        y={-Math.max(entity.start[1], entity.end[1])}
-                        width={Math.abs(entity.end[0] - entity.start[0])}
-                        height={Math.abs(entity.end[1] - entity.start[1])}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    )}
-                  </g>
-                ))}
+                {[...entities.values()].map((entity) => {
+                  const sourceLayer = getDrawingLayer(layers, entity);
+                  if (!sourceLayer.visible) return null;
+                  const layer =
+                    sourceLayer.id === "0" &&
+                    sourceLayer.color === DEFAULT_DRAWING_LAYER.color
+                      ? { ...sourceLayer, color: "#25344a" }
+                      : sourceLayer;
+                  const appearance = drawingLayerAppearance(layer);
+                  return (
+                    <g
+                      key={entity.id}
+                      data-sheet-entity={entity.id}
+                      data-layer-printable={layer.printable}
+                      data-layer-id={layer.id}
+                      fill="none"
+                      {...appearance}
+                      style={{ color: layer.color }}
+                    >
+                      {entity.kind === "dimension" ? (
+                        <DrawingDimensionGlyph
+                          entity={entity}
+                          entities={entities}
+                          units={units}
+                          layer={layer}
+                        />
+                      ) : entity.kind === "circle" ? (
+                        <circle
+                          cx={entity.center[0]}
+                          cy={-entity.center[1]}
+                          r={entity.radius}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ) : entity.kind === "line" ? (
+                        <line
+                          x1={entity.start[0]}
+                          y1={-entity.start[1]}
+                          x2={entity.end[0]}
+                          y2={-entity.end[1]}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ) : (
+                        <rect
+                          x={Math.min(entity.start[0], entity.end[0])}
+                          y={-Math.max(entity.start[1], entity.end[1])}
+                          width={Math.abs(entity.end[0] - entity.start[0])}
+                          height={Math.abs(entity.end[1] - entity.start[1])}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      )}
+                    </g>
+                  );
+                })}
               </svg>
               <rect
                 className="sheet-viewport-frame"
@@ -405,7 +428,10 @@ export function SheetWorkspace({
               <button
                 type="button"
                 onClick={() =>
-                  changeViewport({ ...selected, model: fittedModel(entities) })
+                  changeViewport({
+                    ...selected,
+                    model: fittedModel(entities, layers)
+                  })
                 }
               >
                 Fit model window

@@ -232,6 +232,61 @@ export async function exerciseDrawingSheets(
     "all model windows render the live associative dimension"
   );
   await writeUseScreenshot(view, "drawing-sheet-dimension");
+  await clickVisibleControl(view, "[data-sheet-model]");
+  await select("Layer properties", "0");
+  await field("Layer color", "#aa3366");
+  await select("Layer linetype", "dashed");
+  await field("Layer lineweight", 0.7);
+  await field("Layer transparency", 25);
+  await clickVisibleControl(view, 'input[aria-label="Layer print"]');
+  await clickVisibleControl(view, "[data-layer-apply]");
+  await settle(
+    (d) => d.layers.find((layer) => layer.id === "0").color === "#aa3366"
+  );
+  await clickVisibleControl(
+    view,
+    `[data-sheet-tab="${configured.sheets[0].id}"]`
+  );
+  const appearance = await evaluate(
+    view,
+    `(() => {const g=document.querySelector('[data-sheet-entity="${line.id}"]');const text=document.querySelector('[data-sheet-entity="${dimension.id}"] text');return {stroke:g.getAttribute("stroke"),weight:Number(g.getAttribute("stroke-width")),dash:g.getAttribute("stroke-dasharray"),opacity:Number(g.getAttribute("opacity")),fill:getComputedStyle(text).fill};})()`
+  );
+  expect(
+    appearance.stroke === "#aa3366" &&
+      Math.abs(appearance.weight - (0.7 * 96) / 25.4) < 1e-10 &&
+      appearance.dash === "10 5" &&
+      appearance.opacity === 0.75 &&
+      appearance.fill === "rgb(170, 51, 102)",
+    "sheet geometry and dimension labels must inherit layer appearance"
+  );
+  await view.cdp("Emulation.setEmulatedMedia", { media: "print" });
+  expect(
+    await evaluate(
+      view,
+      'Array.from(document.querySelectorAll("[data-sheet-entity]")).every(g=>getComputedStyle(g).display==="none")'
+    ),
+    "nonprinting layers must be suppressed on paper output"
+  );
+  await view.cdp("Emulation.setEmulatedMedia", { media: "" });
+  await clickVisibleControl(view, "[data-sheet-model]");
+  await clickVisibleControl(view, 'input[aria-label="Layer visible"]');
+  await clickVisibleControl(view, "[data-layer-apply]");
+  await settle((d) => !d.layers.find((layer) => layer.id === "0").visible);
+  await clickVisibleControl(
+    view,
+    `[data-sheet-tab="${configured.sheets[0].id}"]`
+  );
+  expect(
+    (await evaluate(
+      view,
+      'document.querySelectorAll("[data-sheet-entity]").length'
+    )) === 0,
+    "hidden layers must disappear from every sheet viewport"
+  );
+  await clickVisibleControl(view, 'button[aria-label="Undo"]');
+  await settle((d) => d.layers.find((layer) => layer.id === "0").visible);
+  await clickVisibleControl(view, 'button[aria-label="Undo"]');
+  await settle((d) => isDeepStrictEqual(d.layers, original.layers));
   await clickVisibleControl(view, 'button[aria-label="Undo"]');
   await settle((d) => d.entities.length === original.entities.length);
   await clickVisibleControl(view, "[data-sheet-model]");

@@ -19,6 +19,9 @@ window from current geometry. **Remove viewport** stages its removal until Apply
 The white sheet shows physical paper proportions, dashed margin guides and blue
 viewport frames. Model geometry retains its proportions within each window.
 Switching tabs changes the workspace view; it does not copy drawing entities.
+Viewports inherit layer visibility, color, linetype, lineweight, transparency and
+print flags. The default light layer color adapts for contrast on white paper;
+custom layer colors are preserved.
 Invalid, empty or duplicate names, nonpositive sizes, excessive margins and
 viewports outside the margins block Apply. Duplicate sheet names are compared
 without case and surrounding spaces.
@@ -61,7 +64,9 @@ reloads and reopens the native file with a pending sheet-deletion redo, verifies
 IDs/windows/history, redoes/undoes deletion, switches named tabs, and checks that
 unit conversion preserves physical sheet and model-window sizes. The same journey
 also creates an associative dimension with real controls and checks that both
-paper viewports display its measured label.
+paper viewports display its measured label. Layer edits verify inherited styles
+for geometry and labels, hidden-layer omission, and nonprinting-layer suppression
+under browser print media.
 
 The existing public MCP mounting-plate journey discovers all sheet operations,
 checks dry-run diffs and atomic duplicate-ID rejection, rejects invalid margins,
