@@ -561,16 +561,29 @@ export async function buildCurrentExactProjectionArtifacts(input: {
     readonly failures: readonly CurrentExactProjectionFailure[];
   }) => void;
 }): Promise<void> {
-  const assertCurrent = () => {
-    const identity = createCadProjectSourceIdentity(
-      exportCadProject(input.engine)
-    );
+  // Engine mutations advance the authority epoch before React disposes an old
+  // projection. Never publish that obsolete job's artifacts or failures.
+  let identityMatches: boolean | undefined;
+  const isCurrentSource = () => {
     if (
       !input.isActive() ||
-      input.engine.getSourceAuthorityEpoch() !== input.sourceAuthorityEpoch ||
-      identity.algorithm !== input.documentSourceIdentity.algorithm ||
-      identity.sha256 !== input.documentSourceIdentity.sha256
-    ) {
+      input.engine.getSourceAuthorityEpoch() !== input.sourceAuthorityEpoch
+    )
+      return false;
+    // Source identity is immutable within an authority epoch. Cache its check
+    // so progressive publication does not repeatedly hash large native files.
+    if (identityMatches === undefined) {
+      const identity = createCadProjectSourceIdentity(
+        exportCadProject(input.engine)
+      );
+      identityMatches =
+        identity.algorithm === input.documentSourceIdentity.algorithm &&
+        identity.sha256 === input.documentSourceIdentity.sha256;
+    }
+    return identityMatches;
+  };
+  const assertCurrent = () => {
+    if (!isCurrentSource()) {
       throw new Error("Current exact artifact source changed during build.");
     }
   };
@@ -609,16 +622,18 @@ export async function buildCurrentExactProjectionArtifacts(input: {
       : [];
   });
   const failures: CurrentExactProjectionFailure[] = [];
-  const publish = () =>
+  const publish = () => {
+    if (!isCurrentSource()) return;
     input.onChange({
       retainedArtifacts: [...retained.values()],
       artifacts: [...artifacts],
       failures: [...failures]
     });
+  };
   publish();
 
   for (const resolution of input.resolutions) {
-    if (!input.isActive()) return;
+    if (!isCurrentSource()) return;
     if (artifacts.some((artifact) => artifact.bodyId === resolution.bodyId)) {
       continue;
     }
@@ -645,7 +660,7 @@ export async function buildCurrentExactProjectionArtifacts(input: {
         artifacts.push(displayedArtifact);
       }
     } catch (error) {
-      if (!input.isActive()) return;
+      if (!isCurrentSource()) return;
       failures.push({
         bodyId: resolution.bodyId,
         sourceType: resolution.sourceType,
