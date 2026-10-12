@@ -2573,7 +2573,14 @@ async function exerciseDrawingLayers(view) {
     await clickVisibleControl(view, 'button[aria-label="Undo"]');
     await settle((drawing) => drawing.historyCount < previous);
   }
-  const restored = (await getState(view)).drawing;
+  // Engine history changes before the React document closure is refreshed.
+  // Await both authorities so a completed Undo count cannot expose stale rows.
+  const restored = await settle(
+    (drawing) =>
+      drawing.historyCount === initial.historyCount &&
+      isDeepStrictEqual(drawing.entities, initial.entities) &&
+      isDeepStrictEqual(drawing.layers, initial.layers)
+  );
   expect(
     isDeepStrictEqual(restored.entities, initial.entities) &&
       isDeepStrictEqual(restored.layers, initial.layers),
