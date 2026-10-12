@@ -2373,6 +2373,14 @@ async function exerciseDrawingLayers(view) {
     } while (performance.now() < deadline);
     throw new Error("Drawing layer change did not settle");
   };
+  const expectVisible = async (expression, message) => {
+    const deadline = performance.now() + 10_000;
+    do {
+      if (await evaluate(view, expression)) return;
+      await delay(30);
+    } while (performance.now() < deadline);
+    expect(false, message);
+  };
   const select = (label, option) =>
     selectCollectorOption(view, {
       selector: `select[aria-label="${label}"]`,
@@ -2515,22 +2523,16 @@ async function exerciseDrawingLayers(view) {
   await settle(
     (drawing) => !drawing.layers.find((layer) => layer.id === layerId).visible
   );
-  expect(
-    !(await evaluate(
-      view,
-      `Boolean(document.querySelector('[data-drawing-entity="${entity.id}"]'))`
-    )),
+  await expectVisible(
+    `!document.querySelector('[data-drawing-entity="${entity.id}"]')`,
     "hidden layer geometry must disappear"
   );
   await clickVisibleControl(view, 'button[aria-label="Undo"]');
   await settle(
     (drawing) => drawing.layers.find((layer) => layer.id === layerId).visible
   );
-  expect(
-    await evaluate(
-      view,
-      `Boolean(document.querySelector('[data-drawing-entity="${entity.id}"]'))`
-    ),
+  await expectVisible(
+    `Boolean(document.querySelector('[data-drawing-entity="${entity.id}"]'))`,
     "Undo must restore visibility"
   );
   await clickVisibleControl(view, 'button[aria-label="Redo"]');
