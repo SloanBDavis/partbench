@@ -16,9 +16,9 @@ Start at [AGENTS.md](./AGENTS.md).
 
 ## Professional CAD feature map
 
-[![CAD feature map: 339 features across 27 areas; 26 Done and 313 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
+[![CAD feature map: 339 features across 27 areas; 27 Done and 312 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
 
-**26 Done · 313 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
+**27 Done · 312 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
 
 [Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)
 
@@ -203,9 +203,9 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 </details>
 
 <details>
-<summary>Sheets, drawings and deliverables — 0 Done · 12 Not done</summary>
+<summary>Sheets, drawings and deliverables — 1 Done · 11 Not done</summary>
 
-- [ ] [SHEET-001](docs/cad-feature-matrix.md#sheet-001) Paper space and sheet layouts
+- [x] [SHEET-001](docs/cad-feature-matrix.md#sheet-001) Paper space and sheet layouts
 - [ ] [SHEET-002](docs/cad-feature-matrix.md#sheet-002) Scaled and clipped viewports
 - [ ] [SHEET-003](docs/cad-feature-matrix.md#sheet-003) Title blocks and sheet sets
 - [ ] [SHEET-004](docs/cad-feature-matrix.md#sheet-004) Associative orthographic views

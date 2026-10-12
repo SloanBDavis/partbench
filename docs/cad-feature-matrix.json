@@ -181,7 +181,7 @@
         "examples/editable-interchange/progressive-import-evidence.json",
         "examples/editable-interchange/engine-evidence.json"
       ],
-      "scope": "Five consecutive fresh-browser production runs: visible native orbit by 4.11–8.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62–89.23 s; no PERF-002 or hardware frame-budget claim. After DRAW-001 integration, the expanded full suite, 20-stage headless workflow and another production browser journey pass; orbit is verified at 6.31 s."
+      "scope": "Five consecutive fresh-browser production runs: visible native orbit by 4.11\u20138.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62\u201389.23 s; no PERF-002 or hardware frame-budget claim. After DRAW-001 integration, the expanded full suite, 20-stage headless workflow and another production browser journey pass; orbit is verified at 6.31 s."
     },
     "drawingPrecision": {
       "date": "2026-10-12",
@@ -226,6 +226,21 @@
         "examples/drawing-layers/verification.json"
       ],
       "scope": "Create and assign layers via actual controls and public MCP; color/linetype/lineweight/transparency; authoritative lock, visibility, print media, invalid-input and atomic rejection; dimension inheritance; native properties, assignments and Undo/Redo history. Split validation and initial failures recorded explicitly."
+    },
+    "drawingSheets": {
+      "date": "2026-10-12",
+      "sourceCommit": "8ac6fe7",
+      "command": "pnpm verify; pnpm test:e2e",
+      "journeys": [
+        "scenarios/editable-interchange.json",
+        "scripts/drawing-sheets-journey.mjs",
+        "scripts/smoke-agent-runtime.mjs"
+      ],
+      "records": [
+        "docs/drawing-sheets.md",
+        "examples/drawing-sheets/verification.json"
+      ],
+      "scope": "Actual paper-space controls, multiple physical named sheets and persistent live model viewports, rejection, history and native reopen, units, inherited layers/associative dimensions; public MCP dry run, atomicity, edits and mixed-solid native persistence. Static verify gates passed; complete E2E rerun passed after correcting shared Undo assertion settlement."
     }
   },
   "categories": [
@@ -1418,12 +1433,14 @@
       "id": "SHEET-001",
       "category": "sheets",
       "feature": "Paper space and sheet layouts",
-      "done": false,
+      "done": true,
       "acceptance": "Create multiple named sheets with physical paper sizes, orientation, margins and persistent model-space viewports.",
       "dependsOn": [
         "DRAW-001"
       ],
-      "evidence": []
+      "evidence": [
+        "drawingSheets"
+      ]
     },
     {
       "id": "SHEET-002",

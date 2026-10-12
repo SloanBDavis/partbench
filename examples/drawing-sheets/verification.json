@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-12",
+  "sourceCommit": "8ac6fe7",
+  "commands": [
+    "PARTBENCH_SMOKE_BROWSER_NO_SANDBOX=1 pnpm verify",
+    "PARTBENCH_SMOKE_BROWSER_NO_SANDBOX=1 pnpm test:e2e"
+  ],
+  "contracts": ["SHEET-001"],
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.8037.57",
+    "platform": "Linux, SwiftShader"
+  },
+  "checks": [
+    "Actual controls create two named sheets with A3 landscape and custom 230 \u00d7 310 mm portrait paper, distinct margins and persistent model windows",
+    "Two viewports share live editable model geometry; native reopen preserves sheet/window identities and geometry",
+    "Negative fractional model centers, custom sizes, multiple viewports and physical-size-preserving unit conversion",
+    "Invalid margins and duplicate names block Apply without changing source or history",
+    "Delete/Undo/native save/reload/open/Redo/Undo preserve the full source and pending history",
+    "Associative dimensions render the same measured label in both paper viewports",
+    "Layer appearance and dimension color inheritance, hidden-layer omission and nonprinting-layer suppression in real print media",
+    "Public MCP schema discovery, dry run, atomic duplicate-ID rejection, invalid margins, edit, mixed-solid native persistence and delete",
+    "All existing precision, dimensions, layers, editable interchange and assembly browser regressions"
+  ],
+  "report": {
+    "status": "passed",
+    "journeys": ["assembly", "interchange", "agent"],
+    "stages": [
+      {
+        "name": "prepare nested STEP fixture",
+        "milliseconds": 7500.815316,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "browser journeys",
+        "milliseconds": 51349.116444,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "build MCP executable",
+        "milliseconds": 14610.155443000003,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "MCP author/revise/save/reopen/STEP journey",
+        "milliseconds": 14499.133098000006,
+        "exitCode": 0,
+        "signal": null
+      }
+    ]
+  },
+  "staticChecks": {
+    "matrix": "passed",
+    "packageTypechecks": 13,
+    "changedSourceLint": "passed; six existing App hook warnings",
+    "changedSourceFormatting": "passed"
+  },
+  "screenshots": [
+    ".metrics/ui-smoke/drawing-sheet-reopened.png",
+    ".metrics/ui-smoke/drawing-sheet-invalid-margin.png",
+    ".metrics/ui-smoke/drawing-sheet-dimension.png"
+  ],
+  "notes": [
+    "Screenshots visually inspected. Native picker fixtures exercise real readers/writers, not OS dialogs.",
+    "Initial pnpm verify passed matrix and all 13 typechecks, then exposed an existing layer cleanup assertion race after all sheet checks passed. Engine history count settled before React source rows. The helper now awaits exact count and source equality; only this JavaScript assertion changed. The complete E2E suite then passed with no skipped journeys.",
+    "Root independently reproduced the same layer cleanup race without sheets before this correction. No product contract or layer acceptance assertion was weakened."
+  ]
+}

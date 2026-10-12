@@ -75,3 +75,25 @@ native save/open, and deletes it through the public adapter.
 
 Run `pnpm test:e2e -- interchange agent` for affected journeys, and `pnpm verify`
 for the complete matrix/typecheck/browser/public-MCP gate before landing.
+
+## Passing record — 2026-10-12
+
+All matrix/static verification gates and all 13 package typechecks passed. The
+complete `pnpm test:e2e` rerun passed on source `8ac6fe7`: all three browser
+journeys and the public MCP mounting-plate journey, including the full sheet
+workflow above. Browser execution took 51.35 seconds and MCP execution took
+14.50 seconds on Linux with Node 22.23.3, pnpm 10.14.0, Bun 1.4.2 and Chromium
+154.0.8037.57 using SwiftShader. These are verification timings, not performance
+targets. See the [recorded evidence](../examples/drawing-sheets/verification.json).
+
+The first `pnpm verify` invocation passed all static gates and sheet assertions
+but exposed a shared layer-journey cleanup race: the live engine history count
+changed before React's document rows refreshed. The assertion now awaits both
+the exact original count and original source; the complete E2E rerun passed.
+Only that JavaScript assertion changed after the static checks. Changed sources
+pass ESLint (six existing App hook warnings), Prettier and `git diff --check`.
+
+The reopened two-viewport sheet, invalid margin input and shared dimension-label
+screenshots were visually inspected. SHEET-001 is Done; SHEET-002's locked
+scales, custom clipping and viewport overrides, projected solid views and PDF
+publishing remain separate contracts.

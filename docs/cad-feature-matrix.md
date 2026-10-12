@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 26 Done · 313 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 27 Done · 312 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -44,7 +44,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [IO-005](#io-005) | Not done | DWG drawings | DRAW-001 |
 | [ORG-001](#org-001) | Done | Layer properties | DRAW-001 |
 | [ANN-002](#ann-002) | Done | Associative linear dimensions | DRAW-001 |
-| [SHEET-001](#sheet-001) | Not done | Paper space and sheet layouts | DRAW-001 |
+| [SHEET-001](#sheet-001) | Done | Paper space and sheet layouts | DRAW-001 |
 | [SHEET-004](#sheet-004) | Not done | Associative orthographic views | SHEET-001 |
 | [SHEET-010](#sheet-010) | Not done | Scale-correct PDF and printing | SHEET-002 |
 | [ASM-011](#asm-011) | Not done | Assembly interference and clearance | None declared |
@@ -60,7 +60,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [2D drawing geometry and editing](#area-drafting) | 1 | 1 | 17 |
 | [Layers, styles, blocks and references](#area-organization) | 1 | 1 | 11 |
 | [Annotation, dimensions and tolerancing](#area-annotation) | 1 | 1 | 13 |
-| [Sheets, drawings and deliverables](#area-sheets) | 1 | 0 | 12 |
+| [Sheets, drawings and deliverables](#area-sheets) | 1 | 1 | 11 |
 | [Parametric sketches and constraints](#area-sketch) | 2 | 0 | 14 |
 | [Solid modeling and feature history](#area-solid) | 2 | 1 | 23 |
 | [Direct editing and geometry repair](#area-direct) | 2 | 1 | 9 |
@@ -243,7 +243,7 @@ Existing foundation to inspect: [docs/parity-roadmap.md](../docs/parity-roadmap.
 
 | ID | Feature | Status | Done only when | Prerequisites | Passing evidence |
 | --- | --- | --- | --- | --- | --- |
-| <a id="sheet-001"></a>SHEET-001 | Paper space and sheet layouts | **Not done** | Create multiple named sheets with physical paper sizes, orientation, margins and persistent model-space viewports. | [DRAW-001](#draw-001) | — |
+| <a id="sheet-001"></a>SHEET-001 | Paper space and sheet layouts | **Done** | Create multiple named sheets with physical paper sizes, orientation, margins and persistent model-space viewports. | [DRAW-001](#draw-001) | [drawingSheets](#evidence-drawingSheets) |
 | <a id="sheet-002"></a>SHEET-002 | Scaled and clipped viewports | **Not done** | Set and lock viewport scales, clip boundaries and layer overrides; verify plotted geometry against known dimensions. | [SHEET-001](#sheet-001) | — |
 | <a id="sheet-003"></a>SHEET-003 | Title blocks and sheet sets | **Not done** | Populate reusable title blocks from project/sheet metadata and renumber, reorder and publish a linked sheet set. | [SHEET-001](#sheet-001), [ORG-004](#org-004) | — |
 | <a id="sheet-004"></a>SHEET-004 | Associative orthographic views | **Not done** | Place projected part/assembly views with first/third-angle conventions; upstream geometry changes update visible and hidden edges. | [SHEET-001](#sheet-001) | — |
@@ -853,6 +853,18 @@ Command: `pnpm verify (matrix/typecheck); pnpm test:e2e; pnpm test:e2e -- interc
 Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs), [scripts/e2e-drawing-layers.mjs](../scripts/e2e-drawing-layers.mjs).
 
 Recorded results: [docs/drawing-layers.md](../docs/drawing-layers.md), [examples/drawing-layers/verification.json](../examples/drawing-layers/verification.json).
+
+<a id="evidence-drawingSheets"></a>
+
+### drawingSheets
+
+2026-10-12; source: 8ac6fe7. Actual paper-space controls, multiple physical named sheets and persistent live model viewports, rejection, history and native reopen, units, inherited layers/associative dimensions; public MCP dry run, atomicity, edits and mixed-solid native persistence. Static verify gates passed; complete E2E rerun passed after correcting shared Undo assertion settlement.
+
+Command: `pnpm verify; pnpm test:e2e`.
+
+Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/drawing-sheets-journey.mjs](../scripts/drawing-sheets-journey.mjs), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs).
+
+Recorded results: [docs/drawing-sheets.md](../docs/drawing-sheets.md), [examples/drawing-sheets/verification.json](../examples/drawing-sheets/verification.json).
 
 ## Professional catalog sources
 
