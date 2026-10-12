@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import assert from "node:assert/strict";
 
 // Extends the shared real-browser interchange journey; all writes use UI controls.
@@ -31,10 +32,16 @@ export async function exerciseDrawingDimensions(view, h) {
   const choose = async (tool) => control(`[data-drawing-tool="${tool}"]`);
   const pick = async (id) => control(`[data-drawing-select="${id}"]`);
   const measurement = async (id, value) => {
-    const result = await evaluate(
-      view,
-      `(() => {const g=document.querySelector('[data-drawing-dimension="${id}"]'); return g && {value:Number(g.dataset.dimensionValue),text:g.textContent};})()`
-    );
+    let result;
+    const deadline = performance.now() + 10_000;
+    do {
+      result = await evaluate(
+        view,
+        `(() => {const g=document.querySelector('[data-drawing-dimension="${id}"]'); return g && {value:Number(g.dataset.dimensionValue),text:g.textContent};})()`
+      );
+      if (result && Math.abs(result.value - value) < 1e-9) break;
+      await delay(40);
+    } while (performance.now() < deadline);
     assert.ok(result, `Dimension ${id} is visible`);
     assert.ok(
       Math.abs(result.value - value) < 1e-9,

@@ -40,11 +40,13 @@ const titles: Record<Tool, string> = {
   pan: "Pan"
 };
 
-function fitDrawing(values: readonly DrawingEntity[]): View {
+function fitDrawing(
+  values: readonly DrawingEntity[],
+  entities: ReadonlyMap<string, DrawingEntity>
+): View {
   if (!values.length) {
     return initialView;
   }
-  const entities = new Map(values.map((entity) => [entity.id, entity]));
   const bounds = values.flatMap((entity) =>
     entity.kind === "dimension"
       ? (() => {
@@ -138,7 +140,8 @@ export function DrawingWorkspace({
     fitDrawing(
       [...entities.values()].filter(
         (entity) => getDrawingLayer(layers, entity).visible
-      )
+      ),
+      entities
     )
   );
   const svg = useRef<SVGSVGElement>(null);
@@ -202,7 +205,7 @@ export function DrawingWorkspace({
   };
   const fit = () => {
     clearTarget();
-    setView(fitDrawing(visibleValues));
+    setView(fitDrawing(visibleValues, entities));
   };
   const zoom = (factor: number) => {
     clearTarget();

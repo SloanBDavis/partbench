@@ -27600,7 +27600,14 @@ export function createCadDocumentSnapshot(
 ): CadDocumentSnapshot {
   return {
     units: document.units,
-    drawingLayers: [...document.drawingLayers.values()].map(cloneJsonSource),
+    ...(document.drawingLayers.size !== 1 ||
+    !stableJsonEqual(document.drawingLayers.get("0"), DEFAULT_DRAWING_LAYER)
+      ? {
+          drawingLayers: [...document.drawingLayers.values()].map(
+            cloneJsonSource
+          )
+        }
+      : {}),
     ...(document.drawingEntities.size
       ? {
           drawingEntities: [...document.drawingEntities.values()].map(
@@ -33709,6 +33716,14 @@ function cadDocumentsEqual(
 ): boolean {
   if (
     left.units !== right.units ||
+    !stableJsonEqual(
+      [...left.drawingLayers].sort(([a], [b]) => a.localeCompare(b)),
+      [...right.drawingLayers].sort(([a], [b]) => a.localeCompare(b))
+    ) ||
+    !stableJsonEqual(
+      [...left.drawingEntities].sort(([a], [b]) => a.localeCompare(b)),
+      [...right.drawingEntities].sort(([a], [b]) => a.localeCompare(b))
+    ) ||
     left.objects.size !== right.objects.size ||
     left.sketches.size !== right.sketches.size ||
     left.parameters.size !== right.parameters.size ||
@@ -44519,6 +44534,7 @@ function isCadOp(value: unknown): value is CadOp {
     return false;
   }
 
+  if (isDrawingLayerOp(value)) return true;
   if (isDrawingOp(value)) return true;
   if (isSpurGearOp(value)) return true;
 
