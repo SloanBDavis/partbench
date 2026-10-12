@@ -47,3 +47,7 @@ save, Undo/Redo, both report views, CSV export, an independent occurrence and
 native reopen. The existing public MCP journeys cover multiplied nested
 quantities, metadata schemas, dry run, atomic rejection, invalid metadata,
 assembly deletion/reinsertion, numbering stability and native reopen.
+
+Dated acceptance evidence: [2026-10-12 verification](../examples/assembly-bom/verification.json),
+including the complete browser/public MCP E2E suite and a pre-BOM native file
+upgrade round trip.

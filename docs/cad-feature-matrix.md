@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 27 Done · 312 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 28 Done · 311 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -48,7 +48,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [SHEET-004](#sheet-004) | Not done | Associative orthographic views | SHEET-001 |
 | [SHEET-010](#sheet-010) | Not done | Scale-correct PDF and printing | SHEET-002 |
 | [ASM-011](#asm-011) | Not done | Assembly interference and clearance | None declared |
-| [ASM-013](#asm-013) | Not done | Bill of materials | None declared |
+| [ASM-013](#asm-013) | Done | Bill of materials | None declared |
 
 ## Coverage
 
@@ -66,7 +66,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [Direct editing and geometry repair](#area-direct) | 2 | 1 | 9 |
 | [Surface and freeform modeling](#area-surface) | 3 | 0 | 12 |
 | [Meshes, scans and reverse engineering](#area-mesh) | 3 | 0 | 8 |
-| [Assembly modeling and mechanisms](#area-assembly) | 2 | 4 | 15 |
+| [Assembly modeling and mechanisms](#area-assembly) | 2 | 5 | 14 |
 | [Sheet metal](#area-sheetmetal) | 3 | 0 | 8 |
 | [Frames, weldments, plastics and tooling](#area-fabrication) | 4 | 0 | 10 |
 | [Routing, plant and electrical design](#area-routing) | 4 | 0 | 10 |
@@ -400,7 +400,7 @@ Existing foundation to inspect: [docs/robot-arm-fixes.md](../docs/robot-arm-fixe
 | <a id="asm-010"></a>ASM-010 | Joint limits and contact | **Not done** | Apply angle/travel limits and collision/contact constraints with repeatable motion stopping and overconstraint diagnostics. | — | — |
 | <a id="asm-011"></a>ASM-011 | Assembly interference and clearance | **Not done** | Compute exact intersecting pairs and minimum clearance with exclusions, selected pair visualization and exported results. | — | — |
 | <a id="asm-012"></a>ASM-012 | Exploded views and assembly instructions | **Not done** | Author persistent explode steps, trails and camera states; create drawings/animations and restore the assembled pose. | — | — |
-| <a id="asm-013"></a>ASM-013 | Bill of materials | **Not done** | Generate hierarchical/flattened BOMs with quantities, part metadata and stable item numbers; export and update after assembly edits. | — | — |
+| <a id="asm-013"></a>ASM-013 | Bill of materials | **Done** | Generate hierarchical/flattened BOMs with quantities, part metadata and stable item numbers; export and update after assembly edits. | — | [assemblyBom](#evidence-assemblyBom) |
 | <a id="asm-014"></a>ASM-014 | In-context and top-down design | **Not done** | Reference neighboring geometry through explicit dependencies; update safely and diagnose cycles or missing external components. | — | — |
 | <a id="asm-015"></a>ASM-015 | Component patterns and mirrors | **Not done** | Create associative assembly patterns/mirrors with placement, handedness and instance overrides and correct BOM quantities. | — | — |
 | <a id="asm-016"></a>ASM-016 | Flexible subassemblies and arrangements | **Not done** | Reuse one definition with independent solved internal poses/configurations in multiple occurrences. | — | — |
@@ -865,6 +865,18 @@ Command: `pnpm verify; pnpm test:e2e`.
 Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/drawing-sheets-journey.mjs](../scripts/drawing-sheets-journey.mjs), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs).
 
 Recorded results: [docs/drawing-sheets.md](../docs/drawing-sheets.md), [examples/drawing-sheets/verification.json](../examples/drawing-sheets/verification.json).
+
+<a id="evidence-assemblyBom"></a>
+
+### assemblyBom
+
+2026-10-12; source: 619f11c1a58a8ac9cca248b4effe3846e4e765b6. Hierarchical/flattened BOMs, multiplied nested quantities, definition metadata, stable item numbers, real CSV export, assembly edits, Undo/Redo and native reopen through browser/public MCP.
+
+Command: `pnpm verify (matrix/typechecks) + pnpm test:e2e + supplemental public MCP native compatibility round trip`.
+
+Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs), [scripts/assembly-bom-journey.mjs](../scripts/assembly-bom-journey.mjs).
+
+Recorded results: [docs/assembly-bom.md](../docs/assembly-bom.md), [examples/assembly-bom/verification.json](../examples/assembly-bom/verification.json).
 
 ## Professional catalog sources
 

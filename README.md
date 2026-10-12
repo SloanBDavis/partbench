@@ -16,9 +16,9 @@ Start at [AGENTS.md](./AGENTS.md).
 
 ## Professional CAD feature map
 
-[![CAD feature map: 339 features across 27 areas; 27 Done and 312 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
+[![CAD feature map: 339 features across 27 areas; 28 Done and 311 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
 
-**27 Done · 312 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
+**28 Done · 311 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
 
 [Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)
 
@@ -319,7 +319,7 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 </details>
 
 <details>
-<summary>Assembly modeling and mechanisms — 4 Done · 15 Not done</summary>
+<summary>Assembly modeling and mechanisms — 5 Done · 14 Not done</summary>
 
 - [x] [ASM-001](docs/cad-feature-matrix.md#asm-001) Nested instances and shared definitions
 - [x] [ASM-003](docs/cad-feature-matrix.md#asm-003) Distance mates
@@ -332,7 +332,7 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 - [ ] [ASM-010](docs/cad-feature-matrix.md#asm-010) Joint limits and contact
 - [ ] [ASM-011](docs/cad-feature-matrix.md#asm-011) Assembly interference and clearance
 - [ ] [ASM-012](docs/cad-feature-matrix.md#asm-012) Exploded views and assembly instructions
-- [ ] [ASM-013](docs/cad-feature-matrix.md#asm-013) Bill of materials
+- [x] [ASM-013](docs/cad-feature-matrix.md#asm-013) Bill of materials
 - [ ] [ASM-014](docs/cad-feature-matrix.md#asm-014) In-context and top-down design
 - [ ] [ASM-015](docs/cad-feature-matrix.md#asm-015) Component patterns and mirrors
 - [ ] [ASM-016](docs/cad-feature-matrix.md#asm-016) Flexible subassemblies and arrangements

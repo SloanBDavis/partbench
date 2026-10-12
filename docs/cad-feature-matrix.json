@@ -241,6 +241,21 @@
         "examples/drawing-sheets/verification.json"
       ],
       "scope": "Actual paper-space controls, multiple physical named sheets and persistent live model viewports, rejection, history and native reopen, units, inherited layers/associative dimensions; public MCP dry run, atomicity, edits and mixed-solid native persistence. Static verify gates passed; complete E2E rerun passed after correcting shared Undo assertion settlement."
+    },
+    "assemblyBom": {
+      "date": "2026-10-12",
+      "sourceCommit": "619f11c1a58a8ac9cca248b4effe3846e4e765b6",
+      "command": "pnpm verify (matrix/typechecks) + pnpm test:e2e + supplemental public MCP native compatibility round trip",
+      "journeys": [
+        "scenarios/editable-interchange.json",
+        "scripts/smoke-agent-runtime.mjs",
+        "scripts/assembly-bom-journey.mjs"
+      ],
+      "records": [
+        "docs/assembly-bom.md",
+        "examples/assembly-bom/verification.json"
+      ],
+      "scope": "Hierarchical/flattened BOMs, multiplied nested quantities, definition metadata, stable item numbers, real CSV export, assembly edits, Undo/Redo and native reopen through browser/public MCP."
     }
   },
   "categories": [
@@ -2294,10 +2309,12 @@
       "id": "ASM-013",
       "category": "assembly",
       "feature": "Bill of materials",
-      "done": false,
+      "done": true,
       "acceptance": "Generate hierarchical/flattened BOMs with quantities, part metadata and stable item numbers; export and update after assembly edits.",
       "dependsOn": [],
-      "evidence": []
+      "evidence": [
+        "assemblyBom"
+      ]
     },
     {
       "id": "ASM-014",

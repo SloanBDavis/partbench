@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-12",
+  "sourceCommit": "619f11c1a58a8ac9cca248b4effe3846e4e765b6",
+  "contracts": [
+    "ASM-013"
+  ],
+  "commands": [
+    "pnpm verify (matrix and all 13 package typechecks passed; initial browser helper failure corrected)",
+    "pnpm test:e2e",
+    "node /tmp/partbench-bom-legacy.mjs (supplemental public MCP native compatibility round trip)"
+  ],
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.8037.57",
+    "platform": "Linux, SwiftShader"
+  },
+  "checks": [
+    "Real browser controls generate hierarchical and flattened reports from an imported nested assembly; four part occurrences across two body definitions, including a multi-solid part",
+    "Edit part number, quoted/comma description and material; unchanged save blocked; Undo/Redo restores metadata",
+    "Real CSV export control produces quoted headers, part metadata and correct row counts",
+    "Independent occurrence and consuming face edit produce three flattened definitions while preserving original item number and part details through native save/reopen",
+    "Public MCP schema discovery, multiplied nested quantities, dry run, atomic invalid-definition rejection, oversized metadata rejection and invalid assembly query",
+    "Assembly deletion/reinsertion updates quantities while preserving item numbers and metadata; native reopen and exact STEP readback pass",
+    "All existing layers, dimensions, paper viewports, precision drafting, interchange and distance/concentric assembly browser regressions pass together; obsolete geometry jobs cannot publish stale errors after a source edit"
+  ],
+  "report": {
+    "status": "passed",
+    "journeys": [
+      "assembly",
+      "interchange",
+      "agent"
+    ],
+    "stages": [
+      {
+        "name": "prepare nested STEP fixture",
+        "milliseconds": 6928.006130000001,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "browser journeys",
+        "milliseconds": 52564.375174,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "build MCP executable",
+        "milliseconds": 15381.873546999996,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "MCP author/revise/save/reopen/STEP journey",
+        "milliseconds": 14208.031242000012,
+        "exitCode": 0,
+        "signal": null
+      }
+    ]
+  },
+  "legacyNative": {
+    "timestamp": "2026-10-12T20:14:40.191Z",
+    "status": "passed",
+    "assemblyId": "step_feat_1_assembly_2",
+    "itemNumber": 2,
+    "quantity": 1
+  },
+  "legacyFixtureSha256": "2372c78fc79683dca9e476b8b3a2300ef4d0adcea371df624fb8246b483a6c94",
+  "legacyProcedure": [
+    "Open pre-BOM WCAD via cad.project_open and verify catalog is absent",
+    "Read flattened report via cad.project_structure",
+    "Commit assembly.bom.updateItem with LEGACY-1 metadata",
+    "Save with cad.project_save; reopen in a new public MCP session",
+    "Confirm item number, quantity and metadata match"
+  ],
+  "lint": {
+    "errors": 0,
+    "existingAppWarnings": 6
+  },
+  "screenshots": [
+    ".metrics/ui-smoke/assembly-bom.png"
+  ],
+  "notes": [
+    "BOM screenshot visually inspected. Native save picker fixtures exercise actual CSV generation and native readers/writers, without interacting with OS dialogs.",
+    "Initial browser attempts exposed test-helper expression, mode-navigation, focus and layer visibility settlement issues. These were corrected before the final complete E2E pass.",
+    "MCP startup under the restricted execution sandbox exited before host initialization; the same built executable passed with allowed execution access.",
+    "All 13 package typechecks passed initially. Runtime and web typechecks plus changed-source lint passed again after fixing obsolete geometry-job publication; the final complete E2E suite validates that fix."
+  ]
+}
