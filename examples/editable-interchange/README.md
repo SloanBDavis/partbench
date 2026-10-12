@@ -66,8 +66,8 @@ engine closer's assertions deliberately target the pinned radial engine. The
 default full run starts with STEP bytes; the script's native-resume option is a
 debugging shortcut and is not a substitute for full acceptance.
 
-The [recorded full run](./engine-evidence.json) passes 18 stages on an Apple M4,
-Node 22.22.1, macOS arm64. Initial import preserves 51 body definitions, 246 leaf
+The [latest full run](./engine-evidence.json) records its environment and stage
+timings. Initial import preserves 51 body definitions, 246 leaf
 occurrences, and 266 placed solids. A single occurrence becomes independent,
 increasing definitions to 52; its bore changes while three sibling occurrences
 retain the original. A normal sketch cut and move survive native save/open.
@@ -75,6 +75,8 @@ The saved cut parameter remains editable with undo/redo. STEP export and fresh
 session reimport preserve the placed geometry, then another bore edit and sketch
 cut pass. The closer checks STEP placed volume within 1 mm³ and bounds within
 0.001 mm. Sessions are fresh within one process.
+
+Historical September measurements on an Apple M4, Node 22.22.1, macOS arm64:
 
 | Measured stage                     |         Duration |
 | ---------------------------------- | ---------------: |
@@ -89,13 +91,16 @@ The script writes engine native/STEP artifacts and a report under
 `engine-evidence.json` here. The source model is not redistributed. No engine
 download or large-engine run is added to the default fast suite.
 
-The separate `pnpm smoke:engine-interchange:browser` journey passes full-engine
-import, Fit, native orbit, selection, and invalid-file handling.
-[`browser-evidence.json`](./browser-evidence.json) records a 59.6-second import
+The separate `pnpm smoke:engine-interchange:browser` journey covers progressive
+import, native orbit before exact readiness, placed geometry, camera continuity,
+Fit, selection, native parity, active-worker cancellation and invalid-file handling.
+Historical [`browser-evidence.json`](./browser-evidence.json) records a 59.6-second import
 through readiness, 51 mesh definitions and 246 rendered occurrences, and no
 new mesh uploads during orbit. Screenshots were visually inspected. The
-10-second cold-view target remains unmet, and software-WebGL frame-time spikes
-leave the 60-fps target open. Body/occurrence RGB is retained, but the engine reports omitted
+10-second cold-view target was unmet in that September run. Current cold-view
+measurements are in [import performance](../../docs/import-performance.md);
+software-WebGL frame-time spikes leave the hardware frame-budget target open.
+Body/occurrence RGB is retained, but the engine reports omitted
 face/edge appearance or transparency on `43-Compression Spring`. Direct offsets
 support straight planar neighborhoods and complete cylindrical walls with
 perpendicular planar ends; unsupported neighborhoods reject atomically. STEP
@@ -105,8 +110,15 @@ performance work are recorded in the
 
 ## Current performance work
 
+The [2026-10-12 progressive import record](./progressive-import-evidence.json)
+contains all five isolated production runs: real geometry is orbitable by
+4.11–8.77 s, all 266 preview solids arrive by 10.51–14.26 s, and exact/display
+readiness takes 69.62–89.23 s. Native parity, placed bounds, camera continuity,
+Cancel and invalid-file handling pass in each run. These are separate viewing
+and editing milestones. PERF-001 and PERF-003 are Done; PERF-002 remains Not done.
+
 See [import and editing performance](../../docs/import-performance.md) for the
-2026-10-10 optimization and current measurements. To compare an import against a
+current implementation and measurements. To compare an import against a
 native file produced by an older checkout without weakening geometry checks:
 
 ```sh

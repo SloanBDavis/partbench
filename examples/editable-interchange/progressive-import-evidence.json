@@ -1,0 +1,334 @@
+{
+  "date": "2026-10-12",
+  "baselineCommit": "ffb2ebc",
+  "sourceRevision": "ffb2ebc plus the PERF-001 implementation in the commit containing this record",
+  "source": {
+    "fileName": "radial-engine.step",
+    "byteLength": 13389913,
+    "sha256": "50e2d7946e1ebed4848549798cdaefddb5c3e8fb7f4f625c06358f4a8c0aebc0"
+  },
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.0.0",
+    "platform": "linux x64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "logicalCpuCount": 5,
+    "containerCpuQuota": 4,
+    "containerMemoryLimitBytes": 17179869184,
+    "rendering": "SwiftShader software WebGL2",
+    "viewportPixels": [
+      1400,
+      900
+    ]
+  },
+  "method": {
+    "build": "pnpm --filter @web-cad/web build",
+    "commandPerRun": "PARTBENCH_SMOKE_BROWSER=/usr/bin/chromium PARTBENCH_SMOKE_BROWSER_NO_SANDBOX=1 PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser",
+    "isolation": "Five consecutive invocations, each starts a new Chromium process with a fresh Bun temporary profile and a new local Vite preview origin. No builds, static checks, profiling or other geometry jobs overlap measured imports. All five complete journeys must pass; no retries.",
+    "clock": "Timer begins before the actual Files/Import control clicks, after supplying the pinned file to the browser file picker. visibleMs requires completed WebGL output on the foreground canvas. usableMs includes a native CDP drag and verification that camera yaw/pitch changed. completeViewMs requires all 266 preview meshes to have drawn. Screenshots are outside usableMs but are included in later elapsed times.",
+    "coldMeaning": "Fresh browser/application import. Local asset delivery; operating-system file/page caches are not flushed. Not computer startup or a WAN download benchmark.",
+    "geometry": "Real OCCT display meshes from source STEP, not a precomputed fixture. Every preview solid must lie in a final placed definition bound and every final definition must contain a preview solid; assembly bounds agree within 1.5 mm for 1 mm preview / 0.25 mm final tessellation. Final BRep, topology and signature payloads match the native baseline byte for byte.",
+    "readiness": "Full editing preparation remains separate from the usable display target; PERF-002 remains Not done."
+  },
+  "productionAssets": [
+    {
+      "file": "assets/index-CbURQewG.css",
+      "bytes": 33435,
+      "sha256": "10d7774b5a9c7f0bfaae1248c9153dfb221b67d9502529cf699ef3bfff701707"
+    },
+    {
+      "file": "assets/index-ClBWdAac.js",
+      "bytes": 67814,
+      "sha256": "f679466ea454c91906c87c79be5f25154ea7e10eaf96e235c054444165b57c11"
+    },
+    {
+      "file": "assets/index-DkZ5pPVU.js",
+      "bytes": 1978856,
+      "sha256": "ed8cae900d41b88f2ab430931903a683c64c73b75d0c56206b25af3f76e384c6"
+    },
+    {
+      "file": "assets/occt-import-js-BhHfLpto.wasm",
+      "bytes": 7604031,
+      "sha256": "33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952"
+    },
+    {
+      "file": "assets/stepPreview.worker-cSkD3Dcv.js",
+      "bytes": 62345,
+      "sha256": "8081269b81eecbd88614904fe89190d28e5083f412da714d4faed85abfc36247"
+    },
+    {
+      "file": "assets/stepPreviewPart.worker-BNjW3gNK.js",
+      "bytes": 59919,
+      "sha256": "312b6a812b3cc5000ef0865576c9aa24e5c9e7fbf224f00659115684010ed097"
+    }
+  ],
+  "runs": [
+    {
+      "run": 1,
+      "status": "passed",
+      "log": ".metrics/perf-001/run-1.log",
+      "importThroughExactAndDisplayReadyMs": 80379,
+      "preview": {
+        "visibleMs": 4008,
+        "usableMs": 6301,
+        "orbitMs": 1539,
+        "firstMeshCount": 28,
+        "camera": {
+          "target": [
+            3.0517578125e-05,
+            -38.240325927734375,
+            49.5
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2060.331184696663
+        },
+        "completeViewMs": 12921,
+        "completeMeshCount": 266,
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 438
+      },
+      "nativeCheckpointParity": true,
+      "priorDocumentAndCameraRestoredOnCancel": true,
+      "sourceRemainedAtomicDuringPreview": true,
+      "modelingDisabledDuringPreparation": true,
+      "invalidStepRejected": true,
+      "screenshots": ".metrics/perf-001/run-1/"
+    },
+    {
+      "run": 2,
+      "status": "passed",
+      "log": ".metrics/perf-001/run-2.log",
+      "importThroughExactAndDisplayReadyMs": 69624,
+      "preview": {
+        "visibleMs": 4731,
+        "usableMs": 8769,
+        "orbitMs": 4004,
+        "firstMeshCount": 28,
+        "camera": {
+          "target": [
+            -0.88812255859375,
+            -31.502120971679688,
+            7
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2148.003597552715
+        },
+        "completeViewMs": 14255,
+        "completeMeshCount": 266,
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 142
+      },
+      "nativeCheckpointParity": true,
+      "priorDocumentAndCameraRestoredOnCancel": true,
+      "sourceRemainedAtomicDuringPreview": true,
+      "modelingDisabledDuringPreparation": true,
+      "invalidStepRejected": true,
+      "screenshots": ".metrics/perf-001/run-2/"
+    },
+    {
+      "run": 3,
+      "status": "passed",
+      "log": ".metrics/perf-001/run-3.log",
+      "importThroughExactAndDisplayReadyMs": 75080,
+      "preview": {
+        "visibleMs": 3347,
+        "usableMs": 4810,
+        "orbitMs": 1402,
+        "firstMeshCount": 28,
+        "camera": {
+          "target": [
+            -0.88812255859375,
+            -31.502120971679688,
+            7
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2148.003597552715
+        },
+        "completeViewMs": 10566,
+        "completeMeshCount": 266,
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 182
+      },
+      "nativeCheckpointParity": true,
+      "priorDocumentAndCameraRestoredOnCancel": true,
+      "sourceRemainedAtomicDuringPreview": true,
+      "modelingDisabledDuringPreparation": true,
+      "invalidStepRejected": true,
+      "screenshots": ".metrics/perf-001/run-3/"
+    },
+    {
+      "run": 4,
+      "status": "passed",
+      "log": ".metrics/perf-001/run-4.log",
+      "importThroughExactAndDisplayReadyMs": 77406,
+      "preview": {
+        "visibleMs": 3157,
+        "usableMs": 4108,
+        "orbitMs": 925,
+        "firstMeshCount": 28,
+        "camera": {
+          "target": [
+            3.0517578125e-05,
+            -38.240325927734375,
+            49.5
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2060.331184696663
+        },
+        "completeViewMs": 10511,
+        "completeMeshCount": 266,
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 490
+      },
+      "nativeCheckpointParity": true,
+      "priorDocumentAndCameraRestoredOnCancel": true,
+      "sourceRemainedAtomicDuringPreview": true,
+      "modelingDisabledDuringPreparation": true,
+      "invalidStepRejected": true,
+      "screenshots": ".metrics/perf-001/run-4/"
+    },
+    {
+      "run": 5,
+      "status": "passed",
+      "log": ".metrics/perf-001/run-5.log",
+      "importThroughExactAndDisplayReadyMs": 89235,
+      "preview": {
+        "visibleMs": 4284,
+        "usableMs": 7071,
+        "orbitMs": 2335,
+        "firstMeshCount": 28,
+        "camera": {
+          "target": [
+            -1.0435333251953125,
+            -34.20457458496094,
+            -4.5
+          ],
+          "yaw": 0.3353981633974482,
+          "pitch": -0.7735987755982988,
+          "distance": 2112.1365615816285
+        },
+        "completeViewMs": 13725,
+        "completeMeshCount": 266,
+        "placedBoundsMatch": true,
+        "cameraPreserved": true
+      },
+      "cancellation": {
+        "fileName": "radial-engine.step",
+        "control": "Cancel import",
+        "checkpointWorkersCancelled": 2,
+        "settleMs": 200
+      },
+      "nativeCheckpointParity": true,
+      "priorDocumentAndCameraRestoredOnCancel": true,
+      "sourceRemainedAtomicDuringPreview": true,
+      "modelingDisabledDuringPreparation": true,
+      "invalidStepRejected": true,
+      "screenshots": ".metrics/perf-001/run-5/"
+    }
+  ],
+  "acceptance": {
+    "PERF-001": "passed",
+    "PERF-003": "passed",
+    "PERF-002": "Not done"
+  },
+  "validation": {
+    "productionBuild": "passed",
+    "changedSourceLint": "Passed: zero errors, seven existing warnings",
+    "fullVerify": {
+      "status": "passed",
+      "journeys": [
+        "assembly",
+        "interchange",
+        "agent"
+      ],
+      "stages": [
+        {
+          "name": "prepare nested STEP fixture",
+          "milliseconds": 15228.586568,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "browser journeys",
+          "milliseconds": 101158.419073,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "build MCP executable",
+          "milliseconds": 32993.126323000004,
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "MCP author/revise/save/reopen/STEP journey",
+          "milliseconds": 31961.692387000017,
+          "exitCode": 0,
+          "signal": null
+        }
+      ]
+    },
+    "headless": {
+      "status": "passed",
+      "stages": 20,
+      "record": "examples/editable-interchange/engine-evidence.json",
+      "command": "node scripts/smoke-editable-interchange.mjs --compare-native=.metrics/perf-001/baseline-engine-initial.wcad --compare-native=.metrics/cold-load/before/engine-initial.wcad",
+      "nativeComparisonCommits": [
+        "ffb2ebc",
+        "d9dffca"
+      ],
+      "baselineFiles": [
+        ".metrics/perf-001/baseline-engine-initial.wcad",
+        ".metrics/cold-load/before/engine-initial.wcad"
+      ],
+      "scope": "Full original STEP import, both native comparisons, independent occurrence/bore edit, sketch cut, move, native reopen and continued editing, Undo/Redo, STEP export/fresh reimport and continued editing."
+    },
+    "testPolicy": "Extended existing E2E journeys only; no unit, component, mocked tests or new framework."
+  },
+  "developmentFailures": [
+    "A later fresh-browser run had no visible geometry by 10.055 s and failed the unchanged 10 s budget. The four-large-partition implementation was replaced by up to eight smaller batches, shortest-first, through at most three reusable native workers. A real-engine native diagnostic produced crankcase/pipes by 3.04 s; that diagnostic is not counted as browser acceptance. The final series starts after this scheduling change. Earlier log: .metrics/perf-001/series-before-preview-pool/run-1.log.",
+    "The first acceptance series stopped on run 2: viewing passed at 9.843 s and 8.121 s, but run 2 cancellation revealed a stale modeling preview that drew the prior Box twice. Source geometry and camera were unchanged. An initial modeling-preview ownership guard did not resolve it. Tracing the source lists found that a late current exact artifact was appended alongside the existing recipe display source; both drew the same mesh. Current artifact sources now replace display and metadata sources by body ID. Import also clears transient modeling previews. The final five-run series starts after source replacement, with both earlier failure logs retained, including .metrics/perf-001/series-before-source-replacement/run-1.log. Earlier logs are retained in .metrics/perf-001/series-before-preview-ownership-fix/.",
+    "Whole-file lightweight preview took about 15.5 s; partitioned native display transfer replaced it.",
+    "Initial browser pilot left the scene behind Files; import now opens Solid automatically and the runner requires the canvas to be foreground.",
+    "A cancellation camera-restore race was caught and fixed by retaining the saved camera until the restoration frame runs.",
+    "Preview/final bounds checks exposed an existing exact-display recentering error for asymmetric parts. Source coordinate alignment and a derived-cache revision fixed it; original STEP and native checkpoint geometry agreed throughout.",
+    "The first full verify run timed out clearing the offset-distance field. A profiled focused journey passed; an explicit keyboard-focus assertion was retained and the unprofiled full suite passed. No reproduction or root cause was established for that timeout."
+  ],
+  "limitations": [
+    "Budget proven for the pinned engine on the declared reference runner; not a promise for every STEP file, device or network.",
+    "Unsupported representation layouts and small files use an unsplit preview. Preview failure or 30-second timeout falls back to the original exact reader.",
+    "Display is coarse and neutral-colored while importing; exact editing and picking wait for authoritative geometry. Existing detailed appearance import limitations remain.",
+    "Software WebGL does not establish the hardware frame budget. PERF-002 and other performance rows remain open.",
+    "The preview adds native work and does not accelerate the canonical reader. Full readiness is 69.62\u201389.23 s in these runs, versus an earlier 61.68 s observation with substantial variation; no full-readiness speedup is claimed."
+  ]
+}

@@ -167,6 +167,21 @@
       ],
       "scope": "Independent line/rectangle/circle creation by canvas and coordinates; edit/delete, invalid geometry blocked, zero sketches/constraints, units conversion, stable IDs and Undo/Redo through native reopen including redo stack and centimeter units; persistence alongside STEP assemblies; public MCP schema/dry run/atomic duplicate rejection/edit/reopen/delete.",
       "sourceCommit": "57021bf"
+    },
+    "progressiveImport": {
+      "date": "2026-10-12",
+      "sourceCommit": "ffb2ebc plus the PERF-001 implementation in the commit containing this record",
+      "command": "pnpm smoke:engine-interchange; pnpm --filter @web-cad/web build; five isolated invocations of PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser",
+      "journeys": [
+        "examples/editable-interchange/engine-browser-use.json",
+        "scripts/smoke-editable-interchange.mjs"
+      ],
+      "records": [
+        "docs/import-performance.md",
+        "examples/editable-interchange/progressive-import-evidence.json",
+        "examples/editable-interchange/engine-evidence.json"
+      ],
+      "scope": "Five consecutive fresh-browser production runs: visible native orbit by 4.11\u20138.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62\u201389.23 s; no PERF-002 or hardware frame-budget claim."
     }
   },
   "categories": [
@@ -475,10 +490,12 @@
       "id": "PERF-001",
       "category": "performance",
       "feature": "Cold usable assembly view",
-      "done": false,
+      "done": true,
       "acceptance": "Pinned engine reaches a visible, orbitable assembly within 10 s from Import on the declared reference runner in each of five isolated production runs; loading indicators do not count.",
       "dependsOn": [],
-      "evidence": []
+      "evidence": [
+        "progressiveImport"
+      ]
     },
     {
       "id": "PERF-002",
@@ -495,10 +512,12 @@
       "id": "PERF-003",
       "category": "performance",
       "feature": "Progressive assembly import",
-      "done": false,
+      "done": true,
       "acceptance": "Show correctly placed definitions before all checkpoints finish; input remains responsive; completion matches the exact native baseline; Cancel removes the preview and preserves the prior document.",
       "dependsOn": [],
-      "evidence": []
+      "evidence": [
+        "progressiveImport"
+      ]
     },
     {
       "id": "PERF-004",

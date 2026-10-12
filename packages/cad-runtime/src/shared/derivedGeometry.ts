@@ -1275,6 +1275,9 @@ export function createDerivedGeometryCacheKey(
     source.kind === "exactBody"
       ? {
           kind: source.kind,
+          // Older browser display caches centered exact checkpoint vertices,
+          // discarding the definition origin required by assembly placement.
+          meshCoordinates: "source-v1",
           sourceIdentitySignature: source.sourceIdentitySignature,
           sourceCacheKeySha256: source.sourceCacheKeySha256
         }

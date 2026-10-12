@@ -798,6 +798,12 @@ async function typeField(view, selector, text) {
     7_000,
     "select field text " + selector
   );
+  const focused = await evaluate(
+    view,
+    `document.activeElement?.matches(${JSON.stringify(selector)})`
+  );
+  if (!focused)
+    throw new Error("Field did not receive keyboard focus: " + selector);
   await withDeadline(view.press("Backspace"), 7_000, "clear field " + selector);
   if (value)
     await withDeadline(view.type(value), 7_000, "type field " + selector);
@@ -1062,9 +1068,12 @@ async function openProjectFile(
   filePath,
   format = "wcad",
   expectedImportError,
-  cancelImport = false
+  cancelImport = false,
+  maxUsableViewMs,
+  expectedPreviewSolids
 ) {
-  const beforeImport = cancelImport ? await getState(view) : undefined;
+  const beforeImport =
+    cancelImport || maxUsableViewMs ? await getState(view) : undefined;
   const bytes = readFileSync(resolve(repoRoot, filePath)).toString("base64");
   const fileName = filePath.split(/[\\/]/).at(-1);
   const isStep = format === "step";
@@ -1082,14 +1091,16 @@ async function openProjectFile(
       "); " +
       "window.showOpenFilePicker = async () => [{ kind: 'file', name: file.name, " +
       "getFile: async () => file, queryPermission: async () => 'granted', requestPermission: async () => 'granted' }]; " +
-      (isStep
-        ? "window.__pbOriginalConfirm = window.confirm; window.__pbStepImportPreview = null; " +
-          "window.confirm = message => { window.__pbStepImportPreview = String(message); return true; }; "
-        : "") +
       "return true; })()"
   );
   const startedAt = performance.now();
   let existingWorkerIds = new Set();
+  let previewEvidence;
+  let previewBounds;
+  const originalCamera = await evaluate(
+    view,
+    `document.querySelector('canvas[aria-label="3D scene viewport"]')?.dataset.camera`
+  );
   try {
     if (isStep && process.env.PARTBENCH_SMOKE_PROFILE_IMPORT === "1") {
       await view.cdp("Profiler.enable");
@@ -1149,15 +1160,32 @@ async function openProjectFile(
         );
         if (usesPool) {
           const preparationDeadline = performance.now() + readyTimeoutMs;
+          while (true) {
+            const state = await getState(view);
+            if (
+              state.stepImport?.meshCount > 0 &&
+              state.stepImport.completed === state.stepImport.total
+            )
+              break;
+            if (performance.now() > preparationDeadline)
+              throw new Error(
+                "STEP display preview did not complete before cancellation"
+              );
+            await delay(50);
+          }
+          await writeUseScreenshot(view, "engine-import-before-cancel");
+          // The preview has appeared. Exclude its workers and wait for the
+          // authoritative checkpoint workers before cancelling the whole import.
+          existingWorkerIds = new Set(
+            (await view.cdp("Target.getTargets")).targetInfos
+              .filter((target) => target.type === "worker")
+              .map((target) => target.targetId)
+          );
           while (checkpointWorkerIds.length < 2) {
             const { targetInfos } = await view.cdp("Target.getTargets");
             // Chromium reports blank URLs for these dedicated worker targets.
             // The existing solid already owns its command/geometry workers;
             // track the two new preparation workers by ID instead of URL.
-            if (await evaluate(view, "window.__pbStepImportPreview !== null"))
-              throw new Error(
-                "STEP checkpoint worker discovery missed preparation"
-              );
             checkpointWorkerIds = targetInfos
               .filter(
                 (target) =>
@@ -1198,7 +1226,22 @@ async function openProjectFile(
           );
         await delay(25);
       }
+      await evaluate(
+        view,
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))"
+      );
+      const restoredCamera = await evaluate(
+        view,
+        `document.querySelector('canvas[aria-label="3D scene viewport"]')?.dataset.camera`
+      );
+      if (originalCamera !== restoredCamera)
+        throw new Error(
+          "Cancelled import did not restore the previous camera: " +
+            JSON.stringify({ originalCamera, restoredCamera })
+        );
       const afterImport = await getState(view);
+      if (afterImport.stepImport)
+        throw new Error("Cancelled import left display preview state behind");
       if (
         afterImport.commandError ||
         !matches(
@@ -1243,11 +1286,150 @@ async function openProjectFile(
     }
     if (isStep) {
       // An existing project can still be Ready while the file picker/reader
-      // yields. Wait for this import's preview or settled failure before using
+      // yields. Observe this import's pending-to-settled transition before
       // readiness; otherwise the previous model can produce a false pass.
       const deadline = performance.now() + readyTimeoutMs;
+      let seenPending = false;
       while (true) {
         const state = await getState(view);
+        seenPending ||= state.commandPending;
+        if (maxUsableViewMs && !previewEvidence) {
+          const frame = await evaluate(
+            view,
+            `(() => {
+            const canvas = document.querySelector('canvas[aria-label="3D scene viewport"]');
+            const r = canvas.getBoundingClientRect();
+            return { meshCount: Number(canvas.dataset.previewMeshCount), camera: canvas.dataset.camera,
+              renderer: canvas.dataset.renderer, visible: document.elementFromPoint(r.x + r.width * 0.4, r.y + r.height * 0.45) === canvas,
+              x: r.x + r.width * 0.4, y: r.y + r.height * 0.45 };
+          })()`
+          );
+          if (
+            frame.meshCount > 0 &&
+            frame.renderer === "webgl2" &&
+            frame.visible
+          ) {
+            const visibleMs = Math.round(performance.now() - startedAt);
+            if (
+              !state.commandPending ||
+              !matches(
+                state.structureQuery,
+                beforeImport.structureQuery,
+                true,
+                1e-7
+              )
+            )
+              throw new Error(
+                "Progressive preview committed partial source geometry"
+              );
+            if (
+              !(await evaluate(
+                view,
+                `document.querySelector('[data-action-id="solid.box"]')?.disabled`
+              ))
+            )
+              throw new Error(
+                "Modeling controls were enabled before exact import readiness"
+              );
+            const orbitStarted = performance.now();
+            await view.cdp("Input.dispatchMouseEvent", {
+              type: "mousePressed",
+              x: frame.x,
+              y: frame.y,
+              button: "left",
+              buttons: 1,
+              clickCount: 1
+            });
+            for (let move = 1; move <= 4; move++) {
+              await view.cdp("Input.dispatchMouseEvent", {
+                type: "mouseMoved",
+                x: frame.x + (45 * move) / 4,
+                y: frame.y + (25 * move) / 4,
+                button: "left",
+                buttons: 1
+              });
+              await evaluate(
+                view,
+                "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))"
+              );
+            }
+            await view.cdp("Input.dispatchMouseEvent", {
+              type: "mouseReleased",
+              x: frame.x + 45,
+              y: frame.y + 25,
+              button: "left",
+              buttons: 0,
+              clickCount: 1
+            });
+            await evaluate(
+              view,
+              "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))"
+            );
+            const camera = await evaluate(
+              view,
+              `document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera`
+            );
+            const beforeCamera = JSON.parse(frame.camera);
+            const afterCamera = JSON.parse(camera);
+            if (
+              afterCamera.yaw === beforeCamera.yaw &&
+              afterCamera.pitch === beforeCamera.pitch
+            )
+              throw new Error(
+                "Progressive STEP view did not respond to native orbit input"
+              );
+            previewEvidence = {
+              visibleMs,
+              usableMs: Math.round(performance.now() - startedAt),
+              orbitMs: Math.round(performance.now() - orbitStarted),
+              firstMeshCount: frame.meshCount,
+              camera: JSON.parse(camera)
+            };
+            console.log("STEP usable preview", JSON.stringify(previewEvidence));
+            await writeUseScreenshot(view, "engine-first-progressive-view");
+            if (previewEvidence.usableMs > maxUsableViewMs)
+              throw new Error(
+                "Cold usable view exceeded " +
+                  maxUsableViewMs +
+                  " ms: " +
+                  JSON.stringify(previewEvidence)
+              );
+          } else if (performance.now() - startedAt > maxUsableViewMs) {
+            throw new Error(
+              "Cold import did not render a usable assembly within " +
+                maxUsableViewMs +
+                " ms"
+            );
+          }
+        }
+        if (
+          previewEvidence &&
+          state.stepImport?.completed === state.stepImport?.total &&
+          state.stepImport?.meshCount > 0 &&
+          !previewEvidence.completeViewMs &&
+          (await evaluate(
+            view,
+            `Number(document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.previewMeshCount)`
+          )) === state.stepImport.meshCount
+        ) {
+          previewEvidence.completeViewMs = Math.round(
+            performance.now() - startedAt
+          );
+          previewEvidence.completeMeshCount = state.stepImport.meshCount;
+          previewBounds = await evaluate(
+            view,
+            "window.__PARTBENCH_UI_SMOKE__.getViewportBounds()"
+          );
+          if (
+            expectedPreviewSolids !== undefined &&
+            state.stepImport.meshCount !== expectedPreviewSolids
+          )
+            throw new Error(
+              "Progressive import omitted or duplicated solids: " +
+                state.stepImport.meshCount
+            );
+          await writeUseScreenshot(view, "engine-complete-progressive-view");
+        }
         if (state.commandError && !state.commandPending) {
           if (
             !expectedImportError ||
@@ -1264,8 +1446,7 @@ async function openProjectFile(
           console.log("expected STEP import error", state.commandError);
           return;
         }
-        if (await evaluate(view, "window.__pbStepImportPreview !== null"))
-          break;
+        if (seenPending && !state.commandPending) break;
         if (performance.now() > deadline)
           throw new Error(
             "Import " + fileName + " did not produce a preview or error"
@@ -1281,6 +1462,71 @@ async function openProjectFile(
       throw new Error(
         "Import " + fileName + " did not report " + expectedImportError
       );
+    }
+    if (maxUsableViewMs) {
+      if (!previewEvidence || !previewBounds)
+        throw new Error(
+          "Import did not expose a complete progressive preview before exact readiness"
+        );
+      const finalBounds = await evaluate(
+        view,
+        "window.__PARTBENCH_UI_SMOKE__.getViewportBounds()"
+      );
+      const state = await getState(view);
+      if (
+        state.stepImport ||
+        state.viewport.meshIds.some((id) => id.startsWith("import-preview:"))
+      )
+        throw new Error("Completed import retained provisional geometry");
+      // The transient mesh uses 1 mm linear deflection, the exact display 0.25
+      // mm. Compare placed solids against the final placed definition bounds.
+      const tolerance = 1.5;
+      for (const side of ["min", "max"])
+        for (let axis = 0; axis < 3; axis++) {
+          if (
+            Math.abs(
+              previewBounds.bounds[side][axis] - finalBounds.bounds[side][axis]
+            ) > tolerance
+          )
+            throw new Error(
+              "Preview/final assembly bounds disagree: " +
+                JSON.stringify({
+                  preview: previewBounds.bounds,
+                  final: finalBounds.bounds
+                })
+            );
+        }
+      const contains = (outer, inner) =>
+        [0, 1, 2].every(
+          (axis) =>
+            outer.min[axis] <= inner.min[axis] + tolerance &&
+            outer.max[axis] >= inner.max[axis] - tolerance
+        );
+      if (
+        !previewBounds.meshes.every((mesh) =>
+          finalBounds.meshes.some((target) =>
+            contains(target.bounds, mesh.bounds)
+          )
+        ) ||
+        !finalBounds.meshes.every((mesh) =>
+          previewBounds.meshes.some((source) =>
+            contains(mesh.bounds, source.bounds)
+          )
+        )
+      )
+        throw new Error(
+          "Preview solids do not match the final placed definitions"
+        );
+      const camera = JSON.parse(
+        await evaluate(
+          view,
+          `document.querySelector('canvas[aria-label="3D scene viewport"]').dataset.camera`
+        )
+      );
+      if (JSON.stringify(camera) !== JSON.stringify(previewEvidence.camera))
+        throw new Error("Completing import reset the user's camera");
+      previewEvidence.placedBoundsMatch = true;
+      previewEvidence.cameraPreserved = true;
     }
     await assertNoErrorToast(view, "Open " + fileName);
   } finally {
@@ -1316,17 +1562,13 @@ async function openProjectFile(
           )
         );
       }
-      const preview = await evaluate(
-        view,
-        "(() => { const preview = window.__pbStepImportPreview; window.confirm = window.__pbOriginalConfirm; " +
-          "delete window.__pbOriginalConfirm; delete window.__pbStepImportPreview; return preview; })()"
-      );
+
       console.log(
         "STEP import",
         JSON.stringify({
           fileName,
           elapsedMs: Math.round(performance.now() - startedAt),
-          preview
+          preview: previewEvidence
         })
       );
     }
@@ -1480,7 +1722,9 @@ async function runUseSteps(view, name, steps, label) {
         step.importStep,
         "step",
         step.expectImportError,
-        step.cancelImport
+        step.cancelImport,
+        step.maxUsableViewMs,
+        step.expectPreviewSolids
       );
       if (step.expectImportError || step.cancelImport) sawBreak = true;
       continue;

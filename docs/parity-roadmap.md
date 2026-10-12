@@ -139,30 +139,28 @@ the initial small suite, not implied by a green run.
 
 ## Current implementation
 
-See [import and editing performance](import-performance.md) for measured
-implementation, exact-geometry comparison and remaining latency targets. Bounded
-parallel checkpoint preparation, source-identity reuse, faster CBOR writes and
-batched display updates now complement the earlier bounds/evidence reuse.
-The final production engine run reaches readiness in 61.68 s versus 78.97 s
-on the previous commit; timings vary substantially. The complete production
-journey now also verifies native parity and cancellation of both child workers.
-A solid-editor update loop found in production is fixed.
+[Import and editing performance](import-performance.md) records **PERF-001 and
+PERF-003 Done**: the pinned engine is visibly orbitable in 4.11–8.77 s across five
+consecutive isolated production runs. Real OCCT display geometry arrives in
+batches before exact checkpoints finish. Import opens the viewport, explains
+viewing versus editing readiness, preserves navigation through completion and
+restores the prior model and camera on Cancel. Exact checkpoint bytes match the
+native baselines; the full headless editing/round-trip journey passes.
+
+Bounded native display workers complement the earlier checkpoint parallelism,
+source-identity reuse, faster CBOR writes and batched display updates. A placement
+comparison also fixed an existing display-centering defect for asymmetric parts.
+The document, exact geometry authority and native format remain unchanged.
 
 ## Next implementation slice
 
-Close `PERF-001` (cold usable view within 10 s) and `PERF-002` (exact selection
-within 20 s). Both remain **Not done** after the 61.68 s production result.
-`PERF-003` describes progressive assembly import as one implementation path;
-`PERF-012` establishes the repeatable measurements used to judge the budgets.
-
-First pin the production runner and five-run corpus, then shorten native STEP
-read/transfer and stage exact-derived display before full checkpoint completion.
-The previous native diagnostic spent 15.01 s in transfer alone, so parallelizing
-only later work cannot meet the cold-view target. A first preview must use real,
-correctly placed geometry, accept navigation, and cleanly disappear on Cancel;
-a loading screen is not a passing result. Preserve atomic final import, exact
-native parity and `PERF-009` cancellation. Worker/kernel or language changes
-must demonstrate reduced measured cost rather than substitute for this contract.
+Close `PERF-002` (every occurrence selectable with exact identity within 20 s).
+It remains **Not done**: full exact/display readiness is 69.62–89.23 s, even
+though navigation starts much earlier. Profile the remaining original STEP
+transfer and checkpoint metadata cost; shorten or stage exact preparation while
+retaining source identity, atomic import and native parity. Do not count the
+coarse display preview as exact selection. `PERF-012` still needs the broader
+repeatable benchmark corpus and budgets in its own acceptance contract.
 
 The next deliverable path is `DRAW-001` drawing semantics → `ORG-001` layers and
 `ANN-002` dimensions → `SHEET-001` layouts → `SHEET-004` associative views and
@@ -170,3 +168,11 @@ The next deliverable path is `DRAW-001` drawing semantics → `ORG-001` layers a
 `DRAW-001`; the row stays Not done until a verified round trip exists.
 Then prioritize `ASM-011` interference and `ASM-013` BOM over another primitive.
 The matrix frontier encodes this order and exposes unmet prerequisites.
+
+The PERF-001 implementation uses `occt-import-js@0.0.23` as a bounded,
+short-lived OCCT display worker behind `occt-wasm`. Partitioned native transfer
+meets the cold-view budget in the five production runs recorded above. This
+dependency's LGPL-2.1 license and bundled OCCT notices must accompany distribution.
+It is display-only: the existing OCCT reader still
+imports the original bytes and owns all exact geometry, topology and editing.
+No native format, document schema, service or geometry-authority change is made.

@@ -111,7 +111,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.circularPattern" ||
         request.payload.op === "geometry.mirror" ||
         request.payload.op === "geometry.shell" ||
-        request.payload.op === "geometry.draft"
+        request.payload.op === "geometry.draft" ||
+        // Checkpoint vertices already use the definition's coordinate system.
+        // Recentering them moves asymmetric parts away from their STEP pose
+        // and makes the display disagree with exact picking and export.
+        request.payload.op === "geometry.tessellateExactBody"
           ? "source"
           : "boundsCenter",
       transform:

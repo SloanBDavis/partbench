@@ -13,6 +13,14 @@
     "./browser": {
       "types": "./src/browser.ts",
       "default": "./src/browser.ts"
+    },
+    "./stepPreview": {
+      "types": "./src/stepPreview.ts",
+      "default": "./src/stepPreview.ts"
+    },
+    "./stepPreviewPartitions": {
+      "types": "./src/stepPreviewPartitions.ts",
+      "default": "./src/stepPreviewPartitions.ts"
     }
   },
   "scripts": {
@@ -20,6 +28,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "occt-import-js": "0.0.23",
     "opencascade.js": "2.0.0-beta.b5ff984"
   }
 }

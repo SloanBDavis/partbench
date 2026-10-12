@@ -338,3 +338,19 @@ circle.sketch-drag-preview-invalid {
     max-width: calc(100% - var(--pb-space-16));
   }
 }
+
+.step-import-panel {
+  padding: var(--pb-space-16);
+  line-height: 1.5;
+}
+
+.step-import-panel h2 {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.step-import-panel__eyebrow,
+.step-import-panel__hint {
+  color: var(--pb-color-text-muted);
+  font-size: 0.8rem;
+}

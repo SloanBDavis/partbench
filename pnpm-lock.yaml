@@ -168,6 +168,9 @@ importers:
 
   packages/occt-wasm:
     dependencies:
+      occt-import-js:
+        specifier: 0.0.23
+        version: 0.0.23
       opencascade.js:
         specifier: 2.0.0-beta.b5ff984
         version: 2.0.0-beta.b5ff984(ws@8.20.1)
@@ -870,6 +873,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -1047,6 +1051,9 @@ packages:
 
   node-releases@2.0.44:
     resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==}
+
+  occt-import-js@0.0.23:
+    resolution: {integrity: sha512-RFfYQXYFX5C1mB1Aywm0ShcUKzXOr/VzTnlzhBSDJOR6YCAPt1HYCzeXWg1vwwjn/cUxwqRNhhtf1dlewoZYCQ==}
 
   opencascade.js@2.0.0-beta.b5ff984:
     resolution: {integrity: sha512-4ZIrYrfrCV7SXvQFSmbHlfueSYngQNWGVrRVloVaAEZHDSY+R1k2htdY4AU5axbIGkbWVmrj+M8nmyeMLAelwA==}
@@ -2090,6 +2097,8 @@ snapshots:
   natural-compare@1.4.0: {}
 
   node-releases@2.0.44: {}
+
+  occt-import-js@0.0.23: {}
 
   opencascade.js@2.0.0-beta.b5ff984(ws@8.20.1):
     dependencies:

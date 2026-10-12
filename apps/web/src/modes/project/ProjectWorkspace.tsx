@@ -978,8 +978,9 @@ function ProjectFiles({
           status={canOpenStep ? "Ready" : "Unavailable"}
         >
           <p className="pb-project-card-detail">
-            Import STEP solids and assemblies, or DXF/SVG sketch curves. Review
-            the STEP summary before adding parts to your project.
+            Import STEP solids and assemblies, or DXF/SVG sketch curves.
+            Navigate the assembly while it loads. Cancel before it finishes, or
+            undo the completed import.
           </p>
           <Button
             disabled={disabled}

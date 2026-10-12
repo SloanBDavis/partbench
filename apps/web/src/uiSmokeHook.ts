@@ -1,3 +1,4 @@
+import type { RenderSceneBounds } from "./viewportCamera";
 /**
  * Smoke-only live-engine hook. Installed when the workbench is opened with
  * `?ui-smoke=1`. applyOps uses the same commit path as UI Apply
@@ -46,6 +47,12 @@ export interface UiSmokeState {
   readonly features: readonly Record<string, unknown>[];
   readonly bodies: readonly Record<string, unknown>[];
   readonly structureQuery: Record<string, unknown>;
+  readonly stepImport?: {
+    readonly meshCount: number;
+    readonly completed: number;
+    readonly total: number;
+    readonly editingPending: boolean;
+  };
   readonly viewport?: {
     readonly meshIds: readonly string[];
     readonly primitiveCount: number;
@@ -81,6 +88,13 @@ export interface UiSmokeHost {
   executeQuery?(query: CadQuery): CadQueryResponse;
   /** Cheap read-only snapshot for frame-by-frame display continuity checks. */
   getDisplayState?(): UiSmokeDisplayState;
+  getViewportBounds?(): {
+    readonly bounds?: RenderSceneBounds;
+    readonly meshes: readonly {
+      readonly id: string;
+      readonly bounds?: RenderSceneBounds;
+    }[];
+  };
   applyOps(ops: readonly CadOp[]): Promise<UiSmokeApplyResult>;
   reset(): Promise<void>;
   getState(): UiSmokeState;
@@ -117,6 +131,9 @@ export function installUiSmokeHook(host: UiSmokeHost): PartbenchUiSmokeApi {
       : {}),
     ...(host.getDisplayState
       ? { getDisplayState: () => host.getDisplayState!() }
+      : {}),
+    ...(host.getViewportBounds
+      ? { getViewportBounds: () => host.getViewportBounds!() }
       : {})
   };
   window.__PARTBENCH_UI_SMOKE__ = api;

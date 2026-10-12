@@ -16,9 +16,9 @@ Start at [AGENTS.md](./AGENTS.md).
 
 ## Professional CAD feature map
 
-[![CAD feature map: 339 features across 27 areas; 20 Done and 319 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
+[![CAD feature map: 339 features across 27 areas; 22 Done and 317 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
 
-**20 Done · 319 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
+**22 Done · 317 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
 
 [Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)
 
@@ -82,11 +82,11 @@ All 339 features are listed below, grouped into 27 areas. **Checked = Done; unch
 Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:matrix`. Use `pnpm cad:matrix --next` to choose the next contract.
 
 <details>
-<summary>Performance and large documents — 1 Done · 11 Not done</summary>
+<summary>Performance and large documents — 3 Done · 9 Not done</summary>
 
-- [ ] [PERF-001](docs/cad-feature-matrix.md#perf-001) Cold usable assembly view
+- [x] [PERF-001](docs/cad-feature-matrix.md#perf-001) Cold usable assembly view
 - [ ] [PERF-002](docs/cad-feature-matrix.md#perf-002) Cold exact selection readiness
-- [ ] [PERF-003](docs/cad-feature-matrix.md#perf-003) Progressive assembly import
+- [x] [PERF-003](docs/cad-feature-matrix.md#perf-003) Progressive assembly import
 - [ ] [PERF-004](docs/cad-feature-matrix.md#perf-004) Cached native reopen latency
 - [ ] [PERF-005](docs/cad-feature-matrix.md#perf-005) Interactive edit latency
 - [ ] [PERF-006](docs/cad-feature-matrix.md#perf-006) Hardware viewport frame budget

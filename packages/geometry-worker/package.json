@@ -17,6 +17,10 @@
     "./browser": {
       "types": "./src/browser.ts",
       "default": "./src/browser.ts"
+    },
+    "./stepPreview": {
+      "types": "./src/stepPreview.ts",
+      "default": "./src/stepPreview.ts"
     }
   },
   "scripts": {

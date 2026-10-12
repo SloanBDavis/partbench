@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 20 Done · 319 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 22 Done · 317 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -36,9 +36,9 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 
 | Contract | Status | Completion target | Prerequisites |
 | --- | --- | --- | --- |
-| [PERF-001](#perf-001) | Not done | Cold usable assembly view | None declared |
+| [PERF-001](#perf-001) | Done | Cold usable assembly view | None declared |
 | [PERF-002](#perf-002) | Not done | Cold exact selection readiness | PERF-001 |
-| [PERF-003](#perf-003) | Not done | Progressive assembly import | None declared |
+| [PERF-003](#perf-003) | Done | Progressive assembly import | None declared |
 | [PERF-012](#perf-012) | Not done | Repeatable performance corpus | None declared |
 | [DRAW-001](#draw-001) | Done | Independent drafting document | None declared |
 | [IO-005](#io-005) | Not done | DWG drawings | DRAW-001 |
@@ -54,7 +54,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 
 | Area | Priority | Done | Not done |
 | --- | ---: | ---: | ---: |
-| [Performance and large documents](#area-performance) | 0 | 1 | 11 |
+| [Performance and large documents](#area-performance) | 0 | 3 | 9 |
 | [Document integrity and persistence](#area-document) | 1 | 4 | 10 |
 | [Workspace, input and selection](#area-interaction) | 1 | 2 | 13 |
 | [2D drawing geometry and editing](#area-drafting) | 1 | 1 | 17 |
@@ -92,9 +92,9 @@ Existing foundation to inspect: [docs/import-performance.md](../docs/import-perf
 
 | ID | Feature | Status | Done only when | Prerequisites | Passing evidence |
 | --- | --- | --- | --- | --- | --- |
-| <a id="perf-001"></a>PERF-001 | Cold usable assembly view | **Not done** | Pinned engine reaches a visible, orbitable assembly within 10 s from Import on the declared reference runner in each of five isolated production runs; loading indicators do not count. | — | — |
+| <a id="perf-001"></a>PERF-001 | Cold usable assembly view | **Done** | Pinned engine reaches a visible, orbitable assembly within 10 s from Import on the declared reference runner in each of five isolated production runs; loading indicators do not count. | — | [progressiveImport](#evidence-progressiveImport) |
 | <a id="perf-002"></a>PERF-002 | Cold exact selection readiness | **Not done** | Every engine occurrence is selectable with correct exact identity within 20 s from Import in each of five isolated production runs. | [PERF-001](#perf-001) | — |
-| <a id="perf-003"></a>PERF-003 | Progressive assembly import | **Not done** | Show correctly placed definitions before all checkpoints finish; input remains responsive; completion matches the exact native baseline; Cancel removes the preview and preserves the prior document. | — | — |
+| <a id="perf-003"></a>PERF-003 | Progressive assembly import | **Done** | Show correctly placed definitions before all checkpoints finish; input remains responsive; completion matches the exact native baseline; Cancel removes the preview and preserves the prior document. | — | [progressiveImport](#evidence-progressiveImport) |
 | <a id="perf-004"></a>PERF-004 | Cached native reopen latency | **Not done** | Engine WCAD reaches exact and display readiness within 2 s on each of five warm reopens; invalid caches rebuild without changing source. | — | — |
 | <a id="perf-005"></a>PERF-005 | Interactive edit latency | **Not done** | Representative part and engine edits finish within 1 s at p95 over at least 20 edits on the declared runner, with exact results and Undo/Redo. | — | — |
 | <a id="perf-006"></a>PERF-006 | Hardware viewport frame budget | **Not done** | Engine orbit and selection on a declared hardware GPU meet p95 frame interval 20 ms over 10 s, without redundant mesh uploads. | — | — |
@@ -805,6 +805,18 @@ Command: `pnpm verify`.
 Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs).
 
 Recorded results: [docs/drawing-workspace.md](../docs/drawing-workspace.md).
+
+<a id="evidence-progressiveImport"></a>
+
+### progressiveImport
+
+2026-10-12; source: ffb2ebc plus the PERF-001 implementation in the commit containing this record. Five consecutive fresh-browser production runs: visible native orbit by 4.11–8.77 s, correctly placed progressive geometry before checkpoints finish, camera continuity, atomic source, native payload parity, active-worker Cancel preserving prior document and view, invalid STEP rejection. Full 20-stage engine workflow and pnpm verify pass. Exact editing readiness remains 69.62–89.23 s; no PERF-002 or hardware frame-budget claim.
+
+Command: `pnpm smoke:engine-interchange; pnpm --filter @web-cad/web build; five isolated invocations of PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser`.
+
+Journeys: [examples/editable-interchange/engine-browser-use.json](../examples/editable-interchange/engine-browser-use.json), [scripts/smoke-editable-interchange.mjs](../scripts/smoke-editable-interchange.mjs).
+
+Recorded results: [docs/import-performance.md](../docs/import-performance.md), [examples/editable-interchange/progressive-import-evidence.json](../examples/editable-interchange/progressive-import-evidence.json), [examples/editable-interchange/engine-evidence.json](../examples/editable-interchange/engine-evidence.json).
 
 ## Professional catalog sources
 

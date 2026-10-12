@@ -72,6 +72,7 @@ export function ViewportCanvas({
   exactPickFilter = "auto",
   exactVisualStates,
   meshes,
+  importView,
   notifyHoverPointChanges = false,
   onHover,
   onSelect,
@@ -90,6 +91,10 @@ export function ViewportCanvas({
   readonly exactPickFilter?: RenderExactPickFilter;
   readonly exactVisualStates?: readonly RenderExactVisualStateInput[];
   readonly meshes?: readonly RenderTriangleMesh[];
+  readonly importView?: {
+    readonly id: string;
+    readonly phase: "preview" | "keep" | "restore";
+  };
   readonly notifyHoverPointChanges?: boolean;
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
@@ -139,6 +144,46 @@ export function ViewportCanvas({
   const [size, setSize] = useState({ width: 900, height: 600 });
   const [hoveredId, setHoveredId] = useState<string | undefined>();
   const cameraRef = useRef(camera);
+  const importCameraRef = useRef<
+    { id: string; previous: RenderCamera; navigated: boolean } | undefined
+  >(undefined);
+  useEffect(() => {
+    if (!importView) return;
+    if (
+      importView.phase === "preview" &&
+      importCameraRef.current?.id !== importView.id
+    )
+      importCameraRef.current = {
+        id: importView.id,
+        previous: cameraRef.current,
+        navigated: false
+      };
+    const session = importCameraRef.current;
+    if (!session || session.id !== importView.id) return;
+    let next: RenderCamera | undefined;
+    if (importView.phase === "restore") next = session.previous;
+    else if (
+      importView.phase === "preview" &&
+      !session.navigated &&
+      meshes?.some((mesh) => mesh.id.startsWith("import-preview:"))
+    )
+      next = applyViewportCameraAction(
+        cameraRef.current,
+        { type: "fitAll" },
+        { primitives, meshes }
+      ).camera;
+    if (importView.phase === "keep") importCameraRef.current = undefined;
+    if (!next) return;
+    const frame = requestAnimationFrame(() => {
+      if (importView.phase === "preview" && session.navigated) return;
+      cameraRef.current = next;
+      setCamera(next);
+      // Retain the saved camera until this frame actually runs: cancellation
+      // and promise cleanup may both request restoration in adjacent renders.
+      if (importView.phase === "restore") importCameraRef.current = undefined;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [importView, meshes, primitives]);
   const sizeRef = useRef(size);
   const hoveredIdRef = useRef<string | undefined>(undefined);
   const hoveredPickIdentityRef = useRef<string | undefined>(undefined);
@@ -379,6 +424,12 @@ export function ViewportCanvas({
       gpuCanvas.style.display = gpuDrawn ? "block" : "none";
       canvas.dataset.renderer = gpuDrawn ? "webgl2" : "canvas2d";
       if (gpuDrawn) {
+        canvas.dataset.previewMeshCount = String(
+          (meshes ?? []).filter((mesh) => mesh.id.startsWith("import-preview:"))
+            .length
+        );
+        canvas.dataset.camera = JSON.stringify(camera);
+        canvas.dataset.renderedAt = String(performance.now());
         if (gridCanvas) {
           gridCanvas.width = canvas.width;
           gridCanvas.height = canvas.height;
@@ -538,6 +589,7 @@ export function ViewportCanvas({
   function updateCamera(
     updater: (current: RenderCamera) => RenderCamera
   ): void {
+    if (importCameraRef.current) importCameraRef.current.navigated = true;
     const nextCamera = updater(cameraRef.current);
     cameraRef.current = nextCamera;
     setCamera(nextCamera);

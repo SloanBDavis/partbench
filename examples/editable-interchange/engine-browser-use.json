@@ -3,7 +3,9 @@
   "description": "Public STEP engine import, shared GPU definitions, fit, native orbit and selection",
   "use": [
     {
-      "importStep": ".metrics/engine-step-trial/radial-engine.step"
+      "importStep": ".metrics/engine-step-trial/radial-engine.step",
+      "maxUsableViewMs": 10000,
+      "expectPreviewSolids": 266
     },
     {
       "click": "[data-ribbon-roving-id=\"mode-solid\"]"

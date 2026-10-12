@@ -1,4 +1,6 @@
 import { DrawingWorkspace } from "./modes/drawing/DrawingWorkspace";
+import { getRenderSceneBounds } from "./viewportCamera";
+import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createAssemblyEditorRequest,
   canEditAssemblyInstancePose
@@ -943,71 +945,6 @@ function exportCadProjectForDocument(
   return readEngineStateForDocument(documentSnapshot, () =>
     exportCadProject(engine)
   );
-}
-
-function formatStepImportDryRunPreview(
-  fileName: string,
-  response: CadAsyncBatchResponse,
-  units: CadDocument["units"]
-): string {
-  const bodyCount = response.ok ? (response.createdBodyIds?.length ?? 0) : 0;
-  const previewBodies = response.importedStepPreviewBodies ?? [];
-  const checkpointCount = response.importedStepCheckpointPayloads?.length ?? 0;
-  const diagnostics = response.importedStepDiagnostics ?? [];
-  const lines = [
-    `Import ${fileName}?`,
-    "",
-    `Bodies: ${bodyCount}`,
-    `Shape evidence records: ${checkpointCount}`
-  ];
-
-  if (previewBodies.length > 0) {
-    lines.push("", "Bounding boxes:");
-    for (const body of previewBodies.slice(0, 6)) {
-      const label = body.name ?? body.bodyId;
-      lines.push(
-        `- ${label}: min ${formatStepImportVec3(body.bounds.min, units)}; max ${formatStepImportVec3(
-          body.bounds.max,
-          units
-        )}; size ${formatStepImportVec3(body.bounds.size, units)}`
-      );
-    }
-    if (previewBodies.length > 6)
-      lines.push(`- ${previewBodies.length - 6} more part definitions`);
-  } else {
-    lines.push("", "Bounding boxes: unavailable");
-  }
-
-  if (diagnostics.length > 0) {
-    lines.push("", "Diagnostics:");
-    for (const diagnostic of diagnostics.slice(0, 6)) {
-      lines.push(`- ${diagnostic.message}`);
-    }
-    if (diagnostics.length > 6) {
-      lines.push(`- ${diagnostics.length - 6} more diagnostic(s)`);
-    }
-  } else {
-    lines.push("", "Diagnostics: none reported");
-  }
-
-  return lines.join("\n");
-}
-
-function formatStepImportVec3(
-  values: readonly [number, number, number],
-  units: CadDocument["units"]
-): string {
-  return `${values.map(formatStepImportNumber).join(", ")} ${units}`;
-}
-
-function formatStepImportNumber(value: number): string {
-  if (!Number.isFinite(value)) {
-    return "unknown";
-  }
-
-  return Number.isInteger(value)
-    ? value.toString()
-    : value.toFixed(3).replace(/\.?0+$/, "");
 }
 
 function readBodyGeneratedReferences(
@@ -2160,11 +2097,24 @@ export function App() {
     createProjectStepImportPayloadStore()
   );
   const stepImportRunRef = useRef<
-    { cancelled: boolean; committing: boolean } | undefined
+    | { cancelled: boolean; committing: boolean; cancelPreview?: () => void }
+    | undefined
   >(undefined);
   const [stepImportStatus, setStepImportStatus] = useState<
     { fileName: string; committing: boolean } | undefined
   >(undefined);
+  const [stepImportDisplay, setStepImportDisplay] = useState<{
+    id: string;
+    meshes: RenderTriangleMesh[];
+    baseMeshes: readonly RenderTriangleMesh[];
+    completed: number;
+    total: number;
+    committedBodyIds?: readonly string[];
+  }>();
+  const [importView, setImportView] = useState<{
+    id: string;
+    phase: "preview" | "keep" | "restore";
+  }>();
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -2300,7 +2250,10 @@ export function App() {
   >();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
-  const [commandPending, setCommandPending] = useState(false);
+  const [commandInFlight, setCommandPending] = useState(false);
+  // Keep modeling commands unavailable through the preview-to-exact handoff.
+  // Native preparation continues independently of this UI availability flag.
+  const commandPending = commandInFlight || Boolean(stepImportDisplay);
   const [openDrawer, setOpenDrawer] = useState<"left" | "right" | undefined>();
   const [featureApplyCanApply, setFeatureApplyCanApply] = useState(() =>
     getFeatureApplyCanApply()
@@ -3375,16 +3328,28 @@ export function App() {
   const derivedExactMetadata = currentExactArtifactProjection.metadata;
   const currentExactMetadataSources = useMemo(
     () => [
-      ...currentExactSources.metadataSources,
-      ...currentExactArtifactProjection.artifactSources
+      ...new Map(
+        [
+          ...currentExactSources.metadataSources,
+          ...currentExactArtifactProjection.artifactSources
+        ].map((source) => [source.id, source] as const)
+      ).values()
     ],
     [currentExactArtifactProjection.artifactSources, currentExactSources]
   );
   const derivedGeometrySources = useMemo(
-    () => [
-      ...currentExactSources.derivedGeometrySources,
-      ...currentExactArtifactProjection.artifactSources
-    ],
+    () =>
+      // A current exact artifact replaces that body's recipe display source.
+      // Appending both draws the same body twice when the artifact arrives
+      // during another operation (including a cancelled import).
+      [
+        ...new Map(
+          [
+            ...currentExactSources.derivedGeometrySources,
+            ...currentExactArtifactProjection.artifactSources
+          ].map((source) => [source.id, source] as const)
+        ).values()
+      ],
     [currentExactArtifactProjection.artifactSources, currentExactSources]
   );
   const currentExactEvidence = useMemo(
@@ -3492,6 +3457,11 @@ export function App() {
     const run = stepImportRunRef.current;
     if (!run || run.committing || run.cancelled) return;
     run.cancelled = true;
+    run.cancelPreview?.();
+    setStepImportDisplay(undefined);
+    setImportView((current) =>
+      current ? { ...current, phase: "restore" } : current
+    );
     // Stop the WASM worker, not just its spinner. Keep it stopped until the
     // import promise settles so an in-progress file hash cannot queue late work.
     getDerivedGeometryRuntime().cancelModelWork("STEP import was cancelled.");
@@ -3501,9 +3471,9 @@ export function App() {
 
   const modelWorkControl = stepImportStatus
     ? {
-        label: `${stepImportStatus.committing ? "Adding" : "Reading"} ${stepImportStatus.fileName}`,
+        label: `${stepImportStatus.committing ? "Finishing" : stepImportDisplay?.meshes.length ? "Preparing editing" : "Reading"} ${stepImportStatus.fileName}`,
         actionLabel: "Cancel import",
-        busy: modelWorkSnapshot.active,
+        busy: true,
         disabled: stepImportStatus.committing,
         onAction: cancelStepImport
       }
@@ -6981,8 +6951,38 @@ export function App() {
     sketchDisplayState.frames,
     sketches
   ]);
+  useEffect(() => {
+    if (!stepImportDisplay?.committedBodyIds?.length) return;
+    const settled = stepImportDisplay.committedBodyIds.every((id) => {
+      const entry = derivedGeometry.entries.find(
+        (item) => (item.sourceId ?? item.objectId) === id
+      );
+      return entry && entry.status !== "pending";
+    });
+    if (!settled) return;
+    const frame = requestAnimationFrame(() => {
+      setStepImportDisplay(undefined);
+      setImportView((current) =>
+        current ? { ...current, phase: "keep" } : current
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [stepImportDisplay, derivedGeometry.entries]);
+  const previewSourceAuthorityEpoch = engine.getSourceAuthorityEpoch();
   const previewRenderMeshes = useMemo(() => {
-    if (solidPreviewPresentation.status !== "ready" || !solidPreviewResult) {
+    if (stepImportDisplay?.meshes.length)
+      return [...stepImportDisplay.baseMeshes, ...stepImportDisplay.meshes];
+    // A disposed editor can leave a late display result behind while modes or
+    // the import panel change. Only the current editor/revision owns a preview;
+    // never resurrect an already-applied feature when an import is cancelled.
+    if (
+      workbenchUi.mode !== "solid" ||
+      !solidEditorRequest ||
+      !solidPreviewSubmission ||
+      solidPreviewPresentation.status !== "ready" ||
+      !solidPreviewResult ||
+      solidPreviewResult.sourceAuthorityEpoch !== previewSourceAuthorityEpoch
+    ) {
       return renderScene.meshes;
     }
     const affectedBodyIds = new Set(solidPreviewResult.affectedBodyIds);
@@ -6994,7 +6994,16 @@ export function App() {
       ),
       ...solidPreviewResult.meshes
     ];
-  }, [renderScene.meshes, solidPreviewPresentation.status, solidPreviewResult]);
+  }, [
+    renderScene.meshes,
+    solidPreviewPresentation.status,
+    solidPreviewResult,
+    solidPreviewSubmission,
+    solidEditorRequest,
+    workbenchUi.mode,
+    previewSourceAuthorityEpoch,
+    stepImportDisplay
+  ]);
   const currentExactPickBodies = useMemo(() => {
     const renderIds = new Map(
       projectStructure.bodies.map((body) => [body.id, body.objectId ?? body.id])
@@ -9297,18 +9306,80 @@ export function App() {
     };
 
     const importEpoch = engine.getSourceAuthorityEpoch();
-    const run = { cancelled: false, committing: false };
+    const run: {
+      cancelled: boolean;
+      committing: boolean;
+      cancelPreview?: () => void;
+    } = { cancelled: false, committing: false };
     stepImportRunRef.current = run;
+    clearSolidPreview();
+    navigateToMode("solid");
     setStepImportStatus({ fileName, committing: false });
     getDerivedGeometryRuntime().resumeModelWork();
     stepImportPayloadStoreRef.current.putPayload(payloadId, bytes);
     setCommandPending(true);
     setCommandError(undefined);
     setCommandNotice(undefined);
-    setProjectMessage(`Previewing ${fileName}...`);
+    setProjectMessage(`Reading ${fileName}… You can cancel at any time.`);
     setProjectMessageTone("info");
 
+    let committed = false;
     try {
+      setImportView({ id: payloadId, phase: "preview" });
+      const { startStepPreview } =
+        await import("@web-cad/geometry-worker/stepPreview");
+      if (run.cancelled) return;
+      let meshSerial = 0;
+      const preview = startStepPreview(bytes, document.units, (batch) => {
+        if (run.cancelled || stepImportRunRef.current !== run) return;
+        const meshes: RenderTriangleMesh[] = batch.meshes.map((mesh) => {
+          const vertices: (readonly [number, number, number])[] = [];
+          for (let index = 0; index < mesh.positions.length; index += 3)
+            vertices.push([
+              mesh.positions[index]!,
+              mesh.positions[index + 1]!,
+              mesh.positions[index + 2]!
+            ]);
+          return {
+            id: `import-preview:${payloadId}:${meshSerial++}`,
+            kind: "mesh",
+            vertices,
+            indices: Array.from(mesh.indices),
+            label: mesh.name,
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          };
+        });
+        setStepImportDisplay((current) => ({
+          id: payloadId,
+          baseMeshes: current?.baseMeshes ?? renderScene.meshes,
+          meshes: [...(current?.meshes ?? []), ...meshes],
+          completed: batch.completed,
+          total: batch.total
+        }));
+        setProjectMessage(
+          batch.completed === batch.total
+            ? "Assembly visible. Orbit, pan and zoom while exact editing data prepares."
+            : "Assembly appearing. Orbit, pan and zoom while more parts arrive."
+        );
+      });
+      run.cancelPreview = preview.cancel;
+      await preview.first;
+      // Let the first display paint before the full kernel starts competing for
+      // CPU. The timer also keeps imports progressing in background tabs.
+      await new Promise<void>((resolve) => {
+        const timer = window.setTimeout(resolve, 100);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            clearTimeout(timer);
+            resolve();
+          })
+        );
+      });
+      if (run.cancelled) return;
       const dryRun = await commandExecutor.executeBatch(
         buildBatch("dryRun", [op], WEB_UI_ACTOR)
       );
@@ -9323,16 +9394,6 @@ export function App() {
         setCommandError(dryRun.error.message);
         setProjectMessage(dryRun.error.message);
         setProjectMessageTone("error");
-        return;
-      }
-
-      const confirmed = window.confirm(
-        formatStepImportDryRunPreview(fileName, dryRun, document.units)
-      );
-
-      if (!confirmed) {
-        setProjectMessage("STEP import preview was cancelled.");
-        setProjectMessageTone("info");
         return;
       }
 
@@ -9368,14 +9429,27 @@ export function App() {
           response.importedStepCheckpointPayloads
         )
       );
+      committed = true;
+      run.cancelPreview?.();
+      setImportView({ id: payloadId, phase: "keep" });
+      setStepImportDisplay((current) =>
+        current ? { ...current, committedBodyIds: createdBodyIds } : current
+      );
       await syncDocument(createdBodyIds[0]);
       setProjectFile((current) => markProjectFileDirty(current));
       setProjectMessage(
         `Imported ${fileName}: ${createdBodyIds.length} bod${
           createdBodyIds.length === 1 ? "y" : "ies"
-        }.`
+        }. You can undo this import.`
       );
       setProjectMessageTone("info");
+      const warnings = (response.importedStepDiagnostics ?? []).filter(
+        (diagnostic) => diagnostic.severity !== "info"
+      );
+      if (warnings.length)
+        setCommandNotice(
+          warnings.map((diagnostic) => diagnostic.message).join(" ")
+        );
     } catch (error) {
       if (run.cancelled) return;
       const message =
@@ -9384,6 +9458,11 @@ export function App() {
       setProjectMessage(message);
       setProjectMessageTone("error");
     } finally {
+      run.cancelPreview?.();
+      if (!committed) {
+        setStepImportDisplay(undefined);
+        setImportView({ id: payloadId, phase: "restore" });
+      }
       stepImportPayloadStoreRef.current.deletePayload(payloadId);
       stepImportRunRef.current = undefined;
       setStepImportStatus(undefined);
@@ -11621,8 +11700,15 @@ export function App() {
   uiSmokeHostRef.current = {
     executeQuery: (query) =>
       engine.executeQuery({ version: "cadops.v1", query }),
+    getViewportBounds: () => ({
+      bounds: getRenderSceneBounds(renderScene.primitives, previewRenderMeshes),
+      meshes: previewRenderMeshes.map((mesh) => ({
+        id: mesh.id,
+        bounds: getRenderSceneBounds([], [mesh])
+      }))
+    }),
     getDisplayState: () => ({
-      meshIds: renderScene.meshes.map((mesh) => mesh.id),
+      meshIds: previewRenderMeshes.map((mesh) => mesh.id),
       exactResults: currentExactResultProjections.map(({ bodyId, status }) => ({
         bodyId,
         status
@@ -11676,8 +11762,16 @@ export function App() {
         commandError,
         commandNotice,
         rebuildState: modelingResultState,
+        stepImport: stepImportDisplay
+          ? {
+              meshCount: stepImportDisplay.meshes.length,
+              completed: stepImportDisplay.completed,
+              total: stepImportDisplay.total,
+              editingPending: !stepImportDisplay.committedBodyIds
+            }
+          : undefined,
         viewport: {
-          meshIds: renderScene.meshes.map((mesh) => mesh.id),
+          meshIds: previewRenderMeshes.map((mesh) => mesh.id),
           primitiveCount: renderScene.primitives.length
         },
         alerts: dom.alerts,
@@ -11767,7 +11861,8 @@ export function App() {
       applyOps: (ops) => uiSmokeHostRef.current.applyOps(ops),
       reset: () => uiSmokeHostRef.current.reset(),
       getState: () => uiSmokeHostRef.current.getState(),
-      getDisplayState: () => uiSmokeHostRef.current.getDisplayState!()
+      getDisplayState: () => uiSmokeHostRef.current.getDisplayState!(),
+      getViewportBounds: () => uiSmokeHostRef.current.getViewportBounds!()
     });
     return () => uninstallUiSmokeHook();
   }, []);
@@ -12040,6 +12135,7 @@ export function App() {
                 fallback={<p className="panel-loading">Loading viewport…</p>}
               >
                 <ViewportCanvas
+                  importView={importView}
                   viewControls={
                     projectStructure.assemblies.some(
                       (assembly) => assembly.instances.length > 0
@@ -12098,11 +12194,23 @@ export function App() {
                   )}
                   selectedId={selectedViewportRenderId}
                   suspendHoverPicking={
+                    Boolean(stepImportDisplay) ||
                     workbenchUi.activeTool === "sketch.regions"
                   }
                   visualStates={viewportVisualState.rendererVisualStates}
-                  status={viewportVisualState.status}
+                  status={
+                    stepImportDisplay?.meshes.length
+                      ? {
+                          label: "Import preview",
+                          tone: "warning",
+                          detail:
+                            "Orbit, pan and zoom now. Editing prepares in the background."
+                        }
+                      : viewportVisualState.status
+                  }
                   contextualSurface={
+                    stepImportStatus ||
+                    stepImportDisplay ||
                     curveEditOwnership.suppressContextSourceMutations ? null : (
                       <>
                         <Suspense fallback={null}>
@@ -12174,6 +12282,7 @@ export function App() {
                     )
                   }
                   onHover={(pick) => {
+                    if (stepImportDisplay) return;
                     if (threePointArcTool) {
                       hoverThreePointArcTool(pick);
                     } else {
@@ -12181,6 +12290,7 @@ export function App() {
                     }
                   }}
                   onSelect={(pick) => {
+                    if (stepImportDisplay) return;
                     if (threePointArcTool) {
                       void captureThreePointArcToolPick(pick);
                     } else if (
@@ -12446,7 +12556,39 @@ export function App() {
                   choose={chooseViewportExactCandidate}
                 />
               ) : null}
-              {workbenchUi.mode === "solid" ? (
+              {stepImportStatus || stepImportDisplay ? (
+                <section
+                  className="step-import-panel"
+                  aria-label="STEP import progress"
+                >
+                  <p className="step-import-panel__eyebrow">STEP import</p>
+                  <h2>{stepImportStatus?.fileName ?? "Finishing import"}</h2>
+                  <p role="status">
+                    {stepImportDisplay?.meshes.length
+                      ? `${stepImportDisplay.meshes.length} shapes visible · ${stepImportDisplay.completed < stepImportDisplay.total ? "more parts arriving" : "preparing exact editing"}`
+                      : "Reading the assembly…"}
+                  </p>
+                  <p>Drag to orbit, Shift-drag to pan, and scroll to zoom.</p>
+                  <p>
+                    Selection and editing become available when preparation
+                    finishes.
+                  </p>
+                  {stepImportStatus ? (
+                    <button
+                      type="button"
+                      onClick={cancelStepImport}
+                      disabled={stepImportStatus.committing}
+                    >
+                      Cancel import
+                    </button>
+                  ) : null}
+                  <p className="step-import-panel__hint">
+                    {stepImportStatus?.committing || !stepImportStatus
+                      ? "The import is being added. You can undo it when it finishes."
+                      : "Esc also cancels. Your existing project is kept until the import finishes."}
+                  </p>
+                </section>
+              ) : workbenchUi.mode === "solid" ? (
                 <Suspense
                   fallback={
                     <p className="panel-loading">Loading modeling tools…</p>
@@ -12844,6 +12986,9 @@ export function App() {
                 mode="solid"
                 instruction={
                   commandError ??
+                  (stepImportStatus || stepImportDisplay
+                    ? "Drag to orbit · Shift-drag to pan · Scroll to zoom"
+                    : undefined) ??
                   commandNotice ??
                   (selectedGeneratedReference
                     ? "Reference selected"

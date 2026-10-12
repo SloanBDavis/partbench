@@ -2,11 +2,115 @@
 
 Current slice of the [CAD parity roadmap](parity-roadmap.md), updated 2026-10-12.
 Binary completion is tracked in the [feature matrix](cad-feature-matrix.md#area-performance):
-cold view, selection and progressive import remain Not done; measured improvements
-do not count as completion of those contracts.
+**PERF-001 and PERF-003 are Done** after five isolated production journeys.
+Exact selection within 20 seconds (PERF-002) remains **Not done**.
 The pinned 13.4 MB engine remains the acceptance fixture: 51 unique parts,
-246 occurrences and 266 solids. No geometry is removed or approximated to make
-this workflow faster.
+246 occurrences and 266 solids. No exact geometry is removed or approximated to
+make this workflow faster.
+
+## Progressive cold view — 2026-10-12
+
+Import opens the 3D view immediately. Real OCCT meshes arrive in batches, fit the
+viewport automatically, and accept orbit, pan and zoom while the unchanged exact
+reader prepares editing data. Once the user navigates, arriving parts and the
+final mesh replacement preserve that camera. An import panel explains what is
+ready, shows the number of visible shapes, and exposes Cancel and Escape.
+Modeling commands stay unavailable through the final display handoff. The late
+confirmation dialog is removed: choosing Import starts one atomic import that
+can be cancelled before commit or undone afterward. Import warnings remain visible.
+
+The short-lived display path uses `occt-import-js@0.0.23` (7.3 MB WASM) behind
+`occt-wasm`, the typed kernel facade and dedicated workers. For supported large
+STEP assembly graphs, a coordinator partitions representation references without
+interpreting coordinates or transforms; OCCT resolves the original placements.
+Up to eight batches run through at most three native display workers, bounded by
+reported CPU and memory. Smaller source batches go first; each worker reuses its
+OCCT module for later batches. This reduces time to visible parts and avoids
+starting a new native module for every batch.
+Small files and unsupported representation layouts use an unsplit OCCT preview.
+The preview uses 1 mm physical linear deflection and 0.8 rad angular deflection;
+appearance is deferred to the final display. It never becomes document content,
+a pick map, an editing checkpoint or a saved asset. Failure or a 30-second display
+timeout falls back to the original exact import. Cancel terminates the whole
+worker subtree, removes the preview and restores the previous model and camera.
+Modeling previews are also tied to an active editor and the current document
+revision. Current exact artifacts replace each body's earlier recipe display
+and metadata sources by ID; appending both had drawn an existing body twice when
+its exact artifact arrived during a cancelled import.
+
+The original bytes still go through canonical STEP transfer, validation, healing,
+topology and signatures. Final display meshes replace the preview together after
+the imported definitions have display results. This separation improves viewing
+latency; full exact editing readiness is measured separately and is not claimed
+to meet PERF-002's 20-second budget.
+
+The placement comparison also exposed an existing display defect: exact-body
+meshes were being centered on their bounding boxes before applying occurrence
+transforms. Asymmetric engine pipes moved away from their true STEP positions.
+Exact meshes now retain the definition coordinate system. A derived-cache key
+revision rejects the old centered display caches; BRep, topology, signatures,
+assembly source and native format are unchanged. Both OCCT readers and the saved
+native checkpoints independently agree on the original placed geometry.
+
+The existing engine browser journey now checks visible GPU output, native mouse
+orbit within the time budget, atomic source state, disabled modeling controls,
+all 266 preview solids, placed preview/final bounds, camera continuity, native
+Save As parity, active checkpoint-worker cancellation and invalid-file rejection.
+It uses the same Chromium runner as the small E2E suite. License notices and the
+exact upstream source/build references ship under `apps/web/public/licenses/`.
+
+### Measured acceptance
+
+Five consecutive isolated production journeys passed on Linux x64, Node 22.23.3,
+Chromium 154 and SwiftShader, Intel Xeon Platinum 8573C, five exposed logical CPUs
+with a four-CPU quota and 16 GiB container memory. Each invocation starts a new
+Chromium process, fresh temporary browser profile and local Vite preview origin.
+No build, static check, profiler or other geometry job overlaps the measured runs.
+The timer begins before the actual Import control is clicked, after supplying the
+file-picker fixture; OS file/page caches are not flushed. This is a cold browser
+import benchmark, not computer startup or a WAN download benchmark.
+
+| Run | First visible | Orbit verified | All 266 preview solids | Exact/display ready |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 4.01 s | 6.30 s | 12.92 s | 80.38 s |
+| 2 | 4.73 s | 8.77 s | 14.26 s | 69.62 s |
+| 3 | 3.35 s | 4.81 s | 10.57 s | 75.08 s |
+| 4 | 3.16 s | 4.11 s | 10.51 s | 77.41 s |
+| 5 | 4.28 s | 7.07 s | 13.72 s | 89.23 s |
+
+All five runs reach real, navigable partial geometry within 10 seconds. More
+parts then arrive; all 266 are drawn by 10.51–14.26 s. The orbit timestamp includes
+native mouse input and a verified yaw/pitch change on the foreground canvas.
+Final placed bounds match, the user's camera is preserved, and native Save As
+matches all 51 baseline BRep/topology/signature payloads byte for byte. Cancel
+stops both active checkpoint workers in 142–490 ms and restores the previous
+model and camera. Modeling controls are blocked during preparation;
+invalid STEP still rejects without modifying the document.
+
+The full headless workflow passes all 20 stages, including native comparisons
+against `ffb2ebc` and `d9dffca`, independent occurrence/bore edits, sketch cut,
+move, native reopen, Undo/Redo, STEP export/reimport and continued editing.
+`pnpm verify` passes all 13 typechecks, three browser journeys and public MCP.
+Changed-source ESLint has no errors and seven existing warnings. Production
+build passes. No unit tests or new browser framework were added.
+
+[Progressive import evidence](../examples/editable-interchange/progressive-import-evidence.json)
+records every run, commands, build assets, limitations and development failures.
+The first acceptance series stopped on a duplicate body display during
+cancellation; all five final runs start after its fix. An earlier offset-input
+timeout was not reproduced under profiling or in the final unprofiled full suite.
+Screenshots of the first/complete preview and final scene were visually inspected.
+
+These measurements establish the pinned-engine contract on the declared runner.
+They do not establish a 10-second budget for every STEP layout or device, hardware
+GPU frame performance, or exact selection within 20 seconds. Full editing data
+still takes 69.62–89.23 s; the UI states this readiness distinction throughout.
+The preview adds native work and does not accelerate the canonical reader. These
+runs do not demonstrate faster full editing readiness than the earlier 61.68 s
+observation (which also varied substantially); reducing that cost remains the
+next performance task.
+
+The measurements below this section are historical and precede progressive display.
 
 ## Cold import follow-up — 2026-10-12
 

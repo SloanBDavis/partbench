@@ -81,29 +81,50 @@ Recovery after a crash, broad DXF/SVG fidelity, all feature combinations, and
 hardware GPU performance are not established by this small default suite. Add
 needed assertions to the nearest journey as the roadmap reaches those features.
 
-## Current performance slice
+## Current performance slice — 2026-10-12
 
-See [import and editing performance](import-performance.md) for exact baseline
-comparison, full engine E2E results, and measured latency limits.
+[Import performance](import-performance.md) and the
+[progressive import record](../examples/editable-interchange/progressive-import-evidence.json)
+record five consecutive isolated production passes. Actual foreground GPU output
+and native orbit are verified by 4.11–8.77 s; all 266 correctly placed preview
+solids appear before exact preparation finishes. The same journey checks disabled
+modeling controls, atomic source, final camera continuity, native Save As parity,
+Fit/orbit/selection, Box Apply, cancellation of both active checkpoint workers
+with prior model/camera restoration, and invalid STEP rejection.
 
-The October 12 follow-up passes all 20 full-engine headless stages and the
-production browser journey: Import/Fit/orbit/select, native Save As with exact
-payload parity, Box Apply, active checkpoint-worker cancellation and invalid
-STEP rejection. Use the same runner against bundled code after building:
+The full engine headless workflow passes all 20 stages and both earlier native
+comparisons. `pnpm verify` passes all 13 typechecks, the three consolidated browser
+journeys and the public MCP workflow. Changed-source lint has zero errors and
+seven existing warnings; production build passes. The original 10-second budget
+and binary completion contracts are unchanged. PERF-001 and PERF-003 are Done;
+PERF-002 and the hardware frame-budget contracts remain Not done.
 
 ```sh
 pnpm smoke:engine-interchange
 pnpm --filter @web-cad/web build
-PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser
+for run in 1 2 3 4 5; do
+  PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser || break
+done
 ```
 
-The headless run supplies the native reference used by the browser comparison.
-`--compare-native=<prior.wcad>` may be repeated on the headless runner to compare
-all BRep, raw canonical topology and signature payloads with earlier artifacts.
-The runner waits for the actual viewport before starting controls; active-worker
-cancellation tracks new worker target IDs because Chromium may omit worker URLs.
-See [cold-load evidence](../examples/editable-interchange/cold-load-evidence.json)
-for timing variation and failed experimental runs.
+Each invocation starts a fresh Chromium process/profile and local production
+origin. Run sequentially without concurrent builds, static checks or geometry
+jobs. The headless run supplies the native reference for browser Save As parity.
+The clock starts before the Import control, after the fixture is supplied to the
+file picker. OS caches are not flushed; network-download time is not benchmarked.
+`--compare-native=<prior.wcad>` can be repeated on the headless runner to compare
+BRep, raw canonical topology and signatures with preserved earlier artifacts.
+Active-worker cancellation tracks worker target IDs because Chromium may omit URLs.
+
+An initial acceptance series caught a duplicate Box display after Cancel. A late
+current exact artifact had been appended beside the prior recipe display source;
+current artifact sources now replace display and metadata sources by body ID.
+The final five-run series starts after that fix. An earlier full-suite offset
+input timeout did not reproduce under profiling; the final unprofiled suite
+passes with an explicit keyboard-focus assertion. All earlier failures are
+retained in the evidence record. The earlier
+[cold-load record](../examples/editable-interchange/cold-load-evidence.json) is
+historical and predates progressive rendering.
 
 ## Consolidation validation — 2026-10-10
 

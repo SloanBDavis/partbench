@@ -6,13 +6,13 @@ it, reopen it, and continue editing. Imports are first-class document content.
 The browser and headless agent runtime share this behavior.
 
 Status: shared STEP and sketch interchange are implemented. The unchanged public
-radial engine passes the full 18-stage headless import → edit → native reopen →
-STEP export/reimport → edit workflow. Cold import still takes about 50 seconds;
-the 10-second target is unmet. Full-engine Chromium import, rendering, Fit,
-orbit, and component selection pass; browser import through readiness takes
-59.6 seconds. See [verification](./verification.md)
-for the current close-loop record and the [original trial](./engine-step-trial.md)
-for the failure that prompted this work.
+radial engine exercises headless import → edit → native reopen → STEP
+export/reimport → edit, plus a production Chromium journey. Import now opens a
+progressive, navigable assembly view while exact editing data prepares. Viewing
+and exact readiness are measured separately; see the current
+[performance results](./import-performance.md) and [verification](./verification.md)
+record, and the [original trial](./engine-step-trial.md) for the failure that
+prompted this work.
 
 ## One document and one modeling system
 
