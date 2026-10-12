@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1140" height="1212" viewBox="0 0 1140 1212" role="img" aria-labelledby="title description">
   <title id="title">Partbench professional CAD feature map</title>
-  <desc id="description">339 features across 27 areas: 19 Done and 320 Not done. One square per feature. Filled green squares with a check mean Done; outlined squares mean Not done. The README checklist provides every feature as text.</desc>
+  <desc id="description">339 features across 27 areas: 20 Done and 319 Not done. One square per feature. Filled green squares with a check mean Done; outlined squares mean Not done. The README checklist provides every feature as text.</desc>
   <rect width="1140" height="1212" rx="16" fill="#0c1423"/>
   <g font-family="DejaVu Sans, Arial, sans-serif">
     <text x="32" y="43" fill="#6ee7b7" font-size="13" letter-spacing="3">PARTBENCH / CAPABILITY MAP</text>
@@ -8,9 +8,9 @@
     <text x="32" y="123" fill="#a6b5cc" font-size="16">339 feature contracts · 27 areas · Updated 2026-10-12</text>
     <rect x="32" y="148" width="16" height="16" rx="3" fill="#6ee7b7"/>
     <path d="M35 156 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/>
-    <text x="60" y="162" fill="#f1f5f9" font-size="15">19 Done</text>
+    <text x="60" y="162" fill="#f1f5f9" font-size="15">20 Done</text>
     <rect x="192" y="148" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/>
-    <text x="220" y="162" fill="#f1f5f9" font-size="15">320 Not done</text>
+    <text x="220" y="162" fill="#f1f5f9" font-size="15">319 Not done</text>
     <text x="32" y="203" fill="#a6b5cc" font-size="12" letter-spacing="1">FEATURE AREA</text>
     <text x="438" y="203" fill="#a6b5cc" font-size="12" letter-spacing="1">ONE SQUARE = ONE FEATURE</text>
     <text x="1005" y="203" fill="#6ee7b7" font-size="12" text-anchor="end">DONE</text>
@@ -70,7 +70,7 @@
     <text x="1108" y="306" fill="#cbd5e1" font-size="14" text-anchor="end">13</text>
     <rect x="20" y="319" width="1100" height="34" rx="4" fill="#0c1423"/>
     <text x="32" y="340" fill="#e2e8f0" font-size="14">2D drawing geometry and editing</text>
-    <g><title>DRAW-001: Independent drafting document — Not done</title><rect x="438" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
+    <g><title>DRAW-001: Independent drafting document — Done</title><rect x="438" y="326" width="16" height="16" rx="3" fill="#6ee7b7" stroke="#6ee7b7"/><path d="M441 334 l3 3 7 -7" fill="none" stroke="#0c1423" stroke-width="2"/></g>
     <g><title>DRAW-002: Lines, rays and construction lines — Not done</title><rect x="459" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
     <g><title>DRAW-003: Polylines and joined paths — Not done</title><rect x="480" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
     <g><title>DRAW-004: Circles and arcs — Not done</title><rect x="501" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
@@ -88,8 +88,8 @@
     <g><title>DRAW-016: Boundary extraction and cleanup — Not done</title><rect x="753" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
     <g><title>DRAW-017: Divide and measure along paths — Not done</title><rect x="774" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
     <g><title>DRAW-018: Image and PDF tracing — Not done</title><rect x="795" y="326" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>
-    <text x="1005" y="340" fill="#6ee7b7" font-size="14" text-anchor="end">0</text>
-    <text x="1108" y="340" fill="#cbd5e1" font-size="14" text-anchor="end">18</text>
+    <text x="1005" y="340" fill="#6ee7b7" font-size="14" text-anchor="end">1</text>
+    <text x="1108" y="340" fill="#cbd5e1" font-size="14" text-anchor="end">17</text>
     <rect x="20" y="353" width="1100" height="34" rx="4" fill="#111e30"/>
     <text x="32" y="374" fill="#e2e8f0" font-size="14">Layers, styles, blocks and references</text>
     <g><title>ORG-001: Layer properties — Not done</title><rect x="438" y="360" width="16" height="16" rx="3" fill="#172438" stroke="#73849d"/></g>

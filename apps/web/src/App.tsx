@@ -1,3 +1,4 @@
+import { DrawingWorkspace } from "./modes/drawing/DrawingWorkspace";
 import {
   createAssemblyEditorRequest,
   canEditAssemblyInstancePose
@@ -9477,6 +9478,13 @@ export function App() {
     setProjectMessage(`Opened ${fileName}.`);
     setProjectMessageTone("info");
     await syncDocument(undefined);
+    if (
+      result.project.document.drawingEntities?.length &&
+      result.project.document.objects.length === 0 &&
+      result.project.document.features.length === 0 &&
+      result.project.document.sketches.length === 0
+    )
+      navigateToMode("drawing");
   }
 
   async function recoverProjectWcadPayloads(
@@ -10218,7 +10226,9 @@ export function App() {
     }
   }
 
-  function navigateToMode(mode: "project" | "solid" | "sketch" | "inspect") {
+  function navigateToMode(
+    mode: "project" | "solid" | "sketch" | "drawing" | "inspect"
+  ) {
     dispatchWorkbench({
       type: "request-navigation",
       intent: { kind: "mode", mode }
@@ -11520,6 +11530,15 @@ export function App() {
     });
   }, [workbenchUi.commandSearchOpen]);
   const onShortcutKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      workbenchUi.mode === "drawing" &&
+      event.target instanceof Element &&
+      event.target.closest(".drawing-workspace") &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    )
+      return;
     {
       if (
         event.key === "n" &&
@@ -11645,6 +11664,14 @@ export function App() {
       const dom = readUiSmokeDomSnapshot();
       return {
         ready: true as const,
+        drawing: {
+          units: document.units,
+          entities: [...document.drawingEntities.values()],
+          sketchCount: document.sketches.size,
+          constraintCount: document.sketchConstraints.size,
+          historyCount: engine.getTransactions().length,
+          redoCount: engine.getRedoStack().length
+        },
         commandPending,
         commandError,
         commandNotice,
@@ -11859,8 +11886,12 @@ export function App() {
           }
           leftDockWidth={workbenchUi.leftDockWidth}
           rightDockWidth={workbenchUi.rightDockWidth}
-          leftDockCollapsed={workbenchUi.leftDockCollapsed}
-          rightDockCollapsed={workbenchUi.rightDockCollapsed}
+          leftDockCollapsed={
+            workbenchUi.mode === "drawing" || workbenchUi.leftDockCollapsed
+          }
+          rightDockCollapsed={
+            workbenchUi.mode === "drawing" || workbenchUi.rightDockCollapsed
+          }
           projectDetailsOpen={false}
           openDrawer={openDrawer}
           onOpenDrawerChange={setOpenDrawer}
@@ -11980,277 +12011,312 @@ export function App() {
             )
           }
           viewport={
-            <Suspense
-              fallback={<p className="panel-loading">Loading viewport…</p>}
-            >
-              <ViewportCanvas
-                viewControls={
-                  projectStructure.assemblies.some(
-                    (assembly) => assembly.instances.length > 0
-                  ) ? (
-                    <div className="viewport-action-group">
-                      <label htmlFor="assembly-model-view">View</label>
-                      <select
-                        id="assembly-model-view"
-                        aria-label="Model view"
-                        value={assemblySceneView}
-                        onChange={(event) =>
-                          setAssemblySceneView(
-                            event.currentTarget.value as "assembly" | "parts"
-                          )
-                        }
-                      >
-                        <option value="assembly">Assembly</option>
-                        <option value="parts">Parts</option>
-                      </select>
-                      <button
-                        type="button"
-                        data-action-id="assembly.make-independent"
-                        disabled={
-                          commandPending ||
-                          selectedAssemblySelection?.kind !==
-                            "assembly-instance" ||
-                          !selectedBody
-                        }
-                        onClick={() => void makeSelectedOccurrenceIndependent()}
-                      >
-                        Make independent
-                      </button>
-                    </div>
-                  ) : undefined
+            workbenchUi.mode === "drawing" ? (
+              <DrawingWorkspace
+                entities={document.drawingEntities}
+                units={document.units}
+                disabled={commandPending}
+                error={commandError}
+                commit={async (ops) =>
+                  Boolean((await commitOps(ops, () => undefined))?.ok)
                 }
-                clipPlane={
-                  workbenchUi.mode === "inspect"
-                    ? inspectSectionClipPlane(inspectSectionPlane)
-                    : undefined
+                changeUnits={(units) =>
+                  void commitOps(
+                    [
+                      {
+                        op: "document.updateUnits",
+                        units,
+                        mode: "preservePhysicalSize"
+                      }
+                    ],
+                    () => undefined
+                  )
                 }
-                exactPickBodies={
-                  workbenchUi.mode === "solid" || workbenchUi.mode === "inspect"
-                    ? currentExactPickBodies
-                    : []
-                }
-                exactPickFilter={workbenchUi.selectionFilter}
-                exactVisualStates={viewportExactVisualStates}
-                primitives={renderScene.primitives}
-                meshes={previewRenderMeshes}
-                notifyHoverPointChanges={Boolean(
-                  threePointArcTool ||
-                  isSketchCurveEditUiAction(workbenchUi.activeTool)
-                )}
-                selectedId={selectedViewportRenderId}
-                suspendHoverPicking={
-                  workbenchUi.activeTool === "sketch.regions"
-                }
-                visualStates={viewportVisualState.rendererVisualStates}
-                status={viewportVisualState.status}
-                contextualSurface={
-                  curveEditOwnership.suppressContextSourceMutations ? null : (
-                    <>
-                      <Suspense fallback={null}>
-                        <ViewportContextualActionStrip
-                          disabled={commandPending}
-                          modelingActions={modelingActions}
-                          namedReferences={namedReferences}
-                          namedReferenceHealthByName={
-                            namedReferenceHealthByName
+                save={() => void saveProjectWcad()}
+                open={() => requestProjectReplacement("open-wcad")}
+              />
+            ) : (
+              <Suspense
+                fallback={<p className="panel-loading">Loading viewport…</p>}
+              >
+                <ViewportCanvas
+                  viewControls={
+                    projectStructure.assemblies.some(
+                      (assembly) => assembly.instances.length > 0
+                    ) ? (
+                      <div className="viewport-action-group">
+                        <label htmlFor="assembly-model-view">View</label>
+                        <select
+                          id="assembly-model-view"
+                          aria-label="Model view"
+                          value={assemblySceneView}
+                          onChange={(event) =>
+                            setAssemblySceneView(
+                              event.currentTarget.value as "assembly" | "parts"
+                            )
                           }
-                          selectedNamedReferenceName={
-                            selectedNamedReferenceName
+                        >
+                          <option value="assembly">Assembly</option>
+                          <option value="parts">Parts</option>
+                        </select>
+                        <button
+                          type="button"
+                          data-action-id="assembly.make-independent"
+                          disabled={
+                            commandPending ||
+                            selectedAssemblySelection?.kind !==
+                              "assembly-instance" ||
+                            !selectedBody
                           }
-                          selectionDisplay={viewportSelectionDisplay}
-                          selectedGeneratedReferenceState={
-                            selectedGeneratedReferenceState
+                          onClick={() =>
+                            void makeSelectedOccurrenceIndependent()
                           }
-                          selectionReferenceCandidates={
-                            selectedSelectionReferenceCandidates
-                          }
-                          onExplainUnavailable={setCommandNotice}
-                          onInvoke={(action) => {
-                            if (action.route === "name" && action.target) {
-                              const name = window.prompt("Reference name", "");
-                              if (name?.trim()) {
-                                void nameGeneratedReference(
-                                  name.trim(),
-                                  action.target
-                                );
-                              }
-                              return;
-                            }
-                            if (
-                              action.route === "inspect" ||
-                              action.route === "measure" ||
-                              action.route === "references"
-                            ) {
-                              navigateToMode("inspect");
-                              if (
-                                action.route === "measure" &&
-                                viewportTwoTargetMeasurementTarget
-                              ) {
-                                startViewportTwoTargetMeasurement(
-                                  viewportTwoTargetMeasurementTarget
-                                );
-                              }
-                              return;
-                            }
-                            void runViewportContextualCommand(action);
-                          }}
-                        />
-                      </Suspense>
-                      {solidGripDescriptors.length > 0 && solidEditorRequest ? (
+                        >
+                          Make independent
+                        </button>
+                      </div>
+                    ) : undefined
+                  }
+                  clipPlane={
+                    workbenchUi.mode === "inspect"
+                      ? inspectSectionClipPlane(inspectSectionPlane)
+                      : undefined
+                  }
+                  exactPickBodies={
+                    workbenchUi.mode === "solid" ||
+                    workbenchUi.mode === "inspect"
+                      ? currentExactPickBodies
+                      : []
+                  }
+                  exactPickFilter={workbenchUi.selectionFilter}
+                  exactVisualStates={viewportExactVisualStates}
+                  primitives={renderScene.primitives}
+                  meshes={previewRenderMeshes}
+                  notifyHoverPointChanges={Boolean(
+                    threePointArcTool ||
+                    isSketchCurveEditUiAction(workbenchUi.activeTool)
+                  )}
+                  selectedId={selectedViewportRenderId}
+                  suspendHoverPicking={
+                    workbenchUi.activeTool === "sketch.regions"
+                  }
+                  visualStates={viewportVisualState.rendererVisualStates}
+                  status={viewportVisualState.status}
+                  contextualSurface={
+                    curveEditOwnership.suppressContextSourceMutations ? null : (
+                      <>
                         <Suspense fallback={null}>
-                          <ViewportFeatureGrips
-                            grips={solidGripDescriptors}
+                          <ViewportContextualActionStrip
                             disabled={commandPending}
-                            onChange={publishSolidViewportGripChange}
-                            onApply={publishSolidViewportGripApply}
-                            onCancel={publishSolidViewportGripCancel}
+                            modelingActions={modelingActions}
+                            namedReferences={namedReferences}
+                            namedReferenceHealthByName={
+                              namedReferenceHealthByName
+                            }
+                            selectedNamedReferenceName={
+                              selectedNamedReferenceName
+                            }
+                            selectionDisplay={viewportSelectionDisplay}
+                            selectedGeneratedReferenceState={
+                              selectedGeneratedReferenceState
+                            }
+                            selectionReferenceCandidates={
+                              selectedSelectionReferenceCandidates
+                            }
+                            onExplainUnavailable={setCommandNotice}
+                            onInvoke={(action) => {
+                              if (action.route === "name" && action.target) {
+                                const name = window.prompt(
+                                  "Reference name",
+                                  ""
+                                );
+                                if (name?.trim()) {
+                                  void nameGeneratedReference(
+                                    name.trim(),
+                                    action.target
+                                  );
+                                }
+                                return;
+                              }
+                              if (
+                                action.route === "inspect" ||
+                                action.route === "measure" ||
+                                action.route === "references"
+                              ) {
+                                navigateToMode("inspect");
+                                if (
+                                  action.route === "measure" &&
+                                  viewportTwoTargetMeasurementTarget
+                                ) {
+                                  startViewportTwoTargetMeasurement(
+                                    viewportTwoTargetMeasurementTarget
+                                  );
+                                }
+                                return;
+                              }
+                              void runViewportContextualCommand(action);
+                            }}
+                          />
+                        </Suspense>
+                        {solidGripDescriptors.length > 0 &&
+                        solidEditorRequest ? (
+                          <Suspense fallback={null}>
+                            <ViewportFeatureGrips
+                              grips={solidGripDescriptors}
+                              disabled={commandPending}
+                              onChange={publishSolidViewportGripChange}
+                              onApply={publishSolidViewportGripApply}
+                              onCancel={publishSolidViewportGripCancel}
+                            />
+                          </Suspense>
+                        ) : null}
+                      </>
+                    )
+                  }
+                  onHover={(pick) => {
+                    if (threePointArcTool) {
+                      hoverThreePointArcTool(pick);
+                    } else {
+                      hoverViewportPick(pick);
+                    }
+                  }}
+                  onSelect={(pick) => {
+                    if (threePointArcTool) {
+                      void captureThreePointArcToolPick(pick);
+                    } else if (
+                      isSketchCurveEditUiAction(workbenchUi.activeTool) &&
+                      focusedSketchId
+                    ) {
+                      captureCurveEditViewportPick(pick);
+                    } else {
+                      selectViewportPick(pick);
+                    }
+                  }}
+                  sketchOverlay={({ camera, size }) => (
+                    <>
+                      {regionOverlaySketch && regionOverlayDisplayFrame ? (
+                        <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                          <SketchRegionOverlay
+                            camera={camera}
+                            candidates={regionCandidates}
+                            displayFrame={regionOverlayDisplayFrame}
+                            hoveredCandidateKey={hoveredRegionCandidateKey}
+                            selectedCandidateKeys={selectedRegionCandidateKeys}
+                            size={size}
+                            sketch={regionOverlaySketch}
+                            onHoverCandidate={setHoveredRegionCandidateKey}
+                            onSelectCandidate={toggleRegionCandidate}
+                          />
+                        </Suspense>
+                      ) : null}
+                      {sketchViewportDragTarget &&
+                      workbenchUi.activeTool !== "sketch.regions" ? (
+                        <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                          <SketchViewportDragOverlay
+                            camera={camera}
+                            disabled={commandPending}
+                            displayFrame={getSketchViewportDisplayFrame(
+                              sketchViewportDragTarget.sketch.id
+                            )}
+                            selectedEntityId={sketchViewportDragTarget.entityId}
+                            size={size}
+                            sketch={sketchViewportDragTarget.sketch}
+                            onCommitEntity={(sketchId, entity) =>
+                              void updateSketchEntity(sketchId, entity)
+                            }
+                            onPreviewEntity={previewSketchEntityUpdate}
+                          />
+                        </Suspense>
+                      ) : null}
+                      {workbenchUi.mode === "sketch" &&
+                      focusedSketchId &&
+                      getSketchViewportDisplayFrame(focusedSketchId) ? (
+                        <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                          <SketchDimensionAnnotationOverlay
+                            annotations={createSketchDimensionAnnotations({
+                              sketchId: focusedSketchId,
+                              entities:
+                                sketches.find(
+                                  (sketch) => sketch.id === focusedSketchId
+                                )?.entities ?? [],
+                              dimensions:
+                                sketchDimensionsBySketchId.get(
+                                  focusedSketchId
+                                ) ?? [],
+                              displayFrame:
+                                getSketchViewportDisplayFrame(focusedSketchId)!,
+                              camera,
+                              size,
+                              units: document.units,
+                              offsets: sketchDimensionAnnotationOffsets
+                            })}
+                            selectedDimensionId={selectedSketchDimensionId}
+                            disabled={commandPending}
+                            onSelect={setSelectedSketchDimensionId}
+                            onEdit={(dimensionId) => {
+                              setSelectedSketchDimensionId(dimensionId);
+                              setRequestedSketchDimensionId(dimensionId);
+                            }}
+                            onMove={(dimensionId, x, y) => {
+                              const annotation =
+                                createSketchDimensionAnnotations({
+                                  sketchId: focusedSketchId,
+                                  entities:
+                                    sketches.find(
+                                      (sketch) => sketch.id === focusedSketchId
+                                    )?.entities ?? [],
+                                  dimensions:
+                                    sketchDimensionsBySketchId.get(
+                                      focusedSketchId
+                                    ) ?? [],
+                                  displayFrame:
+                                    getSketchViewportDisplayFrame(
+                                      focusedSketchId
+                                    )!,
+                                  camera,
+                                  size,
+                                  units: document.units,
+                                  offsets: sketchDimensionAnnotationOffsets
+                                }).find(
+                                  (item) => item.dimensionId === dimensionId
+                                );
+                              if (!annotation) return;
+                              setSketchDimensionAnnotationOffsets((current) =>
+                                moveSketchDimensionAnnotation(
+                                  current,
+                                  dimensionId,
+                                  {
+                                    x: x - annotation.anchorX,
+                                    y: y - annotation.anchorY
+                                  }
+                                )
+                              );
+                            }}
+                          />
+                        </Suspense>
+                      ) : null}
+                      {threePointArcTool &&
+                      getSketchViewportDisplayFrame(
+                        threePointArcTool.sketchId
+                      ) ? (
+                        <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                          <SketchArcToolOverlay
+                            camera={camera}
+                            displayFrame={
+                              getSketchViewportDisplayFrame(
+                                threePointArcTool.sketchId
+                              )!
+                            }
+                            session={threePointArcTool}
+                            size={size}
                           />
                         </Suspense>
                       ) : null}
                     </>
-                  )
-                }
-                onHover={(pick) => {
-                  if (threePointArcTool) {
-                    hoverThreePointArcTool(pick);
-                  } else {
-                    hoverViewportPick(pick);
-                  }
-                }}
-                onSelect={(pick) => {
-                  if (threePointArcTool) {
-                    void captureThreePointArcToolPick(pick);
-                  } else if (
-                    isSketchCurveEditUiAction(workbenchUi.activeTool) &&
-                    focusedSketchId
-                  ) {
-                    captureCurveEditViewportPick(pick);
-                  } else {
-                    selectViewportPick(pick);
-                  }
-                }}
-                sketchOverlay={({ camera, size }) => (
-                  <>
-                    {regionOverlaySketch && regionOverlayDisplayFrame ? (
-                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
-                        <SketchRegionOverlay
-                          camera={camera}
-                          candidates={regionCandidates}
-                          displayFrame={regionOverlayDisplayFrame}
-                          hoveredCandidateKey={hoveredRegionCandidateKey}
-                          selectedCandidateKeys={selectedRegionCandidateKeys}
-                          size={size}
-                          sketch={regionOverlaySketch}
-                          onHoverCandidate={setHoveredRegionCandidateKey}
-                          onSelectCandidate={toggleRegionCandidate}
-                        />
-                      </Suspense>
-                    ) : null}
-                    {sketchViewportDragTarget &&
-                    workbenchUi.activeTool !== "sketch.regions" ? (
-                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
-                        <SketchViewportDragOverlay
-                          camera={camera}
-                          disabled={commandPending}
-                          displayFrame={getSketchViewportDisplayFrame(
-                            sketchViewportDragTarget.sketch.id
-                          )}
-                          selectedEntityId={sketchViewportDragTarget.entityId}
-                          size={size}
-                          sketch={sketchViewportDragTarget.sketch}
-                          onCommitEntity={(sketchId, entity) =>
-                            void updateSketchEntity(sketchId, entity)
-                          }
-                          onPreviewEntity={previewSketchEntityUpdate}
-                        />
-                      </Suspense>
-                    ) : null}
-                    {workbenchUi.mode === "sketch" &&
-                    focusedSketchId &&
-                    getSketchViewportDisplayFrame(focusedSketchId) ? (
-                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
-                        <SketchDimensionAnnotationOverlay
-                          annotations={createSketchDimensionAnnotations({
-                            sketchId: focusedSketchId,
-                            entities:
-                              sketches.find(
-                                (sketch) => sketch.id === focusedSketchId
-                              )?.entities ?? [],
-                            dimensions:
-                              sketchDimensionsBySketchId.get(focusedSketchId) ??
-                              [],
-                            displayFrame:
-                              getSketchViewportDisplayFrame(focusedSketchId)!,
-                            camera,
-                            size,
-                            units: document.units,
-                            offsets: sketchDimensionAnnotationOffsets
-                          })}
-                          selectedDimensionId={selectedSketchDimensionId}
-                          disabled={commandPending}
-                          onSelect={setSelectedSketchDimensionId}
-                          onEdit={(dimensionId) => {
-                            setSelectedSketchDimensionId(dimensionId);
-                            setRequestedSketchDimensionId(dimensionId);
-                          }}
-                          onMove={(dimensionId, x, y) => {
-                            const annotation = createSketchDimensionAnnotations(
-                              {
-                                sketchId: focusedSketchId,
-                                entities:
-                                  sketches.find(
-                                    (sketch) => sketch.id === focusedSketchId
-                                  )?.entities ?? [],
-                                dimensions:
-                                  sketchDimensionsBySketchId.get(
-                                    focusedSketchId
-                                  ) ?? [],
-                                displayFrame:
-                                  getSketchViewportDisplayFrame(
-                                    focusedSketchId
-                                  )!,
-                                camera,
-                                size,
-                                units: document.units,
-                                offsets: sketchDimensionAnnotationOffsets
-                              }
-                            ).find((item) => item.dimensionId === dimensionId);
-                            if (!annotation) return;
-                            setSketchDimensionAnnotationOffsets((current) =>
-                              moveSketchDimensionAnnotation(
-                                current,
-                                dimensionId,
-                                {
-                                  x: x - annotation.anchorX,
-                                  y: y - annotation.anchorY
-                                }
-                              )
-                            );
-                          }}
-                        />
-                      </Suspense>
-                    ) : null}
-                    {threePointArcTool &&
-                    getSketchViewportDisplayFrame(
-                      threePointArcTool.sketchId
-                    ) ? (
-                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
-                        <SketchArcToolOverlay
-                          camera={camera}
-                          displayFrame={
-                            getSketchViewportDisplayFrame(
-                              threePointArcTool.sketchId
-                            )!
-                          }
-                          session={threePointArcTool}
-                          size={size}
-                        />
-                      </Suspense>
-                    ) : null}
-                  </>
-                )}
-              />
-            </Suspense>
+                  )}
+                />
+              </Suspense>
+            )
           }
           projectWorkspace={
             <Suspense
@@ -12717,7 +12783,12 @@ export function App() {
             </div>
           }
           statusBar={
-            workbenchUi.mode === "project" ? (
+            workbenchUi.mode === "drawing" ? (
+              <div className="drawing-instruction">
+                Model space · {document.drawingEntities.size} entities ·{" "}
+                {document.units} · Unconstrained geometry
+              </div>
+            ) : workbenchUi.mode === "project" ? (
               <StatusBar
                 mode="project"
                 fileState={getProjectFileNameLabel(projectFile)}

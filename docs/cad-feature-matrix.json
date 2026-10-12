@@ -154,6 +154,19 @@
         "docs/robot-arm-fixes.md"
       ],
       "scope": "Recorded connected revolute-joint arm authoring/revision, source-linked frames, browser controls, persistence and motion. Retained historical E2E evidence, not rerun for matrix authoring."
+    },
+    "drawing": {
+      "date": "2026-10-12",
+      "command": "pnpm verify",
+      "journeys": [
+        "scenarios/editable-interchange.json",
+        "scripts/smoke-agent-runtime.mjs"
+      ],
+      "records": [
+        "docs/drawing-workspace.md"
+      ],
+      "scope": "Independent line/rectangle/circle creation by canvas and coordinates; edit/delete, invalid geometry blocked, zero sketches/constraints, units conversion, stable IDs and Undo/Redo through native reopen including redo stack and centimeter units; persistence alongside STEP assemblies; public MCP schema/dry run/atomic duplicate rejection/edit/reopen/delete.",
+      "sourceCommit": "57021bf"
     }
   },
   "categories": [
@@ -850,10 +863,12 @@
       "id": "DRAW-001",
       "category": "drafting",
       "feature": "Independent drafting document",
-      "done": false,
+      "done": true,
       "acceptance": "Create model-space drawing entities without forcing all geometry into a solved part sketch; persist entity identity, units and Undo/Redo.",
       "dependsOn": [],
-      "evidence": []
+      "evidence": [
+        "drawing"
+      ]
     },
     {
       "id": "DRAW-002",

@@ -1,3 +1,11 @@
+import type {
+  DrawingEntity,
+  DrawingEntityCreateOp,
+  DrawingEntityUpdateOp,
+  DrawingEntityDeleteOp,
+  DrawingSemanticDiff
+} from "./drawing";
+export * from "./drawing";
 export { isProjectStructureQuery } from "./structureQuery";
 import type {
   FeatureSpurGearOp,
@@ -550,6 +558,9 @@ export interface SketchDimensionParameterValueSource {
 }
 
 export type CadOp =
+  | DrawingEntityCreateOp
+  | DrawingEntityUpdateOp
+  | DrawingEntityDeleteOp
   | ProjectImportStepOp
   | ParameterCreateOp
   | ParameterUpdateOp
@@ -3172,6 +3183,7 @@ export interface SketchConstraintSemanticDiff {
 }
 
 export interface SemanticDiff {
+  readonly drawing?: DrawingSemanticDiff;
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
   readonly deleted: readonly CadObjectRef[];
@@ -8163,6 +8175,7 @@ export interface CadOperationSummary {
 }
 
 export interface CadSemanticDiffSummary {
+  readonly drawing?: DrawingSemanticDiff;
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
   readonly deleted: readonly CadObjectRef[];
@@ -10030,6 +10043,7 @@ export interface ProjectFeaturesQueryResponse {
 }
 
 export interface ProjectStructureQueryResponse {
+  readonly drawingEntities?: readonly DrawingEntity[];
   readonly ok: true;
   readonly query: "project.structure";
   readonly cadOpsVersion: CadOpsVersion;

@@ -28,6 +28,12 @@ map to normal body and nested assembly IDs. DXF/SVG readers produce ordinary
 sketch CADOps. Format decoders and encoders stay at the boundary; provenance
 does not create separate editing tools or document authority.
 
+The [independent drawing workspace](drawing-workspace.md) adds model-space
+entities to cad-core without sketch or solver ownership. Drawing controls and
+public MCP use the same transactional CADOps. The drawing SVG viewport consumes
+these entities as derived display; native snapshots preserve their identity,
+units, and history within the existing project and WCAD versions.
+
 ## Authorities
 
 CADOps is the center. cad-core is the document authority. OCCT/WASM is the

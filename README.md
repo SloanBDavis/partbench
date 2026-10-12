@@ -16,9 +16,9 @@ Start at [AGENTS.md](./AGENTS.md).
 
 ## Professional CAD feature map
 
-[![CAD feature map: 339 features across 27 areas; 19 Done and 320 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
+[![CAD feature map: 339 features across 27 areas; 20 Done and 319 Not done. Each square represents one feature.](docs/assets/cad-feature-matrix.svg)](docs/cad-feature-matrix.md)
 
-**19 Done · 320 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
+**20 Done · 319 Not done.** Every feature is binary: its entire acceptance contract passes, or it is Not done. Existing code without complete workflow evidence stays Not done. No partial statuses or percentage score.
 
 [Browse the feature checklist](#feature-checklist) · [Read acceptance criteria and evidence](docs/cad-feature-matrix.md) · [See implementation order](docs/parity-roadmap.md)
 
@@ -141,9 +141,9 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 </details>
 
 <details>
-<summary>2D drawing geometry and editing — 0 Done · 18 Not done</summary>
+<summary>2D drawing geometry and editing — 1 Done · 17 Not done</summary>
 
-- [ ] [DRAW-001](docs/cad-feature-matrix.md#draw-001) Independent drafting document
+- [x] [DRAW-001](docs/cad-feature-matrix.md#draw-001) Independent drafting document
 - [ ] [DRAW-002](docs/cad-feature-matrix.md#draw-002) Lines, rays and construction lines
 - [ ] [DRAW-003](docs/cad-feature-matrix.md#draw-003) Polylines and joined paths
 - [ ] [DRAW-004](docs/cad-feature-matrix.md#draw-004) Circles and arcs
@@ -585,6 +585,8 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 <!-- CAD_MATRIX_FEATURES:END -->
 
 ## Documentation
+
+- [Independent 2D drawing workspace](docs/drawing-workspace.md)
 
 - [Professional CAD feature matrix: Done / Not done](docs/cad-feature-matrix.md)
 - [Implementation order and hill-climbing roadmap](docs/parity-roadmap.md)

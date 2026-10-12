@@ -1,0 +1,191 @@
+.drawing-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: #101923;
+  color: #dde7f2;
+  font-size: 13px;
+}
+.drawing-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #1b2735;
+  border-bottom: 1px solid #344154;
+}
+.drawing-workspace button {
+  border: 1px solid #47596c;
+  border-radius: 5px;
+  padding: 7px 10px;
+  background: #253448;
+  color: #edf5ff;
+  cursor: pointer;
+}
+.drawing-workspace button:hover:not(:disabled),
+.drawing-workspace button[aria-pressed="true"] {
+  background: #285677;
+  border-color: #7ccfff;
+}
+.drawing-workspace button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.drawing-workspace :focus-visible {
+  outline: 2px solid #91d6ff;
+  outline-offset: 2px;
+}
+.drawing-toolbar-spacer {
+  flex: 1;
+}
+.drawing-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.drawing-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.drawing-canvas-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+.drawing-canvas-wrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 250px;
+  touch-action: none;
+  cursor: crosshair;
+}
+.drawing-caption {
+  position: absolute;
+  left: 18px;
+  top: 14px;
+  display: flex;
+  gap: 14px;
+  pointer-events: none;
+}
+.drawing-caption span,
+.drawing-muted {
+  color: #a9bbce;
+}
+.drawing-coordinate {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  pointer-events: none;
+  background: #101923df;
+  padding: 4px 8px;
+  font-variant-numeric: tabular-nums;
+}
+.drawing-empty {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+  background: #101923df;
+  padding: 20px;
+  border-radius: 8px;
+  width: 280px;
+  line-height: 1.6;
+}
+.drawing-empty strong {
+  font-size: 20px;
+}
+.drawing-entity {
+  color: #e1eaf6;
+}
+.drawing-entity.selected {
+  color: #70d5ff;
+}
+.drawing-preview {
+  color: #ffcc75;
+  stroke-dasharray: 6 4;
+}
+.drawing-properties {
+  width: 248px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-left: 1px solid #344154;
+  overflow: auto;
+  background: #192432;
+}
+.drawing-properties h2 {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+.drawing-properties h3 {
+  font-size: 13px;
+  margin: 16px 0 10px;
+}
+.drawing-unit-label,
+.drawing-form label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+.drawing-properties input,
+.drawing-properties select {
+  background: #111c29;
+  color: #edf5ff;
+  border: 1px solid #47596c;
+  padding: 6px;
+  border-radius: 4px;
+  width: 104px;
+}
+.drawing-form button {
+  width: 100%;
+  margin: 8px 0;
+}
+.drawing-form [role="alert"] {
+  color: #ffcb97;
+}
+
+.drawing-entity-list {
+  list-style: none;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+.drawing-entity-list button {
+  width: 100%;
+  text-align: left;
+  margin: 2px 0;
+}
+.drawing-instruction {
+  padding: 9px 14px;
+  background: #1b2735;
+  border-top: 1px solid #344154;
+  min-height: 36px;
+}
+@media (max-width: 760px) {
+  .drawing-properties {
+    width: 205px;
+    padding: 10px;
+  }
+  .drawing-toolbar {
+    gap: 4px;
+    padding: 6px;
+  }
+  .drawing-caption span {
+    display: none;
+  }
+}
+
+.pb-workbench-shell[data-mode="drawing"] .pb-dock-toggle {
+  display: none;
+}
+.drawing-instruction {
+  color: #dde7f2;
+}

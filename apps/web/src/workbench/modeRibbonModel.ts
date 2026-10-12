@@ -45,6 +45,7 @@ const MODE_RIBBON_GROUP_ORDER: Readonly<
     "View",
     "Finish"
   ],
+  drawing: [],
   inspect: ["Measure", "Reference", "View", "Selection", "Health"]
 };
 

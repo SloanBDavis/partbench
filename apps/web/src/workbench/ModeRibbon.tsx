@@ -25,6 +25,7 @@ const MODES: readonly WorkbenchMode[] = [
   "project",
   "solid",
   "sketch",
+  "drawing",
   "inspect"
 ];
 
@@ -173,7 +174,10 @@ export function ModeRibbon({
               onFocus={() => setRovingId(`mode-${candidate}`)}
               onClick={() => onModeChange(candidate)}
             >
-              <Icon name={candidate} size={20} />
+              <Icon
+                name={candidate === "drawing" ? "sketch" : candidate}
+                size={20}
+              />
               <span>{format(candidate)}</span>
             </button>
           ))}

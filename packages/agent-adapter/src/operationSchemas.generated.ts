@@ -3473,6 +3473,261 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
       }
     }
   },
+  "drawing.entity.create": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "entity"],
+    properties: {
+      op: {
+        const: "drawing.entity.create"
+      },
+      entity: {
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "start", "end"],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "line"
+              },
+              start: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              },
+              end: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "center", "radius"],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "circle"
+              },
+              center: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              },
+              radius: {
+                type: "number"
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "start", "end"],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "rectangle"
+              },
+              start: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              },
+              end: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "drawing.entity.delete": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "id"],
+    properties: {
+      op: {
+        const: "drawing.entity.delete"
+      },
+      id: {
+        type: "string"
+      }
+    }
+  },
+  "drawing.entity.update": {
+    type: "object",
+    additionalProperties: false,
+    required: ["op", "entity"],
+    properties: {
+      op: {
+        const: "drawing.entity.update"
+      },
+      entity: {
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "start", "end"],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "line"
+              },
+              start: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              },
+              end: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "center", "radius"],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "circle"
+              },
+              center: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              },
+              radius: {
+                type: "number"
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "kind", "start", "end"],
+            properties: {
+              id: {
+                type: "string"
+              },
+              kind: {
+                const: "rectangle"
+              },
+              start: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              },
+              end: {
+                type: "array",
+                items: [
+                  {
+                    type: "number"
+                  },
+                  {
+                    type: "number"
+                  }
+                ],
+                minItems: 2,
+                maxItems: 2
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
   "feature.align": {
     type: "object",
     additionalProperties: false,
@@ -11300,7 +11555,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   entityKind: {
-                    enum: ["rectangle", "circle"]
+                    enum: ["circle", "rectangle"]
                   },
                   role: {
                     const: "center"
@@ -11440,7 +11695,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   entityKind: {
-                    enum: ["rectangle", "circle"]
+                    enum: ["circle", "rectangle"]
                   },
                   role: {
                     const: "center"
@@ -11538,7 +11793,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   entityKind: {
-                    enum: ["rectangle", "circle"]
+                    enum: ["circle", "rectangle"]
                   },
                   role: {
                     const: "center"
@@ -11645,7 +11900,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   entityKind: {
-                    enum: ["rectangle", "circle"]
+                    enum: ["circle", "rectangle"]
                   },
                   role: {
                     const: "center"
@@ -12251,7 +12506,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   entityKind: {
-                    enum: ["rectangle", "circle"]
+                    enum: ["circle", "rectangle"]
                   },
                   role: {
                     const: "center"
@@ -12349,7 +12604,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                     type: "string"
                   },
                   entityKind: {
-                    enum: ["rectangle", "circle"]
+                    enum: ["circle", "rectangle"]
                   },
                   role: {
                     const: "center"
@@ -12529,7 +12784,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         type: "string"
                       },
                       entityKind: {
-                        enum: ["rectangle", "circle"]
+                        enum: ["circle", "rectangle"]
                       },
                       role: {
                         const: "center"
@@ -12620,7 +12875,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         type: "string"
                       },
                       entityKind: {
-                        enum: ["rectangle", "circle"]
+                        enum: ["circle", "rectangle"]
                       },
                       role: {
                         const: "center"
@@ -12688,7 +12943,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         type: "string"
                       },
                       entityKind: {
-                        enum: ["rectangle", "circle"]
+                        enum: ["circle", "rectangle"]
                       },
                       role: {
                         const: "center"
@@ -12753,7 +13008,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         type: "string"
                       },
                       entityKind: {
-                        enum: ["rectangle", "circle"]
+                        enum: ["circle", "rectangle"]
                       },
                       role: {
                         const: "center"
@@ -13044,7 +13299,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         type: "string"
                       },
                       entityKind: {
-                        enum: ["rectangle", "circle"]
+                        enum: ["circle", "rectangle"]
                       },
                       role: {
                         const: "center"
@@ -13112,7 +13367,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                         type: "string"
                       },
                       entityKind: {
-                        enum: ["rectangle", "circle"]
+                        enum: ["circle", "rectangle"]
                       },
                       role: {
                         const: "center"
@@ -13669,7 +13924,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -13737,7 +13992,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -13824,7 +14079,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -13892,7 +14147,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -13978,7 +14233,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -14238,7 +14493,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -14306,7 +14561,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -14393,7 +14648,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -14461,7 +14716,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
@@ -14547,7 +14802,7 @@ export const operationSchemas: Record<CadOp["op"], OperationSchema> = {
                             type: "string"
                           },
                           entityKind: {
-                            enum: ["rectangle", "circle"]
+                            enum: ["circle", "rectangle"]
                           },
                           role: {
                             const: "center"
