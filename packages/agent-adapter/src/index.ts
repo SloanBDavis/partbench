@@ -1,3 +1,4 @@
+import { isDrawingOp, type DrawingEntity } from "@web-cad/cad-protocol";
 export {
   CAD_PARAMETER_EXPRESSION_HELP,
   CAD_EXPRESSION_PARAMETER_ID_HELP
@@ -464,6 +465,7 @@ export interface CadOpsAgentWorkflowReview {
 }
 
 export interface CadOpsAgentEntityChangeSummary {
+  readonly drawingEntities?: CadOpsAgentEntityChangeCount;
   readonly objects: CadOpsAgentEntityChangeCount;
   readonly sketches: CadOpsAgentEntityChangeCount;
   readonly datums?: CadOpsAgentEntityChangeCount;
@@ -673,6 +675,7 @@ export interface CadOpsAgentProjectFeaturesQueryResponse {
 }
 
 export interface CadOpsAgentProjectStructureQueryResponse {
+  readonly drawingEntities?: readonly DrawingEntity[];
   readonly ok: true;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
@@ -2084,6 +2087,15 @@ function createEntityChangeSummary(
       : emptyChangeCount();
 
   return {
+    ...(response?.ok && response.semanticDiff.drawing
+      ? {
+          drawingEntities: {
+            created: response.semanticDiff.drawing.created.length,
+            modified: response.semanticDiff.drawing.modified.length,
+            deleted: response.semanticDiff.drawing.deleted.length
+          }
+        }
+      : {}),
     objects: createChangeCount(
       response?.createdIds,
       response?.modifiedIds,
@@ -2302,6 +2314,21 @@ function createOperationReview(
   op: CadOp
 ): CadOpsAgentOperationReview {
   switch (op.op) {
+    case "drawing.entity.create":
+    case "drawing.entity.update":
+      return operationReviewBase(
+        index,
+        op,
+        op.op.endsWith("create") ? "create" : "modify",
+        `${op.op.endsWith("create") ? "Create" : "Edit"} drawing ${op.entity.kind} ${op.entity.id}`
+      );
+    case "drawing.entity.delete":
+      return operationReviewBase(
+        index,
+        op,
+        "delete",
+        `Delete drawing entity ${op.id}`
+      );
     case "project.importStep":
       return operationReviewBase(
         index,
@@ -3712,6 +3739,9 @@ function toAgentQueryResponse(
       features: response.features,
       bodies: response.bodies,
       objectSources: response.objectSources,
+      ...(response.drawingEntities
+        ? { drawingEntities: response.drawingEntities }
+        : {}),
       ...(response.projection
         ? {
             projection: response.projection,
@@ -6099,6 +6129,7 @@ function isAssemblyRelationalMateShape(
 }
 
 function isCadOp(value: unknown): value is CadOp {
+  if (isDrawingOp(value)) return true;
   if (!isRecord(value)) {
     return false;
   }

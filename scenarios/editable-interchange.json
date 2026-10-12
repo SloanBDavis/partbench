@@ -325,6 +325,566 @@
   "useSeed": [],
   "use": [
     {
+      "click": "[data-ribbon-roving-id=\"mode-drawing\"]"
+    },
+    {
+      "click": "[data-drawing-tool=\"line\"]"
+    },
+    {
+      "clickDrawing": [0, 0]
+    },
+    {
+      "clickDrawing": [40, 30]
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [40, 30]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "[data-drawing-tool=\"circle\"]"
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"x\"]",
+        "text": "-30"
+      }
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"y\"]",
+        "text": "20"
+      }
+    },
+    {
+      "click": "[data-drawing-apply]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [40, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "[data-drawing-tool=\"rectangle\"]"
+    },
+    {
+      "clickDrawing": [10, -20]
+    },
+    {
+      "clickDrawing": [40, -40]
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [40, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "[data-drawing-tool=\"select\"]"
+    },
+    {
+      "clickDrawing": [20, 15]
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"endX\"]",
+        "text": "60"
+      }
+    },
+    {
+      "click": "[data-drawing-apply]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [40, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "rememberDrawingIds": true
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Drawing units\"]",
+        "option": "cm"
+      }
+    },
+    {
+      "expectDrawing": {
+        "units": "cm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [6, 3]
+          },
+          {
+            "kind": "circle",
+            "center": [-3, 2],
+            "radius": 1
+          },
+          {
+            "kind": "rectangle",
+            "start": [1, -2],
+            "end": [4, -4]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "click": ".drawing-entity-list li:last-child button"
+    },
+    {
+      "click": "[data-drawing-delete]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0,
+        "redoCount": 1
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "saveWcad": ".metrics/editable-interchange/drawing.wcad"
+    },
+    {
+      "reload": true
+    },
+    {
+      "openWcad": ".metrics/editable-interchange/drawing.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-drawing\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0,
+        "redoCount": 1
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "click": "button[aria-label=\"Redo\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "click": "button[aria-label=\"Undo\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [60, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "click": ".drawing-entity-list li:first-child button"
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"endX\"]",
+        "text": "70"
+      }
+    },
+    {
+      "click": "[data-drawing-apply]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [70, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "click": "[data-drawing-tool=\"line\"]"
+    },
+    {
+      "clickDrawing": [-40, -20]
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [70, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "screenshot": "drawing-native-reopened-edit"
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Drawing units\"]",
+        "option": "cm"
+      }
+    },
+    {
+      "expectDrawing": {
+        "units": "cm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [7, 3]
+          },
+          {
+            "kind": "circle",
+            "center": [-3, 2],
+            "radius": 1
+          },
+          {
+            "kind": "rectangle",
+            "start": [1, -2],
+            "end": [4, -4]
+          }
+        ]
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "saveWcad": ".metrics/editable-interchange/drawing-cm.wcad"
+    },
+    {
+      "reload": true
+    },
+    {
+      "openWcad": ".metrics/editable-interchange/drawing-cm.wcad"
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-drawing\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "cm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [7, 3]
+          },
+          {
+            "kind": "circle",
+            "center": [-3, 2],
+            "radius": 1
+          },
+          {
+            "kind": "rectangle",
+            "start": [1, -2],
+            "end": [4, -4]
+          }
+        ]
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "select": {
+        "selector": "select[aria-label=\"Drawing units\"]",
+        "option": "mm"
+      }
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [70, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ]
+      },
+      "sameDrawingIds": true
+    },
+    {
       "importStep": ".metrics/editable-interchange/authored-nested.step",
       "cancelImport": "escape"
     },
@@ -510,9 +1070,110 @@
         "featureCount": 4,
         "bodyCount": 4
       }
+    },
+    {
+      "click": "[data-ribbon-roving-id=\"mode-drawing\"]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [
+          {
+            "kind": "line",
+            "start": [0, 0],
+            "end": [70, 30]
+          },
+          {
+            "kind": "circle",
+            "center": [-30, 20],
+            "radius": 10
+          },
+          {
+            "kind": "rectangle",
+            "start": [10, -20],
+            "end": [40, -40]
+          }
+        ],
+        "sketchCount": 0,
+        "constraintCount": 0
+      },
+      "sameDrawingIds": true
+    },
+    {
+      "screenshot": "drawing-with-imported-assembly"
     }
   ],
   "useBreak": [
+    {
+      "click": "[data-ribbon-roving-id=\"mode-drawing\"]"
+    },
+    {
+      "click": "[data-drawing-tool=\"circle\"]"
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"radius\"]",
+        "text": "0"
+      }
+    },
+    {
+      "expectDisabled": "[data-drawing-apply]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"radius\"]",
+        "text": "-2"
+      }
+    },
+    {
+      "expectDisabled": "[data-drawing-apply]"
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"radius\"]",
+        "text": ""
+      }
+    },
+    {
+      "expectDisabled": "[data-drawing-apply]"
+    },
+    {
+      "click": "[data-drawing-tool=\"line\"]"
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"endX\"]",
+        "text": "0"
+      }
+    },
+    {
+      "type": {
+        "selector": "[data-drawing-field=\"endY\"]",
+        "text": "0"
+      }
+    },
+    {
+      "expectDisabled": "[data-drawing-apply]"
+    },
+    {
+      "expectDrawing": {
+        "units": "mm",
+        "entities": [],
+        "sketchCount": 0,
+        "constraintCount": 0
+      }
+    },
+    {
+      "screenshot": "drawing-invalid-geometry"
+    },
     {
       "importStep": "examples/engine-step-trial/invalid.step",
       "expectImportError": "could not read the file"

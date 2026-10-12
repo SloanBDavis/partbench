@@ -1,4 +1,9 @@
 import {
+  isDrawingEntity,
+  isDrawingOp,
+  type DrawingEntity
+} from "@web-cad/cad-protocol";
+import {
   validateAssemblyHierarchy,
   flattenAssemblyOccurrences
 } from "./assemblyHierarchy";
@@ -1190,6 +1195,7 @@ export type SweepFeature = SweepFeatureV21;
 export type LoftFeature = LoftFeatureV21;
 
 export interface CadDocument {
+  readonly drawingEntities: ReadonlyMap<string, DrawingEntity>;
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
   readonly datums: ReadonlyMap<DatumId, Datum>;
@@ -1238,6 +1244,7 @@ export interface CadExecutionOptions {
 }
 
 export interface CadDocumentSnapshot {
+  readonly drawingEntities?: readonly DrawingEntity[];
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
@@ -2020,9 +2027,13 @@ export function createCadDocument(
   > = [],
   topologyIdentity?: CadTopologyIdentitySourceSnapshot,
   datums: Iterable<readonly [DatumId, Datum]> = [],
-  assemblies: Iterable<readonly [AssemblyId, AssemblySnapshot]> = []
+  assemblies: Iterable<readonly [AssemblyId, AssemblySnapshot]> = [],
+  drawingEntities: Iterable<readonly [string, DrawingEntity]> = []
 ): CadDocument {
   return {
+    drawingEntities: new Map(
+      [...drawingEntities].map(([id, entity]) => [id, cloneJsonSource(entity)])
+    ),
     objects: new Map(objects),
     sketches: new Map(sketches),
     datums: new Map(datums),
@@ -2735,6 +2746,9 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           objectSources: structure.objectSources,
+          drawingEntities: [...this.#document.drawingEntities.values()].map(
+            cloneJsonSource
+          ),
           ...(structure.datums ? { datums: structure.datums } : {}),
           ...(structure.assemblies ? { assemblies: structure.assemblies } : {})
         };
@@ -6254,6 +6268,11 @@ export function formatCadProjectImportError(error: unknown): string {
 }
 
 type MutableSemanticDiff = {
+  drawing?: {
+    created: DrawingEntity[];
+    modified: DrawingEntity[];
+    deleted: DrawingEntity[];
+  };
   created: CadObjectRef[];
   modified: CadObjectRef[];
   deleted: CadObjectRef[];
@@ -6355,6 +6374,7 @@ type SketchEntityImportRef = {
 };
 
 interface MutableDocumentState {
+  drawingEntities: Map<string, DrawingEntity>;
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
   datums: Map<DatumId, Datum>;
@@ -6387,6 +6407,53 @@ function applyOperation(
   opIndex: number
 ): void {
   switch (op.op) {
+    case "drawing.entity.create":
+    case "drawing.entity.update":
+    case "drawing.entity.delete": {
+      if (!isDrawingOp(op))
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "Drawing geometry must be finite and non-degenerate: use distinct line endpoints, positive radius, or nonzero rectangle width and height.",
+          opIndex
+        });
+      const id = op.op === "drawing.entity.delete" ? op.id : op.entity.id;
+      const existing = state.drawingEntities.get(id);
+      if (op.op === "drawing.entity.create" ? Boolean(existing) : !existing)
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message: existing
+            ? `Drawing entity already exists: ${id}.`
+            : `Drawing entity does not exist: ${id}.`,
+          opIndex
+        });
+      if (
+        op.op === "drawing.entity.update" &&
+        existing?.kind !== op.entity.kind
+      )
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            "An edit must preserve the drawing entity kind and identity.",
+          opIndex
+        });
+      const drawing = (diff.drawing ??= {
+        created: [],
+        modified: [],
+        deleted: []
+      });
+      if (op.op === "drawing.entity.delete") {
+        state.drawingEntities.delete(id);
+        drawing.deleted.push(cloneJsonSource(existing!));
+      } else {
+        const entity = cloneJsonSource(op.entity);
+        state.drawingEntities.set(id, entity);
+        drawing[
+          op.op === "drawing.entity.create" ? "created" : "modified"
+        ].push(entity);
+      }
+      return;
+    }
     case "project.importStep": {
       validateProjectImportStepOp(op, opIndex);
       const resolvedBodies = op.resolvedBodies ?? [];
@@ -8767,6 +8834,9 @@ function getBatchResponseMode(batch: CadBatch): CadBatch["mode"] {
 
 function isCadOperationKind(value: string): boolean {
   switch (value) {
+    case "drawing.entity.create":
+    case "drawing.entity.update":
+    case "drawing.entity.delete":
     case "project.importStep":
     case "parameter.create":
     case "parameter.update":
@@ -26847,6 +26917,31 @@ function scaleDocumentLengthValues(
   diff: MutableSemanticDiff,
   opIndex: number
 ): void {
+  for (const entity of state.drawingEntities.values()) {
+    const point = (p: readonly [number, number]): readonly [number, number] => [
+      p[0] * scaleFactor,
+      p[1] * scaleFactor
+    ];
+    const scaled: DrawingEntity =
+      entity.kind === "circle"
+        ? {
+            ...entity,
+            center: point(entity.center),
+            radius: entity.radius * scaleFactor
+          }
+        : { ...entity, start: point(entity.start), end: point(entity.end) };
+    if (!isDrawingEntity(scaled))
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message:
+          "Unit conversion exceeds the supported drawing coordinate range.",
+        opIndex
+      });
+    state.drawingEntities.set(entity.id, scaled);
+    (diff.drawing ??= { created: [], modified: [], deleted: [] }).modified.push(
+      scaled
+    );
+  }
   for (const object of state.objects.values()) {
     const scaled = scaleSceneObjectLengthValues(object, scaleFactor);
     state.objects.set(object.id, scaled);
@@ -27350,6 +27445,13 @@ export function createCadDocumentSnapshot(
 ): CadDocumentSnapshot {
   return {
     units: document.units,
+    ...(document.drawingEntities.size
+      ? {
+          drawingEntities: [...document.drawingEntities.values()].map(
+            cloneJsonSource
+          )
+        }
+      : {}),
     objects: [...document.objects.values()].map(createCadObjectSnapshot),
     sketches: [...document.sketches.values()].map(createSketchSnapshot),
     ...(document.datums.size > 0
@@ -27431,6 +27533,9 @@ export function createCadDocumentFromSnapshot(
     ),
     (snapshot.assemblies ?? []).map(
       (assembly) => [assembly.id, cloneAssembly(assembly)] as const
+    ),
+    (snapshot.drawingEntities ?? []).map(
+      (entity) => [entity.id, cloneJsonSource(entity)] as const
     )
   );
 }
@@ -31708,6 +31813,7 @@ function runOperations(
   assertSketchCurveEditBatchShape(ops);
 
   const state: MutableDocumentState = {
+    drawingEntities: new Map(document.drawingEntities),
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
     datums: new Map(document.datums ?? []),
@@ -32038,7 +32144,8 @@ function runOperations(
     state.namedReferences,
     state.topologyIdentity,
     state.datums,
-    state.assemblies
+    state.assemblies,
+    state.drawingEntities
   );
 
   return {
@@ -35550,6 +35657,28 @@ function validateCadDocumentSnapshot(
       maxGeneratedSketchEntityNumber,
       issues
     );
+  }
+
+  if (value.drawingEntities !== undefined) {
+    const seen = new Set<string>();
+    if (!Array.isArray(value.drawingEntities))
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.drawingEntities`,
+        "Drawing entities must be an array."
+      );
+    else
+      for (const [index, entity] of value.drawingEntities.entries()) {
+        if (!isDrawingEntity(entity) || seen.has(entity.id))
+          addProjectIssue(
+            issues,
+            "INVALID_DOCUMENT",
+            `${path}.drawingEntities[${index}]`,
+            "Drawing entity must have unique identity and valid finite geometry."
+          );
+        else seen.add(entity.id);
+      }
   }
 
   if (value.datums !== undefined) {
@@ -44169,6 +44298,7 @@ function isCadOp(value: unknown): value is CadOp {
     return false;
   }
 
+  if (isDrawingOp(value)) return true;
   if (isSpurGearOp(value)) return true;
 
   if (validateV19CadOp(value).ok) {

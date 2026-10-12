@@ -586,6 +586,8 @@ Generated from [the matrix source](docs/cad-feature-matrix.json) with `pnpm cad:
 
 ## Documentation
 
+- [Independent 2D drawing workspace](docs/drawing-workspace.md)
+
 - [Professional CAD feature matrix: Done / Not done](docs/cad-feature-matrix.md)
 - [Implementation order and hill-climbing roadmap](docs/parity-roadmap.md)
 

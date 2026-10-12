@@ -26,6 +26,14 @@ export interface UiSmokeControlState {
 }
 
 export interface UiSmokeState {
+  readonly drawing?: {
+    readonly units: string;
+    readonly entities: readonly unknown[];
+    readonly sketchCount: number;
+    readonly constraintCount: number;
+    readonly historyCount: number;
+    readonly redoCount: number;
+  };
   readonly ready: true;
   readonly commandPending: boolean;
   readonly commandError?: string;

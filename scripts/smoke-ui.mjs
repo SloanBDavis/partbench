@@ -372,7 +372,8 @@ function isExactDisplayReady(state, allowEmpty) {
     return false;
   }
   const bodies = state.bodies ?? [];
-  if (!allowEmpty && bodies.length === 0) return false;
+  if (!allowEmpty && bodies.length === 0 && !state.drawing?.entities.length)
+    return false;
   const liveBodies = bodies.filter((body) => !body?.consumedByFeatureId);
   const exactResults = state.exactResults ?? [];
   const exact = state.exactStatuses ?? [];
@@ -1385,7 +1386,66 @@ async function runUseSteps(view, name, steps, label) {
   let sawScreenshot = false;
   let sawBreak = false;
   const clicks = [];
+  let rememberedDrawingIds;
   for (const step of steps) {
+    if (step.press) {
+      await withDeadline(
+        view.press(step.press),
+        7_000,
+        "keyboard " + step.press
+      );
+      continue;
+    }
+    if (step.clickDrawing) {
+      const [x, y] = step.clickDrawing;
+      const position = await evaluate(
+        view,
+        `(() => { const canvas = document.querySelector('svg[aria-label="2D drawing canvas"]'); const p = new DOMPoint(${x}, ${-y}).matrixTransform(canvas.getScreenCTM()); return {x:p.x,y:p.y}; })()`
+      );
+      await view.click(position.x, position.y);
+      clicks.push("2D drawing canvas");
+      continue;
+    }
+    if (step.rememberDrawingIds) {
+      rememberedDrawingIds = (await getState(view)).drawing.entities.map(
+        (entity) => entity.id
+      );
+      continue;
+    }
+    if (step.expectDrawing) {
+      const deadline = performance.now() + 10_000;
+      let state;
+      let visible;
+      do {
+        state = await getState(view);
+        visible = await evaluate(
+          view,
+          'document.querySelectorAll("svg [data-drawing-entity]").length'
+        );
+        if (state.commandError)
+          throw new Error("Drawing command failed: " + state.commandError);
+        if (
+          !state.commandPending &&
+          visible === state.drawing.entities.length &&
+          matches(state.drawing, step.expectDrawing, true, 1e-6)
+        )
+          break;
+        await delay(50);
+      } while (performance.now() < deadline);
+      if (!matches(state.drawing, step.expectDrawing, true, 1e-6))
+        throw new Error("Drawing mismatch: " + JSON.stringify(state.drawing));
+      if (
+        step.sameDrawingIds &&
+        JSON.stringify(state.drawing.entities.map((entity) => entity.id)) !==
+          JSON.stringify(rememberedDrawingIds)
+      )
+        throw new Error(
+          "Drawing entity identity changed after history/native round trip"
+        );
+      if (visible !== state.drawing.entities.length)
+        throw new Error("Drawing entities are missing from the visible canvas");
+      continue;
+    }
     if (process.env.PARTBENCH_SMOKE_UI_DIAGNOSTICS === "1")
       console.log(name + " " + label + " step", JSON.stringify(step));
     if (step.reload) {

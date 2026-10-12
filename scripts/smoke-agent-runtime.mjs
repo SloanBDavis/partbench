@@ -102,6 +102,52 @@ async function journey(fixture) {
       0,
       "Discovery must not build geometry"
     );
+    // Exercise independent drafting through the same public command adapter.
+    const drawing = {
+      id: "drawing_mcp_line",
+      kind: "line",
+      start: [0, 0],
+      end: [25, 10]
+    };
+    const drawingCreate = { op: "drawing.entity.create", entity: drawing };
+    const beforeDrawing = (await client.tool("cad.session_info")).result
+      .sourceIdentity;
+    await client.tool("cad.operation_schema", { operation: drawingCreate.op });
+    const drawingDryRun = await client.tool(
+      "cad.batch",
+      batch([drawingCreate], "dryRun")
+    );
+    assert.deepEqual(drawingDryRun.semanticDiff.drawing.created, [drawing]);
+    assert.deepEqual(
+      (await client.tool("cad.session_info")).result.sourceIdentity,
+      beforeDrawing
+    );
+    await client.tool("cad.batch", batch([drawingCreate]));
+    const drawingIdentity = (await client.tool("cad.session_info")).result
+      .sourceIdentity;
+    await client.tool(
+      "cad.batch",
+      batch([
+        { op: "drawing.entity.update", entity: { ...drawing, end: [99, 99] } },
+        drawingCreate
+      ]),
+      { expectError: true }
+    );
+    assert.deepEqual(
+      (await client.tool("cad.session_info")).result.sourceIdentity,
+      drawingIdentity,
+      "Rejected drawing batch is atomic"
+    );
+    assert.deepEqual(
+      (await client.tool("cad.project_structure")).drawingEntities,
+      [drawing]
+    );
+    await client.tool(
+      "cad.batch",
+      batch([
+        { op: "drawing.entity.update", entity: { ...drawing, end: [30, 10] } }
+      ])
+    );
     await client.tool("cad.batch", batch(fixture.create));
     volumesBefore = await inspect(
       client,
@@ -163,6 +209,19 @@ async function journey(fixture) {
       sourceIdentity
     );
     await inspect(reopened, fixture, fixture.expected.volumesAfter);
+    assert.deepEqual(
+      (await reopened.tool("cad.project_structure")).drawingEntities,
+      [{ id: "drawing_mcp_line", kind: "line", start: [0, 0], end: [30, 10] }],
+      "Drawing identity and edit survive native reopen with a solid model"
+    );
+    await reopened.tool(
+      "cad.batch",
+      batch([{ op: "drawing.entity.delete", id: "drawing_mcp_line" }])
+    );
+    assert.deepEqual(
+      (await reopened.tool("cad.project_structure")).drawingEntities,
+      []
+    );
     if (fixture.expected.assemblyId) {
       const structure = await reopened.tool("cad.project_structure");
       const assembly = structure.assemblies.find(

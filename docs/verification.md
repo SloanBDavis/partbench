@@ -37,6 +37,16 @@ and historical versioned runners have been removed. Geometry, persistence and re
 journeys. File-picker fixtures exercise product readers/writers but not OS dialogs.
 Screenshots are inspection artifacts, not pixel snapshot tests.
 
+## Independent drawing workspace — 2026-10-12
+
+`pnpm verify` passes with DRAW-001 included in the existing interchange and
+public MCP journeys. Browser coverage creates and edits independent geometry,
+blocks invalid input, changes units, retains IDs and redo history across native
+reopen, and preserves the drawing alongside an imported assembly. The MCP path
+checks schema discovery, dry run, atomic rejection, edit, native reopen and
+delete. All package typechecks and the distance/concentric regressions pass.
+See the [workspace guide and dated record](drawing-workspace.md).
+
 ## Binary feature acceptance
 
 [The CAD matrix](cad-feature-matrix.md) is the feature backlog. Each row has only

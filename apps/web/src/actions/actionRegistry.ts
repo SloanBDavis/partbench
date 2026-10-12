@@ -2,6 +2,7 @@ export const WORKBENCH_MODES = [
   "project",
   "solid",
   "sketch",
+  "drawing",
   "inspect"
 ] as const;
 
