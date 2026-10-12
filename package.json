@@ -15,7 +15,7 @@
     "typecheck": "pnpm -r typecheck",
     "smoke:ui": "bun scripts/smoke-ui.mjs",
     "smoke:ui-use": "bun scripts/smoke-ui-use.mjs",
-    "verify": "pnpm typecheck && pnpm test:e2e",
+    "verify": "pnpm cad:matrix --check && pnpm typecheck && pnpm test:e2e",
     "smoke:e2e": "pnpm test:e2e",
     "smoke:agent-runtime": "pnpm --filter @web-cad/mcp-stdio-server build && node scripts/smoke-agent-runtime.mjs",
     "benchmark:cad-runtime": "node scripts/benchmark-cad-runtime.mjs",
@@ -28,7 +28,8 @@
     "smoke:interchange:browser": "node scripts/e2e.mjs interchange",
     "smoke:engine-interchange": "node scripts/smoke-editable-interchange.mjs",
     "smoke:engine-interchange:browser": "bun scripts/smoke-ui-use.mjs -- examples/editable-interchange/engine-browser-use.json",
-    "test:e2e": "node scripts/e2e.mjs"
+    "test:e2e": "node scripts/e2e.mjs",
+    "cad:matrix": "node scripts/cad-matrix.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

@@ -9,6 +9,7 @@ CADOps is the center. cad-core is the document authority (transactions, undo/red
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Skills: [docs/skills/](docs/skills/)
 - Current user goal: [docs/parity-roadmap.md](docs/parity-roadmap.md) (fastest path to professional CAD parity; E2E-only development).
+- Feature completion authority: [docs/cad-feature-matrix.md](docs/cad-feature-matrix.md) (binary Done / Not done; edit its JSON source, retain IDs and evidence, regenerate with `pnpm cad:matrix`; select work with `pnpm cad:matrix --next`).
 - Latest implementation: [docs/import-performance.md](docs/import-performance.md) (bounded parallel import, reduced serialization/render work, exact native parity and worker cancellation; cold-view and frame-time targets remain open).
 - Interchange contracts: [docs/editable-interchange.md](docs/editable-interchange.md) (shared editable STEP/DXF/SVG interchange).
 - Latest user trial: [docs/engine-step-trial.md](docs/engine-step-trial.md) (historical engine import failure and source provenance; follow-up implementation evidence linked).
@@ -33,7 +34,8 @@ and assertions shared, and minimize the number of independent journeys.
 - `pnpm typecheck` / `pnpm lint` — static checks; use package typechecks while editing.
 - `pnpm test` — consolidated E2E suite (browser assembly + interchange, public MCP).
 - `pnpm test:e2e -- assembly|interchange|agent` — affected journeys only; accepts multiple names.
-- `pnpm verify` — typecheck and consolidated E2E suite before landing.
+- `pnpm cad:matrix --next` — ordered feature contracts and unmet prerequisites.
+- `pnpm verify` — matrix integrity, typecheck and consolidated E2E suite before landing.
 
 Do not run Chromium on every save. Do not replay historical version gauntlets.
 `scenarios/` CADOps are reusable fixtures. Browser `applyOps` alone is not E2E
@@ -41,6 +43,13 @@ acceptance.
 See [docs/verification.md](docs/verification.md) for focused and large-workload checks.
 
 ## Slice close
+
+Choose a feature-matrix contract. Keep its status Not done until its full written
+acceptance passes. No partial states or percentage scoring. Record dated E2E
+evidence before marking Done; reset known regressions to Not done. Do not split
+passing rows, weaken targets or remove gaps to inflate the count. Regenerate the
+matrix when its JSON changes. Specialist catalog coverage does not authorize
+new dependencies, paid services or native format changes by itself.
 
 Static checks plus the affected real browser/public MCP journey. UI work must
 exercise actual controls, a visible result, and one rejected/blocked operation.

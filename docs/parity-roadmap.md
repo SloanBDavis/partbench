@@ -8,6 +8,36 @@ switching CAD applications. Humans and agents operate the same document and
 geometry authority. The immediate delivery target is a dependable daily-use CAD
 workflow; full AutoCAD and mechanical-CAD breadth remains a longer program.
 
+## Completion authority and hill climbing
+
+The [professional CAD feature matrix](cad-feature-matrix.md) is the feature
+completion authority. Its [JSON source](cad-feature-matrix.json) holds stable
+IDs, boolean completion, acceptance contracts, dependencies and dated E2E
+references. There are no partial states. Existing implementation without the
+whole required workflow and proof is **Not done**.
+
+The initial inventory covers 339 contracts in 27 areas: drafting, annotation,
+sheets, sketches, solids, direct editing, surfaces, meshes, assemblies, sheet
+metal, tooling, routing/electrical, inspection, exchange, rendering, automation,
+collaboration/PDM, CAM, additive, CAE, BIM, civil and platform/performance needs.
+It includes specialist workflows even when they are later priorities. It is an
+extensible union of professional product capabilities, not a claim that every
+product edition contains every row or that the list can never grow.
+
+Use `pnpm cad:matrix --next` to select the next contract. Fix regressions first,
+then follow the dependency-aware frontier toward complete customer deliverables.
+Prefer changes that remove a bottleneck or unlock several contracts. Row counts
+are an inventory, not a percentage of parity: a missing DWG or drawing workflow
+can outweigh dozens of small completed features. The matrix's full completion
+criteria govern its rows; the estimates below do not override them.
+
+A slice ends with a real browser/public MCP success, the applicable rejection
+and persistence/history checks, a dated result, and the binary status update.
+Extend existing E2E journeys; do not create one independent test per matrix row.
+Run `pnpm cad:matrix` after editing the JSON and `pnpm verify` before landing.
+A recorded regression returns a row to Not done. Never lower a performance
+budget, split a completed row or remove an unmet requirement to improve counts.
+
 ## What exists, and what parity means
 
 AutoCAD emphasizes general 2D drafting, annotation, layouts and DWG exchange.
@@ -78,6 +108,8 @@ parity cannot responsibly be promised on that schedule from this evidence.
   a second MCP-only implementation would slow parity.
 
 This goal authorizes designing the drafting/drawing document extensions above.
+The matrix also records later specialist work; catalog inclusion alone does not
+authorize purchasing SDKs, adding services or implementing every vertical now.
 Add a dependency, workspace package or native schema change only when a concrete
 slice demonstrates the need, records its compatibility/migration decision, and
 updates the format contract. Do not prebuild infrastructure for later phases.
@@ -85,7 +117,8 @@ updates the format contract. Do not prebuild infrastructure for later phases.
 ## Development loop after deleting unit tests
 
 `pnpm test` is the consolidated E2E suite: three browser journeys sharing one
-startup and one public MCP journey. `pnpm verify` also typechecks; lint the changed source files separately.
+startup and one public MCP journey. `pnpm verify` checks matrix integrity and
+typechecks as well; lint the changed source files separately.
 Never write or restore unit/component/isolated integration tests. Extend existing
 journeys with geometry, persistence and rejection assertions; add a separate
 journey only for a distinct user workflow, such as producing a drawing.
@@ -117,14 +150,23 @@ A solid-editor update loop found in production is fixed.
 
 ## Next implementation slice
 
-Make the existing engine import usable within the performance targets before
-adding another 3D feature. Exact bounds reuse, checkpoint verification reuse and
-import cancellation, bounded parallel preparation and reduced main-thread
-serialization/render work are implemented. The 10-second usable-view target
-remains unmet. Next,
-shorten native STEP transfer and remaining general-surface bounds work, and
-deliver progressive usable rendering through the browser Import control. Keep
-the existing cancellation, edit, native reopen and exact-geometry assertions;
-measure time to an actually usable model and selection. In parallel at the planning level,
-settle the minimal drawing document contract and DWG integration feasibility so
-those decisions do not block the drafting workstream.
+Close `PERF-001` (cold usable view within 10 s) and `PERF-002` (exact selection
+within 20 s). Both remain **Not done** after the 61.68 s production result.
+`PERF-003` describes progressive assembly import as one implementation path;
+`PERF-012` establishes the repeatable measurements used to judge the budgets.
+
+First pin the production runner and five-run corpus, then shorten native STEP
+read/transfer and stage exact-derived display before full checkpoint completion.
+The previous native diagnostic spent 15.01 s in transfer alone, so parallelizing
+only later work cannot meet the cold-view target. A first preview must use real,
+correctly placed geometry, accept navigation, and cleanly disappear on Cancel;
+a loading screen is not a passing result. Preserve atomic final import, exact
+native parity and `PERF-009` cancellation. Worker/kernel or language changes
+must demonstrate reduced measured cost rather than substitute for this contract.
+
+The next deliverable path is `DRAW-001` drawing semantics → `ORG-001` layers and
+`ANN-002` dimensions → `SHEET-001` layouts → `SHEET-004` associative views and
+`SHEET-010` scale-correct PDF. Resolve `IO-005` DWG SDK feasibility alongside
+`DRAW-001`; the row stays Not done until a verified round trip exists.
+Then prioritize `ASM-011` interference and `ASM-013` BOM over another primitive.
+The matrix frontier encodes this order and exposes unmet prerequisites.

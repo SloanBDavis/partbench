@@ -25,6 +25,11 @@ Do not replay V25 gates or V7-V25 gauntlets. Do not paste a changelog into
 A slice is a step toward that user goal, not a process artifact. If a
 slice does not make the user goal more true, delete it.
 
+Select a concrete acceptance contract from the [CAD feature matrix](cad-feature-matrix.md).
+Use `pnpm cad:matrix --next` for the ordered frontier. Its status remains Not done
+until the whole workflow passes; record E2E evidence before setting Done. Keep
+IDs and requirements stable, and add newly discovered gaps instead of hiding them.
+
 ## Proof
 
 See [verification.md](./verification.md). Only E2E tests: real workbench controls
@@ -32,7 +37,8 @@ or the public MCP process, real geometry and file round trips. Never write unit,
 component, isolated integration, or mock-based tests. Extend existing journeys;
 add another only when the user workflow cannot fit one already present.
 
-Per-save: typecheck the packages touched. Before landing: `pnpm verify`.
+Per-save: typecheck the packages touched. Before landing: `pnpm verify`
+(matrix integrity, typechecks and consolidated E2E).
 Use focused E2E journey selection during development. No Chromium on every save,
 no historical gauntlet, no second browser framework.
 

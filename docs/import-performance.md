@@ -1,6 +1,9 @@
 # Import and editing performance
 
 Current slice of the [CAD parity roadmap](parity-roadmap.md), updated 2026-10-12.
+Binary completion is tracked in the [feature matrix](cad-feature-matrix.md#area-performance):
+cold view, selection and progressive import remain Not done; measured improvements
+do not count as completion of those contracts.
 The pinned 13.4 MB engine remains the acceptance fixture: 51 unique parts,
 246 occurrences and 266 solids. No geometry is removed or approximated to make
 this workflow faster.

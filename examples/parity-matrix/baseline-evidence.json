@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-12T01:46:04.162739+00:00",
+  "status": "passed",
+  "cadSourceCommit": "b0b5d4f",
+  "scope": "Matrix and development-workflow changes only; CAD implementation unchanged from b0b5d4f. This run confirms the default browser/MCP journeys, not all matrix contracts. Full engine and robot/gearbox evidence is retained separately with its original dates.",
+  "command": "pnpm verify",
+  "staticChecks": {
+    "matrixIntegrity": "passed",
+    "workspaceTypechecks": 13,
+    "changedScriptEslint": "passed",
+    "changedScriptPackageReadmeFormatting": "passed",
+    "gitDiffCheck": "passed"
+  },
+  "environment": {
+    "node": "22.23.3",
+    "pnpm": "10.14.0",
+    "bun": "1.4.2",
+    "chromium": "154.0.0.0",
+    "platform": "linux x64",
+    "rendering": "SwiftShader software WebGL2"
+  },
+  "e2e": {
+    "status": "passed",
+    "journeys": ["assembly", "interchange", "agent"],
+    "stages": [
+      {
+        "name": "prepare nested STEP fixture",
+        "milliseconds": 12146.613921,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "browser journeys",
+        "milliseconds": 102314.824752,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "build MCP executable",
+        "milliseconds": 34705.06849599999,
+        "exitCode": 0,
+        "signal": null
+      },
+      {
+        "name": "MCP author/revise/save/reopen/STEP journey",
+        "milliseconds": 28906.09431300001,
+        "exitCode": 0,
+        "signal": null
+      }
+    ]
+  },
+  "mcp": {
+    "timestamp": "2026-10-12T01:44:58.968Z",
+    "journeys": [
+      {
+        "id": "mounting-plate",
+        "volumesBefore": [3734.3185910066645],
+        "volumesAfter": [5519.230106902305]
+      }
+    ]
+  }
+}

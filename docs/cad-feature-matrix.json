@@ -1,0 +1,3756 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-10-12",
+  "baselineCommit": "b0b5d4f",
+  "policy": {
+    "statuses": [
+      "Done",
+      "Not done"
+    ],
+    "rule": "The done boolean is the only completion field. A row is Done only when its entire acceptance contract has passing end-to-end evidence. Existing code, unsupported scope, missing proof and failed budgets all remain Not done.",
+    "scope": "Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.",
+    "globalAcceptance": "For authoring features, verify real controls (or explicitly named public API), accurate geometry/units, a useful rejection, Undo/Redo where applicable and native persistence. Source and geometry authority remain shared. Format-fidelity contracts additionally require declared format versions and independent-tool fidelity checks. Navigation/read-only rows need their stated visible result without a fictitious persistence requirement.",
+    "evidencePolicy": "Done is bounded by the written row scope. Keep its executable journey and dated result. Historical evidence is identified; a known regression immediately resets done to false. No partial, planned or in-progress completion state and no percentage score.",
+    "selectionPolicy": "Fix regressions in Done rows first. Within the ordered frontier, choose a dependency-ready row that unlocks a complete user deliverable; extend its nearest E2E journey. Do not split easy rows or delete hard rows to inflate completion counts."
+  },
+  "frontier": [
+    "PERF-001",
+    "PERF-002",
+    "PERF-003",
+    "PERF-012",
+    "DRAW-001",
+    "IO-005",
+    "ORG-001",
+    "ANN-002",
+    "SHEET-001",
+    "SHEET-004",
+    "SHEET-010",
+    "ASM-011",
+    "ASM-013"
+  ],
+  "sources": {
+    "autocad": {
+      "title": "AutoCAD drafting and documentation",
+      "url": "https://www.autodesk.com/products/autocad/product-details",
+      "accessed": "2026-10-12"
+    },
+    "fusion": {
+      "title": "Autodesk Fusion modeling, manufacturing, electronics and simulation",
+      "url": "https://www.autodesk.com/products/fusion-360/features",
+      "accessed": "2026-10-12"
+    },
+    "inventor": {
+      "title": "Autodesk Inventor mechanical design",
+      "url": "https://www.autodesk.com/products/inventor/product-details",
+      "accessed": "2026-10-12"
+    },
+    "solidworks": {
+      "title": "SOLIDWORKS 3D CAD capabilities",
+      "url": "https://www.solidworks.com/solution/what-is-3d-cad",
+      "accessed": "2026-10-12"
+    },
+    "rhino": {
+      "title": "Rhino modeling and analysis",
+      "url": "https://www.rhino3d.com/features/",
+      "accessed": "2026-10-12"
+    },
+    "nx": {
+      "title": "Siemens Designcenter NX CAD",
+      "url": "https://www.siemens.com/en-us/products/designcenter/nx-cad-software/",
+      "accessed": "2026-10-12"
+    },
+    "revit": {
+      "title": "Autodesk Revit",
+      "url": "https://www.autodesk.com/products/revit/product-details",
+      "accessed": "2026-10-12"
+    },
+    "civil": {
+      "title": "Autodesk Civil 3D",
+      "url": "https://www.autodesk.com/products/civil-3d/overview",
+      "accessed": "2026-10-12"
+    }
+  },
+  "evidence": {
+    "interchange": {
+      "date": "2026-10-12",
+      "sourceCommit": "b0b5d4f",
+      "command": "pnpm test:e2e -- interchange",
+      "journeys": [
+        "scenarios/editable-interchange.json"
+      ],
+      "records": [
+        "docs/verification.md",
+        "examples/parity-matrix/baseline-evidence.json"
+      ],
+      "scope": "Real browser STEP cancel/retry, independent occurrence, selected cylindrical face offset, exact volumes, Undo/Redo and native reopen/edit."
+    },
+    "assembly": {
+      "date": "2026-10-12",
+      "sourceCommit": "b0b5d4f",
+      "command": "pnpm test:e2e -- assembly",
+      "journeys": [
+        "scenarios/v26-distance-mate.json",
+        "scenarios/v26-concentric-pin.json"
+      ],
+      "records": [
+        "docs/verification.md",
+        "examples/parity-matrix/baseline-evidence.json"
+      ],
+      "scope": "Actual distance/concentric controls, placement checks, Undo/Redo, Cancel and blocked invalid input."
+    },
+    "mcp": {
+      "date": "2026-10-12",
+      "sourceCommit": "b0b5d4f",
+      "command": "pnpm test:e2e -- agent",
+      "journeys": [
+        "scripts/smoke-agent-runtime.mjs",
+        "examples/agent-runtime/mounting-plate.json"
+      ],
+      "records": [
+        "docs/verification.md",
+        "examples/parity-matrix/baseline-evidence.json"
+      ],
+      "scope": "Real public stdio mounting-plate author/revise/exact-volume, dry-run, atomic rejection, native reopen and STEP readback."
+    },
+    "engine": {
+      "date": "2026-10-12",
+      "sourceCommit": "b0b5d4f",
+      "command": "pnpm smoke:engine-interchange && pnpm --filter @web-cad/web build && PARTBENCH_SMOKE_UI_PRODUCTION=1 pnpm smoke:engine-interchange:browser",
+      "journeys": [
+        "scripts/smoke-editable-interchange.mjs",
+        "examples/editable-interchange/engine-browser-use.json"
+      ],
+      "records": [
+        "examples/editable-interchange/engine-evidence.json",
+        "examples/editable-interchange/browser-evidence.json",
+        "examples/editable-interchange/cold-load-evidence.json"
+      ],
+      "scope": "Pinned engine exact import/edit/history/native/STEP workflow; production render, orbit/select, native byte parity and cancellation of two workers. No latency target pass."
+    },
+    "gearbox": {
+      "date": "2026-09-12",
+      "sourceCommit": "9f5daa1",
+      "command": "pnpm smoke:gearbox && pnpm smoke:gearbox:browser",
+      "journeys": [
+        "scripts/smoke-gearbox.mjs",
+        "examples/gearbox-workflow/browser-use.json"
+      ],
+      "records": [
+        "docs/gearbox-workflow.md",
+        "examples/gearbox-workflow/verification.json",
+        "examples/gearbox-workflow/browser-verification.json"
+      ],
+      "scope": "Recorded parametric spur gears, dependent ratio/spacing change, public discovery and motion with zero rebuilt exact definitions. Retained historical E2E evidence, not rerun for matrix authoring."
+    },
+    "robot": {
+      "date": "2026-09-08",
+      "sourceCommit": "6c48613f",
+      "command": "pnpm smoke:robot-arm && pnpm smoke:robot-arm:browser",
+      "journeys": [
+        "scripts/smoke-robot-arm.mjs",
+        "examples/robot-arm-workflow/browser-use.json"
+      ],
+      "records": [
+        "docs/robot-arm-fixes.md"
+      ],
+      "scope": "Recorded connected revolute-joint arm authoring/revision, source-linked frames, browser controls, persistence and motion. Retained historical E2E evidence, not rerun for matrix authoring."
+    }
+  },
+  "categories": [
+    {
+      "id": "performance",
+      "title": "Performance and large documents",
+      "priority": 0,
+      "sources": [
+        "autocad",
+        "inventor",
+        "nx"
+      ],
+      "foundation": "docs/import-performance.md"
+    },
+    {
+      "id": "document",
+      "title": "Document integrity and persistence",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "fusion",
+        "rhino"
+      ],
+      "foundation": "packages/cad-core/src/engine.ts"
+    },
+    {
+      "id": "interaction",
+      "title": "Workspace, input and selection",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "rhino",
+        "inventor"
+      ],
+      "foundation": "apps/web/src/App.tsx"
+    },
+    {
+      "id": "drafting",
+      "title": "2D drawing geometry and editing",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "rhino"
+      ],
+      "foundation": "apps/web/src/modes/sketch/SketchCurveEditPanel.tsx"
+    },
+    {
+      "id": "organization",
+      "title": "Layers, styles, blocks and references",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "rhino"
+      ],
+      "foundation": "packages/cad-protocol/src/index.ts"
+    },
+    {
+      "id": "annotation",
+      "title": "Annotation, dimensions and tolerancing",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "inventor",
+        "solidworks"
+      ],
+      "foundation": "apps/web/src/modes/sketch/SketchIntentEditor.tsx"
+    },
+    {
+      "id": "sheets",
+      "title": "Sheets, drawings and deliverables",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "inventor",
+        "solidworks"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "sketch",
+      "title": "Parametric sketches and constraints",
+      "priority": 2,
+      "sources": [
+        "fusion",
+        "inventor",
+        "solidworks"
+      ],
+      "foundation": "packages/sketch-solver/src/index.ts"
+    },
+    {
+      "id": "solid",
+      "title": "Solid modeling and feature history",
+      "priority": 2,
+      "sources": [
+        "fusion",
+        "inventor",
+        "solidworks",
+        "nx"
+      ],
+      "foundation": "apps/web/src/modes/solid/solidEditorApply.ts"
+    },
+    {
+      "id": "direct",
+      "title": "Direct editing and geometry repair",
+      "priority": 2,
+      "sources": [
+        "fusion",
+        "rhino",
+        "nx"
+      ],
+      "foundation": "docs/editable-interchange.md"
+    },
+    {
+      "id": "surface",
+      "title": "Surface and freeform modeling",
+      "priority": 3,
+      "sources": [
+        "rhino",
+        "fusion",
+        "nx"
+      ],
+      "foundation": "packages/occt-wasm/src/index.ts"
+    },
+    {
+      "id": "mesh",
+      "title": "Meshes, scans and reverse engineering",
+      "priority": 3,
+      "sources": [
+        "rhino",
+        "fusion",
+        "nx"
+      ],
+      "foundation": "packages/renderer-mesh-bridge/src/index.ts"
+    },
+    {
+      "id": "assembly",
+      "title": "Assembly modeling and mechanisms",
+      "priority": 2,
+      "sources": [
+        "inventor",
+        "solidworks",
+        "fusion",
+        "nx"
+      ],
+      "foundation": "docs/robot-arm-fixes.md"
+    },
+    {
+      "id": "sheetmetal",
+      "title": "Sheet metal",
+      "priority": 3,
+      "sources": [
+        "fusion",
+        "inventor",
+        "solidworks"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "fabrication",
+      "title": "Frames, weldments, plastics and tooling",
+      "priority": 4,
+      "sources": [
+        "inventor",
+        "solidworks",
+        "nx"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "routing",
+      "title": "Routing, plant and electrical design",
+      "priority": 4,
+      "sources": [
+        "inventor",
+        "nx",
+        "autocad"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "inspection",
+      "title": "Measurement, validation and MBD",
+      "priority": 2,
+      "sources": [
+        "rhino",
+        "inventor",
+        "solidworks",
+        "nx"
+      ],
+      "foundation": "apps/web/src/modes/inspect/InspectPanel.tsx"
+    },
+    {
+      "id": "exchange",
+      "title": "File exchange and interoperability",
+      "priority": 1,
+      "sources": [
+        "autocad",
+        "rhino",
+        "fusion",
+        "nx"
+      ],
+      "foundation": "docs/editable-interchange.md"
+    },
+    {
+      "id": "rendering",
+      "title": "Visualization and presentation",
+      "priority": 3,
+      "sources": [
+        "rhino",
+        "fusion",
+        "nx"
+      ],
+      "foundation": "packages/renderer/src/index.ts"
+    },
+    {
+      "id": "automation",
+      "title": "Automation, APIs and AI assistance",
+      "priority": 2,
+      "sources": [
+        "autocad",
+        "fusion",
+        "nx",
+        "rhino"
+      ],
+      "foundation": "docs/agent-runtime-usage.md"
+    },
+    {
+      "id": "collaboration",
+      "title": "Collaboration, PDM and release management",
+      "priority": 3,
+      "sources": [
+        "fusion",
+        "nx",
+        "solidworks"
+      ],
+      "foundation": "docs/architecture.md"
+    },
+    {
+      "id": "manufacturing",
+      "title": "CAM and subtractive manufacturing",
+      "priority": 4,
+      "sources": [
+        "fusion",
+        "nx"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "additive",
+      "title": "Additive manufacturing",
+      "priority": 4,
+      "sources": [
+        "fusion",
+        "nx",
+        "rhino"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "simulation",
+      "title": "Simulation, optimization and engineering analysis",
+      "priority": 4,
+      "sources": [
+        "fusion",
+        "inventor",
+        "nx",
+        "solidworks"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "bim",
+      "title": "Architecture, BIM and building systems",
+      "priority": 4,
+      "sources": [
+        "revit",
+        "autocad"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "civil",
+      "title": "Civil, survey and geospatial CAD",
+      "priority": 4,
+      "sources": [
+        "civil",
+        "autocad"
+      ],
+      "foundation": "docs/parity-roadmap.md"
+    },
+    {
+      "id": "platform",
+      "title": "Platform, reliability and administration",
+      "priority": 2,
+      "sources": [
+        "autocad",
+        "fusion",
+        "rhino",
+        "nx"
+      ],
+      "foundation": "docs/verification.md"
+    }
+  ],
+  "features": [
+    {
+      "id": "PERF-001",
+      "category": "performance",
+      "feature": "Cold usable assembly view",
+      "done": false,
+      "acceptance": "Pinned engine reaches a visible, orbitable assembly within 10 s from Import on the declared reference runner in each of five isolated production runs; loading indicators do not count.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-002",
+      "category": "performance",
+      "feature": "Cold exact selection readiness",
+      "done": false,
+      "acceptance": "Every engine occurrence is selectable with correct exact identity within 20 s from Import in each of five isolated production runs.",
+      "dependsOn": [
+        "PERF-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "PERF-003",
+      "category": "performance",
+      "feature": "Progressive assembly import",
+      "done": false,
+      "acceptance": "Show correctly placed definitions before all checkpoints finish; input remains responsive; completion matches the exact native baseline; Cancel removes the preview and preserves the prior document.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-004",
+      "category": "performance",
+      "feature": "Cached native reopen latency",
+      "done": false,
+      "acceptance": "Engine WCAD reaches exact and display readiness within 2 s on each of five warm reopens; invalid caches rebuild without changing source.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-005",
+      "category": "performance",
+      "feature": "Interactive edit latency",
+      "done": false,
+      "acceptance": "Representative part and engine edits finish within 1 s at p95 over at least 20 edits on the declared runner, with exact results and Undo/Redo.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-006",
+      "category": "performance",
+      "feature": "Hardware viewport frame budget",
+      "done": false,
+      "acceptance": "Engine orbit and selection on a declared hardware GPU meet p95 frame interval 20 ms over 10 s, without redundant mesh uploads.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-007",
+      "category": "performance",
+      "feature": "Large drawing interaction",
+      "done": false,
+      "acceptance": "A pinned 100000-entity drawing pans, zooms and window-selects within a 100 ms input-response budget without dropped or misselected entities.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-008",
+      "category": "performance",
+      "feature": "Memory-bounded long sessions",
+      "done": false,
+      "acceptance": "A 30-cycle import/edit/save/close journey stays within a declared browser-process memory budget and releases abandoned kernels, meshes and documents.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-009",
+      "category": "performance",
+      "feature": "Interruptible STEP preparation",
+      "done": true,
+      "acceptance": "Cancel and Escape settle active STEP import within 3 s; both checkpoint workers terminate and the prior model remains editable; retry succeeds.",
+      "dependsOn": [],
+      "evidence": [
+        "engine",
+        "interchange"
+      ]
+    },
+    {
+      "id": "PERF-010",
+      "category": "performance",
+      "feature": "Incremental geometry rebuild",
+      "done": false,
+      "acceptance": "Editing one definition rebuilds only its dependents; changing occurrence poses preserves ready definition artifacts and visible meshes throughout the gearbox motion sweep.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-011",
+      "category": "performance",
+      "feature": "Out-of-core assemblies",
+      "done": false,
+      "acceptance": "A pinned assembly exceeding available decoded-model memory supports selective loading, navigation and exact loading of selected components without process failure.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PERF-012",
+      "category": "performance",
+      "feature": "Repeatable performance corpus",
+      "done": false,
+      "acceptance": "Check in runner configuration, dataset hashes and five-run cold/warm distributions for engine, authored assembly and large drawing, with executable budgets and no concurrent measurements.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-001",
+      "category": "document",
+      "feature": "Native editable save and reopen",
+      "done": true,
+      "acceptance": "Save an imported assembly with an independent face edit, reopen in a fresh workbench, and edit the saved feature with exact volumes and placements preserved.",
+      "dependsOn": [],
+      "evidence": [
+        "interchange"
+      ]
+    },
+    {
+      "id": "DOC-002",
+      "category": "document",
+      "feature": "Transaction Undo and Redo",
+      "done": true,
+      "acceptance": "Undo and Redo an occurrence edit and mate change through controls; exact geometry, structure and placements return to their recorded states.",
+      "dependsOn": [],
+      "evidence": [
+        "interchange",
+        "assembly"
+      ]
+    },
+    {
+      "id": "DOC-003",
+      "category": "document",
+      "feature": "Atomic rejected commands",
+      "done": true,
+      "acceptance": "A failed public command batch leaves source identity, history and exact results unchanged and returns a field or operation diagnostic.",
+      "dependsOn": [],
+      "evidence": [
+        "mcp"
+      ]
+    },
+    {
+      "id": "DOC-004",
+      "category": "document",
+      "feature": "Project units and precision",
+      "done": false,
+      "acceptance": "Switch mm, cm, m and inches with explicit preserve-size semantics; geometry, dimensions and file round trips retain physical size within declared tolerance.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-005",
+      "category": "document",
+      "feature": "Project templates",
+      "done": false,
+      "acceptance": "Create, reuse and update templates carrying units, styles, layers, sheets and organization without sharing mutable document state.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-006",
+      "category": "document",
+      "feature": "Crash recovery",
+      "done": false,
+      "acceptance": "Terminate the browser during an edit and during save; recovery offers the last valid revision, rejects damaged writes and preserves exact source assets.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-007",
+      "category": "document",
+      "feature": "Autosave and restore points",
+      "done": false,
+      "acceptance": "Recover multiple named or timed revisions, compare them and restore one without overwriting another user's file or silently dropping history.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-008",
+      "category": "document",
+      "feature": "Corrupt and unsupported file handling",
+      "done": false,
+      "acceptance": "Truncated native files, bad checksums, missing assets and newer schemas report specific errors and leave the open document untouched.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-009",
+      "category": "document",
+      "feature": "Native schema migration",
+      "done": false,
+      "acceptance": "Open a versioned corpus of all supported old project formats, edit, save and reopen without geometry, references or history loss; reject unsupported versions explicitly.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-010",
+      "category": "document",
+      "feature": "Multiple open documents",
+      "done": false,
+      "acceptance": "Edit and save two projects concurrently with isolated Undo, units, selections, caches and unsaved-change prompts.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-011",
+      "category": "document",
+      "feature": "Document audit and repair",
+      "done": false,
+      "acceptance": "Detect dangling references, invalid geometry and broken dependencies; offer bounded repairs with a report, Undo and unchanged data on failed repair.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-012",
+      "category": "document",
+      "feature": "Project properties and metadata",
+      "done": false,
+      "acceptance": "Edit part number, description, author, material and custom typed properties; reuse them in drawings, BOM and export after reopen.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-013",
+      "category": "document",
+      "feature": "Pack and transfer project dependencies",
+      "done": false,
+      "acceptance": "Package native assets, references, fonts and permitted linked files with a manifest; reopen on a clean machine with missing dependencies diagnosed.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DOC-014",
+      "category": "document",
+      "feature": "Deterministic geometry persistence",
+      "done": true,
+      "acceptance": "All 51 engine checkpoint BRep, raw topology and signature payloads survive headless and browser native save with byte parity to the previous baseline.",
+      "dependsOn": [],
+      "evidence": [
+        "engine"
+      ]
+    },
+    {
+      "id": "UX-001",
+      "category": "interaction",
+      "feature": "Fit, standard views and orbit",
+      "done": true,
+      "acceptance": "Import the pinned engine, use Fit and standard views, orbit with pointer input and preserve shared mesh uploads and all 246 occurrences.",
+      "dependsOn": [],
+      "evidence": [
+        "engine"
+      ]
+    },
+    {
+      "id": "UX-002",
+      "category": "interaction",
+      "feature": "Occurrence selection",
+      "done": true,
+      "acceptance": "Select a visible imported component in the viewport and resolve its occurrence path rather than a sibling instance.",
+      "dependsOn": [],
+      "evidence": [
+        "engine",
+        "interchange"
+      ]
+    },
+    {
+      "id": "UX-003",
+      "category": "interaction",
+      "feature": "Entity and subentity selection",
+      "done": false,
+      "acceptance": "Select faces, edges, vertices, bodies and components with filters, prehighlight and cycling through overlaps in perspective and orthographic views.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-004",
+      "category": "interaction",
+      "feature": "Window and crossing selection",
+      "done": false,
+      "acceptance": "Left/right drag windows, lasso, additive and subtractive selection obey containment/intersection rules and filters for dense drawings and assemblies.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-005",
+      "category": "interaction",
+      "feature": "Command line and aliases",
+      "done": false,
+      "acceptance": "Invoke modeling and drafting commands with aliases, typed options, repeat and history; Escape cancels without losing the prior document.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-006",
+      "category": "interaction",
+      "feature": "Precise coordinate input",
+      "done": false,
+      "acceptance": "Enter absolute, relative, polar and unit-bearing coordinates with an explicit working frame and reproducible geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-007",
+      "category": "interaction",
+      "feature": "Object snaps and tracking",
+      "done": false,
+      "acceptance": "Endpoint, midpoint, center, quadrant, intersection, tangent, perpendicular and extension snaps preview and commit the same exact target.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-008",
+      "category": "interaction",
+      "feature": "Grid, ortho and polar modes",
+      "done": false,
+      "acceptance": "Toggle grid/snap spacing, orthographic locking and polar increments during creation and movement; typed coordinates override predictably.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-009",
+      "category": "interaction",
+      "feature": "Named coordinate systems",
+      "done": false,
+      "acceptance": "Create, edit, restore and persist user coordinate systems; drafting, imports and transforms use the selected frame consistently.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-010",
+      "category": "interaction",
+      "feature": "Direct manipulation grips",
+      "done": false,
+      "acceptance": "Drag supported feature, curve and placement grips with constraints, preview, precise override, Cancel and one atomic Undo step.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-011",
+      "category": "interaction",
+      "feature": "Search and keyboard customization",
+      "done": false,
+      "acceptance": "Find every exposed command, assign nonconflicting shortcuts and restore exported workspace preferences.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-012",
+      "category": "interaction",
+      "feature": "Keyboard and assistive access",
+      "done": false,
+      "acceptance": "Complete open, select, edit, save and invalid-input flows using keyboard only with meaningful focus order, labels and screen-reader feedback.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-013",
+      "category": "interaction",
+      "feature": "Touch, pen and 3D mouse input",
+      "done": false,
+      "acceptance": "Navigate and execute selected production workflows on declared touch/pen and 3D-controller devices without unintended modeling commits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-014",
+      "category": "interaction",
+      "feature": "Multi-viewport workspaces",
+      "done": false,
+      "acceptance": "Persist multiple synchronized views, independent cameras and display modes; selection and edits stay consistent across them.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "UX-015",
+      "category": "interaction",
+      "feature": "Model browser organization",
+      "done": false,
+      "acceptance": "Search, rename, group, reorder where valid, hide, isolate and select features/components without breaking references or persisted state.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-001",
+      "category": "drafting",
+      "feature": "Independent drafting document",
+      "done": false,
+      "acceptance": "Create model-space drawing entities without forcing all geometry into a solved part sketch; persist entity identity, units and Undo/Redo.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-002",
+      "category": "drafting",
+      "feature": "Lines, rays and construction lines",
+      "done": false,
+      "acceptance": "Create and edit finite lines, rays and infinite construction geometry by typed coordinates and snaps.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-003",
+      "category": "drafting",
+      "feature": "Polylines and joined paths",
+      "done": false,
+      "acceptance": "Create mixed line/arc polylines; edit vertices, widths and closure; join and explode while retaining geometry and attributes.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-004",
+      "category": "drafting",
+      "feature": "Circles and arcs",
+      "done": false,
+      "acceptance": "Support center/radius, diameter, three-point and tangent constructions; edit through controls and preserve exact curves.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-005",
+      "category": "drafting",
+      "feature": "Ellipses and elliptical arcs",
+      "done": false,
+      "acceptance": "Create full and trimmed ellipses with major/minor axes, snapping and exact round trips.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-006",
+      "category": "drafting",
+      "feature": "Splines and fit curves",
+      "done": false,
+      "acceptance": "Create fit-point and control-point splines; edit degree, knots, weights and closure with accurate bounds and snapping.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-007",
+      "category": "drafting",
+      "feature": "Rectangles and regular polygons",
+      "done": false,
+      "acceptance": "Construct rotated rectangles and inscribed/circumscribed polygons using dimensions and snaps; preserve editable source.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-008",
+      "category": "drafting",
+      "feature": "Move, copy, rotate and scale",
+      "done": false,
+      "acceptance": "Transform mixed entity selections around typed or snapped bases, with copy options, preview and reversible precision.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-009",
+      "category": "drafting",
+      "feature": "Mirror and align",
+      "done": false,
+      "acceptance": "Mirror with configurable text treatment and align selected entities using point correspondences without unexpected scale changes.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-010",
+      "category": "drafting",
+      "feature": "Trim and extend",
+      "done": false,
+      "acceptance": "Trim and extend lines, arcs, polylines and splines against chosen boundaries with deterministic intersection selection.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-011",
+      "category": "drafting",
+      "feature": "Offset curves",
+      "done": false,
+      "acceptance": "Offset joined mixed curves on either side with corner policy, self-intersection handling and exact output or explicit rejection.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-012",
+      "category": "drafting",
+      "feature": "Fillet and chamfer curves",
+      "done": false,
+      "acceptance": "Round or bevel selected 2D corners with typed dimensions, trimming policy and atomic rejection for impossible results.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-013",
+      "category": "drafting",
+      "feature": "Break, split, stretch and lengthen",
+      "done": false,
+      "acceptance": "Split at points, remove intervals, stretch window-selected vertices and lengthen curves without altering unrelated geometry.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-014",
+      "category": "drafting",
+      "feature": "Rectangular, polar and path arrays",
+      "done": false,
+      "acceptance": "Create editable associative arrays with spacing, count, orientation and selected-instance overrides.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-015",
+      "category": "drafting",
+      "feature": "Regions and 2D booleans",
+      "done": false,
+      "acceptance": "Form regions with holes from closed curves, union/subtract/intersect them and retain exact boundaries and area.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-016",
+      "category": "drafting",
+      "feature": "Boundary extraction and cleanup",
+      "done": false,
+      "acceptance": "Derive closed boundaries, detect duplicate or tiny entities and repair declared gaps without silently deleting intended geometry.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-017",
+      "category": "drafting",
+      "feature": "Divide and measure along paths",
+      "done": false,
+      "acceptance": "Place points or blocks at a count or physical interval along curves with explicit endpoint and orientation rules.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "DRAW-018",
+      "category": "drafting",
+      "feature": "Image and PDF tracing",
+      "done": false,
+      "acceptance": "Calibrate and clip a reference image or PDF, draw snapped vectors over it and preserve the reference transform after reopen.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-001",
+      "category": "organization",
+      "feature": "Layer properties",
+      "done": false,
+      "acceptance": "Create and assign layers with color, linetype, weight, transparency, lock, visibility and print state; persist and Undo changes.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-002",
+      "category": "organization",
+      "feature": "Layer filters and states",
+      "done": false,
+      "acceptance": "Filter, isolate and restore named layer states including per-viewport overrides and locked-layer selection rules.",
+      "dependsOn": [
+        "ORG-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-003",
+      "category": "organization",
+      "feature": "Linetype and lineweight display",
+      "done": false,
+      "acceptance": "Display and plot custom dash patterns, lineweights and scale rules consistently in model and paper space.",
+      "dependsOn": [
+        "ORG-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-004",
+      "category": "organization",
+      "feature": "Reusable blocks",
+      "done": false,
+      "acceptance": "Create nested block definitions and instances with independent placements; editing the definition updates its instances after reopen.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-005",
+      "category": "organization",
+      "feature": "Block attributes and fields",
+      "done": false,
+      "acceptance": "Attach typed visible/hidden attributes, edit per-instance values and extract them into a table without exploding blocks.",
+      "dependsOn": [
+        "ORG-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-006",
+      "category": "organization",
+      "feature": "Dynamic blocks",
+      "done": false,
+      "acceptance": "Author block parameters, actions and visibility states; revise instances and round-trip the declared dynamic behavior.",
+      "dependsOn": [
+        "ORG-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-007",
+      "category": "organization",
+      "feature": "External drawing references",
+      "done": false,
+      "acceptance": "Attach or overlay referenced drawings, resolve relative paths and reload changes with cycles and missing files diagnosed.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-008",
+      "category": "organization",
+      "feature": "Reference clipping and binding",
+      "done": false,
+      "acceptance": "Clip referenced drawing extents and bind a reference with collision-safe names while preserving its appearance.",
+      "dependsOn": [
+        "ORG-007"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-009",
+      "category": "organization",
+      "feature": "Raster, PDF and DGN underlays",
+      "done": false,
+      "acceptance": "Attach, scale, rotate, clip and relink supported underlays with explicit units and missing-file handling.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-010",
+      "category": "organization",
+      "feature": "Groups and selection sets",
+      "done": false,
+      "acceptance": "Create, select, revise and persist named groups without converting their members into different entity types.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-011",
+      "category": "organization",
+      "feature": "Drawing standards validation",
+      "done": false,
+      "acceptance": "Check layers, styles, units and naming against a standard; show violations and reversible repairs.",
+      "dependsOn": [
+        "ORG-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ORG-012",
+      "category": "organization",
+      "feature": "Property matching and purge",
+      "done": false,
+      "acceptance": "Copy chosen display properties and remove only unreferenced definitions, with a preview and Undo.",
+      "dependsOn": [
+        "ORG-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-001",
+      "category": "annotation",
+      "feature": "Single-line and rich text",
+      "done": false,
+      "acceptance": "Place, edit, align and style Unicode text with font substitution diagnostics and faithful native persistence.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-002",
+      "category": "annotation",
+      "feature": "Associative linear dimensions",
+      "done": false,
+      "acceptance": "Create aligned, horizontal and vertical dimensions tied to geometry; edits update measured values without losing placement.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-003",
+      "category": "annotation",
+      "feature": "Angular, radius and diameter dimensions",
+      "done": false,
+      "acceptance": "Dimension angles, arcs, circles and holes with correct symbols, placement and updates after geometry edits.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-004",
+      "category": "annotation",
+      "feature": "Ordinate, baseline and chain dimensions",
+      "done": false,
+      "acceptance": "Create coordinated dimension sets with a persistent origin and predictable update/spacing behavior.",
+      "dependsOn": [
+        "ANN-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-005",
+      "category": "annotation",
+      "feature": "Dimension styles and annotation scale",
+      "done": false,
+      "acceptance": "Manage precision, units, arrows, text and scaling centrally; model and sheet viewports render at the intended plotted size.",
+      "dependsOn": [
+        "ANN-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-006",
+      "category": "annotation",
+      "feature": "Tolerances, limits and fits",
+      "done": false,
+      "acceptance": "Show unilateral/bilateral limits and standard fit designations with correct unit conversion and exported values.",
+      "dependsOn": [
+        "ANN-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-007",
+      "category": "annotation",
+      "feature": "GD&T feature control frames",
+      "done": false,
+      "acceptance": "Create standards-aware datum references and geometric tolerance frames, retain associations and output legible drawings.",
+      "dependsOn": [
+        "ANN-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-008",
+      "category": "annotation",
+      "feature": "Leaders and multileaders",
+      "done": false,
+      "acceptance": "Attach leaders with text, symbols or blocks; edit landing and arrow placement and preserve geometry references.",
+      "dependsOn": [
+        "ANN-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-009",
+      "category": "annotation",
+      "feature": "Hatches, fills and gradients",
+      "done": false,
+      "acceptance": "Apply associative patterned/solid fills with islands, scale, angle and boundary-update behavior.",
+      "dependsOn": [
+        "DRAW-015"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-010",
+      "category": "annotation",
+      "feature": "Tables and linked data",
+      "done": false,
+      "acceptance": "Create styled tables with formulas and linked property data; refresh links with missing-source diagnostics.",
+      "dependsOn": [
+        "ANN-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-011",
+      "category": "annotation",
+      "feature": "Center marks and centerlines",
+      "done": false,
+      "acceptance": "Annotate holes and cylindrical views associatively, including patterns and automatic updates.",
+      "dependsOn": [
+        "ANN-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-012",
+      "category": "annotation",
+      "feature": "Surface finish and weld symbols",
+      "done": false,
+      "acceptance": "Place standard surface-texture and weld annotations with editable parameters and faithful print/export.",
+      "dependsOn": [
+        "ANN-008"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-013",
+      "category": "annotation",
+      "feature": "Revision clouds and revision tables",
+      "done": false,
+      "acceptance": "Mark changed areas, identify revisions and update sheet revision tables without erasing prior release history.",
+      "dependsOn": [
+        "ANN-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ANN-014",
+      "category": "annotation",
+      "feature": "Fields and automatic labels",
+      "done": false,
+      "acceptance": "Bind text to document, geometry or sheet properties; refresh after edits and preserve readable cached values if a source is missing.",
+      "dependsOn": [
+        "ANN-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-001",
+      "category": "sheets",
+      "feature": "Paper space and sheet layouts",
+      "done": false,
+      "acceptance": "Create multiple named sheets with physical paper sizes, orientation, margins and persistent model-space viewports.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-002",
+      "category": "sheets",
+      "feature": "Scaled and clipped viewports",
+      "done": false,
+      "acceptance": "Set and lock viewport scales, clip boundaries and layer overrides; verify plotted geometry against known dimensions.",
+      "dependsOn": [
+        "SHEET-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-003",
+      "category": "sheets",
+      "feature": "Title blocks and sheet sets",
+      "done": false,
+      "acceptance": "Populate reusable title blocks from project/sheet metadata and renumber, reorder and publish a linked sheet set.",
+      "dependsOn": [
+        "SHEET-001",
+        "ORG-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-004",
+      "category": "sheets",
+      "feature": "Associative orthographic views",
+      "done": false,
+      "acceptance": "Place projected part/assembly views with first/third-angle conventions; upstream geometry changes update visible and hidden edges.",
+      "dependsOn": [
+        "SHEET-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-005",
+      "category": "sheets",
+      "feature": "Section and broken-out views",
+      "done": false,
+      "acceptance": "Create full, half, offset and local sections with correct cut geometry, hatching and component exclusion rules.",
+      "dependsOn": [
+        "SHEET-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-006",
+      "category": "sheets",
+      "feature": "Detail, auxiliary and broken views",
+      "done": false,
+      "acceptance": "Create scaled details, inclined auxiliary views and broken long-part views with retained model associations.",
+      "dependsOn": [
+        "SHEET-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-007",
+      "category": "sheets",
+      "feature": "Model-linked drawing dimensions",
+      "done": false,
+      "acceptance": "Attach dimensions and annotations to projected geometry; rebuilds retain valid references and explicitly flag lost ones.",
+      "dependsOn": [
+        "SHEET-004",
+        "ANN-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-008",
+      "category": "sheets",
+      "feature": "Hole tables and callouts",
+      "done": false,
+      "acceptance": "Generate hole identifiers, coordinates and manufacturing callouts from model data and update them after edits.",
+      "dependsOn": [
+        "SHEET-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-009",
+      "category": "sheets",
+      "feature": "Assembly balloons and drawing BOM",
+      "done": false,
+      "acceptance": "Link balloons to stable item numbers and a generated BOM; quantity and revision changes update all affected sheets.",
+      "dependsOn": [
+        "SHEET-004",
+        "ASM-013"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-010",
+      "category": "sheets",
+      "feature": "Scale-correct PDF and printing",
+      "done": false,
+      "acceptance": "Export vector PDFs and print at declared sheet scale with fonts, lineweights, hatches and clipping checked in an independent viewer.",
+      "dependsOn": [
+        "SHEET-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-011",
+      "category": "sheets",
+      "feature": "Batch publishing and plot presets",
+      "done": false,
+      "acceptance": "Publish selected sheets to single/multiple files using saved page/plot presets; failures identify individual sheets.",
+      "dependsOn": [
+        "SHEET-010"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SHEET-012",
+      "category": "sheets",
+      "feature": "Drawing revision comparison",
+      "done": false,
+      "acceptance": "Compare two saved drawing revisions and highlight added, removed and changed geometry/annotation with navigable references.",
+      "dependsOn": [
+        "SHEET-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SK-001",
+      "category": "sketch",
+      "feature": "Plane and face-attached sketches",
+      "done": false,
+      "acceptance": "Create on principal, datum and planar model faces; retain local coordinates through placement changes and diagnose deleted supports.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-002",
+      "category": "sketch",
+      "feature": "Basic sketch primitives",
+      "done": false,
+      "acceptance": "Draw and dimension points, lines, rectangles, circles and arcs through controls with persistent entity identity and exact extrusion compatibility.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-003",
+      "category": "sketch",
+      "feature": "Advanced sketch curves",
+      "done": false,
+      "acceptance": "Create editable slots, ellipses, conics and splines with stable profile extraction and downstream feature rebuilds.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-004",
+      "category": "sketch",
+      "feature": "Geometric constraints",
+      "done": false,
+      "acceptance": "Apply coincident, horizontal, vertical, parallel, perpendicular, tangent, concentric, equal, midpoint and symmetry constraints with correct solved behavior.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-005",
+      "category": "sketch",
+      "feature": "Driving and reference dimensions",
+      "done": false,
+      "acceptance": "Switch supported dimensions between driving and measured reference modes; values and geometry remain consistent after parameter edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-006",
+      "category": "sketch",
+      "feature": "Degrees of freedom and diagnostics",
+      "done": false,
+      "acceptance": "Show remaining freedom and conflicting/redundant constraints; a rejected solve preserves the last valid sketch and identifies causes.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-007",
+      "category": "sketch",
+      "feature": "Construction geometry",
+      "done": false,
+      "acceptance": "Toggle construction/reference entities and ensure they constrain geometry without entering solid profiles.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-008",
+      "category": "sketch",
+      "feature": "Projected and intersection geometry",
+      "done": false,
+      "acceptance": "Project edges, silhouette or intersections into a sketch with associative references and explicit broken-reference repair.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-009",
+      "category": "sketch",
+      "feature": "Sketch trim, extend and offset",
+      "done": false,
+      "acceptance": "Edit constrained curves with predictable constraint migration and valid profile results or clear rejection.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-010",
+      "category": "sketch",
+      "feature": "Sketch patterns and mirror",
+      "done": false,
+      "acceptance": "Pattern or mirror geometry with editable count/spacing and symmetry while preserving intended constraint ownership.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-011",
+      "category": "sketch",
+      "feature": "Nested regions and multiple profiles",
+      "done": false,
+      "acceptance": "Select exact regions with islands/holes and multiple disjoint profiles, then revise boundaries without selecting a different region silently.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-012",
+      "category": "sketch",
+      "feature": "3D sketches",
+      "done": false,
+      "acceptance": "Create spatial curves with reference planes, constraints and dimensions usable as sweep paths and routing guides.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-013",
+      "category": "sketch",
+      "feature": "Sketch blocks and reusable profiles",
+      "done": false,
+      "acceptance": "Save and insert constrained sketch blocks with internal relationships, placements and parameter overrides.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SK-014",
+      "category": "sketch",
+      "feature": "Formula-driven sketches",
+      "done": false,
+      "acceptance": "Bind dimensions to named parameters and expressions with units, dependency ordering, cycle rejection and native round trips.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-001",
+      "category": "solid",
+      "feature": "Primitive solid authoring",
+      "done": false,
+      "acceptance": "Create and edit box, cylinder, sphere, cone and torus through controls; exact dimensions and volumes survive native reopen; invalid sizes reject.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-002",
+      "category": "solid",
+      "feature": "Extrude, add and cut",
+      "done": false,
+      "acceptance": "Create solids and additive/subtractive extrusions from primitive and multi-loop profiles with blind, symmetric and up-to geometry end conditions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-003",
+      "category": "solid",
+      "feature": "Revolve and revolved cuts",
+      "done": false,
+      "acceptance": "Create full/partial revolutions around selected axes, edit angle/profile and reject invalid self-intersections without source loss.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-004",
+      "category": "solid",
+      "feature": "Sweeps",
+      "done": false,
+      "acceptance": "Sweep profiles along multi-segment paths with orientation, twist and guide controls, preserving references after edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-005",
+      "category": "solid",
+      "feature": "Lofts",
+      "done": false,
+      "acceptance": "Loft ordered profiles with guide curves, end continuity and closed forms; diagnose incompatible or self-intersecting inputs.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-006",
+      "category": "solid",
+      "feature": "Boolean union, cut and intersect",
+      "done": false,
+      "acceptance": "Apply exact multibody booleans through controls; preserve selected inputs according to policy and validate volumes and Undo/Reopen.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-007",
+      "category": "solid",
+      "feature": "Standard holes",
+      "done": false,
+      "acceptance": "Create blind, through, counterbore, countersink and tapped-hole features with standard sizes, placements and drawing metadata.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-008",
+      "category": "solid",
+      "feature": "Fillets",
+      "done": false,
+      "acceptance": "Create constant/variable-radius and multi-edge blends with preview, editable parameters and failure localization on representative difficult parts.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-009",
+      "category": "solid",
+      "feature": "Chamfers",
+      "done": false,
+      "acceptance": "Create distance/distance and distance/angle chamfers with exact preview, edge-reference survival and native round trip.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-010",
+      "category": "solid",
+      "feature": "Shell and thicken",
+      "done": false,
+      "acceptance": "Remove selected faces or thicken surfaces with inward/outward/symmetric thickness; reject self-intersections and failed offsets clearly.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-011",
+      "category": "solid",
+      "feature": "Draft",
+      "done": false,
+      "acceptance": "Apply neutral-plane and parting-line draft with direction, angle and exact manufacturability checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-012",
+      "category": "solid",
+      "feature": "Ribs, webs and thin features",
+      "done": false,
+      "acceptance": "Create associative ribs/webs and thin extrusions from open/closed profiles with thickness, direction and end conditions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-013",
+      "category": "solid",
+      "feature": "Linear, circular and path feature patterns",
+      "done": false,
+      "acceptance": "Pattern features with instance omission and exact rebuild after seed or spacing changes.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-014",
+      "category": "solid",
+      "feature": "Feature and body mirror",
+      "done": false,
+      "acceptance": "Mirror selected features/bodies about a plane with correct handedness, dependencies and downstream edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-015",
+      "category": "solid",
+      "feature": "Split, trim and combine bodies",
+      "done": false,
+      "acceptance": "Split solids by tools or surfaces, retain named results and combine chosen bodies without losing references to unaffected results.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-016",
+      "category": "solid",
+      "feature": "Datum planes, axes and points",
+      "done": false,
+      "acceptance": "Create offset, angled, tangent and geometry-derived datums; downstream features update or report broken supports.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-017",
+      "category": "solid",
+      "feature": "Helices, threads and coils",
+      "done": false,
+      "acceptance": "Create editable helical curves and modeled/cosmetic threads with pitch, handedness and drawing/exchange semantics.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-018",
+      "category": "solid",
+      "feature": "Emboss, wrap and engraving",
+      "done": false,
+      "acceptance": "Project or wrap profiles/text onto supported curved faces and add/remove exact material with editable depth.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-019",
+      "category": "solid",
+      "feature": "Feature history editing",
+      "done": false,
+      "acceptance": "Reorder, suppress, roll back and edit dependencies with an explicit rebuild result and preserved valid downstream references.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-020",
+      "category": "solid",
+      "feature": "Parametric spur gears",
+      "done": true,
+      "acceptance": "Create the documented external spur-gear recipe through public MCP, change teeth and dependent spacing/ratio, and preserve exact bodies through native reopen and STEP readback.",
+      "dependsOn": [],
+      "evidence": [
+        "gearbox"
+      ]
+    },
+    {
+      "id": "SOL-021",
+      "category": "solid",
+      "feature": "Configurations and design tables",
+      "done": false,
+      "acceptance": "Produce named variants from dimensions, suppression and components, switch variants and regenerate correct drawings/BOM.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-022",
+      "category": "solid",
+      "feature": "Equation and parameter management",
+      "done": false,
+      "acceptance": "Edit unit-aware named expressions, show dependency errors and transactionally rebuild all affected geometry and placements.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-023",
+      "category": "solid",
+      "feature": "Imported feature recognition",
+      "done": false,
+      "acceptance": "Recognize editable holes, pockets or patterns in foreign solids with explicit confidence/limits and preserve geometry on rejected recognition.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SOL-024",
+      "category": "solid",
+      "feature": "Topology reference repair",
+      "done": false,
+      "acceptance": "After geometry changes, retain unambiguous references and let the user repair broken/ambiguous ones without silently retargeting features.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-001",
+      "category": "direct",
+      "feature": "Independent occurrence editing",
+      "done": true,
+      "acceptance": "Make one nested STEP occurrence independent, offset its supported cylindrical face, and prove sibling geometry unchanged through Undo/Redo and native reopen.",
+      "dependsOn": [],
+      "evidence": [
+        "interchange"
+      ]
+    },
+    {
+      "id": "DIR-002",
+      "category": "direct",
+      "feature": "Supported imported face offsets",
+      "done": false,
+      "acceptance": "Offset planar extrusion faces and complete cylindrical bore walls within the documented envelope; preserve exact geometry and reject incompatible neighbors.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-003",
+      "category": "direct",
+      "feature": "General move and rotate face",
+      "done": false,
+      "acceptance": "Translate/rotate selected faces with surrounding-surface extension, heal resulting boundaries and explicitly reject ambiguous or impossible results.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-004",
+      "category": "direct",
+      "feature": "Delete and heal faces",
+      "done": false,
+      "acceptance": "Remove fillets, holes or arbitrary face sets and reconstruct valid surrounding geometry with an inspectable result.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-005",
+      "category": "direct",
+      "feature": "Replace and match faces",
+      "done": false,
+      "acceptance": "Replace selected faces with target surfaces, extend/trim neighbors and validate closed-solid continuity.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-006",
+      "category": "direct",
+      "feature": "Sew, stitch and solidify",
+      "done": false,
+      "acceptance": "Join imported surface sets within chosen tolerance; identify gaps and turn closed shells into valid solids without undocumented tolerance inflation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-007",
+      "category": "direct",
+      "feature": "Geometry diagnostics and healing",
+      "done": false,
+      "acceptance": "Find invalid edges, small/sliver faces and self-intersections, offer targeted repairs and report topology/geometry changes.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-008",
+      "category": "direct",
+      "feature": "Defeaturing and simplification",
+      "done": false,
+      "acceptance": "Remove selected detail while keeping bounding envelopes, mass-property deltas and downstream use explicit.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-009",
+      "category": "direct",
+      "feature": "Associative foreign-model update",
+      "done": false,
+      "acceptance": "Reload changed source CAD and reconcile retained edits/references with a conflict report instead of silently replacing the part.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "DIR-010",
+      "category": "direct",
+      "feature": "Body transforms and scaling",
+      "done": false,
+      "acceptance": "Translate, rotate, mirror and uniformly/nonuniformly scale supported bodies with correct units, normals, validity and Undo.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-001",
+      "category": "surface",
+      "feature": "Surface primitives and construction",
+      "done": false,
+      "acceptance": "Create planar, extruded, revolved, swept and lofted surfaces as editable sheet bodies with native persistence.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-002",
+      "category": "surface",
+      "feature": "NURBS control editing",
+      "done": false,
+      "acceptance": "Edit degree, knots, weights and control points while preserving rational surface geometry and valid trims.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-003",
+      "category": "surface",
+      "feature": "Boundary and network surfaces",
+      "done": false,
+      "acceptance": "Construct surfaces from boundary/curve networks with selectable position, tangent and curvature continuity.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-004",
+      "category": "surface",
+      "feature": "Surface trim, untrim and extend",
+      "done": false,
+      "acceptance": "Trim by curves/surfaces, restore underlying surfaces and extend boundaries without corrupting neighboring topology.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-005",
+      "category": "surface",
+      "feature": "Surface blends and matching",
+      "done": false,
+      "acceptance": "Match or blend adjacent surfaces to measured G0/G1/G2 tolerances with explicit failure diagnostics.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-006",
+      "category": "surface",
+      "feature": "Surface offset and thickening",
+      "done": false,
+      "acceptance": "Offset trimmed surfaces and thicken sheets with gap, fold and self-intersection detection.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-007",
+      "category": "surface",
+      "feature": "Patch and fill holes",
+      "done": false,
+      "acceptance": "Fill arbitrary surface boundary loops with controlled continuity and validate the resulting shell.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-008",
+      "category": "surface",
+      "feature": "Curvature and zebra analysis",
+      "done": false,
+      "acceptance": "Display curvature combs, zebra, draft and continuity deviations using reproducible numerical checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-009",
+      "category": "surface",
+      "feature": "Subdivision sculpting",
+      "done": false,
+      "acceptance": "Create/edit subdivision cages with creases and symmetry; convert usable results into downstream editable geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-010",
+      "category": "surface",
+      "feature": "Developable surfaces and flattening",
+      "done": false,
+      "acceptance": "Construct and flatten developable surfaces with quantified distortion and matching boundary lengths.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-011",
+      "category": "surface",
+      "feature": "Class-A surface workflow",
+      "done": false,
+      "acceptance": "Meet declared automotive-style continuity and highlight-quality limits on a pinned multi-patch corpus with independent checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SURF-012",
+      "category": "surface",
+      "feature": "Lattices and implicit geometry",
+      "done": false,
+      "acceptance": "Define parameterized lattice/implicit forms with bounded resolution, manufacturing export and explicit conversion accuracy.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-001",
+      "category": "mesh",
+      "feature": "Mesh import and export",
+      "done": false,
+      "acceptance": "Read/write STL, OBJ and 3MF with declared units, normals, grouping, appearance and format-limit diagnostics.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-002",
+      "category": "mesh",
+      "feature": "Mesh repair",
+      "done": false,
+      "acceptance": "Detect and repair holes, inverted normals, duplicate faces and nonmanifold regions with a before/after report.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-003",
+      "category": "mesh",
+      "feature": "Mesh booleans and editing",
+      "done": false,
+      "acceptance": "Cut, join, transform and edit meshes with explicit topology quality and preserved unaffected geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-004",
+      "category": "mesh",
+      "feature": "Remeshing and decimation",
+      "done": false,
+      "acceptance": "Reduce or resample mesh density within a measured deviation tolerance and preserve required boundaries.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-005",
+      "category": "mesh",
+      "feature": "Point-cloud workflows",
+      "done": false,
+      "acceptance": "Import large point clouds with units/coordinates, clip/classify/register scans and retain registration metadata.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-006",
+      "category": "mesh",
+      "feature": "Scan-to-CAD reconstruction",
+      "done": false,
+      "acceptance": "Fit primitives, curves and surfaces to a scan, report residual error and deliver editable exact geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-007",
+      "category": "mesh",
+      "feature": "Mesh-to-BRep and hybrid models",
+      "done": false,
+      "acceptance": "Convert eligible meshes to exact/faceted bodies with declared limits and support operations across the chosen representations.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "MESH-008",
+      "category": "mesh",
+      "feature": "Deviation inspection",
+      "done": false,
+      "acceptance": "Compare scan/mesh/CAD data and show signed distance statistics, tolerance bands and exportable inspection reports.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-001",
+      "category": "assembly",
+      "feature": "Nested instances and shared definitions",
+      "done": true,
+      "acceptance": "Import the engine as 51 shared definitions and 246 correctly placed occurrences, preserving nested structure through native and STEP exchange.",
+      "dependsOn": [],
+      "evidence": [
+        "engine"
+      ]
+    },
+    {
+      "id": "ASM-003",
+      "category": "assembly",
+      "feature": "Distance mates",
+      "done": true,
+      "acceptance": "Set and revise a component gap through controls; verify exact pose and Undo/Redo; reject an empty distance without mutation.",
+      "dependsOn": [],
+      "evidence": [
+        "assembly"
+      ]
+    },
+    {
+      "id": "ASM-004",
+      "category": "assembly",
+      "feature": "Concentric mates",
+      "done": true,
+      "acceptance": "Set radial/axial placement through controls, Cancel/reopen/Apply, and reject an empty collector with unchanged geometry.",
+      "dependsOn": [],
+      "evidence": [
+        "assembly"
+      ]
+    },
+    {
+      "id": "ASM-005",
+      "category": "assembly",
+      "feature": "Fixed and coincident constraints",
+      "done": false,
+      "acceptance": "Create, revise and suppress fixed/coincident mates using real geometry references and diagnose inconsistent systems.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-006",
+      "category": "assembly",
+      "feature": "Revolute joints and connected motion",
+      "done": true,
+      "acceptance": "Drive the documented robot/gearbox joints with source-linked frames and parameters; retain exact/display geometry through motion and native reopen.",
+      "dependsOn": [],
+      "evidence": [
+        "robot",
+        "gearbox"
+      ]
+    },
+    {
+      "id": "ASM-007",
+      "category": "assembly",
+      "feature": "Slider, cylindrical and planar joints",
+      "done": false,
+      "acceptance": "Create and animate translational/combined joints with explicit remaining freedoms and stable poses after parameter edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-008",
+      "category": "assembly",
+      "feature": "Ball, pin-slot and universal joints",
+      "done": false,
+      "acceptance": "Solve the declared spatial joint freedoms and detect conflicting joint networks without accepting invalid poses.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-009",
+      "category": "assembly",
+      "feature": "Gear, belt, rack and screw relations",
+      "done": false,
+      "acceptance": "Couple joint motion using signed ratios/pitches and support direction, limits and consistent regeneration.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-010",
+      "category": "assembly",
+      "feature": "Joint limits and contact",
+      "done": false,
+      "acceptance": "Apply angle/travel limits and collision/contact constraints with repeatable motion stopping and overconstraint diagnostics.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-011",
+      "category": "assembly",
+      "feature": "Assembly interference and clearance",
+      "done": false,
+      "acceptance": "Compute exact intersecting pairs and minimum clearance with exclusions, selected pair visualization and exported results.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-012",
+      "category": "assembly",
+      "feature": "Exploded views and assembly instructions",
+      "done": false,
+      "acceptance": "Author persistent explode steps, trails and camera states; create drawings/animations and restore the assembled pose.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-013",
+      "category": "assembly",
+      "feature": "Bill of materials",
+      "done": false,
+      "acceptance": "Generate hierarchical/flattened BOMs with quantities, part metadata and stable item numbers; export and update after assembly edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-014",
+      "category": "assembly",
+      "feature": "In-context and top-down design",
+      "done": false,
+      "acceptance": "Reference neighboring geometry through explicit dependencies; update safely and diagnose cycles or missing external components.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-015",
+      "category": "assembly",
+      "feature": "Component patterns and mirrors",
+      "done": false,
+      "acceptance": "Create associative assembly patterns/mirrors with placement, handedness and instance overrides and correct BOM quantities.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-016",
+      "category": "assembly",
+      "feature": "Flexible subassemblies and arrangements",
+      "done": false,
+      "acceptance": "Reuse one definition with independent solved internal poses/configurations in multiple occurrences.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-017",
+      "category": "assembly",
+      "feature": "Standard hardware library",
+      "done": false,
+      "acceptance": "Insert parameterized fasteners/bearings with standards, sizes and BOM metadata; resolve missing library versions explicitly.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-018",
+      "category": "assembly",
+      "feature": "Assembly simplification and lightweight modes",
+      "done": false,
+      "acceptance": "Switch selected components among exact, lightweight and envelope representations while preserving identity and loading exact geometry on demand.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-019",
+      "category": "assembly",
+      "feature": "Assembly constraint diagnostics",
+      "done": false,
+      "acceptance": "Display remaining freedoms, conflicting constraints and failed reference paths with reversible repair actions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ASM-020",
+      "category": "assembly",
+      "feature": "Mechanical motion analysis",
+      "done": false,
+      "acceptance": "Compute position, velocity and acceleration over time with prescribed drives, export plots and distinguish kinematics from force simulation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SM-001",
+      "category": "sheetmetal",
+      "feature": "Sheet-metal rules and base features",
+      "done": false,
+      "acceptance": "Create constant-thickness sheet bodies using material, bend radius, K-factor/bend allowance and relief rules.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "SM-002",
+      "category": "sheetmetal",
+      "feature": "Flanges, bends and jogs",
+      "done": false,
+      "acceptance": "Create edge/miter/contour flanges, folds and jogs with editable angles and corner conditions.",
+      "dependsOn": [
+        "SM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SM-003",
+      "category": "sheetmetal",
+      "feature": "Hems, seams and corner relief",
+      "done": false,
+      "acceptance": "Model hems, seams, rips and corner treatments with physically consistent thickness and unfoldability.",
+      "dependsOn": [
+        "SM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SM-004",
+      "category": "sheetmetal",
+      "feature": "Unfold, refold and flat patterns",
+      "done": false,
+      "acceptance": "Generate a validated flat pattern, add flat-state cuts and refold without losing bend metadata.",
+      "dependsOn": [
+        "SM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SM-005",
+      "category": "sheetmetal",
+      "feature": "Lofted sheet transitions",
+      "done": false,
+      "acceptance": "Create manufacturable lofted bends with explicit faceting/strain assumptions and flattening limits.",
+      "dependsOn": [
+        "SM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SM-006",
+      "category": "sheetmetal",
+      "feature": "Forming tools and punches",
+      "done": false,
+      "acceptance": "Place reusable forming/punch tools with orientation and manufacturing annotations and preserve developed shape rules.",
+      "dependsOn": [
+        "SM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SM-007",
+      "category": "sheetmetal",
+      "feature": "Sheet conversion",
+      "done": false,
+      "acceptance": "Recognize/convert suitable solids into sheet metal and diagnose varying thickness or nondevelopable regions.",
+      "dependsOn": [
+        "SM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "SM-008",
+      "category": "sheetmetal",
+      "feature": "Flat-pattern deliverables",
+      "done": false,
+      "acceptance": "Export scaled DXF and drawings with bend lines, directions and bend tables verified against the folded part.",
+      "dependsOn": [
+        "SM-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "FAB-001",
+      "category": "fabrication",
+      "feature": "Structural frames and weldments",
+      "done": false,
+      "acceptance": "Sweep standard sections along a skeleton, trim/miter joints and preserve member identity after edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "FAB-002",
+      "category": "fabrication",
+      "feature": "Cut lists and stock lengths",
+      "done": false,
+      "acceptance": "Group identical members, calculate cut angles/lengths and generate linked fabrication tables.",
+      "dependsOn": [
+        "FAB-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "FAB-003",
+      "category": "fabrication",
+      "feature": "Weld features and preparation",
+      "done": false,
+      "acceptance": "Model weld beads, gaps and preparation with inspectable mass and drawing symbols.",
+      "dependsOn": [
+        "FAB-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "FAB-004",
+      "category": "fabrication",
+      "feature": "Plastic design features",
+      "done": false,
+      "acceptance": "Create bosses, snaps, lips, ribs and vents with wall-thickness and draft checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "FAB-005",
+      "category": "fabrication",
+      "feature": "Mold parting and tooling splits",
+      "done": false,
+      "acceptance": "Find parting lines, create shutoffs and split core/cavity bodies with valid exact geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "FAB-006",
+      "category": "fabrication",
+      "feature": "Mold bases and tooling components",
+      "done": false,
+      "acceptance": "Place standard mold components, apply clearances and generate component metadata and drawings.",
+      "dependsOn": [
+        "FAB-005"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "FAB-007",
+      "category": "fabrication",
+      "feature": "Shrinkage and manufacturing compensation",
+      "done": false,
+      "acceptance": "Apply material/process compensation with traceable settings and independently checked output dimensions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "FAB-008",
+      "category": "fabrication",
+      "feature": "Electrode and tooling design",
+      "done": false,
+      "acceptance": "Derive electrodes/tooling surfaces with spark gap, stock and coordinate metadata.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "FAB-009",
+      "category": "fabrication",
+      "feature": "Composite layups",
+      "done": false,
+      "acceptance": "Define ply materials, orientations and boundaries, compute thickness and export ply/layup documentation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "FAB-010",
+      "category": "fabrication",
+      "feature": "Fabrication costing",
+      "done": false,
+      "acceptance": "Estimate material, stock waste and declared process costs from model-derived quantities with transparent rates.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-001",
+      "category": "routing",
+      "feature": "Pipe and tube routing",
+      "done": false,
+      "acceptance": "Route constrained paths with standard sizes, bends and fittings; enforce bend radius and update lengths/BOM.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-002",
+      "category": "routing",
+      "feature": "Cable and harness routing",
+      "done": false,
+      "acceptance": "Route wires/bundles with connector pins, bend/slack rules and length/connection reports.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-003",
+      "category": "routing",
+      "feature": "Harness flattening",
+      "done": false,
+      "acceptance": "Produce an associative harness board layout with branches, labels and manufacturing dimensions.",
+      "dependsOn": [
+        "ROUTE-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-004",
+      "category": "routing",
+      "feature": "P&ID authoring",
+      "done": false,
+      "acceptance": "Create tagged process diagrams with connected equipment, pipe specifications and validated connectivity.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-005",
+      "category": "routing",
+      "feature": "Plant equipment and isometrics",
+      "done": false,
+      "acceptance": "Generate routed plant models, pipe isometrics and spool lists consistent with P&ID data.",
+      "dependsOn": [
+        "ROUTE-001",
+        "ROUTE-004"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-006",
+      "category": "routing",
+      "feature": "Electrical schematics",
+      "done": false,
+      "acceptance": "Create symbol-based circuits with wires, terminal numbering, cross-references and electrical connectivity checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-007",
+      "category": "routing",
+      "feature": "Control panels and cable schedules",
+      "done": false,
+      "acceptance": "Lay out panel equipment and produce wire/terminal schedules from the electrical model.",
+      "dependsOn": [
+        "ROUTE-006"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-008",
+      "category": "routing",
+      "feature": "ECAD-MCAD exchange",
+      "done": false,
+      "acceptance": "Exchange board outline, holes, component envelopes and keepouts bidirectionally with explicit conflicts and units.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-009",
+      "category": "routing",
+      "feature": "PCB layout and manufacturing output",
+      "done": false,
+      "acceptance": "Route boards under design rules and export validated Gerber, drill and assembly files.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "ROUTE-010",
+      "category": "routing",
+      "feature": "PCB schematic and circuit simulation",
+      "done": false,
+      "acceptance": "Maintain schematic-to-board connectivity, component libraries and independently checked circuit simulation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-001",
+      "category": "inspection",
+      "feature": "Exact volume inspection through MCP",
+      "done": true,
+      "acceptance": "Inspect mounting-plate exact volumes before/after parameter changes and after native reopen, then compare exported STEP volume.",
+      "dependsOn": [],
+      "evidence": [
+        "mcp"
+      ]
+    },
+    {
+      "id": "INS-002",
+      "category": "inspection",
+      "feature": "Interactive exact measurement",
+      "done": false,
+      "acceptance": "Measure distance, angle, radius, area and volume from exact selected geometry with correct instance transforms and units.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-003",
+      "category": "inspection",
+      "feature": "Center of mass and inertia",
+      "done": false,
+      "acceptance": "Assign density/materials and report component/assembly mass, centroid and inertia with unit-correct independently checked values.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-004",
+      "category": "inspection",
+      "feature": "Section planes and clipping",
+      "done": false,
+      "acceptance": "Create and move saved sections, show cut geometry and retain correct visible/pickable entities after model edits.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-005",
+      "category": "inspection",
+      "feature": "Thickness and draft analysis",
+      "done": false,
+      "acceptance": "Report local thickness and draft relative to a pull direction, highlight violations and compare against numerical references.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-006",
+      "category": "inspection",
+      "feature": "Geometry validity and topology checks",
+      "done": false,
+      "acceptance": "Expose exact validity, gaps and entity counts with selectable failures and documented tolerance handling.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-007",
+      "category": "inspection",
+      "feature": "3D PMI and model-based definition",
+      "done": false,
+      "acceptance": "Attach semantic dimensions, GD&T and datums to 3D geometry; persist saved annotation views and exchange supported PMI.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-008",
+      "category": "inspection",
+      "feature": "Tolerance stack analysis",
+      "done": false,
+      "acceptance": "Compute worst-case/statistical stackups from declared dimensions and tolerances and produce a traceable report.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-009",
+      "category": "inspection",
+      "feature": "Design-rule checks",
+      "done": false,
+      "acceptance": "Evaluate reusable clearance, size, material and manufacturing rules with linked violations and repeatable results.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "INS-010",
+      "category": "inspection",
+      "feature": "Model revision comparison",
+      "done": false,
+      "acceptance": "Compare exact shape, parameters and component changes between revisions and navigate added/removed/changed entities.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-001",
+      "category": "exchange",
+      "feature": "Editable solid STEP assemblies",
+      "done": false,
+      "acceptance": "Import the pinned solid STEP assembly, edit a supported bore/cut and occurrence, save native, export/reimport STEP and continue editing with correct solids and placements. Independently open the exported STEP in another CAD system and verify solids, placements and the edited dimensions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-002",
+      "category": "exchange",
+      "feature": "STEP names, colors and units",
+      "done": false,
+      "acceptance": "Round-trip a dedicated multilevel STEP corpus with names, body/occurrence RGB and units; report unsupported appearance instead of silently claiming fidelity.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-003",
+      "category": "exchange",
+      "feature": "STEP surfaces, curves and PMI",
+      "done": false,
+      "acceptance": "Read/write supported non-solid topology and AP242 semantic PMI with an explicit entity/version contract and independent-tool validation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-004",
+      "category": "exchange",
+      "feature": "Full 2D DXF drawings",
+      "done": false,
+      "acceptance": "Round-trip declared DXF versions including geometry, blocks, layers, text, dimensions, hatches and layouts in an independent CAD tool.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "IO-005",
+      "category": "exchange",
+      "feature": "DWG drawings",
+      "done": false,
+      "acceptance": "Read, edit and write declared DWG versions through a licensed supported route; verify drawing entities, styles, blocks and layouts externally and report losses.",
+      "dependsOn": [
+        "DRAW-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "IO-006",
+      "category": "exchange",
+      "feature": "Analytic DXF sketch exchange",
+      "done": false,
+      "acceptance": "Round-trip the documented analytic sketch subset through real Import/Export controls, edit imported curves and reject unsupported/malformed entities without source loss.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-007",
+      "category": "exchange",
+      "feature": "SVG sketch exchange",
+      "done": false,
+      "acceptance": "Round-trip supported analytic paths, transforms and units through controls; edit the imported sketch and explicitly handle unsupported text/fills.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-008",
+      "category": "exchange",
+      "feature": "IGES surfaces and curves",
+      "done": false,
+      "acceptance": "Read/write trimmed surfaces and curves with units, sewing tolerance and independent topology/shape validation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-009",
+      "category": "exchange",
+      "feature": "Parasolid exchange",
+      "done": false,
+      "acceptance": "Read/write declared Parasolid versions through a supported implementation with solid, placement and attribute checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-010",
+      "category": "exchange",
+      "feature": "ACIS/SAT exchange",
+      "done": false,
+      "acceptance": "Read/write the declared ACIS representation with exact geometry checks and explicit unsupported-entity reporting.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-011",
+      "category": "exchange",
+      "feature": "Foreign native mechanical files",
+      "done": false,
+      "acceptance": "Import declared SolidWorks, Inventor, Creo, CATIA and NX versions with documented geometry/assembly/metadata fidelity and licensing.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-012",
+      "category": "exchange",
+      "feature": "DGN and legacy drawing exchange",
+      "done": false,
+      "acceptance": "Read/write selected DGN and legacy drawing formats with units, layers and annotation fidelity established externally.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-013",
+      "category": "exchange",
+      "feature": "IFC and BIM exchange",
+      "done": false,
+      "acceptance": "Round-trip declared IFC schema elements, property sets, placements and relationships in an independent BIM validator.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-014",
+      "category": "exchange",
+      "feature": "PDF vector import",
+      "done": false,
+      "acceptance": "Recover supported vector geometry, text and scale from PDF with explicit limitations for raster or ambiguous content.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-015",
+      "category": "exchange",
+      "feature": "Visualization and web formats",
+      "done": false,
+      "acceptance": "Export glTF/GLB, USD and selected review formats with correct units, hierarchy, transforms and appearances.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-016",
+      "category": "exchange",
+      "feature": "Batch conversion and loss reports",
+      "done": false,
+      "acceptance": "Convert a file corpus with per-file fidelity diagnostics, version metadata and no silent success on lost unsupported entities.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-017",
+      "category": "exchange",
+      "feature": "External-reference update fidelity",
+      "done": false,
+      "acceptance": "Reimport changed external assets with stable references, a change report and recoverable conflicts.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "IO-018",
+      "category": "exchange",
+      "feature": "Invalid STEP rejection",
+      "done": true,
+      "acceptance": "Reject unreadable STEP through the browser with a clear diagnostic and a responsive unchanged project.",
+      "dependsOn": [],
+      "evidence": [
+        "engine",
+        "interchange"
+      ]
+    },
+    {
+      "id": "VIS-001",
+      "category": "rendering",
+      "feature": "Shared definition rendering",
+      "done": true,
+      "acceptance": "Render the engine's 51 definitions as 246 occurrences and retain the same 52 mesh uploads throughout native-pointer orbit.",
+      "dependsOn": [],
+      "evidence": [
+        "engine"
+      ]
+    },
+    {
+      "id": "VIS-002",
+      "category": "rendering",
+      "feature": "Display styles",
+      "done": false,
+      "acceptance": "Switch wireframe, hidden-line, shaded and shaded-edge modes with correct occlusion, picking and saved preferences.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-003",
+      "category": "rendering",
+      "feature": "Materials and textures",
+      "done": false,
+      "acceptance": "Assign physically meaningful materials, textures and mapping per body/face without changing exact geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-004",
+      "category": "rendering",
+      "feature": "Lighting and environments",
+      "done": false,
+      "acceptance": "Configure lights, HDR environments and shadows with persistent scene settings and deterministic exports.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-005",
+      "category": "rendering",
+      "feature": "Photorealistic rendering",
+      "done": false,
+      "acceptance": "Produce offline or interactive renders with selected resolution, denoising and transparent-background output matching saved scene settings.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-006",
+      "category": "rendering",
+      "feature": "Camera and animation paths",
+      "done": false,
+      "acceptance": "Save cameras, animate transitions and component transforms and export a timed image/video sequence.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-007",
+      "category": "rendering",
+      "feature": "Presentation and exploded animations",
+      "done": false,
+      "acceptance": "Publish assembly sequences with annotations and synchronized component motion without modifying design authority.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-008",
+      "category": "rendering",
+      "feature": "AR and VR review",
+      "done": false,
+      "acceptance": "Review correctly scaled models in supported immersive devices with navigation, selection and annotations.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "VIS-009",
+      "category": "rendering",
+      "feature": "Accessible and large-model display",
+      "done": false,
+      "acceptance": "Provide usable contrast, selection indication and simplified display for dense/transparent models without relying solely on color.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-001",
+      "category": "automation",
+      "feature": "Public MCP author/revise workflow",
+      "done": true,
+      "acceptance": "A fresh public stdio client authors the mounting plate, inspects exact geometry, revises parameters and saves/reopens native plus STEP using shared CADOps.",
+      "dependsOn": [],
+      "evidence": [
+        "mcp"
+      ]
+    },
+    {
+      "id": "AUTO-002",
+      "category": "automation",
+      "feature": "Public dry run and atomic commit",
+      "done": true,
+      "acceptance": "Dry run returns inspectable effects without mutation; commit applies the same operations transactionally; failed batches preserve source identity.",
+      "dependsOn": [],
+      "evidence": [
+        "mcp"
+      ]
+    },
+    {
+      "id": "AUTO-003",
+      "category": "automation",
+      "feature": "Operation schema discovery",
+      "done": true,
+      "acceptance": "Discover supported operations and complete field schemas through public MCP; invalid structures identify their path and remain atomic.",
+      "dependsOn": [],
+      "evidence": [
+        "gearbox"
+      ]
+    },
+    {
+      "id": "AUTO-004",
+      "category": "automation",
+      "feature": "Agent geometry targeting",
+      "done": false,
+      "acceptance": "Find and use stable semantic geometry references with bounded responses, explicit ambiguity and no raw private topology ID assumptions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-005",
+      "category": "automation",
+      "feature": "Application scripting API",
+      "done": false,
+      "acceptance": "Expose documented versioned scripting operations for drawings, models and documents with errors, compatibility policy and runnable examples.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-006",
+      "category": "automation",
+      "feature": "Macros and command recording",
+      "done": false,
+      "acceptance": "Record, parameterize and replay user workflows through the shared command system with explicit unsupported actions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-007",
+      "category": "automation",
+      "feature": "Custom feature extensions",
+      "done": false,
+      "acceptance": "Install and execute versioned parameterized custom features with dependency tracking, validation and native reopen behavior.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-008",
+      "category": "automation",
+      "feature": "Visual programming",
+      "done": false,
+      "acceptance": "Build reusable node graphs for geometry and document automation with deterministic evaluation and inspectable failures.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-009",
+      "category": "automation",
+      "feature": "AI task execution and review",
+      "done": false,
+      "acceptance": "Turn a natural-language modeling brief into a reviewable change proposal, verify dimensions/geometry and support reject/revise/apply through shared authority.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-010",
+      "category": "automation",
+      "feature": "AI drawing cleanup and standards checking",
+      "done": false,
+      "acceptance": "Detect drawing errors and propose localized fixes with explanations, selected application and reversible changes.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-011",
+      "category": "automation",
+      "feature": "Batch and headless processing",
+      "done": false,
+      "acceptance": "Run a multi-file public API job with isolation, cancellation, resource budgets, resumable reporting and failure-safe outputs.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-012",
+      "category": "automation",
+      "feature": "Plugin SDK and compatibility",
+      "done": false,
+      "acceptance": "Document extension lifecycle, permissions and stable APIs; demonstrate a real plugin across a supported upgrade and uninstall.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-013",
+      "category": "automation",
+      "feature": "Legacy automation compatibility",
+      "done": false,
+      "acceptance": "Run a declared subset of AutoLISP/DXF automation or provide an explicit migration tool with behavioral comparison.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AUTO-014",
+      "category": "automation",
+      "feature": "Agent audit and approval enforcement",
+      "done": false,
+      "acceptance": "Prove manualApproval and approveAll obey their contracts for modeling and files, attribute mutations and reject unapproved writes end to end.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-001",
+      "category": "collaboration",
+      "feature": "Shared projects and permissions",
+      "done": false,
+      "acceptance": "Invite collaborators with distinct read/edit/admin rights and enforce them on model, file and API operations.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-002",
+      "category": "collaboration",
+      "feature": "Version history and comparison",
+      "done": false,
+      "acceptance": "Create immutable named versions, inspect differences and restore/branch without erasing prior history.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-003",
+      "category": "collaboration",
+      "feature": "Branch and merge design changes",
+      "done": false,
+      "acceptance": "Merge compatible geometry/metadata edits and surface conflicts with explicit resolution and no silent overwrite.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-004",
+      "category": "collaboration",
+      "feature": "Concurrent editing",
+      "done": false,
+      "acceptance": "Two clients edit a shared document with deterministic conflict handling, live presence and durable consistent results.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-005",
+      "category": "collaboration",
+      "feature": "Comments, markup and review",
+      "done": false,
+      "acceptance": "Attach discussions and markup to persistent model/sheet references with notifications and resolution history.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-006",
+      "category": "collaboration",
+      "feature": "External review links",
+      "done": false,
+      "acceptance": "Share scoped, expiring/revocable view links that allow the intended review while preventing unauthorized editing/download.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-007",
+      "category": "collaboration",
+      "feature": "Checkout and reservations",
+      "done": false,
+      "acceptance": "Reserve files or components, handle offline/conflicting changes and release ownership without lost updates.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-008",
+      "category": "collaboration",
+      "feature": "Release and approval workflows",
+      "done": false,
+      "acceptance": "Promote revisions through configured approvals with immutable released artifacts and traceable signoff.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-009",
+      "category": "collaboration",
+      "feature": "Part numbering and lifecycle",
+      "done": false,
+      "acceptance": "Manage unique numbers, revisions, lifecycle states and where-used queries across project variants and releases.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-010",
+      "category": "collaboration",
+      "feature": "BOM, ERP and PLM integration",
+      "done": false,
+      "acceptance": "Synchronize declared item/BOM/revision fields with an external system using idempotent updates and conflict reports.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-011",
+      "category": "collaboration",
+      "feature": "Search and reuse across projects",
+      "done": false,
+      "acceptance": "Search metadata and geometry-derived attributes under access controls, then reuse parts with explicit update relationships.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "COL-012",
+      "category": "collaboration",
+      "feature": "Enterprise identity and audit",
+      "done": false,
+      "acceptance": "Integrate SSO and role management; export an immutable access/change audit and prove revocation behavior.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAM-001",
+      "category": "manufacturing",
+      "feature": "Manufacturing setups",
+      "done": false,
+      "acceptance": "Define stock, fixtures, work coordinate systems and tools with persistent links to the design model.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAM-002",
+      "category": "manufacturing",
+      "feature": "2D and 2.5D toolpaths",
+      "done": false,
+      "acceptance": "Generate facing, pocketing, contouring and drilling paths with tool/stock limits and independently verified output.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-003",
+      "category": "manufacturing",
+      "feature": "3-axis roughing and finishing",
+      "done": false,
+      "acceptance": "Generate roughing and surface finishing strategies with tolerance, rest material and holder clearance.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-004",
+      "category": "manufacturing",
+      "feature": "Indexed multi-axis machining",
+      "done": false,
+      "acceptance": "Create 3+1/3+2 setups with correct transforms, axis limits and collision checks.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-005",
+      "category": "manufacturing",
+      "feature": "Simultaneous multi-axis machining",
+      "done": false,
+      "acceptance": "Generate 4/5-axis paths with singularity, gouge, holder and machine-limit avoidance.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-006",
+      "category": "manufacturing",
+      "feature": "Turning and mill-turn",
+      "done": false,
+      "acceptance": "Create rough/finish turning, threading and combined milling operations with spindle/stock coordination.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-007",
+      "category": "manufacturing",
+      "feature": "Tool libraries and cutting data",
+      "done": false,
+      "acceptance": "Manage tools, holders, feeds/speeds and machine-specific constraints with versioned reuse.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-008",
+      "category": "manufacturing",
+      "feature": "Stock and machine simulation",
+      "done": false,
+      "acceptance": "Simulate material removal and machine kinematics; report collisions, gouges and excess stock before export.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-009",
+      "category": "manufacturing",
+      "feature": "Postprocessors and NC output",
+      "done": false,
+      "acceptance": "Generate NC code for declared controllers, validate it in an independent simulator and preserve setup sheets/tool lists.",
+      "dependsOn": [
+        "CAM-008"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAM-010",
+      "category": "manufacturing",
+      "feature": "Nesting and sheet cutting",
+      "done": false,
+      "acceptance": "Nest parts on stock, honor grain/spacing and export verified laser/waterjet/plasma toolpaths.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAM-011",
+      "category": "manufacturing",
+      "feature": "Probing and inspection programs",
+      "done": false,
+      "acceptance": "Generate setup and in-process probing cycles with measurement interpretation and traceable compensation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAM-012",
+      "category": "manufacturing",
+      "feature": "Associative CAM updates",
+      "done": false,
+      "acceptance": "Invalidate and regenerate affected paths after design changes; prevent stale NC output from being labeled current.",
+      "dependsOn": [
+        "CAM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AM-001",
+      "category": "additive",
+      "feature": "Print preparation",
+      "done": false,
+      "acceptance": "Orient and pack parts within a declared build volume, validate watertightness and report unsupported walls/overhangs.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AM-002",
+      "category": "additive",
+      "feature": "Supports and slicing",
+      "done": false,
+      "acceptance": "Generate configurable supports and layers, inspect toolpaths and export a verified machine-specific build file.",
+      "dependsOn": [
+        "AM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "AM-003",
+      "category": "additive",
+      "feature": "Material and machine profiles",
+      "done": false,
+      "acceptance": "Manage versioned process profiles, shrinkage and build limits with provenance and reusable setup.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AM-004",
+      "category": "additive",
+      "feature": "Metal additive preparation",
+      "done": false,
+      "acceptance": "Create metal-process supports and exposure/build strategies under declared machine constraints and export validated jobs.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AM-005",
+      "category": "additive",
+      "feature": "Lattice and lightweight design",
+      "done": false,
+      "acceptance": "Create printable lattices or infill with measured wall/strut limits and bounded output size.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "AM-006",
+      "category": "additive",
+      "feature": "Additive process compensation",
+      "done": false,
+      "acceptance": "Model declared process distortion and apply documented compensation with independent dimensional validation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAE-001",
+      "category": "simulation",
+      "feature": "Materials and simulation meshing",
+      "done": false,
+      "acceptance": "Assign physical properties, contacts and mesh controls; report element quality and preserve setup through model revisions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAE-002",
+      "category": "simulation",
+      "feature": "Linear static stress",
+      "done": false,
+      "acceptance": "Solve displacement/stress under loads and constraints and match analytical/reference problems with convergence evidence.",
+      "dependsOn": [
+        "CAE-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-003",
+      "category": "simulation",
+      "feature": "Modal and buckling analysis",
+      "done": false,
+      "acceptance": "Compute validated natural modes and buckling factors with documented solver assumptions.",
+      "dependsOn": [
+        "CAE-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-004",
+      "category": "simulation",
+      "feature": "Thermal analysis",
+      "done": false,
+      "acceptance": "Solve steady/transient heat transfer with units, boundary conditions and reference validation.",
+      "dependsOn": [
+        "CAE-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-005",
+      "category": "simulation",
+      "feature": "Nonlinear and contact analysis",
+      "done": false,
+      "acceptance": "Solve declared material/geometric nonlinearities and contact cases with convergence and failure diagnostics.",
+      "dependsOn": [
+        "CAE-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-006",
+      "category": "simulation",
+      "feature": "Dynamics and fatigue",
+      "done": false,
+      "acceptance": "Compute supported transient/response/fatigue results with traceable load histories and validated material data.",
+      "dependsOn": [
+        "CAE-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-007",
+      "category": "simulation",
+      "feature": "Fluid and electronics cooling",
+      "done": false,
+      "acceptance": "Model declared flow/heat coupling, boundary conditions and mesh convergence against reference cases.",
+      "dependsOn": [
+        "CAE-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-008",
+      "category": "simulation",
+      "feature": "Rigid-body dynamics",
+      "done": false,
+      "acceptance": "Compute mechanism loads and contact-driven motion from mass/inertia and joints with numerical validation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAE-009",
+      "category": "simulation",
+      "feature": "Topology optimization",
+      "done": false,
+      "acceptance": "Optimize a declared objective under load, mass and manufacturing constraints; validate and reconstruct editable output.",
+      "dependsOn": [
+        "CAE-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CAE-010",
+      "category": "simulation",
+      "feature": "Generative design studies",
+      "done": false,
+      "acceptance": "Compare parameterized design alternatives against declared constraints and preserve reproducible inputs and results.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAE-011",
+      "category": "simulation",
+      "feature": "Design-of-experiments studies",
+      "done": false,
+      "acceptance": "Run parameter sweeps with repeatable solver settings, result plots and failure-aware comparison.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CAE-012",
+      "category": "simulation",
+      "feature": "Analysis reports and revision validity",
+      "done": false,
+      "acceptance": "Export assumptions, inputs, solver/version, convergence and results; mark results stale after relevant design changes.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-001",
+      "category": "bim",
+      "feature": "Levels, grids and building coordinates",
+      "done": false,
+      "acceptance": "Create linked story levels, grids and survey/project coordinates with consistent plan and model views.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-002",
+      "category": "bim",
+      "feature": "Architectural building elements",
+      "done": false,
+      "acceptance": "Author walls, floors, roofs, ceilings, doors and windows with materials, joins, openings and model-derived quantities.",
+      "dependsOn": [
+        "BIM-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "BIM-003",
+      "category": "bim",
+      "feature": "Parametric building families",
+      "done": false,
+      "acceptance": "Create typed reusable components with placement rules, formulas and persistent instance overrides.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-004",
+      "category": "bim",
+      "feature": "Rooms, areas and spaces",
+      "done": false,
+      "acceptance": "Compute bounded rooms/spaces and schedules, update boundaries and diagnose unclosed regions.",
+      "dependsOn": [
+        "BIM-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "BIM-005",
+      "category": "bim",
+      "feature": "Stairs, railings and circulation",
+      "done": false,
+      "acceptance": "Model editable stairs/ramps/railings with dimensional/code checks and coordinated drawings.",
+      "dependsOn": [
+        "BIM-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "BIM-006",
+      "category": "bim",
+      "feature": "Building documentation and schedules",
+      "done": false,
+      "acceptance": "Generate coordinated plans, elevations, sections, tags and schedules from the building model.",
+      "dependsOn": [
+        "BIM-002",
+        "SHEET-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "BIM-007",
+      "category": "bim",
+      "feature": "Structural building systems",
+      "done": false,
+      "acceptance": "Model beams, columns, slabs, connections and reinforcement with analytical relationships and fabrication metadata.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-008",
+      "category": "bim",
+      "feature": "MEP systems",
+      "done": false,
+      "acceptance": "Route connected ducts, pipes, cables and equipment with system sizing, loads and coordinated schedules.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-009",
+      "category": "bim",
+      "feature": "Design options and phases",
+      "done": false,
+      "acceptance": "Maintain construction phases and alternatives with consistent visibility, quantities and documentation.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-010",
+      "category": "bim",
+      "feature": "BIM coordination and clashes",
+      "done": false,
+      "acceptance": "Federate linked models, detect clashes and exchange tracked issues with stable geometry references.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-011",
+      "category": "bim",
+      "feature": "Energy, daylight and carbon studies",
+      "done": false,
+      "acceptance": "Produce reproducible building performance studies with explicit materials, climate, loads and solver assumptions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "BIM-012",
+      "category": "bim",
+      "feature": "Open BIM deliverables",
+      "done": false,
+      "acceptance": "Validate IFC and BCF exchange with required classifications, property sets and relationships in an independent tool.",
+      "dependsOn": [
+        "IO-013"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CIV-001",
+      "category": "civil",
+      "feature": "Survey points and coordinate systems",
+      "done": false,
+      "acceptance": "Import coded survey data with CRS/datum/unit transformations, precision controls and traceable transformations.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CIV-002",
+      "category": "civil",
+      "feature": "Terrain surfaces and contours",
+      "done": false,
+      "acceptance": "Build/edit TIN or grid terrain with breaklines and boundaries; derive validated contours and slopes.",
+      "dependsOn": [
+        "CIV-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CIV-003",
+      "category": "civil",
+      "feature": "Alignments and profiles",
+      "done": false,
+      "acceptance": "Create horizontal/vertical alignments with curves, stationing, design rules and linked profiles.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CIV-004",
+      "category": "civil",
+      "feature": "Corridors and road sections",
+      "done": false,
+      "acceptance": "Generate parametric corridors from alignments and sections, update intersections and produce quantities.",
+      "dependsOn": [
+        "CIV-003"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CIV-005",
+      "category": "civil",
+      "feature": "Grading and earthworks",
+      "done": false,
+      "acceptance": "Design grading surfaces and compute independently checked cut/fill volumes and balancing.",
+      "dependsOn": [
+        "CIV-002"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CIV-006",
+      "category": "civil",
+      "feature": "Parcels and legal descriptions",
+      "done": false,
+      "acceptance": "Create topologically valid parcel boundaries with bearings, areas, labels and derived descriptions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CIV-007",
+      "category": "civil",
+      "feature": "Pipe and drainage networks",
+      "done": false,
+      "acceptance": "Model pressure/gravity networks with elevations, connections, hydraulic constraints and drawing schedules.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CIV-008",
+      "category": "civil",
+      "feature": "Maps and GIS exchange",
+      "done": false,
+      "acceptance": "Read/write declared geospatial formats with CRS, attribute and topology fidelity verified externally.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "CIV-009",
+      "category": "civil",
+      "feature": "Civil plan production",
+      "done": false,
+      "acceptance": "Generate plan/profile/section sheets with station/offset labels and update after design changes.",
+      "dependsOn": [
+        "CIV-003",
+        "SHEET-001"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "CIV-010",
+      "category": "civil",
+      "feature": "Reality capture and site coordination",
+      "done": false,
+      "acceptance": "Register terrain, scan and project models using shared survey controls and report coordinate/accuracy mismatches.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-001",
+      "category": "platform",
+      "feature": "Browser support matrix",
+      "done": false,
+      "acceptance": "Complete core import/edit/save/reopen workflows on declared Chrome, Firefox and Safari versions with equivalent geometry and supported fallbacks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-002",
+      "category": "platform",
+      "feature": "Offline operation",
+      "done": false,
+      "acceptance": "Cold-start an installed/offline-capable app and edit/save/reopen supported local projects without network services or data loss.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-003",
+      "category": "platform",
+      "feature": "Install and update lifecycle",
+      "done": false,
+      "acceptance": "Install, upgrade, roll back and uninstall supported distributions while preserving projects and recoverable preferences.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-004",
+      "category": "platform",
+      "feature": "Localization and Unicode",
+      "done": false,
+      "acceptance": "Translate interface/errors and use Unicode names/text with locale-aware input while keeping serialized numbers and geometry deterministic.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-005",
+      "category": "platform",
+      "feature": "Security boundaries and hostile files",
+      "done": false,
+      "acceptance": "Reject a maintained corpus of malformed/oversized files, enforce worker/file permissions and prevent unauthorized network or filesystem actions.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-006",
+      "category": "platform",
+      "feature": "Large-file resource controls",
+      "done": false,
+      "acceptance": "Enforce declared file/entity/worker budgets with an actionable failure and intact prior document, including on low-memory devices.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-007",
+      "category": "platform",
+      "feature": "Backup and disaster recovery",
+      "done": false,
+      "acceptance": "Restore projects and linked assets from a verified backup on a clean environment with documented retention and integrity checks.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-008",
+      "category": "platform",
+      "feature": "Diagnostics and support bundles",
+      "done": false,
+      "acceptance": "Export reproducible, consented diagnostics with version, workflow and failure data while excluding credentials and unintended private geometry.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-009",
+      "category": "platform",
+      "feature": "Preferences and user profiles",
+      "done": false,
+      "acceptance": "Persist and transfer workspace, shortcuts, rendering and unit preferences with schema compatibility and reset behavior.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-010",
+      "category": "platform",
+      "feature": "Documentation and onboarding",
+      "done": false,
+      "acceptance": "Provide task-based tutorials, command help and format limitations that a new user can follow to complete the parity corpus unaided.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-011",
+      "category": "platform",
+      "feature": "Deployment and enterprise policy",
+      "done": false,
+      "acceptance": "Configure storage/network locations, update channels and organizational restrictions with verifiable enforcement.",
+      "dependsOn": [],
+      "evidence": []
+    },
+    {
+      "id": "PLAT-012",
+      "category": "platform",
+      "feature": "Data ownership and deletion",
+      "done": false,
+      "acceptance": "Export a complete project without proprietary service dependence and delete local/hosted copies under an explicit retention policy.",
+      "dependsOn": [],
+      "evidence": []
+    }
+  ]
+}

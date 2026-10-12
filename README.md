@@ -21,7 +21,7 @@ pnpm install
 pnpm dev
 ```
 
-Verify (typecheck and consolidated E2E journeys):
+Verify (matrix integrity, typecheck and consolidated E2E journeys):
 
 ```sh
 pnpm verify
@@ -57,7 +57,14 @@ inspection, revision, native save/reopen, STEP export, and current limits.
 Only E2E tests; no unit or component tests. See [testing policy](docs/verification.md)
 and the [CAD parity roadmap](docs/parity-roadmap.md).
 
+Choose the next feature contract with `pnpm cad:matrix --next`. Edit
+`docs/cad-feature-matrix.json` and run `pnpm cad:matrix` to update the binary
+feature table.
+
 ## Documentation
+
+- [Professional CAD feature matrix: Done / Not done](docs/cad-feature-matrix.md)
+- [Implementation order and hill-climbing roadmap](docs/parity-roadmap.md)
 
 - [Parametric gearbox: agent authoring, ratio revision and motion](examples/gearbox-workflow/README.md)
 - [Gearbox workflow fixes and verification](docs/gearbox-workflow.md)

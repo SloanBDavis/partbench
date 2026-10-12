@@ -24,7 +24,7 @@ The MCP executable is built once for its journey. Reports go to
 `.metrics/e2e/report.json`; browser screenshots go to `.metrics/ui-smoke/`.
 
 Use `pnpm test:e2e -- assembly`, `interchange`, or `agent` while editing (multiple
-names accepted). `pnpm verify` runs typecheck and this suite before landing.
+names accepted). `pnpm verify` checks the CAD matrix, then runs typecheck and this suite before landing.
 Per-save: affected package typecheck. No browser on every save.
 
 Requires Node 22, pnpm 10, Bun 1.4.2+ with `Bun.WebView`, and Chrome/Chromium.
@@ -36,6 +36,23 @@ browser diagnosis, not a required extra gate. The isolated scenario test runner
 and historical versioned runners have been removed. Geometry, persistence and rejection assertions belong inside E2E
 journeys. File-picker fixtures exercise product readers/writers but not OS dialogs.
 Screenshots are inspection artifacts, not pixel snapshot tests.
+
+## Binary feature acceptance
+
+[The CAD matrix](cad-feature-matrix.md) is the feature backlog. Each row has only
+Done or Not done, a stable ID and a whole-workflow acceptance contract. Existing
+commands or former unit-test coverage do not establish completion. A Done row
+must cite an executable browser/public MCP journey and a dated passing result;
+retained historical results are explicitly labeled. Known regressions revert to
+Not done. Do not automatically mark rows Done because the default suite passes.
+
+`pnpm cad:matrix` generates the table from its JSON source.
+`pnpm cad:matrix --check` verifies schema, binary states, local evidence paths,
+prerequisites/cycles and generated output; this is a documentation integrity
+check, not a unit test and not evidence that any CAD workflow works.
+`pnpm cad:matrix --next` lists the ordered frontier with unmet prerequisites.
+Extend the nearest E2E journey for a feature, sharing setup and assertions; do not
+turn the matrix into hundreds of independent browser tests.
 
 ## Targeted larger workflows
 
