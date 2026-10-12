@@ -4,7 +4,7 @@
 
 Updated 2026-10-12; repository baseline `b0b5d4f`.
 
-**339 feature contracts · 27 areas · 19 Done · 320 Not done.** These are inventory counts, not a percentage of professional CAD parity.
+**339 feature contracts · 27 areas · 20 Done · 319 Not done.** These are inventory counts, not a percentage of professional CAD parity.
 
 Union of professional drafting, mechanical/product design and specialist CAD workflows. Product/edition entitlements are not asserted; specialist rows remain visible and count as Not done until delivered. This is a maintained inventory, not a claim that every vendor command or future capability has been enumerated.
 
@@ -40,7 +40,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [PERF-002](#perf-002) | Not done | Cold exact selection readiness | PERF-001 |
 | [PERF-003](#perf-003) | Not done | Progressive assembly import | None declared |
 | [PERF-012](#perf-012) | Not done | Repeatable performance corpus | None declared |
-| [DRAW-001](#draw-001) | Not done | Independent drafting document | None declared |
+| [DRAW-001](#draw-001) | Done | Independent drafting document | None declared |
 | [IO-005](#io-005) | Not done | DWG drawings | DRAW-001 |
 | [ORG-001](#org-001) | Not done | Layer properties | DRAW-001 |
 | [ANN-002](#ann-002) | Not done | Associative linear dimensions | DRAW-001 |
@@ -57,7 +57,7 @@ Cold import remains first. `PERF-003` is the implementation approach to `PERF-00
 | [Performance and large documents](#area-performance) | 0 | 1 | 11 |
 | [Document integrity and persistence](#area-document) | 1 | 4 | 10 |
 | [Workspace, input and selection](#area-interaction) | 1 | 2 | 13 |
-| [2D drawing geometry and editing](#area-drafting) | 1 | 0 | 18 |
+| [2D drawing geometry and editing](#area-drafting) | 1 | 1 | 17 |
 | [Layers, styles, blocks and references](#area-organization) | 1 | 0 | 12 |
 | [Annotation, dimensions and tolerancing](#area-annotation) | 1 | 0 | 14 |
 | [Sheets, drawings and deliverables](#area-sheets) | 1 | 0 | 12 |
@@ -166,7 +166,7 @@ Existing foundation to inspect: [apps/web/src/modes/sketch/SketchCurveEditPanel.
 
 | ID | Feature | Status | Done only when | Prerequisites | Passing evidence |
 | --- | --- | --- | --- | --- | --- |
-| <a id="draw-001"></a>DRAW-001 | Independent drafting document | **Not done** | Create model-space drawing entities without forcing all geometry into a solved part sketch; persist entity identity, units and Undo/Redo. | — | — |
+| <a id="draw-001"></a>DRAW-001 | Independent drafting document | **Done** | Create model-space drawing entities without forcing all geometry into a solved part sketch; persist entity identity, units and Undo/Redo. | — | [drawing](#evidence-drawing) |
 | <a id="draw-002"></a>DRAW-002 | Lines, rays and construction lines | **Not done** | Create and edit finite lines, rays and infinite construction geometry by typed coordinates and snaps. | [DRAW-001](#draw-001) | — |
 | <a id="draw-003"></a>DRAW-003 | Polylines and joined paths | **Not done** | Create mixed line/arc polylines; edit vertices, widths and closure; join and explode while retaining geometry and attributes. | [DRAW-001](#draw-001) | — |
 | <a id="draw-004"></a>DRAW-004 | Circles and arcs | **Not done** | Support center/radius, diameter, three-point and tangent constructions; edit through controls and preserve exact curves. | [DRAW-001](#draw-001) | — |
@@ -793,6 +793,18 @@ Command: `pnpm smoke:robot-arm && pnpm smoke:robot-arm:browser`.
 Journeys: [scripts/smoke-robot-arm.mjs](../scripts/smoke-robot-arm.mjs), [examples/robot-arm-workflow/browser-use.json](../examples/robot-arm-workflow/browser-use.json).
 
 Recorded results: [docs/robot-arm-fixes.md](../docs/robot-arm-fixes.md).
+
+<a id="evidence-drawing"></a>
+
+### drawing
+
+2026-10-12; source: 57021bf. Independent line/rectangle/circle creation by canvas and coordinates; edit/delete, invalid geometry blocked, zero sketches/constraints, units conversion, stable IDs and Undo/Redo through native reopen including redo stack and centimeter units; persistence alongside STEP assemblies; public MCP schema/dry run/atomic duplicate rejection/edit/reopen/delete.
+
+Command: `pnpm verify`.
+
+Journeys: [scenarios/editable-interchange.json](../scenarios/editable-interchange.json), [scripts/smoke-agent-runtime.mjs](../scripts/smoke-agent-runtime.mjs).
+
+Recorded results: [docs/drawing-workspace.md](../docs/drawing-workspace.md).
 
 ## Professional catalog sources
 
