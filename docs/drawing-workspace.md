@@ -13,7 +13,7 @@ coexist with parts and assemblies in the same project.
   **Create**. Select an entity on the canvas or in the entity list, change its
   coordinates, and choose **Apply changes**. **Delete selected** removes it.
 - Use **Pan** and drag, or drag with the middle mouse button. Scroll or use the
-  zoom buttons to zoom. **Fit** shows the whole drawing. Optional **Snap 1**
+  zoom buttons to zoom. **Fit** shows the whole drawing. Optional **Grid 1**
   rounds new canvas points to one document unit.
 - Keyboard shortcuts while working in the drawing: **L** line, **R** rectangle,
   **C** circle, **V** select, **P** pan, **F** fit, **Escape** cancel, and
@@ -29,6 +29,9 @@ Zero-length lines, zero-area rectangles, and nonpositive circle radii cannot be
 applied. Empty or invalid numeric fields keep Create/Apply disabled and explain
 what needs correcting. Opening another project retains the existing unsaved
 project guard.
+
+For unit-bearing point entry, working frames, object snaps, and tracking, see
+[Precision drawing](drawing-precision.md).
 
 ## Source and command contract
 
